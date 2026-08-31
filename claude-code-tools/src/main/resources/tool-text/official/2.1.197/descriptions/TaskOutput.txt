@@ -1,0 +1,1 @@
+[Deprecated] — prefer Read on the task output file path

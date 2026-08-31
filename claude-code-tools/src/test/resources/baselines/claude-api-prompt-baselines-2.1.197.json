@@ -1,0 +1,53 @@
+{
+  "source": "Official Claude Code 2.1.197 expanded Skill transcript text; bundled base normalized to <BASE>; args fixed to probe",
+  "variants": {
+    "all-docs": {
+      "indicator": null,
+      "javaStringLength": 773977,
+      "sha256": "f0aa733ff3384962e4b2c3061930d5283bf7704680825444aabbc5d2632d90d0",
+      "followupRequestObserved": false
+    },
+    "python": {
+      "indicator": "pyproject.toml",
+      "javaStringLength": 561403,
+      "sha256": "a1b55f556bfb856e7843f6f9ae9184333d0e6285da010deb291ca3bfd386c503",
+      "followupRequestObserved": true
+    },
+    "typescript": {
+      "indicator": "tsconfig.json",
+      "javaStringLength": 550539,
+      "sha256": "610e5ae0704fe591a5729c853b67d375a64aac14ba837540f3345f3c20adb2c8",
+      "followupRequestObserved": true
+    },
+    "java": {
+      "indicator": "pom.xml",
+      "javaStringLength": 538135,
+      "sha256": "80657fc3ef2c848b4cb86952c40e5bc433dbdefe508825a1a9ed62815b44d3ef",
+      "followupRequestObserved": true
+    },
+    "go": {
+      "indicator": "go.mod",
+      "javaStringLength": 535172,
+      "sha256": "2d140d79112a1a13b1c6f12a4b58119c88222372bff773ac2f5adf800de4881c",
+      "followupRequestObserved": true
+    },
+    "ruby": {
+      "indicator": "Gemfile",
+      "javaStringLength": 515048,
+      "sha256": "ef0cbd768c6bb2bb26548f72b7c2ce95e850629dd8cd4e4578938dd501bd3547",
+      "followupRequestObserved": true
+    },
+    "csharp": {
+      "indicator": "probe.csproj",
+      "javaStringLength": 525451,
+      "sha256": "21ebd61c3f3f470f0ca88c86da40ab8938582839766724d70e8f201505ea04e8",
+      "followupRequestObserved": true
+    },
+    "php": {
+      "indicator": "composer.json",
+      "javaStringLength": 527976,
+      "sha256": "d135a2faa4fed0ee3529660784a7b50d43d517222105df84521dde83e3f1a755",
+      "followupRequestObserved": true
+    }
+  }
+}

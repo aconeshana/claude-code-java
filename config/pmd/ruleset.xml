@@ -1,0 +1,331 @@
+<?xml version="1.0"?>
+<ruleset name="Claude Code Java quality gates"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+  <description>High-signal hygiene rules; enable build failure after the initial baseline is cleaned.
+    String literal comparisons and nullable String receivers must use Apache Commons
+    Lang Strings.CS/CI.equals, Strings.CS/CI.startsWith/endsWith, and
+    Strings.CS/CI.contains so comparison direction, case sensitivity, and null
+    handling stay explicit. CharSequence emptiness checks must use isEmpty()
+    instead of comparing length() with zero. Locale-sensitive case conversion
+    must name its locale, boolean values must use Boolean.toString() instead of
+    string-valued true/false conditionals, and critical file-permission results
+    must not be discarded.</description>
+  <rule ref="category/java/codestyle.xml/UnnecessaryImport"/>
+  <rule ref="category/java/codestyle.xml/UnnecessaryFullyQualifiedName"/>
+  <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+  <rule ref="category/java/bestpractices.xml/UnusedFormalParameter"/>
+  <rule ref="category/java/errorprone.xml/UnnecessaryBooleanAssertion"/>
+  <rule name="LiteralStringEquality"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Strings.CS.equals for case-sensitive or Strings.CI.equals for case-insensitive comparison"
+        externalInfoUrl="https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/Strings.html">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            (@MethodName = 'equals' or @MethodName = 'equalsIgnoreCase')
+            and StringLiteral
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="ReverseStringEquality"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Strings.CS.equals or Strings.CI.equals with the nullable receiver as the second argument">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            (@MethodName = 'equals' or @MethodName = 'equalsIgnoreCase')
+            and ArgumentList/*[
+              self::StringLiteral or self::InfixExpression[descendant::StringLiteral]
+            ]
+            and (pmd-java:matchesSig('java.lang.String#equals(java.lang.Object)')
+                 or pmd-java:matchesSig('java.lang.String#equalsIgnoreCase(java.lang.String)'))
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="StringPrefixSuffixEquality"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Strings.CS/CI.startsWith or Strings.CS/CI.endsWith for String prefix and suffix checks">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            (@MethodName = 'startsWith' or @MethodName = 'endsWith')
+            and (pmd-java:matchesSig('java.lang.String#startsWith(java.lang.String)')
+                 or pmd-java:matchesSig('java.lang.String#endsWith(java.lang.String)'))
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="StringContainsEquality"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Strings.CS.contains or Strings.CI.contains for String substring checks"
+        externalInfoUrl="https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/Strings.html">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            pmd-java:matchesSig('java.lang.String#contains(java.lang.CharSequence)')
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseStringUtilsIsBlank"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use StringUtils.isBlank/isNotBlank instead of String#isBlank so null receivers are handled explicitly"
+        externalInfoUrl="https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/StringUtils.html">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            pmd-java:matchesSig('java.lang.String#isBlank()')
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseStringUtilsIsEmpty"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Absorb the null check into StringUtils.isEmpty/isNotEmpty instead of combining a null comparison with String#isEmpty"
+        externalInfoUrl="https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/StringUtils.html">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //InfixExpression[
+            (
+              @Operator = '||'
+              and MethodCall[
+                pmd-java:matchesSig('java.lang.String#isEmpty()')
+              ]/VariableAccess/@Name
+                = InfixExpression[@Operator = '==' and NullLiteral]/VariableAccess/@Name
+            ) or (
+              @Operator = '&&'
+              and UnaryExpression[@Operator = '!']/MethodCall[
+                pmd-java:matchesSig('java.lang.String#isEmpty()')
+              ]/VariableAccess/@Name
+                = InfixExpression[@Operator = '!=' and NullLiteral]/VariableAccess/@Name
+            )
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule ref="category/java/bestpractices.xml/UseCollectionIsEmpty"/>
+  <rule name="UseListGetFirst"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use List#getFirst() instead of get(0)"
+        externalInfoUrl="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SequencedCollection.html#getFirst()">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            pmd-java:matchesSig('java.util.List#get(int)')
+            and ArgumentList/NumericLiteral[@ValueAsInt = 0]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseListGetLast"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use List#getLast() instead of get(list.size() - 1)"
+        externalInfoUrl="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SequencedCollection.html#getLast()">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            pmd-java:matchesSig('java.util.List#get(int)')
+            and ArgumentList/InfixExpression[
+              @Operator = '-'
+              and NumericLiteral[@ValueAsInt = 1]
+              and MethodCall[pmd-java:matchesSig('java.util.List#size()')]
+            ]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseJsonNodeIsEmpty"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use JsonNode#isEmpty() (or its negation) instead of comparing JsonNode#size() with zero">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //InfixExpression[
+            (
+              (@Operator = ('==', '!=', '>', '<='))
+              and MethodCall[
+                pmd-java:matchesSig('com.fasterxml.jackson.databind.JsonNode#size()')
+              ]
+              and NumericLiteral[@ValueAsInt = 0]
+            ) or (
+              (@Operator = ('==', '!=', '<', '>='))
+              and NumericLiteral[@ValueAsInt = 0]
+                [following-sibling::MethodCall[
+                  pmd-java:matchesSig('com.fasterxml.jackson.databind.JsonNode#size()')
+                ]]
+            )
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="LocaleSensitiveCaseConversion"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Specify a locale for case conversion (normally Locale.ROOT for protocol, identifier, and lookup normalization)">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            (@MethodName = 'toLowerCase' or @MethodName = 'toUpperCase')
+            and (pmd-java:matchesSig('java.lang.String#toLowerCase()')
+                 or pmd-java:matchesSig('java.lang.String#toUpperCase()'))
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseCharSequenceIsEmpty"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use isEmpty() instead of comparing a CharSequence length with zero">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //InfixExpression[
+            (
+              @Operator = ('==', '!=', '>', '<=')
+              and MethodCall[
+                @MethodName = 'length'
+                and *[1][
+                  pmd-java:typeIs('java.lang.CharSequence')
+                  or pmd-java:typeIs('java.lang.String')
+                  or pmd-java:typeIs('java.lang.StringBuilder')
+                  or pmd-java:typeIs('java.lang.StringBuffer')
+                ]
+                and following-sibling::NumericLiteral[@ValueAsInt = 0]
+              ]
+            ) or (
+              @Operator = ('==', '!=', '<', '>=')
+              and NumericLiteral[@ValueAsInt = 0]
+                [following-sibling::MethodCall[
+                  @MethodName = 'length'
+                  and *[1][
+                    pmd-java:typeIs('java.lang.CharSequence')
+                    or pmd-java:typeIs('java.lang.String')
+                    or pmd-java:typeIs('java.lang.StringBuilder')
+                    or pmd-java:typeIs('java.lang.StringBuffer')
+                  ]
+                ]]
+            )
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseBooleanToString"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Boolean.toString(boolean) instead of a conditional returning &quot;true&quot; or &quot;false&quot;">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //ConditionalExpression[
+            *[1][
+              pmd-java:typeIs('boolean')
+              or pmd-java:typeIs('java.lang.Boolean')
+            ]
+            and *[2][self::StringLiteral[@Image = '"true"']]
+            and *[3][self::StringLiteral[@Image = '"false"']]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="IgnoredFilePermissionResult"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Do not ignore the result of a file-permission change; check it or document why failure is harmless">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            parent::ExpressionStatement
+            and (@MethodName = 'setExecutable'
+                 or @MethodName = 'setReadable'
+                 or @MethodName = 'setWritable')
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="NoPrintStackTrace"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use the project logger instead of writing a stack trace to the process stderr">
+    <priority>2</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'printStackTrace'
+            and ArgumentList[count(*) = 0]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="LambdaToStaticMethodReference"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Replace lambda p -> Type.method(p) with a static method reference Type::method">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //LambdaExpression[
+            LambdaParameterList[count(LambdaParameter) = 1]
+            and MethodCall[
+              TypeExpression
+              and ArgumentList[count(*) = 1]
+              and ArgumentList/VariableAccess/@Name
+                  = ancestor::LambdaExpression[1]/LambdaParameterList/LambdaParameter/VariableId/@Name
+            ]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+</ruleset>

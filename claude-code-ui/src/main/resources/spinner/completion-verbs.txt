@@ -1,0 +1,13 @@
+# Past-tense verbs shown at the end of a turn:
+#   "✻ Brewed for 5s"
+# Mirrors src/constants/turnCompletionVerbs.ts:TURN_COMPLETION_VERBS in the TS repo.
+# Each verb must read naturally with "for [duration]".
+# One verb per line. Blank lines and #-prefixed comments are ignored.
+Baked
+Brewed
+Churned
+Cogitated
+Cooked
+Crunched
+Sautéed
+Worked

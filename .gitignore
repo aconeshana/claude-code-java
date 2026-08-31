@@ -1,0 +1,96 @@
+# Legacy build output
+target/
+
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Runtime
+*.class
+*.jar
+# 但 gradle-wrapper.jar 是 Gradle wrapper 运行所必需的二进制，必须提交，
+# 否则 CI（fresh checkout）无从启动 gradlew。官方推荐跟踪该 jar。
+!gradle/wrapper/gradle-wrapper.jar
+
+# Native
+*.dylib
+*.so
+*.dll
+*.exe
+*.factorypath
+*.jqwik-database
+
+# cc-connect is resolved from a pinned release by Gradle. Never check local
+# sidecar builds back into application resources.
+/claude-code-app/src/main/resources/native/*/cc-connect
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Editor / generated backup files
+*.bak
+*.bak_*
+*.bak[0-9]*
+
+# Coverage tracking maps (local-only migration bookkeeping, never committed)
+# The docs/coverage/ tree (README + by-module symlinks + feature_groups.yaml) is
+# ignored wholesale below; the per-module coverage.yml live at each module root
+# and are ignored individually here.
+/docs/coverage/
+**/coverage.yml
+
+# Project-local MCP config — may contain PATs / Bearer tokens.
+# The local-override variant is always ignored; the shared project file
+# is ignored too since we currently have no template/example needing to
+# be checked in.
+/.claude/mcp.json
+/.claude/mcp.local.json
+
+# Root-level Claude runtime state. Keep these root-anchored so nested fixture
+# directories remain versionable.
+/.claude/settings.local.json
+/.claude/scheduled_tasks.json
+/.claude/scheduled_tasks.lock
+
+# Module-local development settings, not a shared test fixture.
+/claude-code-cli/.claude/settings.json
+
+# Optional local external test-harness checkouts.
+/claude-code-*-tests/
+
+# Local-only CLAUDE override (machine-specific paths, never committed)
+CLAUDE.local.md
+CODEBUDDY.md
+
+# Archived one-time problem-solving / audit / acceptance / review records.
+# Renamed with the archive- prefix; kept on disk for history but no longer
+# tracked or maintained. New one-off docs get this prefix and are ignored.
+docs/archive-*.md

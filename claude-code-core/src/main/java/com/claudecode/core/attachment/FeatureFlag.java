@@ -1,0 +1,17 @@
+package com.claudecode.core.attachment;
+
+
+
+
+public enum FeatureFlag {
+    BUDDY,
+    TRANSCRIPT_CLASSIFIER,
+    AGENT_SWARMS,
+    PAPER_HALYARD,
+    DEFERRED_TOOLS_DELTA,
+    AGENT_LISTING_DELTA,
+    MCP_INSTRUCTIONS_DELTA,
+    COMPACTION_REMINDERS,
+    HISTORY_SNIP,
+    MAX_OUTPUT_TOKENS_SLOT
+}

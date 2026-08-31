@@ -1,0 +1,36 @@
+[38;5;231m[48;5;237m❯ launch ordinary agent parity test[39m
+[49m
+[38;5;114m⏺ [38;5;231mAgent[38;5;246m(Inspect background UI)[39m
+[38;5;246m  ⎿  Async agent launched successfully.[39m
+[38;5;246m     agentId: a1f6fa9c7837f8b0b (internal ID - do not mention to user. Use SendMessage with to: 'a1f6fa9c7837f8b0b'[39m
+[38;5;246m     , summary: '<5-10 word recap>' to continue this agent.)[39m
+[38;5;246m     … +7 lines (ctrl+o to expand)[39m
+
+[38;5;231m⏺ [39mOK
+
+[38;5;246m✻ Churned for 0s[39m
+
+[38;5;231m[48;5;237m❯ <task-notification>[39m
+[38;5;231m  <task-id>a1f6fa9c7837f8b0b</task-id>[39m
+[38;5;231m  <tool-use-id>toolu_197_agent_probe</tool-use-id>[39m
+[38;5;231m  <output-file>/tmp/claude-example/-workspace-claude-code-java/session/tasks/
+a1f6fa9c7837f8b0b.output</output-file>[39m
+[38;5;231m  <status>completed</status>[39m
+[38;5;231m  <summary>Agent "Inspect background UI" finished</summary>[39m
+[38;5;231m  <note>A task-notification fires each time this agent stops with no live background children of its own. The user can s
+end it another message and resume it, so the same task-id may notify more than once.</note>[39m
+[38;5;231m  <result>OK</result>[39m
+[38;5;231m  <usage><subagent_tokens>2</subagent_tokens><tool_uses>0</tool_uses><duration_ms>12066</duration_ms></usage>[39m
+[38;5;231m  </task-notification>[39m
+
+[38;5;231m[49m⏺ [39mOK
+
+[38;5;246m✻ Cogitated for 12s[39m
+[38;5;211m✽ Doodling… [39m
+[38;5;246m  Double-tap Esc to rewind the conversation to a previous point in timeurrent work and remain on track[39m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;231m❯
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[36m[Sonnet 4.6][38;5;246m │ [33mclaude-code-java[38;5;246m +lanterna [35mgit:([36mmain*[35m)[39m
+[38;5;246mContext ░░░░░░░░░░ [32m0%[39m
+[38;5;246m  No configured IM channels reported by cc-connect[38;5;231m   [38;5;246mCollaboration: Off[39m

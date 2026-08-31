@@ -1,0 +1,12 @@
+# pty UI 基准 / 端到端脚本的可选依赖
+#
+# 只有想复现 scripts/pty_ui_benchmark.py 与 scripts/pty_high_frequency_e2e.py
+# 的性能数据、或调试终端 UI 渲染的开发人员才需要安装。这些脚本不参与
+# native 二进制 / fat JAR 的构建与运行时依赖，缺失以下包时脚本仍能运行
+#（对应功能会降级跳过）。
+#
+#   安装：python3 -m pip install -r scripts/requirements.txt
+#
+pexpect>=4.8      # pty 子进程交互（仅 POSIX）
+psutil>=5.9       # 进程 / 资源监控（基准测试的子进程统计）
+pyte>=0.8         # 终端 escape 序列仿真（校验渲染输出）

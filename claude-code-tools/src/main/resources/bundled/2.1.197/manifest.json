@@ -1,0 +1,126 @@
+{
+  "version": "2.1.197",
+  "skills": [
+    {
+      "name": "deep-research",
+      "description": "Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report. - When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., \"what car to buy\" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in.",
+      "path": "skills/deep-research.md",
+      "source": "BUNDLED",
+      "placement": "BEFORE_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "update-config",
+      "description": "Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when X\", \"each time X\", \"whenever X\", \"before/after X\") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions (\"allow X\", \"add permission\", \"move permission to\"), env vars (\"set X=Y\"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: \"allow npm commands\", \"add bq permission to global settings\", \"move permission to user settings\", \"set DEBUG=true\", \"when claude stops show X\". For simple settings like theme/model, suggest the /config command.",
+      "path": "skills/update-config.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "keybindings-help",
+      "description": "Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: \"rebind ctrl+s\", \"add a chord shortcut\", \"change the submit key\", \"customize keybindings\".",
+      "path": "skills/keybindings-help.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": ["Read"]
+    },
+    {
+      "name": "verify",
+      "description": "Verify that a code change actually does what it's supposed to by running the app and observing behavior. Use when asked to verify a PR, confirm a fix works, test a change manually, check that a feature works, or validate local changes before pushing.",
+      "path": "skills/verify.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "code-review",
+      "description": "Review the current diff for correctness bugs and reuse/simplification/efficiency cleanups at the given effort level (low/medium: fewer, high-confidence findings; high→max: broader coverage, may include uncertain findings). Pass --comment to post findings as inline PR comments, or --fix to apply the findings to the working tree after the review.",
+      "path": "skills/code-review.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "simplify",
+      "description": "Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Quality only — it does not hunt for bugs; use /code-review for that.",
+      "path": "skills/simplify.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "fewer-permission-prompts",
+      "description": "Scan your transcripts for common read-only Bash and MCP tool calls, then add a prioritized allowlist to project .claude/settings.json to reduce permission prompts.",
+      "path": "skills/fewer-permission-prompts.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "loop",
+      "description": "Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m) - When the user wants to set up a recurring task, poll for status, or run something repeatedly on an interval (e.g. \"check the deploy every 5 minutes\", \"keep running /babysit-prs\"). Do NOT invoke for one-off tasks.",
+      "path": "skills/loop.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": [],
+      "aliases": ["proactive"],
+      "argumentHint": "[interval] <prompt>",
+      "menuDescription": "Repeat a prompt or command on an interval (e.g. /loop 5m /foo)",
+      "userInvocable": true,
+      "commandProjection": true
+    },
+    {
+      "name": "claude-api",
+      "description": "Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming, tool use, MCP, agents, caching, token counting, model migration.\nTRIGGER — read BEFORE opening the target file; don't skip because it \"looks like a one-liner\" — whenever: the prompt names Claude/Anthropic in any form (Claude, Anthropic, Fable, Opus, Sonnet, Haiku, `anthropic`, `@anthropic-ai`, `claude-*`, `us.anthropic.*`, `[1m]`); the user asks about an LLM (pricing/model choice/limits/caching) — never answer from memory; OR the task is LLM-shaped with provider unstated (agent/MCP/tool-definition/multi-agent/RAG/LLM-judge/computer-use; generate/summarize/extract/classify/rewrite/converse over NL; debugging refusals/cutoffs/streaming/tool-calls/tokens).\nSKIP only when another provider is being worked on (overrides all triggers): OpenAI/GPT/Gemini/Llama/Mistral/Cohere/Ollama named in the query; OR `grep -rE 'openai|langchain_openai|google.generativeai|genai|mistralai|cohere|ollama'` over the project hits (run this grep FIRST if no provider named — don't Read the file).",
+      "path": "skills/claude-api.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": ["Read", "Grep", "Glob", "WebFetch"]
+    },
+    {
+      "name": "run",
+      "description": "Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the app, or to confirm a change works in the real app (not just tests). First looks for a project skill that already covers launching the app; otherwise falls back to built-in patterns per project type (CLI, server, TUI, Electron, browser-driven, library).",
+      "path": "skills/run.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "init",
+      "description": "Initialize a new CLAUDE.md file with codebase documentation",
+      "path": "skills/init.md",
+      "source": "BUILTIN",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "review",
+      "description": "Review a GitHub pull request; for your working diff use /code-review",
+      "path": "skills/review.md",
+      "source": "BUILTIN",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    },
+    {
+      "name": "security-review",
+      "description": "Complete a security review of the pending changes on the current branch",
+      "path": "skills/security-review.md",
+      "source": "BUILTIN",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    }
+  ],
+  "workflows": [
+    {
+      "name": "code-review",
+      "path": "workflows/code-review.js",
+      "hidden": true
+    },
+    {
+      "name": "deep-research",
+      "path": "workflows/deep-research.js",
+      "hidden": false
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+Requests permission to enter plan mode for complex tasks requiring exploration and design

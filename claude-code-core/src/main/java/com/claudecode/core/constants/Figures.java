@@ -1,0 +1,66 @@
+package com.claudecode.core.constants;
+
+import com.claudecode.core.platform.Platform;
+
+/**
+ * Unicode glyph constants used across the terminal UI.
+ */
+public final class Figures {
+
+    private Figures() {}
+
+
+    public static final String BLACK_CIRCLE = Platform.IS_DARWIN ? "⏺" : "●";
+
+    public static final String BULLET_OPERATOR     = "∙";
+    public static final String TEARDROP_ASTERISK   = "✻";
+
+    /** ↑ — used for opus 1m merge notice. */
+    public static final String UP_ARROW            = "↑";
+    /** ↓ — used for scroll hint. */
+    public static final String DOWN_ARROW          = "↓";
+    /** ↯ — used for fast mode indicator. */
+    public static final String LIGHTNING_BOLT      = "↯";
+
+    /** ❯ — figures.pointer, used for command/skill message prefix. */
+    public static final String POINTER             = "❯";
+    /** › — figures.pointerSmall, used for queued command echo. */
+    public static final String POINTER_SMALL       = "›";
+    /** ◯ — figures.circle, the un-viewed row bullet in the coordinator panel. */
+    public static final String CIRCLE              = "◯";
+
+    // Effort levels
+    public static final String EFFORT_LOW          = "○"; // ○
+    public static final String EFFORT_MEDIUM       = "◐"; // ◐
+    public static final String EFFORT_HIGH         = "●"; // ●
+    public static final String EFFORT_MAX          = "◉"; // ◉
+
+    // Media / trigger status
+    public static final String PLAY_ICON           = "▶"; // ▶
+    public static final String PAUSE_ICON          = "⏸"; // ⏸
+
+    // MCP subscription
+    public static final String CHANNEL_ARROW       = "←"; // ← - inbound channel
+
+    // Review status (ultrareview diamond states)
+    public static final String DIAMOND_OPEN        = "◇"; // ◇ - running
+    public static final String DIAMOND_FILLED      = "◆"; // ◆ - completed/failed
+    public static final String REFERENCE_MARK      = "※"; // ※ - komejirushi
+
+    /** ▎ — left one-quarter block, blockquote prefix. */
+    public static final String BLOCKQUOTE_BAR      = "▎";
+
+    // ── Tool-result indent prefix ─────────────────────────────────────────
+
+
+
+    // INDENT_COLS is the total visual width; RESULT_INDENT uses it as a repeat count.
+    public static final int    INDENT_COLS   = 5;
+    /** ⎿ — U+23BF, the result-branch glyph used as tool-output prefix. */
+    public static final String RESULT_BRANCH = "⎿";
+    /** Five-column first-line gutter; NBSP keeps the branch attached to its body. */
+    public static final String RESULT_PREFIX = "  " + RESULT_BRANCH + " \u00a0";
+    /** {@code "     "} — 5-space continuation indent matching {@link #RESULT_PREFIX} width. */
+    public static final String RESULT_INDENT = " ".repeat(INDENT_COLS);
+
+}

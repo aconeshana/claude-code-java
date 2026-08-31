@@ -1,0 +1,1 @@
+Browse web pages with JavaScript execution support

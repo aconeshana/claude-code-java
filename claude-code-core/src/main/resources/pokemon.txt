@@ -1,0 +1,40 @@
+# One evolution chain per line. The first node is eligible for a new hatch.
+# Linear evolution uses ->. Eevee's terminal branches use | and are chosen once.
+pikachu -> raichu
+eevee -> vaporeon|jolteon|flareon|espeon|umbreon|leafeon|glaceon|sylveon
+bulbasaur -> ivysaur -> venusaur
+charmander -> charmeleon -> charizard
+squirtle -> wartortle -> blastoise
+caterpie -> metapod -> butterfree
+weedle -> kakuna -> beedrill
+pidgey -> pidgeotto -> pidgeot
+rattata -> raticate
+sandshrew -> sandslash
+clefairy -> clefable
+vulpix -> ninetales
+jigglypuff -> wigglytuff
+zubat -> golbat
+oddish -> gloom -> vileplume
+meowth -> persian
+psyduck -> golduck
+growlithe -> arcanine
+abra -> kadabra -> alakazam
+machop -> machoke -> machamp
+slowpoke -> slowbro
+magnemite -> magneton
+gastly -> haunter -> gengar
+cubone -> marowak
+chansey
+magikarp -> gyarados
+ditto
+porygon
+dratini -> dragonair -> dragonite
+mew
+ponyta -> rapidash
+exeggcute -> exeggutor
+scyther
+lapras
+snorlax
+chikorita -> bayleef -> meganium
+cyndaquil -> quilava -> typhlosion
+totodile -> croconaw -> feraligatr

@@ -1,0 +1,1 @@
+Clean up team and task directories when the swarm is complete

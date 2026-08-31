@@ -1,0 +1,36 @@
+ [38;5;174m ▐[48;5;16m▛███▜[49m▌[39m   [38;5;231mClaude Code[38;5;246m v0.1.0
+[39m [38;5;174m▝▜[48;5;16m█████[49m▛▘[39m  [38;5;246mSonnet 4.6 · API Usage Billing[39m
+ [38;5;174m  ▘▘ ▝▝[39m    [38;5;246m~/Projects/claude-code-java[39m
+
+
+[38;5;231m[48;5;237m❯ launch teams parity test[39m
+
+[38;5;114m[49m⏺ [38;5;231mAgent[38;5;246m(Research teammate)[39m
+[38;5;246m  ⎿  In-process teammate launched successfully.[39m
+[38;5;246m     taskId: tvznh3oqw[39m
+[38;5;246m     The teammate is running in the same process. You will be notified automatically when it completes.[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;211m· Effecting… [39m
+[38;5;246m  Ask Claude to create a todo list when working on complex tasks to track progress and remain on track[39m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;246m❯ [38;5;231m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[36m[Sonnet 4.6][38;5;246m │ [33mclaude-code-java[38;5;246m +lanterna [35mgit:([36mmain*[35m)[39m
+[38;5;246mContext ░░░░░░░░░░ [32m0%[39m
+[38;5;246m  ? for shortcuts[38;5;231m [1m@main[0m[38;5;231m @researcher[38;5;246m · shift + ↓ expand[39m  [38;5;246mCollaboration: Off[39m

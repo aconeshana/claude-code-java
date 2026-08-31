@@ -1,0 +1,6 @@
+# 本地覆盖率分析脚本（以 coverage 开头），不入库
+coverage*.py
+
+# Python 字节码缓存
+__pycache__/
+*.py[cod]

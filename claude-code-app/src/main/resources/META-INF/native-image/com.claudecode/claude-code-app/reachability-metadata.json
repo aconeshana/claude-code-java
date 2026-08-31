@@ -1,0 +1,3544 @@
+{
+  "reflection": [
+    {
+      "type": "apple.security.AppleProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "ch.qos.logback.classic.AsyncAppender",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.classic.encoder.PatternLayoutEncoder",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.classic.spi.LogbackServiceProvider",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.classic.util.DefaultJoranConfigurator",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.AsyncAppenderBase",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.FileAppender",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.OutputStreamAppender",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.encoder.Encoder",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.encoder.LayoutWrappingEncoder",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.pattern.PatternLayoutEncoderBase",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.spi.ContextAware",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.ApiMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$CacheControl",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy$Keep",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy$Keep$Deserializer",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy$Keep$KeepAll",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy$Keep$Serializer",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy$Keep$ThinkingTurnsKeep",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextManagementConfig",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$OutputConfig",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$RequestMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$RequestMessage[]"
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ThinkingConfig",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ToolChoice",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ToolDefinition",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.CreateMessageRequest$ToolDefinition[]"
+    },
+    {
+      "type": "com.claudecode.api.CustomModelJsonStore$CatalogDocument",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.Delta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.Delta$InputJsonDelta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.Delta$SignatureDelta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.Delta$TextDelta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.Delta$ThinkingDelta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.api.MessageDeltaData",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.cli.ClaudeCodeCli",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.cli.ClaudeCodeCli$EffortLevelConverter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.ClaudeCodeCli$ThinkingModeConverter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpCliCommand",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpCliCommand$Add",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpCliCommand$Get",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpCliCommand$List",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpCliCommand$Remove",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.McpOutputCommand",
+      "fields": [
+        {
+          "name": "commandSpec"
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.StdoutMessageWriter$McpServerStatus",
+      "methods": [
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "status",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.cli.StdoutMessageWriter$PluginInfo",
+      "methods": [
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "path",
+          "parameterTypes": []
+        },
+        {
+          "name": "source",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.core.diff.FileChangeResult",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.diff.StructuredPatchHunk",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.diff.StructuredPatchHunk[]"
+    },
+    {
+      "type": "com.claudecode.core.imagestore.ImageResizer$PastedDims",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AgentListingDeltaAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AgentMentionAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AssistantContent",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AssistantMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AsyncHookResponseAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AttachmentMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AttachmentPayload",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.AutoModeReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.BudgetUsdAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.CommandPermissionsAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.CompactFileReferenceAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.CompactMetadata",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.CompactionReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ContentBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ContextEfficiencyAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.DeferredToolsDeltaAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.DocumentBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.DynamicSkillAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.EditedFileAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.FileContentAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.GoalStatusAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.GroupedToolUseMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookAdditionalContextAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookErrorDuringExecutionAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookNonBlockingErrorAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookResultMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookSuccessAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.HookSystemMessageAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ImageBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ImageFileAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.InvokedSkillsAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.InvokedSkillsAttachment$InvokedSkillEntry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.McpInstructionsDeltaAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.McpResourceAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.Message",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.MessageContent",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.MessageOrigin",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.NestedMemoryAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.OutputStyleAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.OutputTokenUsageAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PlanFileReferenceAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PlanModeExitAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PlanModeReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PlanModeReentryAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PreservedMessages",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.PreservedSegment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ProgressMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ProgressMessage$ProgressData",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.QueuedCommandAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.RedactedThinkingBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ServerToolResultBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ServerToolUseBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.SkillListingAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.StopDetails",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.SummarizeMetadata",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.SystemMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TaskReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TaskReminderItem",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TaskStatusAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TextBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TextReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ThinkingBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TodoItem",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TodoReminderAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TokenUsageAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TombstoneMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ToolReferenceBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ToolResultBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ToolUseBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.ToolUseSummaryMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.Usage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.Usage$CacheCreation",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.Usage$ServerToolUse",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.UserMessage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.WebSearchToolResultBlock",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.WebSearchToolResultBlock$Hit",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.model.CustomModelConfig",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.model.CustomModelConfig[]"
+    },
+    {
+      "type": "com.claudecode.core.model.ModelApiProtocol",
+      "allDeclaredFields": true,
+      "allPublicMethods": true
+    },
+    {
+      "type": "com.claudecode.core.plan.PlanHistoryEntry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.lsp.ProcessLspServerInstance$LspLanguageClient",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.permissions.PermissionEngine",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.runtime.plugins.PluginMarketplacePort$Author",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.runtime.plugins.PluginMarketplacePort$MarketplaceManifest",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.runtime.plugins.PluginMarketplacePort$PluginEntry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.cache.PromptCacheBreakDetection$ToolSchema",
+      "methods": [
+        {
+          "name": "description",
+          "parameterTypes": []
+        },
+        {
+          "name": "inputSchemaJson",
+          "parameterTypes": []
+        },
+        {
+          "name": "name",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.services.insights.SessionFacets",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.FlaggedPluginStore$Entry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.FlaggedPluginStore$FileData",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.InstalledPlugins",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.InstalledPlugins$InstallationEntry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.KnownMarketplaces",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.KnownMarketplaces$Entry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceManifest",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceManifest$Metadata",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplacePluginEntry",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$Directory",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$File",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$Git",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$Github",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$HostPattern",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$Npm",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$PathPattern",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplaceSource$Url",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginAuthor",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginChannel",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginManifest",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginScope",
+      "methods": [
+        {
+          "name": "fromWire",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$Deserializer",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$Serializer",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.UserConfigOption",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$DailyActivity",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$DailyModelTokens",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$ModelUsage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$SessionStats",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.stats.StatsCacheStore$PersistedStatsCache",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$Manifest",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillPlacement",
+      "allDeclaredFields": true,
+      "allPublicMethods": true
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillResource",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillSource",
+      "allDeclaredFields": true,
+      "allPublicMethods": true
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$WorkflowResource",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.mcp.McpToolProvider$ServerToolStatus",
+      "methods": [
+        {
+          "name": "annotations",
+          "parameterTypes": []
+        },
+        {
+          "name": "name",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.tools.mcp.WaitForMcpServersTool$WaitResult",
+      "methods": [
+        {
+          "name": "connected",
+          "parameterTypes": []
+        },
+        {
+          "name": "disabled",
+          "parameterTypes": []
+        },
+        {
+          "name": "failed",
+          "parameterTypes": []
+        },
+        {
+          "name": "needsAuth",
+          "parameterTypes": []
+        },
+        {
+          "name": "ready",
+          "parameterTypes": []
+        },
+        {
+          "name": "stillPending",
+          "parameterTypes": []
+        },
+        {
+          "name": "unknown",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.claudecode.tools.plan.PlanCatalogStore$Catalog",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.plan.PlanCatalogStore$PlanRecord",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.Task",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.TodoStatus",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.TaskState",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.TaskType",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.TaskStatus",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.TaskUsage",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.DreamTaskDetails",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.DreamTaskDetails$DreamPhase",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.tasks.DreamTaskDetails$DreamTurn",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.JsonNode[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ObjectMapper",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.deser.BeanDeserializerModifier[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.deser.Deserializers[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.deser.KeyDeserializers[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.deser.ValueInstantiators[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ser.BeanSerializerModifier[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ser.Serializers[]"
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.BLCHeader$DrainStatusRef",
+      "fields": [
+        {
+          "name": "drainStatus"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.BaseMpscLinkedArrayQueueColdProducerFields",
+      "fields": [
+        {
+          "name": "producerLimit"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.BaseMpscLinkedArrayQueueConsumerFields",
+      "fields": [
+        {
+          "name": "consumerIndex"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.BaseMpscLinkedArrayQueueProducerFields",
+      "fields": [
+        {
+          "name": "producerIndex"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.BoundedLocalCache",
+      "fields": [
+        {
+          "name": "refreshes"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.PS",
+      "fields": [
+        {
+          "name": "key"
+        },
+        {
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.PSMW",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.SSMW",
+      "fields": [
+        {
+          "name": "FACTORY"
+        }
+      ]
+    },
+    {
+      "type": "com.github.benmanes.caffeine.cache.StripedBuffer",
+      "fields": [
+        {
+          "name": "tableBusy"
+        }
+      ]
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.AbstractBasePane$1"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.AbstractBorder"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.AbstractListBox"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.Borders$DoubleLine"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.Borders$SingleLine"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.Button"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.CheckBox"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.CheckBoxList"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.ComboBox"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.DefaultWindowDecorationRenderer"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.FatWindowDecorationRenderer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.GUIBackdrop"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.ProgressBar"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.RadioBoxList"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.ScrollBar"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.Separator"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.TextBox"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.WindowShadowRenderer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.menu.MenuItem"
+    },
+    {
+      "type": "com.googlecode.lanterna.gui2.table.Table"
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.NativeGNULinuxTerminal"
+    },
+    {
+      "type": "com.ibm.icu.text.BreakIteratorFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.AESCipher$General",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ARCFOURCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ChaCha20Cipher$ChaCha20Poly1305",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESedeCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.GaloisCounterMode$AESGCM",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.imageio.plugins.jpeg.JPEGImageReader",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "acceptPixels",
+          "parameterTypes": [
+            "int",
+            "boolean"
+          ]
+        },
+        {
+          "name": "passComplete",
+          "parameterTypes": []
+        },
+        {
+          "name": "passStarted",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "pushBack",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "readInputData",
+          "parameterTypes": [
+            "byte[]",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "setImageData",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int",
+            "byte[]"
+          ]
+        },
+        {
+          "name": "skipInputBytes",
+          "parameterTypes": [
+            "long"
+          ]
+        },
+        {
+          "name": "skipPastImage",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "warningOccurred",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "warningWithMessage",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.Callback",
+      "jniAccessible": true
+    },
+    {
+      "type": "com.sun.jna.CallbackProxy",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "callback",
+          "parameterTypes": [
+            "java.lang.Object[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.CallbackReference",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getCallback",
+          "parameterTypes": [
+            "java.lang.Class",
+            "com.sun.jna.Pointer",
+            "boolean"
+          ]
+        },
+        {
+          "name": "getFunctionPointer",
+          "parameterTypes": [
+            "com.sun.jna.Callback",
+            "boolean"
+          ]
+        },
+        {
+          "name": "getNativeString",
+          "parameterTypes": [
+            "java.lang.Object",
+            "boolean"
+          ]
+        },
+        {
+          "name": "initializeThread",
+          "parameterTypes": [
+            "com.sun.jna.Callback",
+            "com.sun.jna.CallbackReference$AttachOptions"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.CallbackReference$AttachOptions",
+      "jniAccessible": true
+    },
+    {
+      "type": "com.sun.jna.FromNativeConverter",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "nativeType",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.IntegerType",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.JNIEnv",
+      "jniAccessible": true
+    },
+    {
+      "type": "com.sun.jna.Native",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "dispose",
+          "parameterTypes": []
+        },
+        {
+          "name": "fromNative",
+          "parameterTypes": [
+            "com.sun.jna.FromNativeConverter",
+            "java.lang.Object",
+            "java.lang.reflect.Method"
+          ]
+        },
+        {
+          "name": "fromNative",
+          "parameterTypes": [
+            "java.lang.Class",
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "fromNative",
+          "parameterTypes": [
+            "java.lang.reflect.Method",
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "nativeType",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        },
+        {
+          "name": "toNative",
+          "parameterTypes": [
+            "com.sun.jna.ToNativeConverter",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.Native$ffi_callback",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "invoke",
+          "parameterTypes": [
+            "long",
+            "long",
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.NativeLong",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.NativeMapped",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "toNative",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.Pointer",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "peer"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.PointerType",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "pointer"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.SecurityManagerExposer"
+    },
+    {
+      "type": "com.sun.jna.Structure",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "memory"
+        },
+        {
+          "name": "typeInfo"
+        }
+      ],
+      "methods": [
+        {
+          "name": "autoRead",
+          "parameterTypes": []
+        },
+        {
+          "name": "autoWrite",
+          "parameterTypes": []
+        },
+        {
+          "name": "getTypeInfo",
+          "parameterTypes": []
+        },
+        {
+          "name": "newInstance",
+          "parameterTypes": [
+            "java.lang.Class",
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.Structure$ByValue",
+      "jniAccessible": true
+    },
+    {
+      "type": "com.sun.jna.Structure$FFIType$FFITypes",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "ffi_type_double"
+        },
+        {
+          "name": "ffi_type_float"
+        },
+        {
+          "name": "ffi_type_longdouble"
+        },
+        {
+          "name": "ffi_type_pointer"
+        },
+        {
+          "name": "ffi_type_sint16"
+        },
+        {
+          "name": "ffi_type_sint32"
+        },
+        {
+          "name": "ffi_type_sint64"
+        },
+        {
+          "name": "ffi_type_sint8"
+        },
+        {
+          "name": "ffi_type_uint16"
+        },
+        {
+          "name": "ffi_type_uint32"
+        },
+        {
+          "name": "ffi_type_uint64"
+        },
+        {
+          "name": "ffi_type_uint8"
+        },
+        {
+          "name": "ffi_type_void"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.jna.WString",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.org.apache.xerces.internal.jaxp.SAXParserFactoryImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.security.auth.module.UnixSystem",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "gid"
+        },
+        {
+          "name": "groups"
+        },
+        {
+          "name": "uid"
+        },
+        {
+          "name": "username"
+        }
+      ]
+    },
+    {
+      "type": "groovy.lang.Closure"
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CFArrayRef",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CFIndex",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CFRunLoopRef",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CFStringRef",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CarbonAPI$FSEventStreamCallback",
+      "methods": [
+        {
+          "name": "invoke",
+          "parameterTypes": [
+            "io.methvin.watchservice.jna.FSEventStreamRef",
+            "com.sun.jna.Pointer",
+            "com.sun.jna.NativeLong",
+            "com.sun.jna.Pointer",
+            "com.sun.jna.Pointer",
+            "com.sun.jna.Pointer"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.methvin.watchservice.jna.FSEventStreamRef",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.BufferedImage",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "colorModel"
+        },
+        {
+          "name": "imageType"
+        },
+        {
+          "name": "raster"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getRGB",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int[]",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "setRGB",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int[]",
+            "int",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.ColorModel",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "colorSpace"
+        },
+        {
+          "name": "colorSpaceType"
+        },
+        {
+          "name": "isAlphaPremultiplied"
+        },
+        {
+          "name": "is_sRGB"
+        },
+        {
+          "name": "nBits"
+        },
+        {
+          "name": "numComponents"
+        },
+        {
+          "name": "supportsAlpha"
+        },
+        {
+          "name": "transparency"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getRGBdefault",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.IndexColorModel",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "map_size"
+        },
+        {
+          "name": "rgb"
+        },
+        {
+          "name": "transparent_index"
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.Raster",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "dataBuffer"
+        },
+        {
+          "name": "height"
+        },
+        {
+          "name": "minX"
+        },
+        {
+          "name": "minY"
+        },
+        {
+          "name": "numBands"
+        },
+        {
+          "name": "numDataElements"
+        },
+        {
+          "name": "sampleModel"
+        },
+        {
+          "name": "sampleModelTranslateX"
+        },
+        {
+          "name": "sampleModelTranslateY"
+        },
+        {
+          "name": "width"
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.SampleModel",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "height"
+        },
+        {
+          "name": "width"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getPixels",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int[]",
+            "java.awt.image.DataBuffer"
+          ]
+        },
+        {
+          "name": "setPixels",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int",
+            "int",
+            "int[]",
+            "java.awt.image.DataBuffer"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.awt.image.SinglePixelPackedSampleModel",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "bitMasks"
+        },
+        {
+          "name": "bitOffsets"
+        },
+        {
+          "name": "bitSizes"
+        },
+        {
+          "name": "maxBitSize"
+        }
+      ]
+    },
+    {
+      "type": "java.io.Serializable"
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "boolean"
+          ]
+        },
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Byte",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "byte"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Character",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "char"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Class",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getComponentType",
+          "parameterTypes": []
+        },
+        {
+          "name": "getRecordComponents",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassLoader",
+      "fields": [
+        {
+          "name": "classLoaderValueMap"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Comparable"
+    },
+    {
+      "type": "java.lang.Double",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "double"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Enum",
+      "methods": [
+        {
+          "name": "name",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Float",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "float"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Integer",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Iterable"
+    },
+    {
+      "type": "java.lang.Long",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Number"
+    },
+    {
+      "type": "java.lang.Object",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "toString",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Object[]"
+    },
+    {
+      "type": "java.lang.Record"
+    },
+    {
+      "type": "java.lang.Short",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "short"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.StackWalker"
+    },
+    {
+      "type": "java.lang.StackWalker$Option"
+    },
+    {
+      "type": "java.lang.StackWalker$StackFrame"
+    },
+    {
+      "type": "java.lang.String",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "byte[]"
+          ]
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "byte[]",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "getBytes",
+          "parameterTypes": []
+        },
+        {
+          "name": "getBytes",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "toCharArray",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.String[]"
+    },
+    {
+      "type": "java.lang.System",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getProperty",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "load",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Thread",
+      "methods": [
+        {
+          "name": "isVirtual",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Throwable"
+    },
+    {
+      "type": "java.lang.UnsatisfiedLinkError",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Void",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.constant.Constable"
+    },
+    {
+      "type": "java.lang.constant.ConstantDesc"
+    },
+    {
+      "type": "java.lang.invoke.MethodHandle"
+    },
+    {
+      "type": "java.lang.invoke.MethodHandles"
+    },
+    {
+      "type": "java.lang.invoke.MethodHandles$Lookup"
+    },
+    {
+      "type": "java.lang.invoke.MethodType"
+    },
+    {
+      "type": "java.lang.reflect.Method",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getParameterTypes",
+          "parameterTypes": []
+        },
+        {
+          "name": "getReturnType",
+          "parameterTypes": []
+        },
+        {
+          "name": "isDefault",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.reflect.RecordComponent",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getType",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.Buffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "position",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.ByteBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.CharBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.DoubleBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.FloatBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.IntBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.LongBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.ShortBuffer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "array",
+          "parameterTypes": []
+        },
+        {
+          "name": "arrayOffset",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.file.Path"
+    },
+    {
+      "type": "java.nio.file.Paths"
+    },
+    {
+      "type": "java.security.AccessController"
+    },
+    {
+      "type": "java.security.AlgorithmParametersSpi"
+    },
+    {
+      "type": "java.security.KeyStoreSpi"
+    },
+    {
+      "type": "java.sql.Connection"
+    },
+    {
+      "type": "java.sql.Date"
+    },
+    {
+      "type": "java.sql.Driver"
+    },
+    {
+      "type": "java.sql.DriverManager"
+    },
+    {
+      "type": "java.sql.Time"
+    },
+    {
+      "type": "java.sql.Timestamp"
+    },
+    {
+      "type": "java.time.Duration"
+    },
+    {
+      "type": "java.time.Instant"
+    },
+    {
+      "type": "java.time.LocalDate"
+    },
+    {
+      "type": "java.time.LocalDateTime"
+    },
+    {
+      "type": "java.time.LocalTime"
+    },
+    {
+      "type": "java.time.MonthDay"
+    },
+    {
+      "type": "java.time.OffsetDateTime"
+    },
+    {
+      "type": "java.time.OffsetTime"
+    },
+    {
+      "type": "java.time.Period"
+    },
+    {
+      "type": "java.time.Year"
+    },
+    {
+      "type": "java.time.YearMonth"
+    },
+    {
+      "type": "java.time.ZoneId"
+    },
+    {
+      "type": "java.time.ZoneOffset"
+    },
+    {
+      "type": "java.time.ZonedDateTime"
+    },
+    {
+      "type": "java.util.AbstractCollection"
+    },
+    {
+      "type": "java.util.AbstractMap"
+    },
+    {
+      "type": "java.util.Collection"
+    },
+    {
+      "type": "java.util.Collections$UnmodifiableCollection"
+    },
+    {
+      "type": "java.util.Collections$UnmodifiableList"
+    },
+    {
+      "type": "java.util.Collections$UnmodifiableRandomAccessList"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableCollection"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableList"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableMap"
+    },
+    {
+      "type": "java.util.ImmutableCollections$List12"
+    },
+    {
+      "type": "java.util.ImmutableCollections$ListN"
+    },
+    {
+      "type": "java.util.ImmutableCollections$Map1"
+    },
+    {
+      "type": "java.util.ImmutableCollections$MapN"
+    },
+    {
+      "type": "java.util.List"
+    },
+    {
+      "type": "java.util.Locale",
+      "methods": [
+        {
+          "name": "getDefault",
+          "parameterTypes": [
+            "java.util.Locale$Category"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.Locale$Category"
+    },
+    {
+      "type": "java.util.Map"
+    },
+    {
+      "type": "java.util.RandomAccess"
+    },
+    {
+      "type": "javax.imageio.plugins.jpeg.JPEGHuffmanTable",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "lengths"
+        },
+        {
+          "name": "values"
+        }
+      ]
+    },
+    {
+      "type": "javax.imageio.plugins.jpeg.JPEGQTable",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "qTable"
+        }
+      ]
+    },
+    {
+      "type": "javax.imageio.spi.ImageReaderSpi"
+    },
+    {
+      "type": "javax.imageio.spi.ImageWriterSpi"
+    },
+    {
+      "type": "jdk.internal.jrtfs.JrtFileSystemProvider"
+    },
+    {
+      "type": "jdk.internal.misc.Unsafe"
+    },
+    {
+      "type": "kotlin.reflect.jvm.internal.ReflectionFactoryImpl"
+    },
+    {
+      "type": "okhttp3.internal.connection.RealCall"
+    },
+    {
+      "type": "org.graalvm.home.impl.DefaultHomeFinder"
+    },
+    {
+      "type": "org.graalvm.polyglot.io.IOHelper",
+      "fields": [
+        {
+          "name": "ACCESS"
+        }
+      ]
+    },
+    {
+      "type": "org.graalvm.polyglot.management.Management",
+      "fields": [
+        {
+          "name": "ACCESS"
+        }
+      ]
+    },
+    {
+      "type": "picocli.CommandLine$AutoHelpMixin",
+      "fields": [
+        {
+          "name": "helpRequested"
+        },
+        {
+          "name": "versionRequested"
+        }
+      ]
+    },
+    {
+      "type": "sun.awt.image.ByteComponentRaster",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "data"
+        },
+        {
+          "name": "dataOffsets"
+        },
+        {
+          "name": "pixelStride"
+        },
+        {
+          "name": "scanlineStride"
+        },
+        {
+          "name": "type"
+        }
+      ]
+    },
+    {
+      "type": "sun.awt.image.BytePackedRaster",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "data"
+        },
+        {
+          "name": "dataBitOffset"
+        },
+        {
+          "name": "pixelBitStride"
+        },
+        {
+          "name": "scanlineStride"
+        },
+        {
+          "name": "type"
+        }
+      ]
+    },
+    {
+      "type": "sun.awt.image.IntegerComponentRaster",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "data"
+        },
+        {
+          "name": "dataOffsets"
+        },
+        {
+          "name": "pixelStride"
+        },
+        {
+          "name": "scanlineStride"
+        },
+        {
+          "name": "type"
+        }
+      ]
+    },
+    {
+      "type": "sun.java2d.Disposer",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "addRecord",
+          "parameterTypes": [
+            "java.lang.Object",
+            "long",
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.misc.Signal",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "handle",
+          "parameterTypes": [
+            "sun.misc.Signal",
+            "sun.misc.SignalHandler"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.misc.SignalHandler"
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore$DualFormatPKCS12",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.NativePRNG",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA256",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.X509Factory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAKeyFactory$Legacy",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.SSLContextImpl$TLSContext",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.TrustManagerFactoryImpl$PKIXFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityInfoAccessExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.BasicConstraintsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CRLDistributionPointsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CertificatePoliciesExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.ExtendedKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.KeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.NetscapeCertTypeExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.PrivateKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.SubjectKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.text.resources.FormatData"
+    },
+    {
+      "type": "sun.text.resources.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.FormatData_en_US"
+    },
+    {
+      "type": "sun.text.resources.JavaTimeSupplementary"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "sun.util.resources.cldr.CalendarData"
+    },
+    {
+      "type": {
+        "proxy": [
+          "io.methvin.watchservice.jna.CarbonAPI"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "org.eclipse.lsp4j.services.LanguageServer"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "org.eclipse.lsp4j.services.NotebookDocumentService"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "org.eclipse.lsp4j.services.TextDocumentService"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "org.eclipse.lsp4j.services.WorkspaceService"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "sun.misc.SignalHandler"
+        ]
+      }
+    }
+  ],
+  "foreign": {
+    "downcalls": [
+      {
+        "returnType": "int",
+        "parameterTypes": ["int"]
+      },
+      {
+        "returnType": "int",
+        "parameterTypes": ["int", "int"]
+      },
+      {
+        "returnType": "int",
+        "parameterTypes": ["void*", "int"]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "glob": "model-catalog.json"
+    },
+    {
+      "glob": "**/*.ansi"
+    },
+    {
+      "glob": "**/*.js"
+    },
+    {
+      "glob": "**/*.json"
+    },
+    {
+      "glob": "**/*.md"
+    },
+    {
+      "glob": "**/*.txt"
+    },
+    {
+      "glob": "*.ansi"
+    },
+    {
+      "glob": "*.js"
+    },
+    {
+      "glob": "*.json"
+    },
+    {
+      "glob": "*.md"
+    },
+    {
+      "glob": "*.txt"
+    },
+    {
+      "glob": "META-INF/**"
+    },
+    {
+      "glob": "META-INF/MANIFEST.MF"
+    },
+    {
+      "glob": "META-INF/graalvm/org.graalvm.polyglot/version"
+    },
+    {
+      "glob": "META-INF/graalvm/org.graalvm.truffle/version"
+    },
+    {
+      "glob": "META-INF/resources/engine/libtruffleattach/darwin/aarch64/sha256"
+    },
+    {
+      "glob": "META-INF/services/ch.qos.logback.classic.spi.Configurator"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.TruffleRuntimeAccess"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.impl.TruffleLocator"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.instrumentation.provider.TruffleInstrumentProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.library.provider.DefaultExportProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.provider.InternalResourceProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.provider.TruffleLanguageProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.js.runtime.Evaluator"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+    },
+    {
+      "glob": "META-INF/services/java.nio.file.spi.FileSystemProvider"
+    },
+    {
+      "glob": "META-INF/services/java.time.zone.ZoneRulesProvider"
+    },
+    {
+      "glob": "META-INF/services/javax.imageio.spi.ImageInputStreamSpi"
+    },
+    {
+      "glob": "META-INF/services/javax.imageio.spi.ImageOutputStreamSpi"
+    },
+    {
+      "glob": "META-INF/services/javax.imageio.spi.ImageReaderSpi"
+    },
+    {
+      "glob": "META-INF/services/javax.imageio.spi.ImageTranscoderSpi"
+    },
+    {
+      "glob": "META-INF/services/javax.imageio.spi.ImageWriterSpi"
+    },
+    {
+      "glob": "META-INF/services/javax.xml.parsers.SAXParserFactory"
+    },
+    {
+      "glob": "META-INF/services/org.graalvm.home.HomeFinder"
+    },
+    {
+      "glob": "META-INF/services/org.graalvm.polyglot.impl.AbstractPolyglotImpl"
+    },
+    {
+      "glob": "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
+    },
+    {
+      "glob": "application.properties"
+    },
+    {
+      "glob": "banner.txt"
+    },
+    {
+      "glob": "bigsnake-theme.properties"
+    },
+    {
+      "glob": "blaster-theme.properties"
+    },
+    {
+      "glob": "bundled/2.1.197/manifest.json"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/claude-api.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/code-review.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/deep-research.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/fewer-permission-prompts.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/init.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/keybindings-help.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/loop.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/review.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/run.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/security-review.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/simplify.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/update-config.md"
+    },
+    {
+      "glob": "bundled/2.1.197/skills/verify.md"
+    },
+    {
+      "glob": "bundled/2.1.197/workflows/code-review.js"
+    },
+    {
+      "glob": "bundled/2.1.197/workflows/deep-research.js"
+    },
+    {
+      "glob": "businessmachine-theme.properties"
+    },
+    {
+      "glob": "ch/qos/logback/classic/logback-classic-version.properties"
+    },
+    {
+      "glob": "ch/qos/logback/core/logback-core-version.properties"
+    },
+    {
+      "glob": "claude-code-word-slugs.txt"
+    },
+    {
+      "glob": "com/ibm/icu/ICUConfig.properties"
+    },
+    {
+      "glob": "com/ibm/icu/impl/data/icudt74b/brkitr/char.brk"
+    },
+    {
+      "glob": "com/ibm/icu/impl/data/icudt74b/brkitr/root.res"
+    },
+    {
+      "glob": "com/ibm/icu/impl/data/icudt74b/uemoji.icu"
+    },
+    {
+      "glob": "com/ibm/icu/impl/data/icudt74b/uprops.icu"
+    },
+    {
+      "glob": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+    },
+    {
+      "glob": "conqueror-theme.properties"
+    },
+    {
+      "glob": "default-theme.properties"
+    },
+    {
+      "glob": "defrost-theme.properties"
+    },
+    {
+      "glob": "grammars/index.json"
+    },
+    {
+      "glob": "logback-test.xml"
+    },
+    {
+      "glob": "logback.xml"
+    },
+    {
+      "glob": "native/**"
+    },
+    {
+      "glob": "prompts/auto-mode-classifier-system-2.1.197.txt"
+    },
+    {
+      "glob": "spinner/active-verbs.txt"
+    },
+    {
+      "glob": "spinner/completion-verbs.txt"
+    },
+    {
+      "glob": "tool-text/official/**"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/AskUserQuestion.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Bash.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Edit.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/EnterPlanMode.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/EnterWorktree.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/ExitPlanMode.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/ExitWorktree.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Glob.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Grep.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/NotebookEdit.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Read.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/ReadMcpResourceDirTool.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/ScheduleWakeup.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/SendMessage.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Skill.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/TaskCreate.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/TaskGet.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/TaskList.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/TaskUpdate.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/WaitForMcpServers.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/WebFetch.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Workflow.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/descriptions/Write.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/AskUserQuestion.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Bash.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/CronCreate/durable.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/CronDelete/durable.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/CronList/durable.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Edit.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/EnterPlanMode.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/EnterWorktree.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ExitPlanMode.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ExitWorktree.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Glob.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Grep.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ListMcpResourcesTool.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/NotebookEdit.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Read.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ReadMcpResourceDirTool.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ReadMcpResourceTool.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/ScheduleWakeup.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/SendMessage.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Skill.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskCreate.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskGet.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskList.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskOutput.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskStop.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/TaskUpdate.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/WaitForMcpServers.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/WebFetch.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Workflow.txt"
+    },
+    {
+      "glob": "tool-text/official/2.1.197/prompts/Write.txt"
+    },
+    {
+      "glob": "vendor/ripgrep/**"
+    },
+    {
+      "glob": "vendor/ripgrep/arm64-darwin/rg"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/nfc.nrm"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/nfkc.nrm"
+    },
+    {
+      "module": "java.desktop",
+      "glob": "sun/awt/resources/awt_zh.properties"
+    },
+    {
+      "module": "java.desktop",
+      "glob": "sun/awt/resources/awt_zh_Hans.properties"
+    },
+    {
+      "module": "java.desktop",
+      "glob": "sun/awt/resources/awt_zh_Hans_CN.properties"
+    },
+    {
+      "bundle": "sun.awt.resources.awt"
+    }
+  ]
+}

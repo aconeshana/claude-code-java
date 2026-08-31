@@ -1,0 +1,83 @@
+package com.claudecode.ui.lanterna.theme;
+
+/**
+ * The full color palette.
+ */
+public record Theme(
+    RgbColor autoAccept,
+    RgbColor bashBorder,
+    RgbColor claude,
+    RgbColor claudeShimmer,
+    RgbColor claudeBlue_FOR_SYSTEM_SPINNER,
+    RgbColor claudeBlueShimmer_FOR_SYSTEM_SPINNER,
+    RgbColor permission,
+    RgbColor permissionShimmer,
+    RgbColor planMode,
+    RgbColor ide,
+    RgbColor promptBorder,
+    RgbColor promptBorderShimmer,
+    RgbColor text,
+    RgbColor inverseText,
+    RgbColor inactive,
+    RgbColor inactiveShimmer,
+    RgbColor subtle,
+    RgbColor suggestion,
+    RgbColor remember,
+    RgbColor background,
+    // Semantic colors
+    RgbColor success,
+    RgbColor error,
+    RgbColor warning,
+    RgbColor merged,
+    RgbColor warningShimmer,
+    // Diff colors
+    RgbColor diffAdded,
+    RgbColor diffRemoved,
+    RgbColor diffAddedDimmed,
+    RgbColor diffRemovedDimmed,
+    RgbColor diffAddedWord,
+    RgbColor diffRemovedWord,
+    // Agent colors
+    RgbColor red_FOR_SUBAGENTS_ONLY,
+    RgbColor blue_FOR_SUBAGENTS_ONLY,
+    RgbColor green_FOR_SUBAGENTS_ONLY,
+    RgbColor yellow_FOR_SUBAGENTS_ONLY,
+    RgbColor purple_FOR_SUBAGENTS_ONLY,
+    RgbColor orange_FOR_SUBAGENTS_ONLY,
+    RgbColor pink_FOR_SUBAGENTS_ONLY,
+    RgbColor cyan_FOR_SUBAGENTS_ONLY,
+    // Grove / Chrome
+    RgbColor professionalBlue,
+    RgbColor chromeYellow,
+    // TUI V2
+    RgbColor clawd_body,
+    RgbColor clawd_background,
+    RgbColor userMessageBackground,
+    RgbColor userMessageBackgroundHover,
+    RgbColor messageActionsBackground,
+    RgbColor selectionBg,
+    RgbColor bashMessageBackgroundColor,
+    RgbColor memoryBackgroundColor,
+    RgbColor rate_limit_fill,
+    RgbColor rate_limit_empty,
+    RgbColor fastMode,
+    RgbColor fastModeShimmer,
+    // Brief / assistant mode labels
+    RgbColor briefLabelYou,
+    RgbColor briefLabelClaude,
+    // Rainbow
+    RgbColor rainbow_red,
+    RgbColor rainbow_orange,
+    RgbColor rainbow_yellow,
+    RgbColor rainbow_green,
+    RgbColor rainbow_blue,
+    RgbColor rainbow_indigo,
+    RgbColor rainbow_violet,
+    RgbColor rainbow_red_shimmer,
+    RgbColor rainbow_orange_shimmer,
+    RgbColor rainbow_yellow_shimmer,
+    RgbColor rainbow_green_shimmer,
+    RgbColor rainbow_blue_shimmer,
+    RgbColor rainbow_indigo_shimmer,
+    RgbColor rainbow_violet_shimmer
+) {}

@@ -1,0 +1,2422 @@
+{
+  "schemaNote": "Single source of truth for CLI flag regression coverage, consumed by ClaudeCodeCliFlagMatrixTest (parse-contract layer) and, later, by the process-level startup smoke. Every `expect` value below was measured from a real parse rather than derived by hand: it is the exact set of CliLaunchRequest fields that change relative to an argument-free parse. An empty diff therefore means the flag is not wired in, and an extra key means it leaked into another axis.",
+  "statusNote": {
+    "ALIGNED": "Behaviour matches 2.1.197 (or is a deliberate Java-only addition).",
+    "KNOWN_DIVERGENCE": "Asserts current Java behaviour on purpose, so that either fixing or further breaking it shows up as a failure instead of passing silently.",
+    "MISSING": "Present in 2.1.197, absent from the Java CLI. Ledger only — no executable case."
+  },
+  "official": {
+    "version": "2.1.197",
+    "source": "commander option chain in the released Bun bundle",
+    "rootOptionCount": 99,
+    "publicCount": 55,
+    "hiddenCount": 44
+  },
+  "axes": {
+    "A": "run mode",
+    "B": "session origin",
+    "C": "session modifier",
+    "D": "output channel",
+    "E": "input channel",
+    "F": "model / reasoning",
+    "G": "budget & limits",
+    "H": "system prompt assembly",
+    "I": "permissions",
+    "J": "tool set",
+    "K": "config sources",
+    "L": "extension loading",
+    "M": "workspace & host",
+    "N": "diagnostics"
+  },
+  "entries": [
+    {
+      "id": "effort",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--effort <level>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--effort",
+      "argv": [
+        "--effort",
+        "medium"
+      ],
+      "expect": {
+        "model.effort": "medium"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "thinking",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--thinking <mode>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--thinking",
+      "argv": [
+        "--thinking",
+        "enabled"
+      ],
+      "expect": {
+        "model.thinkingMode": "enabled"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "max-thinking-tokens",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--max-thinking-tokens <tokens>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--max-thinking-tokens",
+      "argv": [
+        "--max-thinking-tokens",
+        "4096"
+      ],
+      "expect": {
+        "model.maxThinkingTokens": 4096
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "fallback-model",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--fallback-model <model>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--fallback-model",
+      "argv": [
+        "--fallback-model",
+        "claude-sonnet-5"
+      ],
+      "expect": {
+        "model.fallbackModel": "claude-sonnet-5"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "model",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--model <model>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--model",
+      "argv": [
+        "--model",
+        "opus"
+      ],
+      "expect": {
+        "model.model": "opus"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "model-m-opus",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--model <model>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--model",
+      "argv": [
+        "-m",
+        "opus"
+      ],
+      "expect": {
+        "model.model": "opus"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only short alias; 197 has no -m."
+    },
+    {
+      "id": "api-key",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--api-key",
+      "argv": [
+        "--api-key",
+        "dummy-key"
+      ],
+      "expect": {
+        "model.apiKey": "dummy-key"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only. 197 takes the key from env/keychain only."
+    },
+    {
+      "id": "system-prompt",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--system-prompt <prompt>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--system-prompt",
+      "argv": [
+        "--system-prompt",
+        "custom sp"
+      ],
+      "expect": {
+        "model.systemPrompt": "custom sp"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "system-prompt-file",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--system-prompt-file <file>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--system-prompt-file",
+      "argv": [
+        "--system-prompt-file",
+        "/tmp/sp.txt"
+      ],
+      "expect": {
+        "model.systemPromptFile": "/tmp/sp.txt"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "append-system-prompt",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--append-system-prompt <prompt>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--append-system-prompt",
+      "argv": [
+        "--append-system-prompt",
+        "extra"
+      ],
+      "expect": {
+        "model.appendSystemPrompt": "extra"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "append-system-prompt-file",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--append-system-prompt-file <file>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--append-system-prompt-file",
+      "argv": [
+        "--append-system-prompt-file",
+        "/tmp/asp.txt"
+      ],
+      "expect": {
+        "model.appendSystemPromptFile": "/tmp/asp.txt"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "max-tokens",
+      "axis": "G",
+      "axisName": "budget & limits",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--max-tokens",
+      "argv": [
+        "--max-tokens",
+        "2048"
+      ],
+      "expect": {
+        "model.maxTokens": 2048
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only. Unset means the model-specific default (ModelOutputTokens)."
+    },
+    {
+      "id": "max-turns",
+      "axis": "G",
+      "axisName": "budget & limits",
+      "officialSpec": "--max-turns <turns>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--max-turns",
+      "argv": [
+        "--max-turns",
+        "5"
+      ],
+      "expect": {
+        "model.maxTurns": 5
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "0 encodes \"unset\"; 197 gates this to --print only, Java does not."
+    },
+    {
+      "id": "max-budget-usd",
+      "axis": "G",
+      "axisName": "budget & limits",
+      "officialSpec": "--max-budget-usd <amount>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--max-budget-usd",
+      "argv": [
+        "--max-budget-usd",
+        "1.5"
+      ],
+      "expect": {
+        "model.maxBudgetUsd": 1.5
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "-1.0 encodes \"unset\"; 197 gates this to --print only, Java does not."
+    },
+    {
+      "id": "output-format",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--output-format <format>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--output-format",
+      "argv": [
+        "--output-format",
+        "json"
+      ],
+      "expect": {
+        "output.outputFormat": "json",
+        "mode.formattedOutput": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "output-format-2",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--output-format <format>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--output-format",
+      "argv": [
+        "--output-format",
+        "stream-json"
+      ],
+      "expect": {
+        "output.outputFormat": "stream-json",
+        "mode.formattedOutput": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "input-format",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--input-format <format>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--input-format",
+      "argv": [
+        "--input-format",
+        "stream-json"
+      ],
+      "expect": {
+        "output.inputFormat": "stream-json",
+        "mode.sdkStreamJson": true,
+        "mode.headless": true,
+        "mode.interactive": false
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "stream-json input alone flips the derived SDK/headless mode."
+    },
+    {
+      "id": "include-partial-messages",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--include-partial-messages",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--include-partial-messages",
+      "argv": [
+        "--include-partial-messages"
+      ],
+      "expect": {
+        "output.includePartialMessages": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "replay-user-messages",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--replay-user-messages",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--replay-user-messages",
+      "argv": [
+        "--replay-user-messages"
+      ],
+      "expect": {
+        "output.replayUserMessages": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "permission-prompt-tool",
+      "axis": "I",
+      "axisName": "permissions",
+      "officialSpec": "--permission-prompt-tool <tool>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--permission-prompt-tool",
+      "argv": [
+        "--permission-prompt-tool",
+        "mcp__srv__ask"
+      ],
+      "expect": {
+        "output.permissionPromptToolName": "mcp__srv__ask"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "json-schema",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--json-schema <schema>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--json-schema",
+      "argv": [
+        "--json-schema",
+        "{\"type\":\"object\"}"
+      ],
+      "expect": {
+        "model.jsonSchemaRaw": "{\"type\":\"object\"}"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "base-url",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--base-url",
+      "argv": [
+        "--base-url",
+        "http://127.0.0.1:9/"
+      ],
+      "expect": {
+        "model.baseUrl": "http://127.0.0.1:9/"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only. 197 uses ANTHROPIC_BASE_URL only."
+    },
+    {
+      "id": "no-interactive",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--no-interactive",
+      "argv": [
+        "--no-interactive"
+      ],
+      "expect": {
+        "output.noInteractive": true,
+        "mode.headless": true,
+        "mode.interactive": false
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only spelling of headless; 197 expresses this with -p alone."
+    },
+    {
+      "id": "verbose",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "--verbose",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--verbose",
+      "argv": [
+        "--verbose"
+      ],
+      "expect": {
+        "output.verbose": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "verbose-v",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "--verbose",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--verbose",
+      "argv": [
+        "-v"
+      ],
+      "expect": {
+        "output.verbose": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "KNOWN_DIVERGENCE",
+      "note": "197 binds -v to --version. Java binds it to --verbose and puts version on -V. `claude -v` therefore does entirely different things on the two builds."
+    },
+    {
+      "id": "debug",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "-d, --debug [filter]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--debug",
+      "argv": [
+        "--debug"
+      ],
+      "expect": {
+        "output.debug": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "debug-2",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "-d, --debug [filter]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--debug",
+      "argv": [
+        "--debug",
+        "api,hooks"
+      ],
+      "expect": {
+        "output.debug": true,
+        "session.initialPrompt": "api,hooks"
+      },
+      "expectResidual": [
+        "positional:[api,hooks]"
+      ],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "KNOWN_DIVERGENCE",
+      "note": "197 is `-d, --debug [filter]` and consumes the category filter. Java declares a boolean, so the filter silently becomes the initial prompt instead."
+    },
+    {
+      "id": "disable-slash-commands",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--disable-slash-commands",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--disable-slash-commands",
+      "argv": [
+        "--disable-slash-commands"
+      ],
+      "expect": {
+        "workspace.disableSlashCommands": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "print",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "-p, --print",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--print",
+      "argv": [
+        "--print"
+      ],
+      "expect": {
+        "output.printMode": true,
+        "mode.headless": true,
+        "mode.interactive": false
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "print-p",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "-p, --print",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--print",
+      "argv": [
+        "-p"
+      ],
+      "expect": {
+        "output.printMode": true,
+        "mode.headless": true,
+        "mode.interactive": false
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "continue",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-c, --continue",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--continue",
+      "argv": [
+        "--continue"
+      ],
+      "expect": {
+        "session.continueLastSession": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "continue-c",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-c, --continue",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--continue",
+      "argv": [
+        "-c"
+      ],
+      "expect": {
+        "session.continueLastSession": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "resume",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-r, --resume [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--resume",
+      "argv": [
+        "--resume",
+        "11111111-2222-3333-4444-555555555555"
+      ],
+      "expect": {
+        "session.resumeSession": "11111111-2222-3333-4444-555555555555"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "This table asserts parsing only. The post-parse identifier chain 197 applies to the value — a .jsonl transcript first (absolute and case-sensitive interactively, any case-insensitive suffix under --print), else a UUID, else an exact case-insensitive custom-title search across same-repo worktrees — is covered by CliResumeTargetResolverTest, and its per-mode reporting by CliSessionRestoreCoordinatorTest."
+    },
+    {
+      "id": "resume-r",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-r, --resume [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--resume",
+      "argv": [
+        "-r"
+      ],
+      "expect": {
+        "session.resumeSession": ""
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "197 coerces the optional value with `value => value || true`, so a bare -r requests the interactive picker. Picocli yields \"\" for a bare arity-0..1 option; null still means the flag was absent, which is the distinction CliSessionRestoreCoordinator routes on."
+    },
+    {
+      "id": "resume-explicit-empty",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-r, --resume [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--resume",
+      "argv": [
+        "-r",
+        ""
+      ],
+      "expect": {
+        "session.resumeSession": ""
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "197's `value || true` makes an explicitly empty value indistinguishable from a bare -r; both request the picker."
+    },
+    {
+      "id": "resume-long-bare",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "-r, --resume [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--resume",
+      "argv": [
+        "--resume"
+      ],
+      "expect": {
+        "session.resumeSession": ""
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "The long form takes the same optional value, so `--resume` alone also requests the picker."
+    },
+    {
+      "id": "theme",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--theme",
+      "argv": [
+        "--theme",
+        "light"
+      ],
+      "expect": {
+        "session.theme": "light"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only flag; 197 only reads the theme from settings."
+    },
+    {
+      "id": "settings",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--settings <file-or-json>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--settings",
+      "argv": [
+        "--settings",
+        "/tmp/settings.json"
+      ],
+      "expect": {
+        "workspace.settingsFileOrJson": "/tmp/settings.json"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "setting-sources",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--setting-sources <sources>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--setting-sources",
+      "argv": [
+        "--setting-sources",
+        "user,project"
+      ],
+      "expect": {
+        "workspace.settingSourcesRaw": "user,project"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "mcp-config",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--mcp-config <configs...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--mcp-config",
+      "argv": [
+        "--mcp-config",
+        "/tmp/mcp.json"
+      ],
+      "expect": {
+        "workspace.mcpConfig": [
+          "/tmp/mcp.json"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "strict-mcp-config",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--strict-mcp-config",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--strict-mcp-config",
+      "argv": [
+        "--strict-mcp-config"
+      ],
+      "expect": {
+        "workspace.strictMcpConfig": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "add-dir",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--add-dir <directories...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--add-dir",
+      "argv": [
+        "--add-dir",
+        "/tmp/dirA"
+      ],
+      "expect": {
+        "workspace.additionalDirectories": [
+          "/tmp/dirA"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "add-dir-2",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--add-dir <directories...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--add-dir",
+      "argv": [
+        "--add-dir",
+        "/tmp/dirA,/tmp/dirB"
+      ],
+      "expect": {
+        "workspace.additionalDirectories": [
+          "/tmp/dirA",
+          "/tmp/dirB"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Comma form works via Picocli split."
+    },
+    {
+      "id": "add-dir-add-dir-tmp-dira-tmp-dirb",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--add-dir <directories...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--add-dir",
+      "argv": [
+        "--add-dir",
+        "/tmp/dirA",
+        "/tmp/dirB"
+      ],
+      "expect": {
+        "workspace.additionalDirectories": [
+          "/tmp/dirA",
+          "/tmp/dirB"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Variadic like 197's `<directories...>`: one occurrence takes every following non-option token."
+    },
+    {
+      "id": "add-dir-swallows-trailing-prompt",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--add-dir <directories...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--add-dir",
+      "argv": [
+        "--add-dir",
+        "/tmp/dirA",
+        "review this"
+      ],
+      "expect": {
+        "workspace.additionalDirectories": [
+          "/tmp/dirA",
+          "review this"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Greediness is inherited from 197: a variadic option consumes the trailing positional prompt too. Pinned so the shared shape with --tools/--mcp-config stays visible."
+    },
+    {
+      "id": "plugin-dir",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--plugin-dir <path>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--plugin-dir",
+      "argv": [
+        "--plugin-dir",
+        "/tmp/pluginA"
+      ],
+      "expect": {
+        "workspace.pluginDirectories": [
+          "/tmp/pluginA"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "agent",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--agent <agent>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--agent",
+      "argv": [
+        "--agent",
+        "reviewer"
+      ],
+      "expect": {
+        "workspace.agent": "reviewer"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "agents",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--agents <json>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--agents",
+      "argv": [
+        "--agents",
+        "{\"reviewer\":{}}"
+      ],
+      "expect": {
+        "workspace.agentsJson": "{\"reviewer\":{}}"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "dangerously-skip-permissions",
+      "axis": "I",
+      "axisName": "permissions",
+      "officialSpec": "--dangerously-skip-permissions",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--dangerously-skip-permissions",
+      "argv": [
+        "--dangerously-skip-permissions"
+      ],
+      "expect": {
+        "permissions.dangerouslySkipPermissions": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "agent-teams",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--agent-teams",
+      "argv": [
+        "--agent-teams"
+      ],
+      "expect": {},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Deliberately absent from the launch snapshot: routed through AgentTeamsEnabled.setCliFlag() in call(). An empty diff is the correct contract here. Not a 197 commander option either — it only appears as a string in the bundle."
+    },
+    {
+      "id": "permission-mode",
+      "axis": "I",
+      "axisName": "permissions",
+      "officialSpec": "--permission-mode <mode>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--permission-mode",
+      "argv": [
+        "--permission-mode",
+        "plan"
+      ],
+      "expect": {
+        "permissions.permissionMode": "plan"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "allowedTools-allowedtools-bash-edit",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--allowedTools, --allowed-tools <tools...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--allowedTools",
+      "argv": [
+        "--allowedTools",
+        "Bash",
+        "Edit"
+      ],
+      "expect": {
+        "permissions.allowedTools": [
+          "Bash",
+          "Edit"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "allowedTools-allowed-tools-bash-git",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--allowedTools, --allowed-tools <tools...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--allowedTools",
+      "argv": [
+        "--allowed-tools",
+        "Bash(git *)"
+      ],
+      "expect": {
+        "permissions.allowedTools": [
+          "Bash(git *)"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Parenthesised rules stay one token; CliToolSelection.parseToolList splits later."
+    },
+    {
+      "id": "disallowedTools",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--disallowedTools, --disallowed-tools <tools...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--disallowedTools",
+      "argv": [
+        "--disallowedTools",
+        "Bash"
+      ],
+      "expect": {
+        "permissions.disallowedTools": [
+          "Bash"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "tools",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--tools <tools...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--tools",
+      "argv": [
+        "--tools",
+        "Read,Bash"
+      ],
+      "expect": {
+        "permissions.baseTools": [
+          "Read,Bash"
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Comma splitting is deliberately downstream in CliToolSelection.parseToolList, which also honours parentheses. The parse layer keeps the raw token."
+    },
+    {
+      "id": "tools-2",
+      "axis": "J",
+      "axisName": "tool set",
+      "officialSpec": "--tools <tools...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--tools",
+      "argv": [
+        "--tools",
+        ""
+      ],
+      "expect": {
+        "permissions.baseTools": [
+          ""
+        ]
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Explicit empty list means \"disable all tools\" and must stay distinguishable from the null of an omitted flag. Picocli keeps the empty token, so the observed value is [\"\"] rather than []; CliToolSelection.parseToolList drops it downstream via StringUtils.isEmpty, leaving an empty selection."
+    },
+    {
+      "id": "cwd",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--cwd",
+      "argv": [
+        "--cwd",
+        "/tmp"
+      ],
+      "expect": {
+        "workspace.cwdOverride": "/tmp"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only."
+    },
+    {
+      "id": "cwd-c-tmp",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--cwd",
+      "argv": [
+        "-C",
+        "/tmp"
+      ],
+      "expect": {
+        "workspace.cwdOverride": "/tmp"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only short alias."
+    },
+    {
+      "id": "worktree",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "-w, --worktree [name]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--worktree",
+      "argv": [
+        "--worktree"
+      ],
+      "expect": {
+        "workspace.worktreeName": ""
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "arity=0..1 matches 197 `-w, --worktree [name]`; bare form yields an empty name."
+    },
+    {
+      "id": "worktree-2",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "-w, --worktree [name]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--worktree",
+      "argv": [
+        "--worktree",
+        "wt-name"
+      ],
+      "expect": {
+        "workspace.worktreeName": "wt-name"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "worktree-w",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "-w, --worktree [name]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": "--worktree",
+      "argv": [
+        "-w"
+      ],
+      "expect": {
+        "workspace.worktreeName": ""
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "help",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--help",
+      "argv": [
+        "--help"
+      ],
+      "expect": {},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": "usageHelp",
+      "status": "ALIGNED",
+      "note": "Supplied by Picocli mixinStandardHelpOptions rather than an explicit @Option, so it short-circuits during parsing and never reaches the launch snapshot."
+    },
+    {
+      "id": "version",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--version",
+      "argv": [
+        "--version"
+      ],
+      "expect": {},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": "versionHelp",
+      "status": "ALIGNED",
+      "note": "Same mixin origin as --help."
+    },
+    {
+      "id": "version-v",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": "--version",
+      "argv": [
+        "-V"
+      ],
+      "expect": {},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": "versionHelp",
+      "status": "KNOWN_DIVERGENCE",
+      "note": "197 puts --version on -v. Picocli mixinStandardHelpOptions puts it on -V and Java gives -v to --verbose, so the two builds disagree on both letters."
+    },
+    {
+      "id": "combo-print-stream-json-stream-json",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": null,
+      "officialVisibility": null,
+      "officialArity": null,
+      "javaOption": null,
+      "argv": [
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--input-format",
+        "stream-json"
+      ],
+      "expect": {
+        "output.printMode": true,
+        "output.outputFormat": "stream-json",
+        "output.inputFormat": "stream-json",
+        "mode.formattedOutput": true,
+        "mode.headless": true,
+        "mode.interactive": false,
+        "mode.sdkStreamJson": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Pairwise probe for axes A+D+E: the full SDK stream-json combination."
+    },
+    {
+      "id": "official-debug-to-stderr",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "-d2e, --debug-to-stderr",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-debug-file",
+      "axis": "N",
+      "axisName": "diagnostics",
+      "officialSpec": "--debug-file <path>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--debug-file",
+      "argv": ["--debug-file", "/tmp/claude-sdk-debug.log"],
+      "expect": {"output.debugFile": "/tmp/claude-sdk-debug.log"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-bare",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--bare",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-safe-mode",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--safe-mode",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-init",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--init",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": "--init",
+      "argv": ["--init"],
+      "expect": {"session.init": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-init-only",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--init-only",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": "--init-only",
+      "argv": ["--init-only"],
+      "expect": {"session.initOnly": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-maintenance",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--maintenance",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": "--maintenance",
+      "argv": ["--maintenance"],
+      "expect": {"session.maintenance": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-include-hook-events",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--include-hook-events",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--include-hook-events",
+      "argv": ["--include-hook-events"],
+      "expect": {"output.includeHookEvents": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-session-mirror",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--session-mirror",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": "--session-mirror",
+      "argv": ["--session-mirror"],
+      "expect": {"output.sessionMirror": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-allow-dangerously-skip-permissions",
+      "axis": "I",
+      "axisName": "permissions",
+      "officialSpec": "--allow-dangerously-skip-permissions",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--allow-dangerously-skip-permissions",
+      "argv": ["--allow-dangerously-skip-permissions"],
+      "expect": {"permissions.allowDangerouslySkipPermissions": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-thinking-display",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--thinking-display <display>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--thinking-display",
+      "argv": ["--thinking-display", "hidden"],
+      "expect": {"model.thinkingDisplay": "hidden"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-task-budget",
+      "axis": "G",
+      "axisName": "budget & limits",
+      "officialSpec": "--task-budget <tokens>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--task-budget",
+      "argv": ["--task-budget", "8192"],
+      "expect": {"model.taskBudget": 8192},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-prompt-suggestions",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--prompt-suggestions [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-enable-auth-status",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--enable-auth-status",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-plan-mode-instructions",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--plan-mode-instructions <instructions>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--plan-mode-instructions",
+      "argv": ["--plan-mode-instructions", "WIRE CUSTOM PLAN WORKFLOW"],
+      "expect": {"model.planModeInstructions": "WIRE CUSTOM PLAN WORKFLOW"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Print-only validation is enforced during workspace bootstrap; PLAN-P1-FLAG-INSTRUCTIONS freezes the reachable plan reminder behavior."
+    },
+    {
+      "id": "official-exclude-dynamic-system-prompt-sections",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": "--exclude-dynamic-system-prompt-sections",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-fork-session",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--fork-session",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--fork-session",
+      "argv": ["--fork-session"],
+      "expect": {"session.forkSession": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-prefill",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--prefill <text>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-deep-link-origin",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--deep-link-origin",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-deep-link-repo",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--deep-link-repo <slug>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-deep-link-last-fetch",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--deep-link-last-fetch <ms>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-prefill-b64",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--prefill-b64 <b64>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-deep-link-cwd-b64",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--deep-link-cwd-b64 <b64>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-from-pr",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "--from-pr [value]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-no-session-persistence",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--no-session-persistence",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": "--no-session-persistence",
+      "argv": ["--no-session-persistence"],
+      "expect": {"session.noSessionPersistence": true},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-resume-session-at",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "--resume-session-at <message id>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--resume-session-at",
+      "argv": ["--resume-session-at", "message-uuid"],
+      "expect": {"session.resumeSessionAt": "message-uuid"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-reply-on-resume",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--reply-on-resume",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-rewind-files",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--rewind-files <user-message-id>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--rewind-files",
+      "argv": ["--rewind-files", "user-message-id"],
+      "expect": {
+        "session.rewindFiles": "user-message-id",
+        "mode.headless": true,
+        "mode.interactive": false
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-betas",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--betas <betas...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": "--betas",
+      "argv": ["--betas", "beta-a,beta-b"],
+      "expect": {"model.betas": ["beta-a", "beta-b"]},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-workload",
+      "axis": "G",
+      "axisName": "budget & limits",
+      "officialSpec": "--workload <tag>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-managed-settings",
+      "axis": "K",
+      "axisName": "config sources",
+      "officialSpec": "--managed-settings <json>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--managed-settings",
+      "argv": ["--managed-settings", "{\"permissions\":{}}"],
+      "expect": {"workspace.managedSettings": "{\"permissions\":{}}"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-ide",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "--ide",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-session-id",
+      "axis": "B",
+      "axisName": "session origin",
+      "officialSpec": "--session-id <uuid>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--session-id",
+      "argv": ["--session-id", "11111111-2222-4333-8444-555555555555"],
+      "expect": {"session.sessionId": "11111111-2222-4333-8444-555555555555"},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Validated after cwd resolution so collision checks use the selected project's transcript directory."
+    },
+    {
+      "id": "official-name",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "-n, --name <name>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": "--name",
+      "argv": [
+        "--name",
+        "Named session"
+      ],
+      "expect": {
+        "session.name": "Named session"
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "2.1.197 caches the trimmed value as both custom-title and agent-name before resume selection; lifecycle parity is covered by recorder tests and process smoke."
+    },
+    {
+      "id": "official-plugin-dir-no-mcp",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--plugin-dir-no-mcp <path>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": "--plugin-dir-no-mcp",
+      "argv": ["--plugin-dir-no-mcp", "/tmp/plugin-no-mcp"],
+      "expect": {"workspace.pluginDirectoriesNoMcp": ["/tmp/plugin-no-mcp"]},
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": null
+    },
+    {
+      "id": "official-plugin-url",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--plugin-url <url>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-chrome",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "--chrome",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-no-chrome",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "--no-chrome",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-file",
+      "axis": "E",
+      "axisName": "input channel",
+      "officialSpec": "--file <specs...>",
+      "officialVisibility": "public",
+      "officialArity": "variadic",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-tmux",
+      "axis": "M",
+      "axisName": "workspace & host",
+      "officialSpec": "--tmux",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-advisor",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--advisor <model>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-enable-auto-mode",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--enable-auto-mode",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-bg",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--bg, --background",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-brief",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--brief",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-ax-screen-reader",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--ax-screen-reader",
+      "officialVisibility": "public",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-channels",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--channels <servers...>",
+      "officialVisibility": "hidden",
+      "officialArity": "variadic",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-dangerously-load-development-channels",
+      "axis": "L",
+      "axisName": "extension loading",
+      "officialSpec": "--dangerously-load-development-channels <servers...>",
+      "officialVisibility": "hidden",
+      "officialArity": "variadic",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-agent-id",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--agent-id <id>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-agent-name",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--agent-name <name>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-team-name",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--team-name <name>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-agent-color",
+      "axis": "D",
+      "axisName": "output channel",
+      "officialSpec": "--agent-color <color>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-plan-mode-required",
+      "axis": "I",
+      "axisName": "permissions",
+      "officialSpec": "--plan-mode-required",
+      "officialVisibility": "hidden",
+      "officialArity": "none",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-parent-session-id",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--parent-session-id <id>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-teammate-mode",
+      "axis": "C",
+      "axisName": "session modifier",
+      "officialSpec": "--teammate-mode <mode>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-agent-type",
+      "axis": "F",
+      "axisName": "model / reasoning",
+      "officialSpec": "--agent-type <type>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-sdk-url",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--sdk-url <url>",
+      "officialVisibility": "hidden",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-teleport",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--teleport [session]",
+      "officialVisibility": "hidden",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-cloud",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--cloud [description|session_id|url]",
+      "officialVisibility": "hidden",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-remote",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--remote [description|session_id|url]",
+      "officialVisibility": "hidden",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-remote-control",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--remote-control [name]",
+      "officialVisibility": "public",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-rc",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--rc [name]",
+      "officialVisibility": "hidden",
+      "officialArity": "optional",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    },
+    {
+      "id": "official-remote-control-session-name-prefix",
+      "axis": "A",
+      "axisName": "run mode",
+      "officialSpec": "--remote-control-session-name-prefix <prefix>",
+      "officialVisibility": "public",
+      "officialArity": "required",
+      "javaOption": null,
+      "argv": null,
+      "expect": null,
+      "expectResidual": null,
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "MISSING",
+      "note": null
+    }
+  ]
+}

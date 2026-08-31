@@ -1,0 +1,81 @@
+TextMate Grammar Files — Third-Party Notices
+=============================================
+
+All `*.tmLanguage.json` files in this directory are vendor copies of upstream
+TextMate grammar files. Each grammar is licensed under MIT (or equivalent
+permissive licenses) by its respective contributors. Files are unmodified
+from their upstream sources.
+
+UPSTREAM SOURCES
+================
+
+From microsoft/vscode (https://github.com/microsoft/vscode, MIT):
+  extensions/<lang>/syntaxes/<file>
+  - bash.tmLanguage.json       (extensions/shellscript)
+  - batchfile.tmLanguage.json  (extensions/bat)
+  - c.tmLanguage.json          (extensions/cpp; based on jeff-hykin/better-cpp-syntax)
+  - cpp.tmLanguage.json        (extensions/cpp; based on jeff-hykin/better-cpp-syntax)
+  - csharp.tmLanguage.json     (extensions/csharp)
+  - css.tmLanguage.json        (extensions/css)
+  - diff.tmLanguage.json       (extensions/diff)
+  - dockerfile.tmLanguage.json (extensions/docker)
+  - git-commit.tmLanguage.json (extensions/git-base)
+  - go.tmLanguage.json         (extensions/go)
+  - groovy.tmLanguage.json     (extensions/groovy)
+  - html.tmLanguage.json       (extensions/html)
+  - ini.tmLanguage.json        (extensions/ini)
+  - java.tmLanguage.json       (extensions/java; based on redhat-developer/vscode-java)
+  - javascript.tmLanguage.json (extensions/javascript)
+  - jsx.tmLanguage.json        (extensions/javascript; JavaScriptReact)
+  - json.tmLanguage.json       (extensions/json)
+  - jsonc.tmLanguage.json      (extensions/json)
+  - lua.tmLanguage.json        (extensions/lua)
+  - makefile.tmLanguage.json   (extensions/make)
+  - markdown.tmLanguage.json   (extensions/markdown-basics)
+  - php.tmLanguage.json        (extensions/php)
+  - powershell.tmLanguage.json (extensions/powershell)
+  - python.tmLanguage.json     (extensions/python; MagicPython by MagicStack)
+  - ruby.tmLanguage.json       (extensions/ruby)
+  - rust.tmLanguage.json       (extensions/rust; dustypomerleau/rust-syntax)
+  - scss.tmLanguage.json       (extensions/scss)
+  - shell-unix-bash → bash.tmLanguage.json
+  - sql.tmLanguage.json        (extensions/sql)
+  - tsx.tmLanguage.json        (extensions/typescript-basics)
+  - typescript.tmLanguage.json (extensions/typescript-basics)
+  - xml.tmLanguage.json        (extensions/xml)
+  - yaml.tmLanguage.json       (extensions/yaml)
+
+From shikijs/textmate-grammars-themes (https://github.com/shikijs/textmate-grammars-themes, MIT):
+  packages/tm-grammars/grammars/<file>
+  - awk.tmLanguage.json         (← awk.json)
+  - cmake.tmLanguage.json       (← cmake.json)
+  - dotenv.tmLanguage.json      (← dotenv.json)
+  - graphql.tmLanguage.json     (← graphql.json)
+  - kotlin.tmLanguage.json      (← kotlin.json; fwcd/vscode-kotlin)
+  - latex.tmLanguage.json       (← tex.json)
+  - nginx.tmLanguage.json       (← nginx.json)
+  - proto.tmLanguage.json       (← proto.json)
+  - scala.tmLanguage.json       (← scala.json; scala/vscode-scala-syntax)
+  - toml.tmLanguage.json        (← toml.json)
+  - vim.tmLanguage.json         (← viml.json)
+  - vue.tmLanguage.json         (← vue.json; vuejs/language-tools)
+
+From individual upstream extensions:
+  - thrift.tmLanguage.json      (hyperupcall-projects/vscode-assorted-languages, MIT)
+  - gradle.tmLanguage.json      (naco-siren/vscode-gradle-language, MIT)
+  - properties.tmLanguage.json  (redhat-developer/vscode-java JavaProperties, EPL-2.0)
+  - crontab.tmLanguage.json     (davidsneighbour/kollitsch.dev, MIT)
+
+ALIAS DECISIONS
+===============
+
+  - `objective-c` / `objc` / `obj-c` aliases route to the C grammar for now;
+    a dedicated Objective-C TextMate grammar can be added later if needed.
+  - `console` and `shell-session` aliases route to the bash grammar.
+
+TO UPDATE
+=========
+
+Re-pull from upstream main branch. Always verify the `scopeName` field stays
+unchanged (referenced in grammars/index.json) and check the upstream license
+header has not changed.

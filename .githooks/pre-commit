@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Versioned local quality gate. Install once with scripts/install-git-hooks.sh.
+set -euo pipefail
+
+if ! git diff --cached --name-only --diff-filter=ACMR | rg -q '\.java$'; then
+  exit 0
+fi
+
+echo "pre-commit: Gradle quality gates"
+./gradlew -q --no-configuration-cache --no-parallel preCommitQuality

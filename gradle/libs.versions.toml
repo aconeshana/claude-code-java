@@ -1,0 +1,95 @@
+[versions]
+assertj = "3.27.7"
+byte-buddy = "1.18.3"
+caffeine = "3.1.8"
+commonmark = "0.22.0"
+commons-io = "2.16.1"
+commons-lang3 = "3.18.0"
+directory-watcher = "0.19.0"
+error-prone-annotations = "2.41.0"
+error-prone-core = "2.41.0"
+graaljs = "25.0.4"
+graalvm-native = "1.1.9"
+icu4j = "74.2"
+jna = "5.19.1"
+jackson = "2.18.9"
+joni = "2.2.7"
+jqwik = "1.9.0"
+junit = "5.10.3"
+junit-platform = "1.10.3"
+lanterna = "3.2.0-cc4"
+logback = "1.5.34"
+lsp4j = "0.24.0"
+mockito = "5.11.0"
+okhttp = "5.4.0"
+opentelemetry = "1.64.0"
+picocli = "4.7.6"
+pmd = "7.26.0"
+rewrite = "7.39.0"
+rewrite-bom = "8.89.0"
+rewrite-migrate-java = "3.42.0"
+rewrite-static-analysis = "2.41.0"
+rewrite-templating = "1.29.1"
+rewrite-testing-frameworks = "3.42.1"
+shadow = "9.6.1"
+slf4j = "2.0.13"
+tm4e = "0.17.3-SNAPSHOT"
+
+[libraries]
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+byte-buddy = { module = "net.bytebuddy:byte-buddy", version.ref = "byte-buddy" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-gfm-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
+commons-io = { module = "commons-io:commons-io", version.ref = "commons-io" }
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3" }
+directory-watcher = { module = "io.methvin:directory-watcher", version.ref = "directory-watcher" }
+error-prone-annotations = { module = "com.google.errorprone:error_prone_annotations", version.ref = "error-prone-annotations" }
+error-prone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "error-prone-core" }
+graal-polyglot = { module = "org.graalvm.polyglot:polyglot", version.ref = "graaljs" }
+graal-js-language = { module = "org.graalvm.js:js-language", version.ref = "graaljs" }
+icu4j = { module = "com.ibm.icu:icu4j", version.ref = "icu4j" }
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+jackson-jdk8 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jdk8" }
+jackson-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310" }
+jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml" }
+joni = { module = "org.jruby.joni:joni", version.ref = "joni" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+lanterna = { module = "com.github.aconeshana:lanterna", version.ref = "lanterna" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+lsp4j = { module = "org.eclipse.lsp4j:org.eclipse.lsp4j", version.ref = "lsp4j" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+mockito-junit = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }
+okhttp = { module = "com.squareup.okhttp3:okhttp-jvm", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
+okhttp-sse = { module = "com.squareup.okhttp3:okhttp-sse", version.ref = "okhttp" }
+opentelemetry-bom = { module = "io.opentelemetry:opentelemetry-bom", version.ref = "opentelemetry" }
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api" }
+opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk" }
+opentelemetry-sdk-logs = { module = "io.opentelemetry:opentelemetry-sdk-logs" }
+opentelemetry-sdk-metrics = { module = "io.opentelemetry:opentelemetry-sdk-metrics" }
+opentelemetry-sdk-trace = { module = "io.opentelemetry:opentelemetry-sdk-trace" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+opentelemetry-exporter-logging = { module = "io.opentelemetry:opentelemetry-exporter-logging" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+picocli-codegen = { module = "info.picocli:picocli-codegen", version.ref = "picocli" }
+rewrite-testing-frameworks = { module = "org.openrewrite.recipe:rewrite-testing-frameworks", version.ref = "rewrite-testing-frameworks" }
+rewrite-bom = { module = "org.openrewrite:rewrite-bom", version.ref = "rewrite-bom" }
+rewrite-java = { module = "org.openrewrite:rewrite-java" }
+rewrite-migrate-java = { module = "org.openrewrite.recipe:rewrite-migrate-java", version.ref = "rewrite-migrate-java" }
+rewrite-static-analysis = { module = "org.openrewrite.recipe:rewrite-static-analysis", version.ref = "rewrite-static-analysis" }
+rewrite-templating = { module = "org.openrewrite:rewrite-templating", version.ref = "rewrite-templating" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+tm4e = { module = "org.eclipse:org.eclipse.tm4e.core", version.ref = "tm4e" }
+
+[plugins]
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }
+rewrite = { id = "org.openrewrite.rewrite", version.ref = "rewrite" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

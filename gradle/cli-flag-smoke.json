@@ -1,0 +1,248 @@
+{
+  "schemaNote": "Process-level startup smoke plan, consumed by claude-code-app's flagStartupSmoke task. Each case names an entry of gradle/cli-flag-matrix.json and inherits that entry's argv, so a flag can only be smoked under a spelling the parse layer already checks. Optional per-case fields: argv (replaces the entry's argv, the only way to reach a placeholder), prompt (replaces the appended prompt; [] appends none), expectExit (default 0), expectStdout (default the marker when a prompt is appended, otherwise required), expectStderr, expectTranscriptEntries (type/field/value rows that must coexist in the same newly-created JSONL), files (relative path -> content, written under the case's scratch directory), dirs (relative directories created there), note. Placeholders: {{sessionId}} a session already recorded under the isolated HOME, {{scratch}} this case's own directory, {{baseUrl}} the fake Anthropic server.",
+  "statusNote": "notSmoked exists so every parse-aligned flag carrying an argv is either exercised as a process or has a written reason not to be. ClaudeCodeCliFlagMatrixTest fails when one is neither, which is what keeps this plan from silently falling behind the matrix.",
+  "prompt": ["-p", "ping"],
+  "seedPrompt": "seed a transcript for the session-origin cases",
+  "cases": [
+    {
+      "entry": "print-p",
+      "note": "The baseline every other case is a variation of: one turn, start to finish, through the packaging under test."
+    },
+    { "entry": "no-interactive" },
+
+    {
+      "entry": "continue-c",
+      "note": "The case this harness was built for. A native image missing reflection metadata for AssistantContent's constructor aborts here and nowhere else, because -c is the only startup path that deserializes a recorded assistant message before the first turn. Only meaningful while the workspace sits outside a git repository: inside one, session lookup resolves through the enclosing repository's worktrees, finds nothing, and starts a fresh session that never touches the recorded message."
+    },
+    { "entry": "continue" },
+    {
+      "entry": "resume",
+      "argv": ["--resume", "{{sessionId}}"],
+      "note": "The matrix argv names a UUID no session has, which is a parse-level concern; a process needs one that was actually recorded."
+    },
+    {
+      "entry": "resume-r",
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "Error: --resume requires a valid session ID or session title when used with --print. Usage: claude -p --resume <session-id|title>",
+      "note": "A bare -r asks for the interactive picker, which --print cannot render. Refusing is the correct answer, so the exit code and the wording are both the assertion."
+    },
+    {
+      "entry": "resume-long-bare",
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "Usage: claude -p --resume <session-id|title>"
+    },
+    {
+      "entry": "resume-explicit-empty",
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "Usage: claude -p --resume <session-id|title>"
+    },
+    {
+      "entry": "official-name",
+      "expectTranscriptEntries": [
+        { "type": "custom-title", "field": "customTitle", "value": "Named session" },
+        { "type": "agent-name", "field": "agentName", "value": "Named session" }
+      ],
+      "note": "A successful named fresh turn must materialize both released metadata identities in one new transcript."
+    },
+    {
+      "entry": "official-session-id",
+      "expectTranscriptEntries": [
+        { "type": "user", "field": "sessionId", "value": "11111111-2222-4333-8444-555555555555" }
+      ],
+      "note": "The custom UUID must survive full startup and stamp the newly-created transcript, not just parse into the launch request."
+    },
+    {
+      "entry": "official-session-id",
+      "argv": ["--session-id", "{{sessionId}}"],
+      "prompt": [],
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "is already in use",
+      "note": "The harness seeds this UUID before the case; startup must refuse to append a fresh launch into that existing transcript."
+    },
+
+    {
+      "entry": "output-format",
+      "expectStdout": "\"subtype\":\"success\"",
+      "note": "The marker still reaches stdout, but inside the JSON envelope — so the envelope is what gets asserted."
+    },
+    {
+      "entry": "output-format-2",
+      "argv": ["--output-format", "stream-json", "--verbose"],
+      "expectStdout": "\"type\":\"result\"",
+      "note": "stream-json under --print is rejected without --verbose, so the flag cannot be smoked alone."
+    },
+    {
+      "entry": "include-partial-messages",
+      "argv": ["--output-format", "stream-json", "--verbose", "--include-partial-messages"],
+      "expectStdout": "\"type\":\"result\""
+    },
+    {
+      "entry": "replay-user-messages",
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "requires both --input-format=stream-json and --output-format=stream-json",
+      "note": "Smoked in its refusing form: the accepting form needs the stream-json control protocol on stdin, which is a protocol test rather than a startup one."
+    },
+    {
+      "entry": "json-schema",
+      "note": "The fake server's fixed turn does not satisfy the schema, so the launch retries and still exits 0. Several served turns for one case is expected here and nowhere else."
+    },
+
+    { "entry": "model" },
+    { "entry": "model-m-opus" },
+    { "entry": "effort" },
+    { "entry": "thinking" },
+    { "entry": "max-thinking-tokens" },
+    { "entry": "fallback-model" },
+    { "entry": "agent" },
+
+    { "entry": "max-tokens" },
+    { "entry": "max-turns" },
+    { "entry": "max-budget-usd" },
+
+    { "entry": "system-prompt" },
+    { "entry": "append-system-prompt" },
+    {
+      "entry": "official-plan-mode-instructions",
+      "note": "Exercises the hidden released flag through full print-mode startup; prompt-wire content is covered independently by the PlanModeInstructions wire baseline."
+    },
+    {
+      "entry": "system-prompt-file",
+      "argv": ["--system-prompt-file", "{{scratch}}/system-prompt.txt"],
+      "files": { "system-prompt.txt": "You are a smoke test. Answer with one word.\n" }
+    },
+    {
+      "entry": "append-system-prompt-file",
+      "argv": ["--append-system-prompt-file", "{{scratch}}/append.txt"],
+      "files": { "append.txt": "Stay terse.\n" }
+    },
+
+    { "entry": "permission-mode" },
+    { "entry": "dangerously-skip-permissions" },
+    { "entry": "permission-prompt-tool" },
+
+    { "entry": "allowedTools-allowedtools-bash-edit" },
+    { "entry": "allowedTools-allowed-tools-bash-git" },
+    { "entry": "disallowedTools" },
+    { "entry": "tools" },
+    { "entry": "tools-2" },
+    { "entry": "disable-slash-commands" },
+
+    { "entry": "api-key" },
+    {
+      "entry": "base-url",
+      "argv": ["--base-url", "{{baseUrl}}"],
+      "note": "The matrix argv points at a closed port on purpose. A process pointed there would hang until the case timed out, so the flag is smoked against the fake server it is meant to override the environment with."
+    },
+    {
+      "entry": "settings",
+      "argv": ["--settings", "{{scratch}}/settings.json"],
+      "files": { "settings.json": "{\n  \"includeCoAuthoredBy\": false\n}\n" }
+    },
+    { "entry": "setting-sources" },
+    {
+      "entry": "add-dir-add-dir-tmp-dira-tmp-dirb",
+      "argv": ["--add-dir", "{{scratch}}/dirA", "{{scratch}}/dirB"],
+      "dirs": ["dirA", "dirB"],
+      "note": "The variadic form, which has to consume both directories and still leave the prompt to -p."
+    },
+
+    {
+      "entry": "mcp-config",
+      "argv": ["--mcp-config", "{{scratch}}/mcp.json"],
+      "files": { "mcp.json": "{\n  \"mcpServers\": {}\n}\n" },
+      "note": "An empty server map: loading the file is the startup path worth smoking, whereas launching a real MCP server would make the case depend on a second process."
+    },
+    { "entry": "strict-mcp-config" },
+    {
+      "entry": "plugin-dir",
+      "argv": ["--plugin-dir", "{{scratch}}/plugins"],
+      "dirs": ["plugins"]
+    },
+    { "entry": "agents" },
+    { "entry": "agent-teams" },
+
+    {
+      "entry": "cwd",
+      "argv": ["--cwd", "{{scratch}}"]
+    },
+    {
+      "entry": "cwd-c-tmp",
+      "argv": ["-C", "{{scratch}}"]
+    },
+    { "entry": "theme" },
+    {
+      "entry": "official-init",
+      "note": "Runs the hidden init Setup trigger and then continues through the ordinary headless turn."
+    },
+    {
+      "entry": "official-maintenance",
+      "note": "Runs the hidden maintenance Setup trigger and then continues through the ordinary headless turn."
+    },
+    {
+      "entry": "official-init-only",
+      "prompt": [],
+      "expectStdout": "",
+      "note": "Setup and SessionStart complete without launching a REPL or making a model request."
+    },
+    {
+      "entry": "worktree",
+      "expectExit": 1,
+      "expectStdout": null,
+      "expectStderr": "Cannot create a worktree: not in a git repository",
+      "note": "The isolated workspace deliberately sits outside any git repository, which makes the refusal deterministic and keeps the case from creating a worktree in the developer's checkout. It smoked the success path by accident while the workspace lived under build/, leaving a real worktree and branch behind."
+    },
+
+    { "entry": "verbose" },
+    {
+      "entry": "verbose-v",
+      "note": "Smoked despite --verbose covering the same field, because the short letters diverge from 197 in a way a process can see: -v has to run a turn here, where 197 would print a version and exit. Reaching the marker is what distinguishes the two, so no extra expectation is needed."
+    },
+    { "entry": "debug" },
+    {
+      "entry": "help",
+      "prompt": [],
+      "expectStdout": "Usage: claude",
+      "note": "No prompt and no server: the usage text is produced before anything that could reach the network."
+    },
+    {
+      "entry": "version",
+      "prompt": [],
+      "expectStdout": "claude-code-java"
+    },
+    {
+      "entry": "version-v",
+      "prompt": [],
+      "expectStdout": "claude-code-java",
+      "note": "The other half of the -v/-V divergence: version lives on -V here and on -v in 197. Smoking both letters is what keeps an attempt to align them from silently swapping which one prints a version and which one runs a turn."
+    }
+  ],
+  "notSmoked": {
+    "print": "print-p exercises the identical field and code path; the matrix already proves both spellings land in the same one.",
+    "input-format": "stdin is the stream-json control protocol. Feeding it the empty stdin every other case uses would test the protocol reader, not startup.",
+    "combo-print-stream-json-stream-json": "Same reason as input-format, which it contains.",
+    "add-dir": "The single-value form is a parse-level distinction; the variadic case covers the process path.",
+    "add-dir-2": "Comma-splitting is a parse-level distinction only.",
+    "add-dir-swallows-trailing-prompt": "The whole assertion is a parse-level residual — that the trailing token becomes the prompt rather than a directory. A process cannot observe the difference.",
+    "worktree-2": "Creating a named worktree mutates a git repository, and the isolated workspace deliberately sits outside one.",
+    "worktree-w": "Same as worktree-2; the bare form already smokes the refusal path.",
+    "debug-2": "The whole assertion is a parse-level residual — that 197's category filter becomes the initial prompt here rather than a debug filter. Both spellings end as a prompt sent to the model, so a process cannot observe which field the token landed in.",
+    "official-debug-file": "The SDK transport test verifies argv mapping; a startup smoke would create a diagnostic artifact outside the transcript assertions.",
+    "official-include-hook-events": "Hook-event emission requires a stream-json callback fixture and is covered with the SDK bidirectional protocol rather than one-shot startup.",
+    "official-session-mirror": "Transcript mirror frames require a live stream-json consumer and SessionStore assertion, which belongs to the SDK transport tests.",
+    "official-allow-dangerously-skip-permissions": "The meaningful behavior is a later SDK permission-mode transition; one-shot startup cannot distinguish allow from immediate bypass safely.",
+    "official-thinking-display": "Thinking display affects partial stream rendering and needs a thinking-event fixture rather than the fixed one-shot smoke response.",
+    "official-task-budget": "Task budget is consumed during nested task execution; the smoke server does not issue an Agent or other budgeted task.",
+    "official-fork-session": "A valid process case needs a seeded resume target and a second transcript identity; this is covered by dedicated resume/fork tests.",
+    "official-no-session-persistence": "The observable contract is the absence of a transcript, while this smoke harness expects a transcript for its normal marker assertions.",
+    "official-resume-session-at": "A valid process case requires a seeded multi-message chain containing the selected UUID; dedicated resume fixtures cover that boundary.",
+    "official-rewind-files": "A valid process case requires both a seeded transcript message UUID and a matching filesystem checkpoint; CliRewindFilesOperationTest covers the standalone restore and validation paths.",
+    "official-betas": "The fixed fake response does not expose request beta headers; request-wire tests are the authoritative assertion for this option.",
+    "official-managed-settings": "Managed policy precedence needs isolated policy sources and is covered by settings integration tests rather than the generic startup marker.",
+    "official-plugin-dir-no-mcp": "Its distinction from plugin-dir is MCP suppression inside a populated plugin; an empty-directory startup smoke cannot observe it."
+  }
+}

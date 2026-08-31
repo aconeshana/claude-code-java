@@ -1,0 +1,170 @@
+name: release
+
+# 打 v* 标签时构建并上传各平台分发包，产出可在 README 引用的 release 资产。
+# 手动触发：Actions → release → Run workflow。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "手动出包的 tag / 版本号（例如 v0.1.0）"
+        required: true
+
+permissions:
+  contents: write
+
+# 资产命名约定：native 二进制带平台后缀、不带版本号（版本由 release tag / 标题
+# 表达，README 用 /releases/latest/download/ 永久引用，发新版不破坏链接）。
+# 跨平台的 fat JAR 只打一份，作为备选 asset。
+jobs:
+  build-native:
+    name: build-${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── macOS ──────────────────────────────────────────────
+          # GitHub 免费公共 macOS runner 只有 x64（Intel），无法产出 Apple
+          # Silicon（arm64）的 GraalVM 二进制。darwin-arm64 使用 self-hosted
+          # runner（你的 Mac）构建：
+          #   · 先在仓库 Settings → Actions → Runners 注册一个 self-hosted runner
+          #   · 用仓库变量 ARM_MACOS_RUNNER 指定其 label（默认 self-hosted）
+          - os: macos-13
+            platform: darwin-amd64
+            gradleTarget: darwin-amd64
+            asset: claude-code-app-darwin-amd64
+          - os: ${{ vars.ARM_MACOS_RUNNER || 'self-hosted' }}
+            platform: darwin-arm64
+            gradleTarget: darwin-arm64
+            asset: claude-code-app-darwin-arm64
+          # ── Linux ──────────────────────────────────────────────
+          - os: ubuntu-latest
+            platform: linux-amd64
+            gradleTarget: linux-amd64
+            asset: claude-code-app-linux-amd64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            gradleTarget: linux-arm64
+            asset: claude-code-app-linux-arm64
+          # ── Windows ────────────────────────────────────────────
+          # windows-arm64 同样需 ARM self-hosted runner；免费公共 windows-latest 为 x64。
+          - os: windows-latest
+            platform: windows-amd64
+            gradleTarget: windows-amd64
+            asset: claude-code-app-windows-amd64.exe
+            nativeBin: claude-code-app.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM (JDK 25 + native-image)
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "25"
+          distribution: "graalvm"
+          component: "native-image"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: "gradle"
+        # self-hosted runner 同样适用：该 action 会下载 GraalVM 并安装 native-image
+        # 组件到 runner 工作目录，不影响宿主机已有环境。
+
+      - name: Derive version
+        shell: bash
+        run: |
+          # push(tag) 用 tag 名（如 v0.1.0），手动触发用输入的 version；
+          # 去掉前导 v 后作为 Gradle -Pversion 和 release 标题用
+          if [ "${{ github.event_name }}" = "push" ]; then
+            RAW="${{ github.ref_name }}"
+          else
+            RAW="${{ github.event.inputs.version }}"
+          fi
+          echo "RELEASE_VERSION=${RAW#v}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${RAW}" >> "$GITHUB_ENV"
+
+      - name: Build native binary
+        run: |
+          ./gradlew :claude-code-app:nativeReleaseCompile \
+            -PdistributionTarget=${{ matrix.gradleTarget }} \
+            -Pversion=${{ env.RELEASE_VERSION }}
+        shell: bash
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # 产物路径：Linux/macOS 为 claude-code-app，Windows 为 claude-code-app.exe
+          cp "claude-code-app/build/native/nativeReleaseCompile/${{ matrix.nativeBin || 'claude-code-app' }}" \
+             "release/${{ matrix.asset }}"
+          # 仅有可执行位的场景（macOS/Linux 浏览器下载裸文件）才需要 chmod；Windows .exe 无害
+          chmod +x "release/${{ matrix.asset }}" || true
+
+      - name: Upload release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.RELEASE_TAG }}"
+          # 各平台 job 并发，release 不存在则先创建（幂等兜底）
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
+              --notes "Claude Code Java ${{ env.RELEASE_VERSION }}" || true
+          fi
+          gh release upload "$TAG" "release/${{ matrix.asset }}" --clobber
+
+  build-jar:
+    name: build-jar
+    runs-on: ubuntu-latest
+    needs: []  # 与二进制构建并行；jar 跨平台，只打一份即可
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "25"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: "gradle"
+
+      - name: Derive version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            RAW="${{ github.ref_name }}"
+          else
+            RAW="${{ github.event.inputs.version }}"
+          fi
+          echo "RELEASE_VERSION=${RAW#v}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${RAW}" >> "$GITHUB_ENV"
+
+      - name: Build fat JAR
+        run: |
+          ./gradlew :claude-code-app:shadowJar -Pversion=${{ env.RELEASE_VERSION }}
+        shell: bash
+
+      - name: Stage JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp claude-code-app/build/libs/claude-code-app-*.jar release/claude-code-app.jar
+
+      - name: Upload release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.RELEASE_TAG }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
+              --notes "Claude Code Java ${{ env.RELEASE_VERSION }}" || true
+          fi
+          gh release upload "$TAG" "release/claude-code-app.jar" --clobber

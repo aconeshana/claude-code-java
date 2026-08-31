@@ -1,0 +1,20 @@
+{
+  "version": "9.9.9",
+  "skills": [
+    {
+      "name": "test-skill",
+      "description": "Test skill",
+      "path": "skills/test-skill.md",
+      "source": "BUNDLED",
+      "placement": "AFTER_PLUGINS",
+      "allowedTools": []
+    }
+  ],
+  "workflows": [
+    {
+      "name": "test-workflow",
+      "path": "workflows/test-workflow.js",
+      "hidden": false
+    }
+  ]
+}

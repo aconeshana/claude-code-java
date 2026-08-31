@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+      Match the official client: debug logging is opt-in. In particular, the
+      TUI emits high-volume key/stream diagnostics at DEBUG; running a
+      synchronous DEBUG FileAppender by default serialized GUI input and token
+      delivery on file I/O. CLAUDE_CODE_LOG_LEVEL=DEBUG remains available for
+      diagnostics, but the async wrapper never blocks the producer thread.
+    -->
+    <property name="LOG_LEVEL" value="${CLAUDE_CODE_LOG_LEVEL:-INFO}"/>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>/tmp/claude-code-java.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{30} - %msg%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>8192</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <root level="${LOG_LEVEL}">
+        <appender-ref ref="ASYNC_FILE"/>
+    </root>
+</configuration>
