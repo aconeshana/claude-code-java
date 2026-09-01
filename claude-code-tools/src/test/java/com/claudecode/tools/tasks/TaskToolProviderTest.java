@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,7 +63,7 @@ class TaskToolProviderTest {
             assertFalse(taskBoard instanceof TaskBoardService);
             assertEquals(List.of(new TaskReminderItem(
                 "1", "borrowed task", "description", "working", null,
-                "pending", List.of(), List.of(), Map.of("source", "test"))),
+                "pending", List.of(), List.of(), Optional.of(Map.of("source", "test")))),
                 reminders.currentReminders());
         }
     }

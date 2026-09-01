@@ -278,13 +278,13 @@ final class TaskPersistence {
         if (status == null) throw new IOException("status has an unsupported value");
         List<String> blocks = requiredStringArray(node, "blocks");
         List<String> blockedBy = requiredStringArray(node, "blockedBy");
-        Map<String, Object> metadata = null;
+        Optional<Map<String, Object>> metadata = Optional.empty();
         if (node.has("metadata")) {
             JsonNode metadataNode = node.get("metadata");
             if (!metadataNode.isObject()) throw new IOException("metadata must be an object");
             try {
-                metadata = JsonUtils.getMapper().convertValue(metadataNode,
-                    new TypeReference<LinkedHashMap<String, Object>>() { });
+                metadata = Optional.of(JsonUtils.getMapper().convertValue(metadataNode,
+                    new TypeReference<LinkedHashMap<String, Object>>() { }));
             } catch (IllegalArgumentException e) {
                 throw new IOException("metadata is invalid", e);
             }

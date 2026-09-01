@@ -86,7 +86,7 @@ public class TodoStore {
         return new Task(
             id, subject, description == null ? "" : description,
             Optional.ofNullable(activeForm), Optional.empty(), TodoStatus.PENDING,
-            List.of(), List.of(), metadata);
+            List.of(), List.of(), Optional.ofNullable(metadata));
     }
 
     public synchronized Optional<Task> get(String taskId) {

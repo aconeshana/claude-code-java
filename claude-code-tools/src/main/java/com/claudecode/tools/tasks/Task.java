@@ -24,38 +24,25 @@ public record Task(
     TodoStatus status,
     List<String> blocks,
     List<String> blockedBy,
-    @JsonInclude(value = JsonInclude.Include.CUSTOM, valueFilter = AbsentMetadataFilter.class)
-    Map<String, Object> metadata
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    Optional<Map<String, Object>> metadata
 ) {
 
-    private static final Map<String, Object> ABSENT_METADATA =
-        Collections.unmodifiableMap(new LinkedHashMap<>());
-
-    /** Jackson filter that distinguishes an omitted metadata field from an explicit empty object. */
-    public static final class AbsentMetadataFilter {
-        @Override
-        public boolean equals(Object other) {
-            return other == ABSENT_METADATA;
-        }
-
-        @Override
-        public int hashCode() {
-            return System.identityHashCode(ABSENT_METADATA);
-        }
-    }
-
+    /**
+     * Absent metadata is modeled as {@link Optional#empty()} so the wire form distinguishes an
+     * omitted {@code metadata} field from an explicit empty object ({@code {}}) — the same
+     * NON_ABSENT pattern as {@code activeForm}/{@code owner}, which the Jdk8Module serializes
+     * without reflection (native-image safe; a CUSTOM valueFilter class is not, since Jackson
+     * instantiates the filter reflectively).
+     */
     public Task {
         activeForm = activeForm == null ? Optional.empty() : activeForm;
         owner = owner == null ? Optional.empty() : owner;
         blocks = blocks == null ? List.of() : List.copyOf(blocks);
         blockedBy = blockedBy == null ? List.of() : List.copyOf(blockedBy);
-        metadata = metadata == null || metadata == ABSENT_METADATA
-            ? ABSENT_METADATA
-            : Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
-    }
-
-    boolean hasMetadata() {
-        return metadata != ABSENT_METADATA;
+        metadata = metadata == null
+            ? Optional.empty()
+            : metadata.map(value -> Collections.unmodifiableMap(new LinkedHashMap<>(value)));
     }
 
     public Task withId(String newId) {
@@ -92,6 +79,7 @@ public record Task(
     }
 
     public Task withMetadata(Map<String, Object> newMetadata) {
-        return new Task(id, subject, description, activeForm, owner, status, blocks, blockedBy, newMetadata);
+        return new Task(id, subject, description, activeForm, owner, status, blocks, blockedBy,
+            Optional.ofNullable(newMetadata));
     }
 }

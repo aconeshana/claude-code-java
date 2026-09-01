@@ -25,7 +25,7 @@ class TaskMetadataCompatibilityTest {
         tool.call(input, ToolExecutionContext.of(new AbortController(), "session"));
 
         Task updated = store.get(task.id()).orElseThrow();
-        assertNull(updated.metadata().get("nullable"));
-        assertEquals("value", updated.metadata().get("added"));
+        assertNull(updated.metadata().orElseThrow().get("nullable"));
+        assertEquals("value", updated.metadata().orElseThrow().get("added"));
     }
 }

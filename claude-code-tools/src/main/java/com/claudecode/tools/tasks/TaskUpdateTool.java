@@ -227,7 +227,8 @@ public class TaskUpdateTool extends AnnotatedTool<JsonNode, String> {
             }
         }
         if (input.has("metadata") && input.get("metadata").isObject()) {
-            next = next.withMetadata(mergeMetadata(existing.metadata(), input.get("metadata")));
+            next = next.withMetadata(
+                mergeMetadata(existing.metadata().orElse(Map.of()), input.get("metadata")));
             updatedFields.add("metadata");
         }
 
@@ -341,7 +342,7 @@ public class TaskUpdateTool extends AnnotatedTool<JsonNode, String> {
             merged = merged.withOwner(requested.owner().orElse(null));
         }
         if (changedFields.contains("metadata")) {
-            merged = merged.withMetadata(requested.metadata());
+            merged = merged.withMetadata(requested.metadata().orElse(null));
         }
         if (changedFields.contains("status")) {
             merged = merged.withStatus(requested.status());

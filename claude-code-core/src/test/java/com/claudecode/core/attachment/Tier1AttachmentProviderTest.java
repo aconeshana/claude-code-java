@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.BiFunction;
@@ -209,7 +210,7 @@ class Tier1AttachmentProviderTest {
     void taskReminder_emitsAfterThresholdAndCarriesPersistentTaskShape() {
         List<TaskReminderItem> tasks = List.of(new TaskReminderItem(
             "7", "Write tests", "Cover the reminder", "Writing tests", null,
-            "in_progress", List.of("8"), List.of(), Map.of()));
+            "in_progress", List.of("8"), List.of(), Optional.of(Map.of())));
         var provider = new TaskReminderAttachmentProvider(() -> tasks);
 
         var out = provider.collect(ctx(plainTurns(12), "", null,
@@ -227,7 +228,7 @@ class Tier1AttachmentProviderTest {
     void taskReminder_requiresTaskUpdateAndCountsBothManagementTools() {
         List<TaskReminderItem> tasks = List.of(new TaskReminderItem(
             "1", "Task", "Description", null, null, "pending",
-            List.of(), List.of(), Map.of()));
+            List.of(), List.of(), Optional.of(Map.of())));
         var provider = new TaskReminderAttachmentProvider(() -> tasks);
         assertTrue(provider.collect(ctx(plainTurns(12), "", null,
             List.of("TaskCreate"), List.of(), null, null, null,

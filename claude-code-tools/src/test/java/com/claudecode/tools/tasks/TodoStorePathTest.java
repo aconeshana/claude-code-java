@@ -59,7 +59,7 @@ class TodoStorePathTest {
         assertEquals(TodoStatus.PENDING, task.status());
         assertTrue(task.activeForm().isEmpty());
         assertTrue(task.owner().isEmpty());
-        assertEquals(Map.of(), task.metadata());
+        assertTrue(task.metadata().isEmpty());
     }
 
     @Test
@@ -222,8 +222,8 @@ class TodoStorePathTest {
 
         Task created = store.create("metadata", "keep JSON null", null, metadata);
 
-        assertTrue(created.metadata().containsKey("nullable"));
-        assertEquals(null, created.metadata().get("nullable"));
+        assertTrue(created.metadata().orElseThrow().containsKey("nullable"));
+        assertEquals(null, created.metadata().orElseThrow().get("nullable"));
     }
 
     @Test

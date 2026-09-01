@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /** Persistent task shape carried by a {@code task_reminder} attachment. */
 public record TaskReminderItem(
@@ -17,31 +18,22 @@ public record TaskReminderItem(
     String status,
     List<String> blocks,
     List<String> blockedBy,
-    @JsonInclude(value = JsonInclude.Include.CUSTOM,
-        valueFilter = AbsentMetadataFilter.class) Map<String, Object> metadata
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    Optional<Map<String, Object>> metadata
 ) {
 
-    private static final Map<String, Object> ABSENT_METADATA =
-        Collections.unmodifiableMap(new LinkedHashMap<>());
-
-    /** Keeps absent metadata distinct from an explicitly supplied empty JSON object. */
-    public static final class AbsentMetadataFilter {
-        @Override
-        public boolean equals(Object other) {
-            return other == ABSENT_METADATA;
-        }
-
-        @Override
-        public int hashCode() {
-            return System.identityHashCode(ABSENT_METADATA);
-        }
-    }
-
+    /**
+     * Absent metadata is {@link Optional#empty()} so the wire form keeps an omitted {@code
+     * metadata} field distinct from an explicit empty JSON object. Uses NON_ABSENT + the
+     * Jdk8Module serializer rather than a CUSTOM valueFilter: Jackson instantiates valueFilter
+     * classes reflectively, which breaks under GraalVM native image unless each filter class is
+     * registered in reachability-metadata.json.
+     */
     public TaskReminderItem {
         blocks = List.copyOf(blocks == null ? List.of() : blocks);
         blockedBy = List.copyOf(blockedBy == null ? List.of() : blockedBy);
-        metadata = metadata == null || metadata == ABSENT_METADATA
-            ? ABSENT_METADATA
-            : Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
+        metadata = metadata == null
+            ? Optional.empty()
+            : metadata.map(value -> Collections.unmodifiableMap(new LinkedHashMap<>(value)));
     }
 }

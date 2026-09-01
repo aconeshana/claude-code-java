@@ -20,6 +20,7 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -403,7 +404,7 @@ public final class TaskBoardService implements TaskBoardPort, AutoCloseable {
 
     private static List<Task> visibleTasks(TodoStore store) {
         return store.list().stream()
-            .filter(task -> !isJavaScriptTruthy(task.metadata().get("_internal")))
+            .filter(task -> !isJavaScriptTruthy(task.metadata().orElse(Map.of()).get("_internal")))
             .toList();
     }
 

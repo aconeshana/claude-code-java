@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import com.claudecode.core.plan.PlanHistoryEntry;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -274,7 +275,7 @@ class AttachmentPayloadSerializationTest {
     void taskReminderRoundtripsReleasedPersistentTaskShape() throws Exception {
         TaskReminderAttachment p = new TaskReminderAttachment(List.of(
             new TaskReminderItem("3", "Implement feature", "Description", null, null,
-                "pending", List.of(), List.of("1"), Map.of())), 1);
+                "pending", List.of(), List.of("1"), Optional.of(Map.of()))), 1);
         JsonNode node = mapper.valueToTree(p);
         assertEquals("task_reminder", node.get("type").asText());
         assertEquals("3", node.path("content").get(0).path("id").asText());

@@ -857,6 +857,12 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.services.insights.SessionMeta",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "com.claudecode.services.plugins.marketplace.FlaggedPluginStore$Entry",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -1005,6 +1011,12 @@
     },
     {
       "type": "com.claudecode.services.plugins.marketplace.UserConfigOption",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.runtime.McpbBundleLoader$CacheMetadata",
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true

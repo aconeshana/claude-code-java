@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import com.claudecode.core.plan.PlanHistoryEntry;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -659,7 +660,7 @@ class AttachmentRendererTest {
     void taskReminderRendersReleased197TaskList() {
         List<UserMessage> out = AttachmentRenderer.render(new TaskReminderAttachment(
             List.of(new TaskReminderItem("4", "Run tests", "Full suite", null, null,
-                "in_progress", List.of(), List.of(), Map.of())), 1));
+                "in_progress", List.of(), List.of(), Optional.of(Map.of()))), 1));
         assertEquals(1, out.size());
         assertTrue(out.getFirst().isMeta());
         assertEquals(
@@ -684,7 +685,7 @@ class AttachmentRendererTest {
     void taskReminderDoesNotRenderWhenReleasedTaskToolsGateIsOff() {
         TaskReminderAttachment reminder = new TaskReminderAttachment(
             List.of(new TaskReminderItem("4", "Run tests", "Full suite", null, null,
-                "pending", List.of(), List.of(), Map.of())), 1);
+                "pending", List.of(), List.of(), Optional.of(Map.of()))), 1);
         SubprocessEnvironment.updateRuntime(Map.of("CLAUDE_CODE_ENABLE_TASKS", "false"));
         try {
             assertTrue(AttachmentRenderer.render(reminder).isEmpty());

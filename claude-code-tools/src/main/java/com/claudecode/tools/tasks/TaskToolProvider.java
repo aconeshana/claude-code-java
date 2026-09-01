@@ -129,6 +129,6 @@ public class TaskToolProvider implements AutoCloseable {
             task.id(), task.subject(), task.description(),
             task.activeForm().orElse(null), task.owner().orElse(null),
             task.status().wireValue(), task.blocks(), task.blockedBy(),
-            task.hasMetadata() ? task.metadata() : null);
+            task.metadata());
     }
 }
