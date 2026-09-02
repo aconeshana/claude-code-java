@@ -358,10 +358,12 @@ class LanternaMessageDispatcherMessageActionsTest {
     @Test
     void persistedPlanRejectionRendersTheRejectedPlanProjection() {
         String id = "toolu_exit_plan_rejected";
-        String released197Prefix = "The agent proposed a plan that was rejected by the user. "
-            + "The user chose to stay in plan mode rather than proceed with implementation.\n"
-            + "Rejected plan:\n";
-        assertEquals(released197Prefix, MessageConstants.PLAN_REJECTION_PREFIX);
+        String released197Prefix = """
+            The agent proposed a plan that was rejected by the user. \
+            The user chose to stay in plan mode rather than proceed with implementation.
+            Rejected plan:
+            """;
+        assertEquals(MessageConstants.PLAN_REJECTION_PREFIX, released197Prefix);
         String content = released197Prefix + "# Plan\n\n- update the parser";
         MessagePanel panel = new MessagePanel();
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();

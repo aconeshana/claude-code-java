@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.ui.lanterna.input.BackspaceRunKeyStroke;
 import com.claudecode.ui.lanterna.input.PlainTextKeyStroke;
-import com.claudecode.ui.lanterna.input.WindowInputRouter;
 
 /**
  * {@link MultiWindowTextGUI} subclass hosting the SCREEN-LEVEL virtual text selection.

@@ -4,6 +4,10 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.PasteKeyStroke;
 
+import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.List;
+
 
 public final class SearchInput {
 
@@ -248,12 +252,12 @@ public final class SearchInput {
         return text.length();
     }
 
-    private static java.util.List<int[]> wordLikeSegments(String text) {
-        java.util.List<int[]> segments = new java.util.ArrayList<>();
-        java.text.BreakIterator words = java.text.BreakIterator.getWordInstance();
+    private static List<int[]> wordLikeSegments(String text) {
+        List<int[]> segments = new ArrayList<>();
+        BreakIterator words = BreakIterator.getWordInstance();
         words.setText(text);
         for (int start = words.first(), end = words.next();
-             end != java.text.BreakIterator.DONE;
+             end != BreakIterator.DONE;
              start = end, end = words.next()) {
             int runStart = -1;
             for (int offset = start; offset < end;) {
@@ -285,18 +289,18 @@ public final class SearchInput {
 
     private int previousGraphemeOffset() {
         if (cursorOffset <= 0) return 0;
-        java.text.BreakIterator graphemes = java.text.BreakIterator.getCharacterInstance();
+        BreakIterator graphemes = BreakIterator.getCharacterInstance();
         graphemes.setText(query.toString());
         int previous = graphemes.preceding(cursorOffset);
-        return previous == java.text.BreakIterator.DONE ? 0 : previous;
+        return previous == BreakIterator.DONE ? 0 : previous;
     }
 
     private int nextGraphemeOffset() {
         if (cursorOffset >= query.length()) return query.length();
-        java.text.BreakIterator graphemes = java.text.BreakIterator.getCharacterInstance();
+        BreakIterator graphemes = BreakIterator.getCharacterInstance();
         graphemes.setText(query.toString());
         int next = graphemes.following(cursorOffset);
-        return next == java.text.BreakIterator.DONE ? query.length() : next;
+        return next == BreakIterator.DONE ? query.length() : next;
     }
 
     private static boolean isKillKey(KeyStroke key) {

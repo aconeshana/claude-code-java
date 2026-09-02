@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
-import com.claudecode.ui.lanterna.repl.LanternaSessionSink;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 
 /**

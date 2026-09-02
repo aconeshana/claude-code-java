@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 class PromptPasteTextPolicyTest {
 
     @Test
@@ -28,8 +30,8 @@ class PromptPasteTextPolicyTest {
         assertFalse(PromptPasteTextPolicy.looksLikeUnbracketedPaste("a".repeat(800)));
         assertTrue(PromptPasteTextPolicy.looksLikeUnbracketedPaste("a".repeat(801)));
         assertFalse(PromptPasteTextPolicy.looksLikeUnbracketedPaste(
-            String.join("\n", java.util.Collections.nCopies(7, "short"))));
+            String.join("\n", Collections.nCopies(7, "short"))));
         assertTrue(PromptPasteTextPolicy.looksLikeUnbracketedPaste(
-            String.join("\n", java.util.Collections.nCopies(7, "x".repeat(30)))));
+            String.join("\n", Collections.nCopies(7, "x".repeat(30)))));
     }
 }

@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
 import org.apache.commons.lang3.Strings;
@@ -234,7 +235,7 @@ class MultiPlanFilesTest {
     void concurrentActivationAllocatesOnlyOneDraftOrdinal() throws Exception {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<String> ids = executor.invokeAll(IntStream.range(0, 12)
-                    .mapToObj(_ -> (java.util.concurrent.Callable<String>) () ->
+                    .mapToObj(_ -> (Callable<String>) () ->
                         PlanFiles.activatePlan(SESSION_ID, null).planId())
                     .toList())
                 .stream().map(future -> {

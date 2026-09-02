@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CyclicBarrier;
@@ -32,7 +33,7 @@ class TodoStoreRelationshipConcurrencyTest {
         TodoStore persisted = new TodoStore(tasksBase, "session");
         Task result = persisted.get(from.id()).orElseThrow();
         assertEquals("concurrent subject", result.subject());
-        assertEquals(java.util.List.of(to.id()), result.blocks());
+        assertEquals(List.of(to.id()), result.blocks());
     }
 
     @Test

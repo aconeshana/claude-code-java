@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.logging.Logger;
 import com.claudecode.ui.lanterna.input.ExternalEditorLauncher;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;

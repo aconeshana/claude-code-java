@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -336,7 +337,7 @@ final class PlanCatalogStore {
 
     private void quarantineCorruptManifest() throws IOException {
         String stamp = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-            .withZone(java.time.ZoneOffset.UTC).format(Instant.now());
+            .withZone(ZoneOffset.UTC).format(Instant.now());
         Path quarantine = Files.createTempFile(directory,
             manifest.getFileName() + ".corrupt-" + stamp + "-", ".json");
         Files.move(manifest, quarantine, StandardCopyOption.REPLACE_EXISTING);

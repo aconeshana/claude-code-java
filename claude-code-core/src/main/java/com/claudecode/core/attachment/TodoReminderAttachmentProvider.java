@@ -1,5 +1,5 @@
 package com.claudecode.core.attachment;
-
+import com.claudecode.core.process.SubprocessEnvironment;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
@@ -27,7 +27,7 @@ public final class TodoReminderAttachmentProvider implements AttachmentProvider 
 
     public TodoReminderAttachmentProvider() {
         this(() -> !"off".equals(
-            com.claudecode.core.process.SubprocessEnvironment.get(
+            SubprocessEnvironment.get(
                 "CLAUDE_CODE_TODO_REMINDER_MODE")));
     }
 

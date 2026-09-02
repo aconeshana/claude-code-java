@@ -3,6 +3,8 @@ package com.claudecode.cli.daemon.scheduled;
 import com.claudecode.cli.daemon.CurrentCliCommand;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.tools.cron.CronJitterConfig;
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -48,7 +50,7 @@ public final class ScheduledDaemonWorker {
                     + " maxConcurrent=" + config.maxConcurrent());
                 runtime.awaitStop();
                 return 0;
-            } catch (InterruptedException failure) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return 0;
             } catch (Exception failure) {
@@ -63,7 +65,7 @@ public final class ScheduledDaemonWorker {
 
     private static Path statusPath() {
         String configured = System.getenv("CLAUDE_DAEMON_SCHEDULED_STATUS_PATH");
-        if (configured != null && !configured.isBlank()) return Path.of(configured);
+        if (StringUtils.isNotBlank(configured)) return Path.of(configured);
         return Path.of(System.getProperty("user.dir"), ".claude",
             "daemon.scheduled.status.json");
     }

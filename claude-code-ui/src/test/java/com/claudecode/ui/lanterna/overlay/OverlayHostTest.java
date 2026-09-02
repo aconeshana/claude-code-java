@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
+
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -69,7 +71,7 @@ class OverlayHostTest {
         assertTrue(host.isSealed());
         assertThrows(IllegalStateException.class, () -> host.register(new TestOverlay()));
         assertThrows(IllegalStateException.class,
-            () -> host.registerAll(java.util.List.of(new TestOverlay())));
+            () -> host.registerAll(List.of(new TestOverlay())));
     }
 
     private static final class TestOverlay implements InlineOverlay {

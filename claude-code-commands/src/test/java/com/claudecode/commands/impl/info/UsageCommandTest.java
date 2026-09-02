@@ -3,7 +3,8 @@ package com.claudecode.commands.impl.info;
 
 import com.claudecode.commands.CommandContext;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class UsageCommandTest {
 

@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.input;
 
 import com.claudecode.core.message.PastedContent;
+import com.claudecode.core.serialization.JsonUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.LinkedHashSet;
@@ -323,7 +325,7 @@ class PromptHistoryTest {
                 .filter(line -> !StringUtils.isBlank(line))
                 .map(line -> {
                     try {
-                        return com.claudecode.core.serialization.JsonUtils.getMapper()
+                        return JsonUtils.getMapper()
                             .readTree(line).path("display").asText();
                     } catch (Exception failure) {
                         throw new AssertionError(failure);
@@ -340,7 +342,7 @@ class PromptHistoryTest {
         PromptHistory.TimestampedEntry metadata = PromptHistory.TimestampedEntry.deferred(
             "paste", 1L, () -> {
                 resolutions.incrementAndGet();
-                return java.util.concurrent.CompletableFuture.completedFuture(resolved);
+                return CompletableFuture.completedFuture(resolved);
             });
 
         assertEquals("paste", metadata.display());
@@ -446,10 +448,12 @@ class PromptHistoryTest {
             throws Exception {
         Path file = tmp.resolve("history.jsonl");
         Files.writeString(file,
-            "{\"display\":\"trailing slash\",\"sessionId\":\"other\",\"timestamp\":1,"
-                + "\"project\":\"/proj/\",\"cwd\":\"/proj\"}\n"
-                + "{\"display\":\"missing project\",\"sessionId\":\"other\","
-                + "\"timestamp\":2,\"cwd\":\"/proj\"}\n");
+            """
+            {"display":"trailing slash","sessionId":"other","timestamp":1,\
+            "project":"/proj/","cwd":"/proj"}
+            {"display":"missing project","sessionId":"other",\
+            "timestamp":2,"cwd":"/proj"}
+            """);
         PromptHistory h = history(tmp, 60_000);
 
         assertTrue(displays(h, 10).isEmpty());

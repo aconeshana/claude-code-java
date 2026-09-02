@@ -11,7 +11,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Comparator;
@@ -199,7 +201,7 @@ public final class PermissionGate {
 
     public static boolean supportsReleasedExternalAutoModeModel(String model) {
         if (StringUtils.isBlank(model)) return false;
-        String canonical = model.toLowerCase(java.util.Locale.ROOT);
+        String canonical = model.toLowerCase(Locale.ROOT);
         return canonical.contains("claude-opus-4-6")
             || canonical.contains("claude-sonnet-4-6");
     }
@@ -595,7 +597,7 @@ public final class PermissionGate {
     private static boolean isDangerousShellPattern(
             String content, Set<String> prefixes, boolean matchExe) {
         if (StringUtils.isBlank(content)) return true;
-        String normalized = content.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalized = content.trim().toLowerCase(Locale.ROOT);
         if (Strings.CS.equals("*", normalized)) return true;
         for (String prefix : prefixes) {
             if (matchesDangerousPrefix(normalized, prefix)) return true;
@@ -632,10 +634,10 @@ public final class PermissionGate {
     private static final Set<String> DANGEROUS_POWERSHELL_PREFIXES;
 
     static {
-        Set<String> bash = new java.util.LinkedHashSet<>(CROSS_PLATFORM_CODE_EXEC);
+        Set<String> bash = new LinkedHashSet<>(CROSS_PLATFORM_CODE_EXEC);
         bash.addAll(List.of("zsh", "fish", "eval", "exec", "env", "xargs", "sudo"));
         DANGEROUS_BASH_PREFIXES = Set.copyOf(bash);
-        Set<String> powershell = new java.util.LinkedHashSet<>(CROSS_PLATFORM_CODE_EXEC);
+        Set<String> powershell = new LinkedHashSet<>(CROSS_PLATFORM_CODE_EXEC);
         powershell.addAll(List.of(
             "pwsh", "powershell", "cmd", "wsl", "iex", "invoke-expression", "icm",
             "invoke-command", "start-process", "saps", "start", "start-job", "sajb",

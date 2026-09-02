@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CompletableFuture;
 import java.time.Instant;
-import com.claudecode.tools.agent.SubAgentRequest;
 
 /**
  * Live handle for a backgrounded sub-agent run: tracks coarse progress and drives the backing

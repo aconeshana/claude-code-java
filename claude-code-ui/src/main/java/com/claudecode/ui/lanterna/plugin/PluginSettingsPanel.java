@@ -24,8 +24,6 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.features.settings.PermissionsPanel;
-import com.claudecode.ui.lanterna.features.settings.SettingsTabContainer;
 import com.claudecode.ui.lanterna.input.InputPanel;
 
 /**

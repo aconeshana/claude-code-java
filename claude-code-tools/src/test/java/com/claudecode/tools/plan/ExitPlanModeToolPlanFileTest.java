@@ -10,6 +10,8 @@ import com.claudecode.core.attachment.PlanModeReminderAttachmentProvider;
 import com.claudecode.core.message.PlanModeReminderAttachment;
 import com.claudecode.core.plan.PlanCatalogContext;
 import com.claudecode.permissions.PermissionGate;
+import com.claudecode.tools.ValidationResult;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -178,9 +181,9 @@ class ExitPlanModeToolPlanFileTest {
 
         var validation = new ExitPlanModeTool(gate).validateInput(input, context);
 
-        assertInstanceOf(com.claudecode.tools.ValidationResult.Invalid.class, validation);
+        assertInstanceOf(ValidationResult.Invalid.class, validation);
         assertTrue(Strings.CS.contains(
-            ((com.claudecode.tools.ValidationResult.Invalid) validation).message(),
+            ((ValidationResult.Invalid) validation).message(),
             "current plan"));
     }
 
@@ -201,7 +204,7 @@ class ExitPlanModeToolPlanFileTest {
             () -> gate.consumePlanModeReentry(true));
 
         var attachments = provider.collect(AttachmentContext.builder(tempDir.toString())
-            .messages(java.util.List.of())
+            .messages(List.of())
             .input("")
             .fileStateCache(new FileStateCache())
             .querySource("main")

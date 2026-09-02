@@ -5,13 +5,15 @@ import com.claudecode.core.engine.PostToolUseOutputResult;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /** PostToolUse replacements must pass back through the real tool mapper and storage policy. */
 class PostToolUseOutputTest {
@@ -46,8 +48,8 @@ class PostToolUseOutputTest {
         assertInstanceOf(PostToolUseOutputResult.Rejected.class, processed);
     }
 
-    private static com.fasterxml.jackson.databind.ObjectMapper mapper() {
-        return com.claudecode.core.serialization.JsonUtils.getMapper();
+    private static ObjectMapper mapper() {
+        return JsonUtils.getMapper();
     }
 
     private static final class ReplacementTool extends Tool<JsonNode, String> {

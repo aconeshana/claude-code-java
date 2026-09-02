@@ -38,7 +38,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.*;
-import com.claudecode.tools.ToolRegistry;
 
 class FileToolsTest {
 

@@ -10,7 +10,6 @@ import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 
 import java.util.List;
-import com.claudecode.ui.lanterna.components.SpinnerComponent;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;

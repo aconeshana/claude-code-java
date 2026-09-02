@@ -14,6 +14,7 @@ import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import java.lang.reflect.Proxy;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class ReplSceneTest {
         assertThrows(IllegalStateException.class,
             () -> scene.register(new CountingOverlay(10, 1)));
         assertThrows(IllegalStateException.class,
-            () -> scene.registerAll(java.util.List.of(new CountingOverlay(10, 1))));
+            () -> scene.registerAll(List.of(new CountingOverlay(10, 1))));
     }
 
     @Test

@@ -5,7 +5,6 @@ import static com.claudecode.core.config.EnvUtils.isEnvTruthy;
 import com.claudecode.commands.AnnotatedCommand;
 import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.CommandContext;
-import com.claudecode.commands.CommandPresentationPorts;
 import com.claudecode.commands.CommandResult;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.runtime.doctor.DoctorReport;

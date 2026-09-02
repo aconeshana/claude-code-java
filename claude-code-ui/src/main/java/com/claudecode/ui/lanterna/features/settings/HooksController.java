@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.claudecode.ui.lanterna.dialog.HooksConfigMenuDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 
 /**

@@ -52,7 +52,7 @@ class FastTerminalInputDecoderTest {
     @Test
     void ordinaryBurstNeverConsultsEscapePatterns() throws Exception {
         AtomicInteger matches = new AtomicInteger();
-        CharacterPattern counting = sequence -> {
+        CharacterPattern counting = _ -> {
             matches.incrementAndGet();
             return null;
         };

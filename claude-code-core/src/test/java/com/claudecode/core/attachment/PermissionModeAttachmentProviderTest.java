@@ -1,9 +1,6 @@
 package com.claudecode.core.attachment;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.claudecode.core.engine.FileStateCache;
 import com.claudecode.core.message.AttachmentMessage;
@@ -75,10 +72,9 @@ class PermissionModeAttachmentProviderTest {
         var first = provider.collect(ctx(List.of()));
 
         assertEquals(2, first.size());
-        assertTrue(first.getFirst() instanceof PlanModeReentryAttachment);
-        assertTrue(first.get(1) instanceof PlanModeReminderAttachment);
-        assertTrue(provider.collect(ctx(List.of())).getFirst()
-            instanceof PlanModeReminderAttachment);
+        assertInstanceOf(PlanModeReentryAttachment.class, first.getFirst());
+        assertInstanceOf(PlanModeReminderAttachment.class, first.get(1));
+        assertInstanceOf(PlanModeReminderAttachment.class, provider.collect(ctx(List.of())).getFirst());
     }
 
     @Test

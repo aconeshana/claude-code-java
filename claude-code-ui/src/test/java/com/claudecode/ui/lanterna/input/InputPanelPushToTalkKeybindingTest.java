@@ -1,7 +1,6 @@
 package com.claudecode.ui.lanterna.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.message.PastedContent;
@@ -51,7 +50,7 @@ class InputPanelPushToTalkKeybindingTest {
                 panel.handleKeyForTest(SPACE);
             }
 
-            assertTrue(actions.heldCalls.get(actions.heldCalls.size() - 1),
+            assertTrue(actions.heldCalls.getLast(),
                 "a sustained burst must eventually classify as a hold");
             assertEquals("      ", panel.getText(),
                 "without a voice port the repeated spaces still fall through to input");

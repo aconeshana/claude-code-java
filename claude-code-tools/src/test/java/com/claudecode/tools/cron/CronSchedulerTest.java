@@ -96,7 +96,7 @@ class CronSchedulerTest {
                     firstFireEntered.countDown();
                     try {
                         secondFireEntered.await(500, TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException e) {
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                     }
                 } else {
@@ -391,16 +391,16 @@ class CronSchedulerTest {
         CronStore.CronJob ownedByOtherSession = new CronStore.CronJob(
             "abc12345", "1 8 * * *", "owned", false, true, now.get(), null,
             false, null, null, "session-a", 123L, "proc-token");
-        BiPredicate<Long, String> creatorAlive = (pid, token) -> true;
+        BiPredicate<Long, String> creatorAlive = (_, _) -> true;
 
         assertFalse(CronScheduler.shouldProcess(
             ownedByOtherSession, true, "session-b", creatorAlive));
         assertTrue(CronScheduler.shouldProcess(
             ownedByOtherSession, true, "session-a", creatorAlive));
         assertTrue(CronScheduler.shouldProcess(
-            ownedByOtherSession, true, "session-b", (pid, token) -> false));
+            ownedByOtherSession, true, "session-b", (_, _) -> false));
         assertFalse(CronScheduler.shouldProcess(
-            ownedByOtherSession, false, "session-b", (pid, token) -> false));
+            ownedByOtherSession, false, "session-b", (_, _) -> false));
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.input;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.PasteKeyStroke;
 import org.junit.jupiter.api.Test;
 
@@ -71,8 +72,8 @@ class SearchInputTest {
         SearchInput input = input();
         input.reset("A👨‍👩‍👧‍👦B");
 
-        input.handleKey(new KeyStroke(com.googlecode.lanterna.input.KeyType.ARROW_LEFT));
-        input.handleKey(new KeyStroke(com.googlecode.lanterna.input.KeyType.ARROW_LEFT));
+        input.handleKey(new KeyStroke(KeyType.ARROW_LEFT));
+        input.handleKey(new KeyStroke(KeyType.ARROW_LEFT));
         assertEquals(1, input.cursorOffset());
         input.handleKey(new KeyStroke('d', true, false));
 

@@ -129,7 +129,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
         boolean read = false;
         boolean classifiedAny = false;
         for (String segment : command.trim().split("\\s*[;|]\\s*")) {
-            if (segment.isBlank()) continue;
+            if (org.apache.commons.lang3.StringUtils.isBlank(segment)) continue;
             String[] words = segment.trim().split("\\s+");
             if (words.length == 0 || words[0].isEmpty()) continue;
             String rawExecutable = words[0].toLowerCase(Locale.ROOT);

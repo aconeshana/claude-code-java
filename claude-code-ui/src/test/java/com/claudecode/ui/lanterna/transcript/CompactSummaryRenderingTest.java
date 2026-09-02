@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.transcript;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.message.MessageContent;
@@ -59,7 +60,7 @@ class CompactSummaryRenderingTest {
         assertTrue(Strings.CS.contains(rendered,
             "Context: “focus on rewind”"), rendered);
         assertTrue(Strings.CS.contains(rendered, "(ctrl+o to expand history)"), rendered);
-        assertTrue(!Strings.CS.contains(rendered, "This session is being continued"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "This session is being continued"), rendered);
     }
 
     @Test
@@ -74,7 +75,7 @@ class CompactSummaryRenderingTest {
         assertTrue(Strings.CS.contains(rendered,
             LanternaMessageDispatcher.BLACK_CIRCLE + "Summarized conversation"), rendered);
         assertTrue(Strings.CS.contains(rendered, "This session is being continued"), rendered);
-        assertTrue(!Strings.CS.contains(rendered, "Summarized 3 messages"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "Summarized 3 messages"), rendered);
     }
 
     private static SDKMessage.User compactSummary() {

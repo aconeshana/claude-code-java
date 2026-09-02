@@ -1,7 +1,6 @@
 package com.claudecode.tools.sandbox;
 
 import com.claudecode.core.platform.Platform;
-import com.claudecode.tools.bash.BashTool;
 
 /**
  * Selects the platform-appropriate {@link SandboxManager} backend.

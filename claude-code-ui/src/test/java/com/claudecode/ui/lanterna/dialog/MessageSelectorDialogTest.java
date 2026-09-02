@@ -13,6 +13,7 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.ui.lanterna.components.SpinnerFrames;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -213,8 +215,9 @@ class MessageSelectorDialogTest {
     @Test
     void isSelectable_wrappedTeammateMessage_false() {
         assertFalse(MessageSelectorDialog.isSelectable(realUser(
-            "Another Claude session sent a message while you were working:\n"
-                + "<teammate-message teammate_id=\"agent-1\">hi</teammate-message>")));
+            """
+            Another Claude session sent a message while you were working:
+            <teammate-message teammate_id="agent-1">hi</teammate-message>""")));
     }
 
     @Test
@@ -349,7 +352,7 @@ class MessageSelectorDialogTest {
     void fullscreenVisibleWindowUsesHalfTerminalHeightAndShowsCountsAboveAndBelow() {
         MessageSelectorDialog d = new MessageSelectorDialog();
         d.setTerminalRowsSupplier(() -> 20);
-        List<Message> messages = java.util.stream.IntStream.range(0, 10)
+        List<Message> messages = IntStream.range(0, 10)
             .mapToObj(index -> (Message) realUser("message " + index))
             .toList();
         d.show(messages, NOOP_EXECUTOR, _ -> {});
@@ -480,10 +483,12 @@ class MessageSelectorDialogTest {
         UserMessage displayTag = realUser(
             "<system-reminder>hidden</system-reminder>\nvisible prompt");
         UserMessage bash = realUser("<bash-input>git status</bash-input>");
-        UserMessage command = realUser("<command-message>model</command-message>\n"
-            + "<command-args>opus</command-args>");
-        UserMessage skill = realUser("<command-message>pdf</command-message>\n"
-            + "<skill-format>true</skill-format>");
+        UserMessage command = realUser("""
+            <command-message>model</command-message>
+            <command-args>opus</command-args>""");
+        UserMessage skill = realUser("""
+            <command-message>pdf</command-message>
+            <skill-format>true</skill-format>""");
         MessageSelectorDialog d = new MessageSelectorDialog();
         d.setTerminalRowsSupplier(() -> 44);
         d.show(List.of(displayTag, bash, command, skill), NOOP_EXECUTOR, _ -> {});
@@ -498,8 +503,9 @@ class MessageSelectorDialogTest {
 
     @Test
     void commandMessageWithoutArgsKeepsTheOfficialTrailingSpace() throws Exception {
-        UserMessage command = realUser("<command-message>clear</command-message>\n"
-            + "<command-args></command-args>");
+        UserMessage command = realUser("""
+            <command-message>clear</command-message>
+            <command-args></command-args>""");
         Method display = MessageSelectorDialog.class.getDeclaredMethod(
             "messageDisplay", UserMessage.class, boolean.class, int.class);
         display.setAccessible(true);
@@ -601,8 +607,8 @@ class MessageSelectorDialogTest {
         TextColor added = image.getCharacterAt(addedColumn, addedRow).getForegroundColor();
         TextColor removed = image.getCharacterAt(removedColumn, addedRow).getForegroundColor();
 
-        assertEquals(com.claudecode.ui.lanterna.theme.LanternaTheme.diffAddedWord(), added);
-        assertEquals(com.claudecode.ui.lanterna.theme.LanternaTheme.diffRemovedWord(), removed);
+        assertEquals(LanternaTheme.diffAddedWord(), added);
+        assertEquals(LanternaTheme.diffRemovedWord(), removed);
     }
 
     @Test

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,7 +26,7 @@ class TaskSerializationTest {
     @Test
     void absentMetadataIsOmittedFromWireForm(@TempDir Path dir) throws Exception {
         Task task = new Task("1", "subject", "desc", Optional.empty(), Optional.empty(),
-            TodoStatus.PENDING, java.util.List.of(), java.util.List.of(), Optional.empty());
+            TodoStatus.PENDING, List.of(), List.of(), Optional.empty());
         Path target = dir.resolve("1.json");
 
         JsonUtils.writeJson(target, task, true);
@@ -38,7 +40,7 @@ class TaskSerializationTest {
     @Test
     void explicitEmptyMetadataSerializesAsEmptyObject(@TempDir Path dir) throws Exception {
         Task task = new Task("1", "subject", "desc", Optional.empty(), Optional.empty(),
-            TodoStatus.PENDING, java.util.List.of(), java.util.List.of(),
+            TodoStatus.PENDING, List.of(), List.of(),
             Optional.of(Map.of()));
         Path target = dir.resolve("1.json");
 
@@ -52,7 +54,7 @@ class TaskSerializationTest {
 
     @Test
     void metadataValuesRoundTripThroughDiskStore(@TempDir Path dir) throws Exception {
-        java.util.LinkedHashMap<String, Object> metadata = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("nullable", null);
         metadata.put("nested", Map.of("k", "v"));
         TodoStore store = new TodoStore(dir, "session");

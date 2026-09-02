@@ -4,6 +4,7 @@ import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.ui.lanterna.input.PromptHistory;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -49,7 +50,7 @@ class TranscriptControllerLocalAgentInputTest {
         assertEquals(List.of("second prompt", "first prompt"),
             TranscriptController.promptHistoryFromMessages(
                 List.of(first, meta, envelope, second)).stream()
-                .map(entry -> entry.display()).toList());
+                .map(PromptHistory.Entry::display).toList());
     }
 
     @Test
@@ -62,7 +63,7 @@ class TranscriptControllerLocalAgentInputTest {
 
         assertEquals(List.of("visible text", "compact text"),
             TranscriptController.promptHistoryFromMessages(List.of(compact, visibleOnly)).stream()
-                .map(entry -> entry.display()).toList());
+                .map(PromptHistory.Entry::display).toList());
     }
 
     private static UserMessage user(String uuid, String text, Instant timestamp) {

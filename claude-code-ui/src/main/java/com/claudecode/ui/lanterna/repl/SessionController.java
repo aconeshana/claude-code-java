@@ -70,7 +70,6 @@ import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
 import com.claudecode.ui.lanterna.components.OSC52Helper;
-import com.claudecode.ui.lanterna.input.InputModes;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessageCollapser;
@@ -113,7 +112,7 @@ public final class SessionController implements ReplCommandUiBridge.Session {
     private BooleanSupplier rewindInterruptRequired = () -> false;
     private Consumer<Runnable> rewindDeferrer = Runnable::run;
     private Consumer<Supplier<? extends CompletionStage<?>>> asyncRewindDeferrer =
-        operation -> operation.get();
+        Supplier::get;
     private final SessionResumeGeneration resumeGeneration = new SessionResumeGeneration();
     private UserKeybindingsStore keybindingsStore;
 
@@ -127,7 +126,7 @@ public final class SessionController implements ReplCommandUiBridge.Session {
 
     void setAsyncRewindDeferrer(
             Consumer<Supplier<? extends CompletionStage<?>>> deferrer) {
-        asyncRewindDeferrer = deferrer != null ? deferrer : operation -> operation.get();
+        asyncRewindDeferrer = deferrer != null ? deferrer : Supplier::get;
     }
 
     SessionController(WindowBasedTextGUI gui,

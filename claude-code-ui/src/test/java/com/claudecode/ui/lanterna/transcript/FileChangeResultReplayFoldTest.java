@@ -2,16 +2,7 @@ package com.claudecode.ui.lanterna.transcript;
 
 import com.claudecode.core.diff.FileChangeResult;
 import com.claudecode.core.diff.StructuredPatchHunk;
-import com.claudecode.core.message.AssistantContent;
-import com.claudecode.core.message.AssistantMessage;
-import com.claudecode.core.message.MessageContent;
-import com.claudecode.core.message.MessageOrigin;
-import com.claudecode.core.message.ProgressMessage;
-import com.claudecode.core.message.SDKMessage;
-import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.ToolUseBlock;
-import com.claudecode.core.message.Usage;
-import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.message.*;
 import com.claudecode.core.serialization.JsonUtils;
 import org.junit.jupiter.api.Test;
 
@@ -201,7 +192,7 @@ class FileChangeResultReplayFoldTest {
     }
 
     private static SDKMessage.Progress progress(String agentToolUseId, String uuid,
-                                                com.claudecode.core.message.Message child) {
+                                                Message child) {
         ProgressMessage.ProgressData data = new ProgressMessage.ProgressData(
             "agent_progress", null, null, null, null, null, null, null, false,
             child, "Inspect and update", "agent-id");

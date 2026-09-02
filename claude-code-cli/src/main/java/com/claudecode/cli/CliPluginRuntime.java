@@ -126,7 +126,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
      * Attaches the interactive command registry (created after startup plugin
      * load in the CLI wiring) and syncs the current command generation into it.
      */
-    public synchronized void attachCommandRegistry(CommandRegistry registry) {
+    @Override public synchronized void attachCommandRegistry(CommandRegistry registry) {
         attachCommandRegistry(registry, null);
     }
 

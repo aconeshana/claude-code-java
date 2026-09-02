@@ -2,34 +2,7 @@ package com.claudecode.services.compact;
 
 import com.claudecode.core.engine.FileStateCache;
 import com.claudecode.core.engine.MessageCompactor;
-import com.claudecode.core.message.AgentListingDeltaAttachment;
-import com.claudecode.core.message.AssistantContent;
-import com.claudecode.core.message.AssistantMessage;
-import com.claudecode.core.message.AttachmentMessage;
-import com.claudecode.core.message.AttachmentPayload;
-import com.claudecode.core.message.CompactFileReferenceAttachment;
-import com.claudecode.core.message.ContentBlock;
-import com.claudecode.core.message.DeferredToolsDeltaAttachment;
-import com.claudecode.core.message.DocumentBlock;
-import com.claudecode.core.message.FileContentAttachment;
-import com.claudecode.core.message.ImageBlock;
-import com.claudecode.core.message.InvokedSkillsAttachment;
-import com.claudecode.core.message.McpInstructionsDeltaAttachment;
-import com.claudecode.core.message.Message;
-import com.claudecode.core.message.MessageConstants;
-import com.claudecode.core.message.MessageContent;
-import com.claudecode.core.message.MessageFactory;
-import com.claudecode.core.message.PlanFileReferenceAttachment;
-import com.claudecode.core.message.PlanModeReminderAttachment;
-import com.claudecode.core.message.ProgressMessage;
-import com.claudecode.core.message.SystemMessage;
-import com.claudecode.core.message.TaskStatusAttachment;
-import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.TokenEstimator;
-import com.claudecode.core.message.ToolResultBlock;
-import com.claudecode.core.message.ToolUseBlock;
-import com.claudecode.core.message.Usage;
-import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.message.*;
 import com.claudecode.core.plan.PlanCatalogContext;
 import com.claudecode.services.compact.CompactAttachmentStateProvider.AsyncTask;
 import com.claudecode.services.compact.CompactAttachmentStateProvider.InvokedSkill;
@@ -38,6 +11,7 @@ import com.claudecode.services.compact.CompactAttachmentStateProvider.Snapshot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -298,12 +272,12 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
         for (Message msg : messages) {
             if (!(msg instanceof UserMessage(
                 String uuid, MessageContent message, boolean isMeta, boolean isCompactSummary,
-                Object toolUseResult, com.claudecode.core.message.MessageOrigin origin,
-                String parentUuidValue, java.time.Instant timestampValue,
+                Object toolUseResult, MessageOrigin origin,
+                String parentUuidValue, Instant timestampValue,
                 List<Integer> imagePasteIds, String permissionMode, String sessionIdValue,
                 String sourceToolAssistantUUID, String sourceToolUseID, Boolean isVirtual,
                 Map<String, Object> mcpMeta, Boolean isVisibleInTranscriptOnly, String planContent,
-                com.claudecode.core.message.SummarizeMetadata summarizeMetadata
+                SummarizeMetadata summarizeMetadata
             )) || message == null || message.blocks() == null) {
                 result.add(msg);
                 continue;

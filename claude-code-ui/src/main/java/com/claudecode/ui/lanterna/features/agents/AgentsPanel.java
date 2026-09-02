@@ -1,5 +1,5 @@
 package com.claudecode.ui.lanterna.features.agents;
-
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -585,7 +585,7 @@ final class AgentsPanel extends Panel implements InlineOverlay {
         }
         if (type == KeyType.PASTE && key instanceof PasteKeyStroke paste) {
             String pasted = paste.getPastedText();
-            if (pasted != null && !pasted.isEmpty()) {
+            if (StringUtils.isNotEmpty(pasted)) {
                 String normalized = pasted.replace("\r\n", " ")
                     .replace('\n', ' ').replace('\r', ' ');
                 runPrompt.insert(runCursor, normalized);
@@ -1195,7 +1195,7 @@ final class AgentsPanel extends Panel implements InlineOverlay {
 
         private void appendWrapped(List<DetailLine> lines, String value, int width,
                 String prefix, TextColor color) {
-            if (value == null || value.isEmpty()) {
+            if (StringUtils.isEmpty(value)) {
                 lines.add(new DetailLine(prefix, color, false));
                 return;
             }

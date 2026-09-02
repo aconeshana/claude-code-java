@@ -3,7 +3,6 @@ package com.claudecode.ui.lanterna.overlay;
 import com.googlecode.lanterna.TerminalTextUtils;
 import com.googlecode.lanterna.input.KeyStroke;
 import java.util.concurrent.atomic.AtomicBoolean;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 
 
 

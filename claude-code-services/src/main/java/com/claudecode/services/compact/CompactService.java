@@ -7,16 +7,7 @@ import com.claudecode.core.engine.MessageCompactor;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.ThinkingClearLatch;
 import com.claudecode.core.engine.ToolSearchGate;
-import com.claudecode.core.message.CompactMetadata;
-import com.claudecode.core.message.Message;
-import com.claudecode.core.message.MessageContent;
-import com.claudecode.core.message.MessageOrigin;
-import com.claudecode.core.message.PreservedMessages;
-import com.claudecode.core.message.PreservedSegment;
-import com.claudecode.core.message.SystemMessage;
-import com.claudecode.core.message.SummarizeMetadata;
-import com.claudecode.core.message.TokenEstimator;
-import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.message.*;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.services.cache.PromptCacheBreakDetection;
 import com.claudecode.session.SessionManager;
@@ -34,34 +25,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 public class CompactService implements MessageCompactor {
@@ -1088,7 +1051,7 @@ public class CompactService implements MessageCompactor {
         MessageCompactor.CompactionResult compacted = result.compactionResult();
         return new MessageCompactor.PartialCompactOutput(
             buildPostPartialCompactMessages(result),
-            compacted != null ? compacted.compactionUsage() : com.claudecode.core.message.Usage.EMPTY,
+            compacted != null ? compacted.compactionUsage() : Usage.EMPTY,
             compacted != null ? compacted.rawSummary() : null);
     }
 

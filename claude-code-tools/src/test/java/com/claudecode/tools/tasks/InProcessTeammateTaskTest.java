@@ -30,7 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -297,7 +299,7 @@ class InProcessTeammateTaskTest {
     }
 
     private static final class MessagePriorityFactory implements SubAgentFactory {
-        final List<String> prompts = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final List<String> prompts = new CopyOnWriteArrayList<>();
         final CountDownLatch firstStarted = new CountDownLatch(1);
         final CountDownLatch firstRelease = new CountDownLatch(1);
         final CountDownLatch secondStarted = new CountDownLatch(1);
@@ -566,7 +568,7 @@ class InProcessTeammateTaskTest {
 
     @Test
     void released197AutoClaimUsesFalsyEmptyOwnerAndLiteralPromptWhitespace() {
-        Task available = new Task("7", "Ship it", "   ", null, java.util.Optional.of(""),
+        Task available = new Task("7", "Ship it", "   ", null, Optional.of(""),
             TodoStatus.PENDING, List.of(), List.of(), null);
 
         assertSame(available,

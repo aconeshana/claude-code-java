@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
 
@@ -77,7 +78,7 @@ public final class PlanFiles {
             Path fallback = store.legacyPath();
             return new PlanCatalogContext(
                 null, null, fallback.toString(), Files.isRegularFile(fallback), false,
-                java.util.List.of());
+                List.of());
         }
     }
 
@@ -90,7 +91,7 @@ public final class PlanFiles {
             Path fallback = store.legacyPath();
             return new PlanCatalogContext(
                 null, null, fallback.toString(), Files.isRegularFile(fallback), false,
-                java.util.List.of());
+                List.of());
         }
     }
 

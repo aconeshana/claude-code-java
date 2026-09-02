@@ -1,17 +1,16 @@
 package com.claudecode.tools.tasks;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.claudecode.core.config.ClaudePaths;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.UnaryOperator;
 
 /**
@@ -178,15 +177,15 @@ public class TodoStore {
             Task current = tasks.get(storageId);
             if (current == null) return Optional.empty();
             String currentOwner = current.owner().orElse(null);
-            if (currentOwner != null && !currentOwner.isEmpty()
+            if (StringUtils.isNotEmpty(currentOwner)
                     && !currentOwner.equals(owner)) {
                 return Optional.empty();
             }
             if (current.status() == TodoStatus.COMPLETED) return Optional.empty();
-            java.util.Set<String> unresolved = tasks.values().stream()
+            Set<String> unresolved = tasks.values().stream()
                 .filter(task -> task.status() != TodoStatus.COMPLETED)
                 .map(Task::id)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
             if (current.blockedBy().stream().anyMatch(unresolved::contains)) {
                 return Optional.empty();
             }

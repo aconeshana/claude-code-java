@@ -36,9 +36,11 @@ public final class MessageConstants {
      * Model-facing marker for an ExitPlanMode rejection whose body is the rejected plan.
      */
     public static final String PLAN_REJECTION_PREFIX =
-            "The agent proposed a plan that was rejected by the user. "
-            + "The user chose to stay in plan mode rather than proceed with implementation.\n"
-            + "Rejected plan:\n";
+            """
+            The agent proposed a plan that was rejected by the user. \
+            The user chose to stay in plan mode rather than proceed with implementation.
+            Rejected plan:
+            """;
 
     public static final String SUBAGENT_REJECT_MESSAGE =
             "Permission for this tool use was denied. " +

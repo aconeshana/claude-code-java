@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -72,10 +73,10 @@ class ReplStartupPreparationTest {
     void oneMetadataSnapshotFeedsBothBadgeAndSessionHostTitle() {
         AtomicInteger scans = new AtomicInteger();
         InteractiveSessionPort sessions = new InteractiveSessionPort() {
-            @Override public java.nio.file.Path sessionFile(String cwd, String sessionId) {
-                return java.nio.file.Path.of("transcript.jsonl");
+            @Override public Path sessionFile(String cwd, String sessionId) {
+                return Path.of("transcript.jsonl");
             }
-            @Override public MetadataSnapshot scanMetadata(java.nio.file.Path transcript) {
+            @Override public MetadataSnapshot scanMetadata(Path transcript) {
                 scans.incrementAndGet();
                 return new MetadataSnapshot("custom title", "agent", "green", null);
             }

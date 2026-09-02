@@ -2,6 +2,7 @@ package com.claudecode.tools.tasks;
 
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.tools.ToolRegistry;
@@ -47,7 +48,7 @@ class TaskCreateValidationSteerTest {
         return ToolExecutionContext.of(new AbortController(), "session");
     }
 
-    private static String text(com.claudecode.core.engine.ToolResult result) {
+    private static String text(ToolResult result) {
         return ((TextBlock) result.content().getFirst()).text();
     }
 }

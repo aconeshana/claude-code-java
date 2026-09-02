@@ -10,16 +10,9 @@ import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
+import org.apache.commons.lang3.StringUtils;
+
 import java.util.stream.Collectors;
-
-
-
-
-
-
-
-
-
 
 
 public final class TaskListPanel extends AbstractComponent<TaskListPanel> {
@@ -196,7 +189,7 @@ public final class TaskListPanel extends AbstractComponent<TaskListPanel> {
 
         private static boolean present(String name) {
             String value = SubprocessEnvironment.get(name);
-            return value != null && !value.isEmpty();
+            return StringUtils.isNotEmpty(value);
         }
     }
 }

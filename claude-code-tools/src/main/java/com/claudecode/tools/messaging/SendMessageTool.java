@@ -26,7 +26,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.Tool;
 
 import java.util.Locale;
 import com.claudecode.tools.BuiltInTool;

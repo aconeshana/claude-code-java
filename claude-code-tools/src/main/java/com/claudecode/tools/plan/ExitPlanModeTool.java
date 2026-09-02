@@ -255,8 +255,10 @@ public class ExitPlanModeTool extends AnnotatedTool<JsonNode, StructuredToolOutp
         boolean hasTaskTool = AgentTeamsEnabled.isEnabled()
             && context.enabledTools().stream().anyMatch("Agent"::equals);
         String teammateHint = hasTaskTool
-            ? "\nIf this plan can be broken down into multiple independent tasks, consider spawning "
-                + "named teammates with the Agent tool (pass a `name`) to parallelize the work."
+            ? """
+                
+                If this plan can be broken down into multiple independent tasks, consider spawning \
+                named teammates with the Agent tool (pass a `name`) to parallelize the work."""
             : "";
         String text = "User has approved your plan. You can now start coding. Start with updating "
             + "your todo list if applicable\n"

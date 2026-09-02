@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.feature.FeatureGate;
+import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.tools.agent.NoOpSubAgentFactory;
 import com.claudecode.tools.agent.SubAgentRequest;
 import com.claudecode.tools.agent.SubAgentResult;
@@ -203,7 +204,7 @@ class TaskSystemTest {
 
         assertEquals(1, intents.get());
         assertEquals(List.of("Run tests"), service.snapshot().tasks().stream()
-            .map(com.claudecode.runtime.tasks.TaskBoardPort.TaskItem::subject).toList());
+            .map(TaskBoardPort.TaskItem::subject).toList());
         subscription.close();
     }
 

@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
 import org.junit.jupiter.api.Assumptions;
@@ -286,7 +287,7 @@ class FileUtilsTest {
         Path target = Files.writeString(tmp.resolve("target.md"), "body");
         Path alias = tmp.resolve("alias.md");
         Files.createSymbolicLink(alias, target.getFileName());
-        Set<Path> loaded = new java.util.HashSet<>();
+        Set<Path> loaded = new HashSet<>();
 
         assertFalse(FileUtils.isDuplicatePath(alias, loaded));
         assertTrue(FileUtils.isDuplicatePath(target, loaded));

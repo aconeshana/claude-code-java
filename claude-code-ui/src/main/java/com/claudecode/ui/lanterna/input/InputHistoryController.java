@@ -7,14 +7,8 @@ import com.claudecode.core.message.PastedContent;
 import com.googlecode.lanterna.gui2.TextBox;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.LinkedHashSet;
-import java.util.Set;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -641,10 +635,10 @@ final class InputHistoryController {
     private void applySearchMatch(PromptHistory.Entry match) {
         String clean = Strings.CS.startsWith(match.display(), "!")
             ? match.display().substring(1) : match.display();
-        int cursor = clean.toLowerCase(java.util.Locale.ROOT)
-            .lastIndexOf(searchQuery.toLowerCase(java.util.Locale.ROOT));
-        if (cursor < 0) cursor = match.display().toLowerCase(java.util.Locale.ROOT)
-            .lastIndexOf(searchQuery.toLowerCase(java.util.Locale.ROOT));
+        int cursor = clean.toLowerCase(Locale.ROOT)
+            .lastIndexOf(searchQuery.toLowerCase(Locale.ROOT));
+        if (cursor < 0) cursor = match.display().toLowerCase(Locale.ROOT)
+            .lastIndexOf(searchQuery.toLowerCase(Locale.ROOT));
         box.applySearchEntry(match, Math.max(0, cursor));
         box.showHint((searchFailedMatch ? "no matching prompt: " : "(reverse-i-search) `")
                 + searchQuery + (searchFailedMatch ? "" : "': " + match.display()),

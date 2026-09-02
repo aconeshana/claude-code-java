@@ -28,6 +28,7 @@ import com.claudecode.core.message.TodoReminderAttachment;
 import com.claudecode.core.message.TokenUsageAttachment;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UsageSnapshot;
+import com.claudecode.core.serialization.JsonUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -239,7 +240,7 @@ class Tier1AttachmentProviderTest {
             history.add(new AssistantMessage("management",
                 AssistantContent.of(List.of(new ToolUseBlock(
                     "tool-use", managementTool,
-                    com.claudecode.core.serialization.JsonUtils.getMapper().createObjectNode())))));
+                    JsonUtils.getMapper().createObjectNode())))));
             assertTrue(provider.collect(ctx(history, "", null,
                 List.of("TaskUpdate"), List.of(), null, null, null,
                 Set.of(), null, null, null)).isEmpty());

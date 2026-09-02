@@ -2,7 +2,7 @@ package com.claudecode.ui.lanterna.theme;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-
+import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.graphics.SimpleTheme;
 import com.googlecode.lanterna.gui2.BasicWindow;
@@ -74,8 +74,8 @@ class ClaudeThemeTextBoxColorTest {
         SimpleTheme theme = ClaudeTheme.build();
 
         var subclass = new HighlightedTextBox(
-                new com.googlecode.lanterna.TerminalSize(40, 1),
-                com.googlecode.lanterna.gui2.TextBox.Style.MULTI_LINE,
+                new TerminalSize(40, 1),
+                TextBox.Style.MULTI_LINE,
                 () -> List.of()) {
             // no additions — mirrors PromptTextBox merely being a HighlightedTextBox subclass
         };

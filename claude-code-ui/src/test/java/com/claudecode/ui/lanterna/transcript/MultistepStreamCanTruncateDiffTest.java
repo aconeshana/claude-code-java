@@ -10,7 +10,6 @@ import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import java.time.Instant;

@@ -1,5 +1,7 @@
 package com.claudecode.tools.tasks;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -22,6 +24,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Shared on-disk protocol for the two Java task-store facades.
@@ -189,7 +192,7 @@ final class TaskPersistence {
                     .map(StoredTask::task)
                     .filter(task -> task.status() != TodoStatus.COMPLETED)
                     .map(Task::id)
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
                 if (current.blockedBy().stream().anyMatch(unresolved::contains)) {
                     return Optional.empty();
                 }
@@ -417,7 +420,7 @@ final class TaskPersistence {
     }
 
     private static boolean isJavaScriptTruthyString(String value) {
-        return value != null && !value.isEmpty();
+        return StringUtils.isNotEmpty(value);
     }
 
     private static boolean isJavaScriptWhitespace(char value) {

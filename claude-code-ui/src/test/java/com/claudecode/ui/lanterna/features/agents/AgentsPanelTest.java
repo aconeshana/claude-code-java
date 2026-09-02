@@ -1,7 +1,7 @@
 package com.claudecode.ui.lanterna.features.agents;
 
 import org.apache.commons.lang3.Strings;
-
+import com.claudecode.runtime.memory.MemoryCatalog;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
@@ -146,7 +146,7 @@ class AgentsPanelTest {
             registry.store().updateStatus(done.id(), TaskStatus.RUNNING);
             registry.store().updateStatus(done.id(), TaskStatus.COMPLETED);
         }
-        AgentsPanel p = new AgentsPanel(com.claudecode.runtime.memory.MemoryCatalog.empty(), registry);
+        AgentsPanel p = new AgentsPanel(MemoryCatalog.empty(), registry);
         p.show(() -> projectDir.toString(), _ -> "{}", List.of(),
             new AgentsPanel.Inventory(List.of(), List.of()), (_, _) -> {}, _ -> {}, () -> {});
 
@@ -162,7 +162,7 @@ class AgentsPanelTest {
         registry.store().updateAgentType(running.id(), "reviewer");
         registry.store().updateStatus(running.id(), TaskStatus.RUNNING);
         List<String> viewed = new ArrayList<>();
-        AgentsPanel p = new AgentsPanel(com.claudecode.runtime.memory.MemoryCatalog.empty(), registry);
+        AgentsPanel p = new AgentsPanel(MemoryCatalog.empty(), registry);
         p.show(() -> projectDir.toString(), _ -> "{}", List.of(),
             new AgentsPanel.Inventory(List.of(), List.of()), _ -> {}, viewed::add,
             (_, _) -> {}, _ -> {}, () -> {});
@@ -190,7 +190,7 @@ class AgentsPanelTest {
         registry.store().updateAgentType(second.id(), "reviewer");
         registry.store().updateStatus(second.id(), TaskStatus.RUNNING);
         List<String> viewed = new ArrayList<>();
-        AgentsPanel p = new AgentsPanel(com.claudecode.runtime.memory.MemoryCatalog.empty(), registry);
+        AgentsPanel p = new AgentsPanel(MemoryCatalog.empty(), registry);
         p.show(() -> projectDir.toString(), _ -> "{}", List.of(),
             new AgentsPanel.Inventory(List.of(), List.of()), _ -> {}, viewed::add,
             (_, _) -> {}, _ -> {}, () -> {});
@@ -475,7 +475,7 @@ class AgentsPanelTest {
         registry.store().updateAgentType(running.id(), "my-reviewer");
         registry.store().updateStatus(running.id(), TaskStatus.RUNNING);
         List<String> viewed = new ArrayList<>();
-        AgentsPanel p = new AgentsPanel(com.claudecode.runtime.memory.MemoryCatalog.empty(), registry);
+        AgentsPanel p = new AgentsPanel(MemoryCatalog.empty(), registry);
         p.show(() -> projectDir.toString(), _ -> "{}", List.of("Read"),
             AgentsPanel.loadInventory(projectDir.toString()), _ -> {}, viewed::add,
             (_, _) -> {}, _ -> {}, () -> {});

@@ -17,6 +17,8 @@ import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.PasteKeyStroke;
+import org.apache.commons.lang3.StringUtils;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -219,7 +221,7 @@ public final class CollaborationPickerDialog extends Panel implements InlineOver
     }
 
     private boolean selectByNumericInput(String input) {
-        if (input == null || input.isEmpty()) return false;
+        if (StringUtils.isEmpty(input)) return false;
         StringBuilder ascii = new StringBuilder(input.length());
         for (int i = 0; i < input.length(); i++) {
             int digit = digitValue(input.charAt(i));

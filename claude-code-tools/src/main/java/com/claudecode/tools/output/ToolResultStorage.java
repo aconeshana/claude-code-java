@@ -304,7 +304,7 @@ public final class ToolResultStorage {
                 if (i + 1 < blocks.size()) out.append(',');
                 out.append('\n');
             }
-        } catch (IOException error) {
+        } catch (IOException _) {
             return null;
         }
         return out.append(']').toString();

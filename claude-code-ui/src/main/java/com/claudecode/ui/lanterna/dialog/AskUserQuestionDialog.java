@@ -369,7 +369,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
     private void confirmCurrent(QState st, QuestionPresenter.Question q) {
         int optionCount = q.options().size();
         if (st.focus == optionCount) {
-            if (st.text.toString().isBlank()) {
+            if (StringUtils.isBlank(st.text.toString())) {
                 // 197 select-input-option onSubmit parity: submitting an EMPTY input option
                 // calls onCancel — Enter on an untouched Other cancels the whole dialog.
                 resolve(null);

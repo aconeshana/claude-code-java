@@ -1,8 +1,7 @@
 package com.claudecode.ui.lanterna.features.settings;
 
 
-import java.util.Locale;
-
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.message.RefusalFallbackFeature;
@@ -25,13 +24,7 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.BiConsumer;
@@ -1141,12 +1134,12 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
         }
 
         private void clearRememberedDynamicWidths() {
-            java.util.Arrays.fill(renderedDynamicWidths, 0);
+            Arrays.fill(renderedDynamicWidths, 0);
         }
 
         private void rememberDynamicWidth(int row, int endColumn) {
             if (row >= renderedDynamicWidths.length) {
-                renderedDynamicWidths = java.util.Arrays.copyOf(
+                renderedDynamicWidths = Arrays.copyOf(
                     renderedDynamicWidths, Math.max(row + 1, renderedDynamicWidths.length * 2 + 8));
             }
             renderedDynamicWidths[row] = Math.max(renderedDynamicWidths[row], endColumn);
@@ -1230,7 +1223,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
                 case "notifications_disabled" -> "Disabled";
                 default -> value;
             };
-            case "language" -> value.isBlank() ? "English" : value;
+            case "language" -> StringUtils.isBlank(value) ? "English" : value;
             default -> value;
         };
     }

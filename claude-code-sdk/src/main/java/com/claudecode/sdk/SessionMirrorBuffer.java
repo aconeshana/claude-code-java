@@ -1,7 +1,7 @@
 package com.claudecode.sdk;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,7 +33,7 @@ final class SessionMirrorBuffer {
         for (JsonNode entry : entries) {
             JsonNode copy = entry.deepCopy();
             batch.entries.add(copy);
-            batch.bytes += copy.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1;
+            batch.bytes += copy.toString().getBytes(StandardCharsets.UTF_8).length + 1;
         }
         if (eager || batch.entries.size() >= MAX_BATCH_ENTRIES || batch.bytes >= MAX_BATCH_BYTES) {
             flush(key, batch);

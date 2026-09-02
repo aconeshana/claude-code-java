@@ -8,14 +8,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class TodoStorePathTest {
 
@@ -217,13 +216,13 @@ class TodoStorePathTest {
     @Test
     void createPreservesNullMetadataValuesAcceptedByReleased197(@TempDir Path configHome) {
         TodoStore store = new TodoStore(configHome.resolve("tasks"), "session");
-        java.util.LinkedHashMap<String, Object> metadata = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("nullable", null);
 
         Task created = store.create("metadata", "keep JSON null", null, metadata);
 
         assertTrue(created.metadata().orElseThrow().containsKey("nullable"));
-        assertEquals(null, created.metadata().orElseThrow().get("nullable"));
+        assertNull(created.metadata().orElseThrow().get("nullable"));
     }
 
     @Test

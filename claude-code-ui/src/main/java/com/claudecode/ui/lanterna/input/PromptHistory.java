@@ -23,15 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.ArrayList;
-import java.util.ArrayDeque;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -166,7 +158,7 @@ public class PromptHistory implements AutoCloseable {
         }
 
         CompletableFuture<Entry> findNextAsync(String query, Set<String> seenDisplays) {
-            String needle = query.toLowerCase(java.util.Locale.ROOT);
+            String needle = query.toLowerCase(Locale.ROOT);
             CompletableFuture<Entry> result = new CompletableFuture<>();
             Thread worker = Thread.ofVirtual().name("history-search-read").unstarted(() -> {
                 activeRead.set(Thread.currentThread());
@@ -183,7 +175,7 @@ public class PromptHistory implements AutoCloseable {
                             return;
                         }
                         String display = entry.display();
-                        if (display.toLowerCase(java.util.Locale.ROOT).lastIndexOf(needle) >= 0
+                        if (display.toLowerCase(Locale.ROOT).lastIndexOf(needle) >= 0
                                 && seenDisplays.add(display)) {
                             result.complete(entry);
                             return;
@@ -584,7 +576,7 @@ public class PromptHistory implements AutoCloseable {
                     return true;
                 }
             });
-        } catch (IOException failure) {
+        } catch (IOException _) {
             return -1;
         }
         return counts[1];
@@ -780,7 +772,7 @@ public class PromptHistory implements AutoCloseable {
                 if (i + 1 < end) ready.addLast(decodeLine(data, i + 1, end - i - 1));
                 end = i;
             }
-            partial = java.util.Arrays.copyOfRange(data, 0, end);
+            partial = Arrays.copyOfRange(data, 0, end);
         }
 
         private static String decodeLine(byte[] data, int offset, int length) {
@@ -1133,7 +1125,7 @@ public class PromptHistory implements AutoCloseable {
             try {
                 Files.createDirectory(lockDirectory);
                 return new HistoryFileLock(lockDirectory);
-            } catch (FileAlreadyExistsException locked) {
+            } catch (FileAlreadyExistsException _) {
                 if (isStaleLock(lockDirectory)) {
                     try {
                         Files.delete(lockDirectory);

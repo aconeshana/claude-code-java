@@ -26,7 +26,6 @@ import org.apache.commons.lang3.StringUtils;
 import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
 import com.claudecode.ui.lanterna.components.LanternaDraw;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
-import com.claudecode.ui.lanterna.input.InputPanel;
 
 /**
  * Inline read-only hook configuration browser.

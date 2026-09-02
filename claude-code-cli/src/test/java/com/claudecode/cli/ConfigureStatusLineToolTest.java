@@ -10,6 +10,7 @@ import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.platform.Platform;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.ValidationResult;
@@ -116,7 +117,7 @@ class ConfigureStatusLineToolTest {
     }
 
     private static ObjectNode input(String command, int padding) {
-        return com.claudecode.core.serialization.JsonUtils.getMapper().createObjectNode()
+        return JsonUtils.getMapper().createObjectNode()
             .put("command", command)
             .put("padding", padding);
     }

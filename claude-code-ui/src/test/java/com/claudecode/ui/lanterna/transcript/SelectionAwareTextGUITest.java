@@ -146,7 +146,7 @@ class SelectionAwareTextGUITest {
     void activeInlineOverlayConsumesKeyboardBeforeWindowDispatch() throws Exception {
         Env e = env(20, 4);
         AtomicInteger routed = new AtomicInteger();
-        e.gui.wireInlineOverlayInput(key -> {
+        e.gui.wireInlineOverlayInput(_ -> {
             routed.incrementAndGet();
             return true;
         });

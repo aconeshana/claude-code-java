@@ -5,7 +5,6 @@ import com.claudecode.runtime.mcp.McpManagementPort.Action;
 import com.claudecode.runtime.mcp.McpManagementPort.Server;
 import com.claudecode.ui.lanterna.dialog.MCPSettingsDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.Locale;

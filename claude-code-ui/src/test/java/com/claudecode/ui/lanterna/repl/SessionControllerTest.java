@@ -42,6 +42,8 @@ import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.googlecode.lanterna.TextColor;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import org.apache.commons.lang3.Strings;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,6 +53,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -387,10 +390,10 @@ class SessionControllerTest {
             }, new InputPanel(), dialog, null, null, null, null, null, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (dialog.isActive() && System.nanoTime() < deadline) {
@@ -571,16 +574,16 @@ class SessionControllerTest {
             collapser, input, dialog, null, null, null, null, null, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_DOWN), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_DOWN), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (input.getText().isEmpty() && System.nanoTime() < deadline) {
@@ -695,7 +698,7 @@ class SessionControllerTest {
         CompletionStage<?> completion = controller.runSummarize(
             selected,
             MessageSelectorDialog.RestoreAction.SUMMARIZE_FROM, "user detail",
-            (Runnable) () -> { }, (java.util.function.Consumer<String>) _ -> { });
+            (Runnable) () -> { }, (Consumer<String>) _ -> { });
         completion.toCompletableFuture().get(2, TimeUnit.SECONDS);
 
         assertNull(preHookInstructions.get(),
@@ -766,7 +769,7 @@ class SessionControllerTest {
             old,
             MessageSelectorDialog.RestoreAction.SUMMARIZE_FROM, null,
             (Runnable) () -> success.set(true),
-            (java.util.function.Consumer<String>) failure::set);
+            (Consumer<String>) failure::set);
         completion.toCompletableFuture().get(2, TimeUnit.SECONDS);
 
         assertFalse(compactCalled.get());
@@ -817,16 +820,16 @@ class SessionControllerTest {
             }, new InputPanel(), dialog, null, null, null, null, null, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
         UserMessage replacement = equalCopy(selected);
         engine.conversation().loadMessages(List.of(replacement));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_DOWN), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_DOWN), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (dialog.isActive() && System.nanoTime() < deadline) {
@@ -900,14 +903,14 @@ class SessionControllerTest {
         controller.setAsyncRewindDeferrer(deferred::set);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_DOWN), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_DOWN), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
         assertNotNull(deferred.get());
 
         SystemMessage lateTail = new SystemMessage(
@@ -959,14 +962,14 @@ class SessionControllerTest {
             }, new InputPanel(), dialog, null, null, null, null, null, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_DOWN), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_DOWN), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         assertTrue(compactStarted.await(2, TimeUnit.SECONDS));
         UserMessage latestPrefix = realUser("latest live prefix");
@@ -1006,7 +1009,7 @@ class SessionControllerTest {
         CompletionStage<?> completion = controller.runSummarize(
             selected,
             MessageSelectorDialog.RestoreAction.SUMMARIZE_FROM, null,
-            (Runnable) () -> {}, (java.util.function.Consumer<String>) failure::set);
+            (Runnable) () -> {}, (Consumer<String>) failure::set);
         completion.toCompletableFuture().get(2, TimeUnit.SECONDS);
 
         assertEquals("Error: boom", failure.get());
@@ -1032,7 +1035,7 @@ class SessionControllerTest {
         CompletionStage<?> completion = controller.runSummarize(
             selected,
             MessageSelectorDialog.RestoreAction.SUMMARIZE_FROM, null,
-            (Runnable) () -> {}, (java.util.function.Consumer<String>) failure::set);
+            (Runnable) () -> {}, (Consumer<String>) failure::set);
         completion.toCompletableFuture().get(2, TimeUnit.SECONDS);
 
         assertEquals("compaction service is not available in this session.", failure.get());
@@ -1085,7 +1088,7 @@ class SessionControllerTest {
         UserMessage summary = partialSummary("from", 2);
         SystemMessage boundary = new SystemMessage(
             "new-boundary", "compact_boundary", "info", "Conversation compacted");
-        MessageCompactor compactor = partialCompactor((messages, pivot, direction) ->
+        MessageCompactor compactor = partialCompactor((messages, _, _) ->
             List.of(boundary, messages.getFirst(), summary));
         DefaultQuerySession engine = new DefaultQuerySession(
             QuerySessionSpec.builder()
@@ -1124,7 +1127,7 @@ class SessionControllerTest {
         UserMessage summary = partialSummary("up_to", 1);
         SystemMessage boundary = new SystemMessage(
             "new-boundary", "compact_boundary", "info", "Conversation compacted");
-        MessageCompactor compactor = partialCompactor((messages, pivot, direction) ->
+        MessageCompactor compactor = partialCompactor((_, _, _) ->
             List.of(boundary, summary, selected, later));
         DefaultQuerySession engine = new DefaultQuerySession(
             QuerySessionSpec.builder()
@@ -1177,12 +1180,12 @@ class SessionControllerTest {
             collapser, failingInput, dialog, null, null, null, null, null, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         assertTrue(dialog.isActive(), "restore errors stay inside the rewind overlay");
     }
@@ -1209,12 +1212,12 @@ class SessionControllerTest {
         controller.setAsyncRewindDeferrer(deferred::set);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         assertFalse(synchronousPathUsed.get());
         assertNotNull(deferred.get());
@@ -1248,12 +1251,12 @@ class SessionControllerTest {
             null, null, null, sessions, null);
 
         controller.showMessageSelector();
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ARROW_UP), new AtomicBoolean(true));
-        dialog.handleKey(new com.googlecode.lanterna.input.KeyStroke(
-            com.googlecode.lanterna.input.KeyType.ENTER), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ARROW_UP), new AtomicBoolean(true));
+        dialog.handleKey(new KeyStroke(
+            KeyType.ENTER), new AtomicBoolean(true));
 
         assertTrue(parentFileRequested.get());
     }
@@ -1302,7 +1305,7 @@ class SessionControllerTest {
         AtomicReference<String> failure = new AtomicReference<>();
         controller.runSummarize(selected, action, null,
             (Runnable) completed::countDown,
-            (java.util.function.Consumer<String>) error -> {
+            (Consumer<String>) error -> {
                 failure.set(error);
                 completed.countDown();
             });
@@ -1333,10 +1336,11 @@ class SessionControllerTest {
     void textForResubmit_plainTextStripsIdeContextTags() {
         assertEquals("fix the bug\nnow",
             SessionController.textForResubmit(
-                "<ide_opened_file>/tmp/Demo.java</ide_opened_file>\n"
-                    + "fix the bug\n"
-                    + "<ide_selection lines=\"1-2\">ignored</ide_selection>\n"
-                    + "now"));
+                """
+                <ide_opened_file>/tmp/Demo.java</ide_opened_file>
+                fix the bug
+                <ide_selection lines="1-2">ignored</ide_selection>
+                now"""));
     }
 
     @Test

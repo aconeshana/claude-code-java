@@ -1,9 +1,13 @@
 package com.claudecode.ui.lanterna.dialog;
 
 import com.claudecode.tools.questions.QuestionPresenter;
+import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.TerminalTextUtils;
+import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.MultiWindowTextGUI;
 import com.googlecode.lanterna.gui2.SameTextGUIThread;
+import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.PasteKeyStroke;
@@ -11,8 +15,10 @@ import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -412,11 +418,11 @@ class AskUserQuestionDialogTest {
             screen.startScreen();
             gui = new MultiWindowTextGUI(new SameTextGUIThread.Factory(), screen);
             dialog.setTerminalColumnsSupplier(() -> columns);
-            var window = new com.googlecode.lanterna.gui2.BasicWindow();
-            window.setHints(java.util.Set.of(
-                com.googlecode.lanterna.gui2.Window.Hint.FULL_SCREEN,
-                com.googlecode.lanterna.gui2.Window.Hint.NO_DECORATIONS,
-                com.googlecode.lanterna.gui2.Window.Hint.FIT_TERMINAL_WINDOW));
+            var window = new BasicWindow();
+            window.setHints(Set.of(
+                Window.Hint.FULL_SCREEN,
+                Window.Hint.NO_DECORATIONS,
+                Window.Hint.FIT_TERMINAL_WINDOW));
             window.setComponent(dialog);
             gui.addWindow(window);
             Thread.ofVirtual().start(() ->
@@ -437,7 +443,7 @@ class AskUserQuestionDialogTest {
             for (char c : s.toCharArray()) key(new KeyStroke(c, false, false));
         }
 
-        String render() throws java.io.IOException {
+        String render() throws IOException {
             gui.getGUIThread().processEventsAndUpdate();
             return screenText(term, term.getTerminalSize().getColumns());
         }
@@ -562,12 +568,12 @@ class AskUserQuestionDialogTest {
                 var cell = term.getCharacter(col, row);
                 char ch = cell.getCharacter();
                 boolean reversed = cell.getModifiers().contains(
-                    com.googlecode.lanterna.SGR.REVERSE);
+                    SGR.REVERSE);
                 if (reversed) sb.append('【');
                 sb.append(ch);
                 if (reversed) sb.append('】');
                 // a double-width char occupies two cells reporting the same glyph
-                if (com.googlecode.lanterna.TerminalTextUtils.isCharDoubleWidth(ch)) col++;
+                if (TerminalTextUtils.isCharDoubleWidth(ch)) col++;
             }
             sb.append('\n');
         }

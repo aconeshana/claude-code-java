@@ -2,12 +2,9 @@ package com.claudecode.ui.lanterna.theme;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
-import com.googlecode.lanterna.gui2.BasicWindow;
-import com.googlecode.lanterna.gui2.MultiWindowTextGUI;
-import com.googlecode.lanterna.gui2.SameTextGUIThread;
-import com.googlecode.lanterna.gui2.Window;
+import com.googlecode.lanterna.gui2.*;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox;
@@ -38,7 +35,7 @@ class ClaudeTextBoxRenderColorTest {
     @Test
     void typedTextBoxTextRendersWithTerminalDefaultForeground() throws Exception {
         DefaultVirtualTerminal terminal = new DefaultVirtualTerminal(
-            new com.googlecode.lanterna.TerminalSize(60, 10));
+            new TerminalSize(60, 10));
         TerminalScreen screen = new TerminalScreen(terminal);
         screen.startScreen();
 
@@ -49,8 +46,8 @@ class ClaudeTextBoxRenderColorTest {
         BasicWindow window = new BasicWindow();
         window.setHints(Set.of(Window.Hint.FULL_SCREEN));
         HighlightedTextBox box = new HighlightedTextBox(
-            new com.googlecode.lanterna.TerminalSize(40, 1),
-            com.googlecode.lanterna.gui2.TextBox.Style.SINGLE_LINE,
+            new TerminalSize(40, 1),
+            TextBox.Style.SINGLE_LINE,
             () -> List.of());
         box.setText("hello");
         window.setComponent(box);

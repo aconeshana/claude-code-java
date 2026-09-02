@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.claudecode.tools.bash.BashTool;
 
 /**
  * Decides whether a bash command should run inside a native sandbox and, if so, builds the wrapped

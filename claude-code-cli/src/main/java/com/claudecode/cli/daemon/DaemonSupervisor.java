@@ -59,7 +59,7 @@ final class DaemonSupervisor implements AutoCloseable {
             int exitCode;
             try {
                 exitCode = process.awaitExit();
-            } catch (InterruptedException failure) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return;
             } finally {
@@ -105,7 +105,7 @@ final class DaemonSupervisor implements AutoCloseable {
             process.terminate();
             if (process.awaitExit(SHUTDOWN_GRACE)) return;
             process.kill();
-        } catch (InterruptedException failure) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             process.kill();
         }
@@ -114,7 +114,7 @@ final class DaemonSupervisor implements AutoCloseable {
     private static void sleep(long millis) {
         try {
             Thread.sleep(millis);
-        } catch (InterruptedException failure) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }

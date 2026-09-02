@@ -72,7 +72,7 @@ class SmartLayoutTest {
         // not visible, so SmartLayout must not reserve a row for it.
         SpinnerComponent spinner = new SpinnerComponent();
         spinner.setVisible(false);
-        assertEquals(TerminalSize.ZERO, spinner.getPreferredSize(),
+        assertEquals(TerminalSize.of(0, 0), spinner.getPreferredSize(),
             "a hidden spinner contributes no layout size");
 
         SmartLayout layout = new SmartLayout();

@@ -2,7 +2,10 @@ package com.claudecode.tools.cron;
 
 
 import com.claudecode.core.state.CwdState;
+
 import com.claudecode.core.git.GitUtils;
+
+import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -213,7 +216,7 @@ public final class CronStore {
     /** Refreshes creator PID/start-token after resuming the same durable session. */
     static synchronized boolean refreshCreatorProcess(String sessionId, long pid,
                                                        String procStart) {
-        if (sessionId == null || sessionId.isBlank()) return false;
+        if (StringUtils.isBlank(sessionId)) return false;
         boolean changed = false;
         List<CronJob> replacement = new ArrayList<>(JOBS.size());
         for (CronJob job : JOBS) {

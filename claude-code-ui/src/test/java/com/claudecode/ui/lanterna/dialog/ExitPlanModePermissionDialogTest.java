@@ -2,9 +2,7 @@ package com.claudecode.ui.lanterna.dialog;
 
 import org.apache.commons.lang3.Strings;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
@@ -96,7 +94,7 @@ class ExitPlanModePermissionDialogTest {
         assertEquals("Exit plan mode?", dialog.titleForTest());
         assertEquals("Claude wants to exit plan mode", dialog.questionForTest());
         assertEquals("1. Yes", dialog.primaryLabelForTest());
-        assertEquals(null, dialog.allowSuggestionLabelForTest());
+        assertNull(dialog.allowSuggestionLabelForTest());
         assertEquals("2. No", dialog.noLabelForTest());
     }
 
@@ -129,7 +127,7 @@ class ExitPlanModePermissionDialogTest {
         dialog.resolvePrimaryForTest();
         assertEquals("Implement the parser", cleared.get().plan());
         assertEquals(PermissionModeKind.ACCEPT_EDITS, cleared.get().mode());
-        assertEquals(null, cleared.get().feedback());
+        assertNull(cleared.get().feedback());
         assertEquals(List.of(
             new PermissionUpdate.SetMode(
                 PermissionModeKind.ACCEPT_EDITS, PermissionUpdate.Destination.SESSION),
@@ -174,7 +172,7 @@ class ExitPlanModePermissionDialogTest {
         assertFalse(result.get().allowed());
         assertEquals("(See attached image)", result.get().feedback());
         assertEquals(1, result.get().feedbackContentBlocks().size());
-        assertTrue(result.get().feedbackContentBlocks().getFirst() instanceof ImageBlock);
+        assertInstanceOf(ImageBlock.class, result.get().feedbackContentBlocks().getFirst());
     }
 
     @Test
@@ -189,7 +187,7 @@ class ExitPlanModePermissionDialogTest {
 
         dialog.rejectPlanFeedbackForTest("");
 
-        assertEquals(null, result.get());
+        assertNull(result.get());
         assertTrue(dialog.isActiveForTest());
     }
 

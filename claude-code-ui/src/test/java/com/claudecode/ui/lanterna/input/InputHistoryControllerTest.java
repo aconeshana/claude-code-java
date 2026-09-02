@@ -1,5 +1,5 @@
 package com.claudecode.ui.lanterna.input;
-
+import com.googlecode.lanterna.input.KeyType;
 import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+
 import org.junit.jupiter.api.Test;
 
 /**
@@ -576,7 +578,7 @@ class InputHistoryControllerTest {
             "no matching prompt: missing", surface.historySearchStatus));
 
         assertEquals(TextBox.Result.HANDLED,
-            controller.handleSearchKey(new KeyStroke(com.googlecode.lanterna.input.KeyType.ENTER)),
+            controller.handleSearchKey(new KeyStroke(KeyType.ENTER)),
             "released kbc clears the overlay without submitting a non-matching query");
         assertFalse(controller.isSearching());
     }
@@ -668,7 +670,7 @@ class InputHistoryControllerTest {
         assertTrue(s.restoredDraftPasted.isEmpty());
     }
 
-    private static void await(java.util.function.BooleanSupplier condition) throws Exception {
+    private static void await(BooleanSupplier condition) throws Exception {
         long deadline = System.currentTimeMillis() + 2_000;
         while (!condition.getAsBoolean() && System.currentTimeMillis() < deadline) {
             Thread.sleep(5);

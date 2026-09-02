@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
+
 import org.junit.jupiter.api.Test;
 
 class HistorySearchDialogTest {
@@ -148,7 +151,7 @@ class HistorySearchDialogTest {
         var screen = new TerminalScreen(terminal);
         screen.startScreen();
         var gui = new MultiWindowTextGUI(new SameTextGUIThread.Factory(), screen);
-        List<PromptHistory.TimestampedEntry> entries = java.util.stream.IntStream.range(0, 12)
+        List<PromptHistory.TimestampedEntry> entries = IntStream.range(0, 12)
             .mapToObj(index -> PromptHistory.TimestampedEntry.resolved(resolved("entry-" + index)))
             .toList();
         CompletableFuture<String> selected = new CompletableFuture<>();
@@ -174,7 +177,7 @@ class HistorySearchDialogTest {
         var screen = new TerminalScreen(terminal);
         screen.startScreen();
         var gui = new MultiWindowTextGUI(new SameTextGUIThread.Factory(), screen);
-        List<PromptHistory.TimestampedEntry> entries = java.util.stream.IntStream.range(0, 12)
+        List<PromptHistory.TimestampedEntry> entries = IntStream.range(0, 12)
             .mapToObj(index -> PromptHistory.TimestampedEntry.resolved(resolved("entry-" + index)))
             .toList();
         CompletableFuture<String> selected = new CompletableFuture<>();
@@ -186,7 +189,7 @@ class HistorySearchDialogTest {
         pumpUntil(gui, () -> Strings.CS.contains(terminalFrame(terminal, size), "entry-0"));
 
         dialog.handleInput(new MouseAction(MouseActionType.SCROLL_UP, 0,
-            TerminalPosition.TOP_LEFT_CORNER));
+            TerminalPosition.of(0, 0)));
         pumpUntil(gui, () -> Strings.CS.contains(terminalFrame(terminal, size), "entry-8"));
         dialog.handleInput(new KeyStroke(KeyType.ENTER));
         pumpUntil(gui, selected::isDone);
@@ -292,7 +295,7 @@ class HistorySearchDialogTest {
     }
 
     private static void pumpUntil(MultiWindowTextGUI gui,
-                                  java.util.function.BooleanSupplier done) throws Exception {
+                                  BooleanSupplier done) throws Exception {
         long deadline = System.currentTimeMillis() + 2_000;
         while (!done.getAsBoolean() && System.currentTimeMillis() < deadline) {
             gui.getGUIThread().processEventsAndUpdate();

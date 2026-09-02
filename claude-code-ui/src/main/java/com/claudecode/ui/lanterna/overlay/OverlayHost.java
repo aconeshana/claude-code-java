@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.overlay;
 import com.googlecode.lanterna.input.KeyStroke;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -25,7 +26,7 @@ public final class OverlayHost {
 
     public synchronized void registerAll(List<? extends InlineOverlay> values) {
         ensureMutable();
-        if (values != null) values.stream().filter(java.util.Objects::nonNull).forEach(overlays::add);
+        if (values != null) values.stream().filter(Objects::nonNull).forEach(overlays::add);
     }
 
     public synchronized List<InlineOverlay> snapshot() {

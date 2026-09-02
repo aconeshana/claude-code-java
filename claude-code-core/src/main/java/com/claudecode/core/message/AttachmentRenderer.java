@@ -13,6 +13,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Renders an {@link AttachmentPayload} either into per-turn {@code isMeta} {@link UserMessage}s or
@@ -260,9 +261,11 @@ public final class AttachmentRenderer {
                 .append(plan.planStatus()).append(" — ").append(plan.title())
                 .append("\n  Summary: ").append(plan.summary())
                 .append("\n  Path: ").append(plan.planFilePath()).append("\n"));
-            catalog.append("\nUse Read to open a historical plan when its full contents are needed. "
-                + "Historical files are read-only references. If this plan explicitly revises one "
-                + "older plan, pass that plan ID as revisesPlanId to ExitPlanMode; otherwise omit it.");
+            catalog.append("""
+                
+                Use Read to open a historical plan when its full contents are needed. \
+                Historical files are read-only references. If this plan explicitly revises one \
+                older plan, pass that plan ID as revisesPlanId to ExitPlanMode; otherwise omit it.""");
         }
         return catalog.toString();
     }
@@ -559,7 +562,7 @@ public final class AttachmentRenderer {
         if (attachment.content() == null || attachment.content().isEmpty()) return message;
         String tasks = attachment.content().stream()
             .map(task -> "#" + task.id() + ". [" + task.status() + "] " + task.subject())
-            .collect(java.util.stream.Collectors.joining("\n"));
+            .collect(Collectors.joining("\n"));
         return message + "\n\n\nHere are the existing tasks:\n\n" + tasks;
     }
 

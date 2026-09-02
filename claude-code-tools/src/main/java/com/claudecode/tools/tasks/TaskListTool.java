@@ -12,6 +12,7 @@ import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -125,7 +126,7 @@ public class TaskListTool extends AnnotatedTool<JsonNode, String> {
         if (tasks.isEmpty()) {
             text = "No tasks found";
         } else {
-            List<String> lines = new java.util.ArrayList<>();
+            List<String> lines = new ArrayList<>();
             tasks.forEach(task -> lines.add(formatLine(task)));
             text = String.join("\n", lines);
         }
@@ -172,7 +173,7 @@ public class TaskListTool extends AnnotatedTool<JsonNode, String> {
     private static String formatLine(JsonNode task) {
         String ownerName = task.path("owner").asText("");
         String owner = ownerName.isEmpty() ? "" : " (" + ownerName + ")";
-        List<String> blockedIds = new java.util.ArrayList<>();
+        List<String> blockedIds = new ArrayList<>();
         task.path("blockedBy").forEach(id -> blockedIds.add("#" + id.asText()));
         String blocked = blockedIds.isEmpty() ? "" : " [blocked by "
             + String.join(", ", blockedIds) + "]";

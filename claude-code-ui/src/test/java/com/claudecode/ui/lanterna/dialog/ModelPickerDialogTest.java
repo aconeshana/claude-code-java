@@ -15,6 +15,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -147,7 +149,7 @@ class ModelPickerDialogTest {
     @Test
     void productionArrowQueuesAuxiliaryEffortRefresh() {
         ModelPickerDialog d = new ModelPickerDialog();
-        List<Runnable> guiTasks = new java.util.ArrayList<>();
+        List<Runnable> guiTasks = new ArrayList<>();
         d.setGuiInvoker(guiTasks::add);
         show(d, "sonnet", null, _ -> {});
 
@@ -161,7 +163,7 @@ class ModelPickerDialogTest {
     @Test
     void productionArrowSkipsAuxiliaryEffortRefreshWhenVisualIsUnchanged() {
         ModelPickerDialog d = new ModelPickerDialog();
-        List<Runnable> guiTasks = new java.util.ArrayList<>();
+        List<Runnable> guiTasks = new ArrayList<>();
         d.setGuiInvoker(guiTasks::add);
         show(d, null, null, _ -> {});
 
@@ -305,7 +307,7 @@ class ModelPickerDialogTest {
     }
 
     private static List<String> imageRows(BasicTextImage image) {
-        List<String> rows = new java.util.ArrayList<>();
+        List<String> rows = new ArrayList<>();
         for (int row = 0; row < image.getSize().getRows(); row++) {
             StringBuilder line = new StringBuilder();
             for (int column = 0; column < image.getSize().getColumns(); column++) {

@@ -1,5 +1,7 @@
 package com.claudecode.runtime.query;
 
+import org.apache.commons.lang3.StringUtils;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -33,7 +35,7 @@ public final class BoundedHeadlessTurnProfiler implements HeadlessTurnProfiler {
 
     @Override
     public synchronized void checkpoint(String name) {
-        if (current == null || name == null || name.isBlank()) return;
+        if (current == null || name == null || StringUtils.isBlank(name)) return;
         if (current.checkpoints().size() >= MAX_CHECKPOINTS_PER_TURN
                 && !current.checkpoints().containsKey(name)) return;
         current.checkpoints().putIfAbsent(name, clock.getAsLong());

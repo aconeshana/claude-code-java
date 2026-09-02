@@ -1,14 +1,14 @@
 package com.claudecode.tools;
 
 import com.claudecode.tools.output.SyntheticOutputTool;
+import com.claudecode.tools.plan.EnterPlanModeTool;
+
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Guards the static tool-text inventory against regressions back into Java literals. */
 class ToolTextResourceInventoryTest {
@@ -51,14 +51,14 @@ class ToolTextResourceInventoryTest {
 
     @Test
     void enterPlanModeKeepsReleasedDescriptionAndPromptAsDistinctChannels() {
-        com.claudecode.tools.plan.EnterPlanModeTool tool =
-            new com.claudecode.tools.plan.EnterPlanModeTool();
+        EnterPlanModeTool tool =
+            new EnterPlanModeTool();
 
         assertEquals(
             "Requests permission to enter plan mode for complex tasks requiring exploration and design",
             tool.description());
         assertEquals(ToolTexts.prompt("EnterPlanMode"), tool.prompt(null));
-        assertFalse(tool.description().equals(tool.prompt(null)));
+        assertNotEquals(tool.description(), tool.prompt(null));
     }
 
     @Test

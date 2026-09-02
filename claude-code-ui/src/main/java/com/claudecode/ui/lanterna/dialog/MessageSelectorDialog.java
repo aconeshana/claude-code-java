@@ -20,6 +20,7 @@ import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.XmlTagUtils;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.Direction;
@@ -30,6 +31,7 @@ import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 
+import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -44,6 +46,8 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.components.SpinnerFrames;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
@@ -480,7 +484,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
             .filter(TextBlock.class::isInstance)
             .map(TextBlock.class::cast)
             .map(TextBlock::text)
-            .collect(java.util.stream.Collectors.joining("\n"));
+            .collect(Collectors.joining("\n"));
         return StringUtils.trimToNull(joined);
     }
 
@@ -521,7 +525,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
 
     private static FileDiffContribution fileDiffContribution(Object payload) {
         if (payload instanceof FileChangeResult result) {
-            if (result.filePath() == null || result.filePath().isEmpty()
+            if (StringUtils.isEmpty(result.filePath())
                     || result.structuredPatch() == null) {
                 return null;
             }
@@ -1581,7 +1585,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
 
         private void drawDiffStats(TextGUIGraphics g, int column, int row, String prefix,
                                    FileHistoryManager.DiffStats stats, String suffix,
-                                   com.googlecode.lanterna.TextColor baseColor) {
+                                   TextColor baseColor) {
             g.setForegroundColor(baseColor);
             g.putString(column, row, prefix);
             int cursor = column + FormatUtils.displayWidth(prefix);
@@ -1661,11 +1665,11 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
 
         private String firstGraphemeAt(String value, int offset) {
             if (offset < 0 || offset >= value.length()) return " ";
-            java.text.BreakIterator iterator =
-                java.text.BreakIterator.getCharacterInstance(Locale.ROOT);
+            BreakIterator iterator =
+                BreakIterator.getCharacterInstance(Locale.ROOT);
             iterator.setText(value);
             int end = iterator.following(offset);
-            return end == java.text.BreakIterator.DONE
+            return end == BreakIterator.DONE
                 ? value.substring(offset) : value.substring(offset, end);
         }
 

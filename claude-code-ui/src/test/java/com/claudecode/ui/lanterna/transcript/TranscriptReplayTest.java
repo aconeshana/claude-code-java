@@ -3,7 +3,7 @@ package com.claudecode.ui.lanterna.transcript;
 import com.claudecode.core.message.*;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.tools.tasks.PendingBackgroundWork;
-
+import com.googlecode.lanterna.TextColor;
 import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +43,7 @@ class TranscriptReplayTest {
         }
 
         @Override
-        public void appendLine(String text, com.googlecode.lanterna.TextColor color) {
+        public void appendLine(String text, TextColor color) {
             lines.add(text);
         }
     }

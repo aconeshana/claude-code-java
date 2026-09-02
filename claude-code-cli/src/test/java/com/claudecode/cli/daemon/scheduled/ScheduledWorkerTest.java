@@ -4,7 +4,9 @@ import com.claudecode.tools.cron.CronJitterConfig;
 import com.claudecode.tools.cron.CronSchedule;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
@@ -83,8 +85,8 @@ class ScheduledWorkerTest {
 
     private static final class ControlledRunner implements ScheduledTaskRunner {
         private final List<String> started = new ArrayList<>();
-        private final java.util.Map<String, CompletableFuture<ScheduledTaskResult>> futures =
-            new java.util.LinkedHashMap<>();
+        private final Map<String, CompletableFuture<ScheduledTaskResult>> futures =
+            new LinkedHashMap<>();
 
         @Override
         public synchronized CompletableFuture<ScheduledTaskResult> run(ScheduledTaskConfig task) {

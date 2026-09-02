@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.File;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 /** Released-compatible activity descriptions consumed by the teammate task board. */
@@ -103,7 +105,7 @@ final class TaskActivityDescription {
     /** JavaScript truthiness for schema-validated optional string fields. */
     private static String truthyText(JsonNode input, String field) {
         String value = nullableText(input, field);
-        return value == null || value.isEmpty() ? null : value;
+        return StringUtils.isEmpty(value) ? null : value;
     }
 
     /** Preserves an explicit empty string while treating an absent/null field as null. */

@@ -25,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 
 /**
  * Accessors and application-owned write ports for the handful of (and policy-managed fields the

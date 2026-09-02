@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.nio.file.Files;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -303,7 +304,7 @@ class PermissionsPanelTest {
         panel.setSize(size);
         BasicTextImage image = new BasicTextImage(size);
         panel.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
-        List<String> lines = new java.util.ArrayList<>(size.getRows());
+        List<String> lines = new ArrayList<>(size.getRows());
         for (int row = 0; row < size.getRows(); row++) {
             StringBuilder line = new StringBuilder(columns);
             for (int column = 0; column < columns; column++) {

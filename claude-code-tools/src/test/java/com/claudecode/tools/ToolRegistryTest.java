@@ -1203,7 +1203,7 @@ class ToolRegistryTest {
         ToolResult result = registry.execute("ExitPlanMode", mapper.createObjectNode(), context);
 
         assertEquals(1, result.userFeedbackBlocks().size());
-        assertTrue(result.userFeedbackBlocks().getFirst() instanceof ImageBlock);
+        assertInstanceOf(ImageBlock.class, result.userFeedbackBlocks().getFirst());
     }
 
     // ── getToolDefinitions(Set<String>) — ToolSearch deferred-schema filtering ──

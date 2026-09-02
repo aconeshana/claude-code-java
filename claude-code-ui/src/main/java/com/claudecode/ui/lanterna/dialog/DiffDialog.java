@@ -32,7 +32,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import com.claudecode.ui.lanterna.input.InputPanel;
 
 /**
  * Inline {@code /diff} dialog — uncommitted-changes browser plus per-turn diffs.

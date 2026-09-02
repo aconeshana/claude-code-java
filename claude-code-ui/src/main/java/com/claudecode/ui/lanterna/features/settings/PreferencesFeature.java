@@ -41,7 +41,6 @@ import java.util.function.Predicate;
 import java.util.concurrent.atomic.AtomicLong;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.claudecode.ui.lanterna.status.StatusDiagnostics;

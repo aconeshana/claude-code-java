@@ -10,7 +10,7 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -357,7 +357,7 @@ class SettingsTabContainerTest {
 
     @Test
     void released197ConfigChangesApplyImmediatelyAndEscClosesWithTheDiff() {
-        List<String> applied = new java.util.ArrayList<>();
+        List<String> applied = new ArrayList<>();
         AtomicReference<Map<String, String>> closed = new AtomicReference<>();
         SettingsTabContainer c = new SettingsTabContainer(40);
         c.show(SettingsTabContainer.Tab.CONFIG, defaultConfigValues(), false,
@@ -526,7 +526,7 @@ class SettingsTabContainerTest {
     }
 
     private static List<String> imageLines(BasicTextImage image, int columns, int rows) {
-        List<String> lines = new java.util.ArrayList<>(rows);
+        List<String> lines = new ArrayList<>(rows);
         for (int row = 0; row < rows; row++) {
             StringBuilder line = new StringBuilder(columns);
             for (int column = 0; column < columns; column++) {

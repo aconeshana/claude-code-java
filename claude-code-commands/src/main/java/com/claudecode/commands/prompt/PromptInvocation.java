@@ -1,7 +1,5 @@
 package com.claudecode.commands.prompt;
 
-import com.claudecode.commands.CommandResult;
-
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.TextBlock;
