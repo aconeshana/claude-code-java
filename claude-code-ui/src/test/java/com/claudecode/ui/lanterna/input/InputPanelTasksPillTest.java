@@ -44,6 +44,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -142,7 +144,8 @@ class InputPanelTasksPillTest {
     void collaborationIsPermanentFooterEntryAndOpensWithoutSubmitting() {
         Fixture f = fixture();
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → Collaboration
         assertTrue(f.panel().isCollaborationPillSelected());
         assertEquals("Collaboration: Off", f.panel().collaborationPillTextForTest());
 
@@ -157,7 +160,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         f.panel().setText("keep this draft");
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → Collaboration
         f.panel().handleKeyForTest(ENTER);
 
         assertEquals(1, f.actions().openCollaborationPickerCalls.get());
@@ -199,7 +203,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         f.panel().setIsLoading(true);
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → Collaboration
         assertTrue(f.panel().isCollaborationPillSelected());
         f.panel().handleKeyForTest(ENTER);
 
@@ -212,7 +217,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         runningShell(f.registry(), "task");
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
         f.panel().handleKeyForTest(new KeyStroke(KeyType.ARROW_RIGHT));
         assertTrue(f.panel().isCollaborationPillSelected());
@@ -242,8 +248,11 @@ class InputPanelTasksPillTest {
         runningShell(f.registry(), "npm run build");
 
         f.panel().handleKeyForTest(DOWN);
-        assertTrue(f.panel().isTasksPillSelected(), "first ↓ at history bottom selects the pill");
-        assertEquals(0, f.actions().openTasksDialogCalls.get(), "first ↓ must not open the dialog yet");
+        assertTrue(f.panel().isProjectsButtonSelectedForTest(),
+            "first ↓ at history bottom selects the ≡ projects button (extension stop)");
+        f.panel().handleKeyForTest(DOWN);
+        assertTrue(f.panel().isTasksPillSelected(), "the next ↓ resumes the released chain at the pill");
+        assertEquals(0, f.actions().openTasksDialogCalls.get(), "footer entry must not open the dialog yet");
 
         f.panel().handleKeyForTest(DOWN);
         assertEquals(0, f.actions().openTasksDialogCalls.get(),
@@ -293,7 +302,9 @@ class InputPanelTasksPillTest {
         assertFalse(f.panel().isTasksPillSelected(),
             "↓ while browsing history must step back toward the draft first");
 
-        f.panel().handleKeyForTest(DOWN); // at bottom now → pill
+        f.panel().handleKeyForTest(DOWN); // at bottom now → ≡ projects button (extension stop)
+        assertTrue(f.panel().isProjectsButtonSelectedForTest());
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
     }
 
@@ -317,7 +328,8 @@ class InputPanelTasksPillTest {
     void upArrow_whilePillSelected_returnsToInput() {
         Fixture f = fixture();
         runningShell(f.registry(), "task");
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
 
         f.panel().handleKeyForTest(UP);
@@ -343,7 +355,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         runningShell(f.registry(), "task");
         f.panel().handleKeyForTest(new KeyStroke('h', false, false)); // draft text present
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
 
         f.panel().handleKeyForTest(ENTER);
@@ -359,7 +372,8 @@ class InputPanelTasksPillTest {
     void enter_whilePillSelectedAndInputEmpty_opensDialog() {
         Fixture f = fixture();
         runningShell(f.registry(), "task");
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
 
         f.panel().handleKeyForTest(ENTER);
 
@@ -373,7 +387,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         runningShell(f.registry(), "task");
         f.panel().handleKeyForTest(new KeyStroke('a', false, false));
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
 
         f.panel().handleKeyForTest(new KeyStroke('z', false, false));
@@ -474,7 +489,8 @@ class InputPanelTasksPillTest {
         Fixture f = fixture();
         TaskState t = runningShell(f.registry(), "npm run build");
         f.panel().refreshTasksPill();
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
 
         f.registry().store().updateStatus(t.id(), TaskStatus.COMPLETED);
@@ -489,7 +505,8 @@ class InputPanelTasksPillTest {
     void keyOnVanishedPill_fallsThroughToNormalHandling() {
         Fixture f = fixture();
         TaskState t = runningShell(f.registry(), "npm run build");
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
         assertTrue(f.panel().isTasksPillSelected());
 
         // Task finishes while selected; next key must not be swallowed by the
@@ -544,10 +561,11 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → coordinator panel
 
         assertTrue(f.panel().isCoordinatorPanelSelectedForTest(),
-            "↓ at history bottom enters the subagent panel when a panel agent exists");
+            "↓ past the ≡ button enters the subagent panel when a panel agent exists");
         assertFalse(f.panel().isTasksPillSelected(),
             "the coordinator panel must not also engage the tasks pill");
         assertFalse(f.panel().isCollaborationPillSelected());
@@ -564,6 +582,7 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         assertEquals(0, f.panel().coordinatorIndexForTest());
         f.panel().handleKeyForTest(DOWN); // agent
@@ -611,7 +630,7 @@ class InputPanelTasksPillTest {
         int collaborationRow = lineContaining(lines, "Collaboration: Off");
         assertTrue(mainRow < agentRow && agentRow < collaborationRow,
             "the final Lanterna frame must follow main → agent → Collaboration");
-        assertTrue(lines.get(collaborationRow).startsWith("  Collaboration: Off"),
+        assertTrue(Strings.CS.startsWith(lines.get(collaborationRow), "  Collaboration: Off"),
             "Collaboration must align with the coordinator's two-column idle prefix");
     }
 
@@ -624,6 +643,7 @@ class InputPanelTasksPillTest {
         KeyStroke ctrlN = new KeyStroke('n', true, false);
         KeyStroke ctrlP = new KeyStroke('p', true, false);
 
+        f.panel().handleKeyForTest(DOWN);  // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN);  // main
         f.panel().handleKeyForTest(ctrlN); // agent
         assertEquals(1, f.panel().coordinatorIndexForTest());
@@ -642,6 +662,7 @@ class InputPanelTasksPillTest {
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
         f.panel().setIsLoading(true);
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(DOWN); // agent
         f.panel().handleKeyForTest(DOWN); // Collaboration
@@ -651,6 +672,7 @@ class InputPanelTasksPillTest {
         assertEquals(0, f.actions().cancelCalls.get(),
             "footer Esc must return to input instead of aborting the running turn");
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(DOWN); // agent
         f.panel().handleKeyForTest(DOWN); // Collaboration
@@ -686,6 +708,7 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(DOWN); // agent
         f.panel().handleKeyForTest(ENTER); // view agent, footer remains selected
@@ -724,6 +747,7 @@ class InputPanelTasksPillTest {
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
         f.panel().setText("draft");
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(new KeyStroke('z', false, false));
 
@@ -749,7 +773,8 @@ class InputPanelTasksPillTest {
         f.panel().setWorkflowRunStore(runs);
         wireCoordinator(f.panel(), f.registry());
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → workflow footer
         assertTrue(f.panel().isWorkflowFooterSelectedForTest());
         assertFalse(f.panel().isTasksPillSelected(),
             "local_workflow has an independent ETf row and must not duplicate into tasks");
@@ -779,7 +804,8 @@ class InputPanelTasksPillTest {
         wireCoordinator(f.panel(), f.registry());
         f.panel().setText("draft");
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → workflow footer
         f.panel().handleKeyForTest(ENTER);
 
         assertEquals(task.id(), f.actions().openedWorkflowTaskId.get());
@@ -805,7 +831,8 @@ class InputPanelTasksPillTest {
         wireCoordinator(f.panel(), f.registry());
         f.panel().setText("draft");
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → workflow footer
         f.panel().handleKeyForTest(new KeyStroke('z', false, false));
 
         assertEquals("draft", f.panel().getText());
@@ -832,7 +859,8 @@ class InputPanelTasksPillTest {
         f.panel().setWorkflowRunStore(runs);
         wireCoordinator(f.panel(), f.registry());
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → workflow footer
         assertTrue(f.panel().isWorkflowFooterSelectedForTest());
         f.panel().handleKeyForTest(new KeyStroke('x', false, false));
 
@@ -859,6 +887,7 @@ class InputPanelTasksPillTest {
         f.panel().setWorkflowRunStore(runs);
         wireCoordinator(f.panel(), f.registry());
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(DOWN); // agent
         f.panel().handleKeyForTest(DOWN); // workflows
@@ -886,6 +915,7 @@ class InputPanelTasksPillTest {
         f.panel().setWorkflowRunStore(runs);
         wireCoordinator(f.panel(), f.registry());
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // workflow
         assertTrue(f.panel().isWorkflowFooterSelectedForTest());
         f.panel().handleKeyForTest(DOWN); // Collaboration
@@ -915,6 +945,7 @@ class InputPanelTasksPillTest {
         }
         f.panel().setWorkflowRunStore(runs);
         wireCoordinator(f.panel(), f.registry());
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // workflow 0
 
         f.panel().handleKeyForTest(new KeyStroke(KeyType.ARROW_RIGHT)); // Collaboration
@@ -932,6 +963,7 @@ class InputPanelTasksPillTest {
             "197 navigateFooter preserves workflowFooterIndex across footer groups");
 
         f.panel().handleKeyForTest(ESC);  // input
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // workflows group again
         assertEquals(1, f.panel().workflowFooterIndexForTest(),
             "re-entering the workflows footer must preserve workflowFooterIndex");
@@ -954,7 +986,8 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → unified pill
 
         assertTrue(f.panel().isCoordinatorPanelSelectedForTest());
         assertTrue(f.panel().isTasksPillSelected());
@@ -972,7 +1005,8 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → unified background pill
         assertEquals(-1, f.panel().coordinatorIndexForTest());
 
         f.registry().store().remove(shell.id());
@@ -991,6 +1025,7 @@ class InputPanelTasksPillTest {
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
 
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // unified background pill (-1)
         f.panel().handleKeyForTest(DOWN); // main
         f.panel().handleKeyForTest(DOWN); // agent
@@ -1011,10 +1046,11 @@ class InputPanelTasksPillTest {
         wireCoordinator(f.panel(), f.registry());
         runningShell(f.registry(), "npm run build"); // a LOCAL_BASH pill task, no panel agent
 
-        f.panel().handleKeyForTest(DOWN);
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // → pill
 
         assertTrue(f.panel().isTasksPillSelected(),
-            "with no panel agent, ↓ selects the tasks pill as before");
+            "with no panel agent, ↓ past ≡ selects the tasks pill as before");
         assertFalse(f.panel().isCoordinatorPanelSelectedForTest(),
             "a shell-only scene must not engage the subagent panel");
     }
@@ -1034,16 +1070,16 @@ class InputPanelTasksPillTest {
     }
 
     private static List<String> renderedLines(BasicTextImage image) {
-        return java.util.stream.IntStream.range(0, image.getSize().getRows())
-            .mapToObj(row -> java.util.stream.IntStream.range(0, image.getSize().getColumns())
+        return IntStream.range(0, image.getSize().getRows())
+            .mapToObj(row -> IntStream.range(0, image.getSize().getColumns())
                 .mapToObj(column -> image.getCharacterAt(column, row).getCharacterString())
-                .collect(java.util.stream.Collectors.joining()))
+                .collect(Collectors.joining()))
             .toList();
     }
 
     private static int lineContaining(List<String> lines, String text) {
-        return java.util.stream.IntStream.range(0, lines.size())
-            .filter(index -> lines.get(index).contains(text))
+        return IntStream.range(0, lines.size())
+            .filter(index -> Strings.CS.contains(lines.get(index), text))
             .findFirst().orElseThrow();
     }
 }

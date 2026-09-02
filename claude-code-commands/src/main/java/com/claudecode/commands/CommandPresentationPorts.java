@@ -50,5 +50,7 @@ public record CommandPresentationPorts(
     Runnable tasksDialogLauncher,
     Runnable workflowsDialogLauncher,
     Runnable statsDialogLauncher,
-    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher
+    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher,
+    /** Toggles the left-docked project drawer (Java-side extension, no 197 counterpart). */
+    Runnable projectPanelLauncher
 ) { }

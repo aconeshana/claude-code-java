@@ -34,5 +34,6 @@ public record ReplApplicationPorts(
     StartupTrustPort startupTrust,
     ShutdownPort shutdown,
     TurnAwakeGuard awakeGuard,
-    TaskBoardPort taskBoard
+    TaskBoardPort taskBoard,
+    ProjectCatalogPort projects
 ) {}

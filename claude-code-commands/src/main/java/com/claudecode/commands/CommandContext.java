@@ -162,6 +162,7 @@ public record CommandContext(
         private CopyApplyFromDialog copyApplyFromDialog;
         private Runnable diffDialogLauncher;
         private Runnable helpDialogLauncher;
+        private Runnable projectPanelLauncher;
         private Runnable skillsDialogLauncher;
         private Consumer<String> pluginDialogLauncher;
         private PluginRuntimePort pluginRuntime;
@@ -264,6 +265,7 @@ public record CommandContext(
         public Builder copyApplyFromDialog(CopyApplyFromDialog v) { copyApplyFromDialog = v; return this; }
         public Builder diffDialogLauncher(Runnable v) { diffDialogLauncher = v; return this; }
         public Builder helpDialogLauncher(Runnable v) { helpDialogLauncher = v; return this; }
+        public Builder projectPanelLauncher(Runnable v) { projectPanelLauncher = v; return this; }
         public Builder skillsDialogLauncher(Runnable v) { skillsDialogLauncher = v; return this; }
         public Builder pluginDialogLauncher(Consumer<String> v) { pluginDialogLauncher = v; return this; }
         public Builder pluginRuntime(PluginRuntimePort v) { pluginRuntime = v; return this; }
@@ -303,7 +305,7 @@ public record CommandContext(
                 copyPickerLauncher, copyApplyFromDialog, diffDialogLauncher,
                 helpDialogLauncher, skillsDialogLauncher, pluginDialogLauncher,
                 tasksDialogLauncher, workflowsDialogLauncher, statsDialogLauncher,
-                tagRemovalLauncher);
+                tagRemovalLauncher, projectPanelLauncher);
             return new CommandContext(session, application, presentation);
         }
     }

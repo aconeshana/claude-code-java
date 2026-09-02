@@ -103,6 +103,13 @@ public interface InputActions {
      */
     default void openTasksDialog() { /* no-op */ }
 
+    /**
+     * Toggle the left-docked project drawer — fired by Enter on the footer ≡
+     * button or a mouse click on it. A Java-side extension with no 197
+     * counterpart.
+     */
+    default void toggleProjectPanel() { /* no-op */ }
+
 
     default void openWorkflowDialog(String taskId) { /* no-op */ }
 

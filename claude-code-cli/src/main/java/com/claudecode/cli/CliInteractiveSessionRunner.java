@@ -506,6 +506,10 @@ final class CliInteractiveSessionRunner {
                             LanternaReplScreen s = screenRef.get();
                             if (s != null) s.openHelpPanel();
                         })
+                        .projectPanelLauncher(() -> {
+                            LanternaReplScreen s = screenRef.get();
+                            if (s != null) s.toggleProjectPanel();
+                        })
                         .pluginDialogLauncher(args -> {
                             LanternaReplScreen s = screenRef.get();
                             if (s != null) s.openPluginPanel(args);

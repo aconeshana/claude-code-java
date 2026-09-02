@@ -32,6 +32,7 @@ import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.workflows.WorkflowRunStore;
 import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.ui.lanterna.repl.InteractiveSessionPort;
+import com.claudecode.ui.lanterna.repl.ProjectCatalogPort;
 import com.claudecode.ui.lanterna.repl.ReplApplicationPorts;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplFeatureRuntime;
@@ -54,6 +55,7 @@ final class CliInteractiveRuntimeAssembler {
     private final InvokedSkillRegistry invokedSkills = InvokedSkillRegistry.global();
     private final LoopWakeupManager loopWakeups = LoopWakeupManager.global();
     private final InteractiveSessionPort sessions;
+    private final ProjectCatalogPort projects;
     private final ToolingCommandPorts toolingCommands =
         CliToolingCommandAdapter.create(tasks, invokedSkills);
 
@@ -64,10 +66,12 @@ final class CliInteractiveRuntimeAssembler {
     CliInteractiveRuntimeAssembler(Predicate<String> builtInCommand) {
         this.sessions = new CliInteractiveSessionAdapter(
             new StatsAggregator(), builtInCommand);
+        this.projects = new CliProjectCatalogAdapter(builtInCommand);
     }
 
     ToolingCommandPorts toolingCommands() { return toolingCommands; }
     InteractiveSessionPort sessions() { return sessions; }
+    ProjectCatalogPort projects() { return projects; }
     TaskRegistry tasks() { return tasks; }
     WorkflowRunStore workflows() { return workflows; }
     InvokedSkillRegistry invokedSkills() { return invokedSkills; }
@@ -83,7 +87,7 @@ final class CliInteractiveRuntimeAssembler {
             TaskBoardPort taskBoard) {
         return new ReplApplicationPorts(commandUi, sessions, hooks, mcp, compactWarnings,
             sessionLifecycle, conversationReset, memory, outputStyles, doctor, plugins,
-            statusLine, startupTrust, shutdown, awakeGuard, taskBoard);
+            statusLine, startupTrust, shutdown, awakeGuard, taskBoard, projects);
     }
 
     ReplFeatureRuntime features(

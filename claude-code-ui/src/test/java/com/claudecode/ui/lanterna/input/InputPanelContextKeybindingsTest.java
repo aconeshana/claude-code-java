@@ -80,7 +80,8 @@ class InputPanelContextKeybindingsTest {
             panel.setActions(actions);
             panel.setTaskRegistry(registry);
 
-            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN));
+            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // ≡ projects button (extension stop)
+            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // → pill
             assertTrue(panel.isTasksPillSelected());
 
             panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
@@ -109,7 +110,8 @@ class InputPanelContextKeybindingsTest {
             InputPanel panel = panel(store.value());
             panel.setActions(actions);
 
-            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN));
+            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // ≡ projects button (extension stop)
+            panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // → Collaboration
             assertTrue(panel.isCollaborationPillSelected());
 
             panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));

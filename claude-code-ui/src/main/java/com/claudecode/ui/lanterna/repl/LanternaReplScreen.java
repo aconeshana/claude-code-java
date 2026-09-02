@@ -131,6 +131,9 @@ import com.claudecode.ui.lanterna.features.agents.AgentsFeature;
 import com.claudecode.ui.lanterna.features.help.HelpCommandCatalog;
 import com.claudecode.ui.lanterna.features.help.HelpPanel;
 import com.claudecode.ui.lanterna.features.memory.MemoryFeature;
+import com.claudecode.ui.lanterna.features.projects.ProjectPanel;
+import com.claudecode.ui.lanterna.features.projects.ProjectPanelController;
+import com.claudecode.ui.lanterna.features.projects.ProjectPreviewFormatter;
 import com.claudecode.ui.lanterna.features.sandbox.SandboxFeature;
 import com.claudecode.ui.lanterna.features.settings.AutoModeEntryWarningController;
 import com.claudecode.ui.lanterna.features.settings.BypassPermissionsStartupGate;
@@ -271,6 +274,7 @@ public class LanternaReplScreen implements SlashHost {
      *  terminal-capacity expanded, and hidden views (app:toggleTodos). */
     private TaskListPanel taskListPanel;
     private final TaskBoardPort taskBoard;
+    private final ProjectCatalogPort projectCatalog;
     private volatile TaskBoardPort.Snapshot taskBoardSnapshot = TaskBoardPort.Snapshot.EMPTY;
     private final TaskBoardPresentationState taskBoardPresentationState =
         new TaskBoardPresentationState();
@@ -299,6 +303,11 @@ public class LanternaReplScreen implements SlashHost {
     /** Inline /help panel — sibling of diffDialog; collapses to (0,0) when
      *  idle and is activated by {@code openHelpPanel}. */
     private HelpPanel helpPanel;
+    /** Left-docked project drawer (Java-side extension, no 197 counterpart);
+     *  covers the transcript's left strip when active, toggled by
+     *  {@code toggleProjectPanel} (≡ footer button, /project). */
+    private ProjectPanel projectPanel;
+    private ProjectPanelController projectPanelController;
     /** Inline /plugin settings panel — sibling of helpPanel; collapses to (0,0)
      *  when idle and is activated by {@code openPluginPanel(String)}. */
     private PluginSettingsPanel pluginSettingsPanel;
@@ -586,6 +595,8 @@ public class LanternaReplScreen implements SlashHost {
             ? application.awakeGuard() : TurnAwakeGuard.noop();
         this.taskBoard           = application.taskBoard() != null
             ? application.taskBoard() : TaskBoardPort.none();
+        this.projectCatalog      = application.projects() != null
+            ? application.projects() : ProjectCatalogPort.none();
         this.tipSupplier         = launch.tipSupplier() != null ? launch.tipSupplier() : () -> "";
         this.keybindingsStore    = launch.keybindings();
         this.dispatcher.setKeybindingsStore(this.keybindingsStore);
@@ -1269,6 +1280,89 @@ public class LanternaReplScreen implements SlashHost {
                 if (inputPanel != null) inputPanel.setSuppressed(false);
                 appendLine("  Help dialog dismissed", LanternaTheme.welcomeDim());
             });
+        });
+    }
+
+    /**
+     * Toggles the left-docked project drawer (≡ footer button, {@code /project}).
+     * Java-side extension with no 197 counterpart.
+     */
+    public void toggleProjectPanel() {
+        if (gui == null || projectPanel == null || projectPanelController == null) return;
+        gui.getGUIThread().invokeLater(() -> {
+            // Suppress mirrors the onClose callback's unsuppress; the
+            // controller fires onClose for every close path (Esc, ←, toggle).
+            boolean opening = !projectPanel.isActive();
+            if (opening && inputPanel != null) inputPanel.setSuppressed(true);
+            if (inputPanel != null) inputPanel.setProjectsButtonActive(opening);
+            projectPanelController.toggle();
+        });
+    }
+
+    /**
+     * Drawer resume — same scope rules as the released picker: a session from
+     * another directory is never resumed in place (its new messages would land
+     * in THIS project's transcript dir); print the cd command + OSC52 copy.
+     */
+    private void resumeSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
+        gui.getGUIThread().invokeLater(() -> {
+            String currentCwd = commandContext.session().workingDirectory();
+            if (!StringUtils.isBlank(entry.cwd()) && !entry.cwd().equals(currentCwd)) {
+                String crossCmd = "cd " + SessionController.shellQuote(entry.cwd())
+                    + " && claude --resume " + entry.id();
+                OSC52Helper.copyToClipboard(crossCmd);
+                appendLine("", LanternaTheme.welcomeDim());
+                appendLine("This conversation is from a different directory.",
+                    LanternaTheme.welcomeDim());
+                appendLine("", LanternaTheme.welcomeDim());
+                appendLine("To resume, run:", LanternaTheme.welcomeDim());
+                appendLine("  " + crossCmd, LanternaTheme.welcomeDim());
+                appendLine("", LanternaTheme.welcomeDim());
+                appendLine("(Command copied to clipboard)", LanternaTheme.welcomeDim());
+                return;
+            }
+            if (sessionController != null) {
+                sessionController.resume(new ResumeRequest(
+                    entry.id(), entry.transcriptPath(), currentCwd,
+                    ResumeRequest.Entrypoint.SLASH_COMMAND_PICKER));
+            }
+        });
+    }
+
+    /** Drawer delete — disk I/O off the GUI thread; the panel already removed the row. */
+    private void deleteSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
+        Thread.ofVirtual().name("project-panel-delete").start(() -> {
+            try {
+                InteractiveSessionPort.SessionEntry sessionEntry = new InteractiveSessionPort.SessionEntry(
+                    entry.id(), entry.lastModified(), entry.createdAt(), entry.messageCount(),
+                    entry.summary(), entry.gitBranch(), entry.cwd(), entry.tag(),
+                    entry.transcriptPath(), null, entry.customTitle(), entry.fileSize(), false);
+                boolean deleted = interactiveSessions.deleteSession(sessionEntry,
+                    commandContext.session().workingDirectory());
+                if (!deleted) {
+                    gui.getGUIThread().invokeLater(() -> appendLine(
+                        "  Could not delete session " + entry.id(), LanternaTheme.welcomeDim()));
+                }
+            } catch (RuntimeException failure) {
+                gui.getGUIThread().invokeLater(() -> appendLine(
+                    "  Failed to delete session " + entry.id() + ": " + failure.getMessage(),
+                    LanternaTheme.welcomeDim()));
+            }
+        });
+    }
+
+    /** Drawer preview — transcript read off the GUI thread, lines pushed back when ready. */
+    private void previewSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
+        Thread.ofVirtual().name("project-panel-preview").start(() -> {
+            List<String> lines;
+            try {
+                lines = ProjectPreviewFormatter
+                    .toPreviewLines(interactiveSessions.readMessages(entry.transcriptPath()));
+            } catch (RuntimeException _) {
+                lines = List.of("(failed to read transcript)");
+            }
+            List<String> result = lines;
+            gui.getGUIThread().invokeLater(() -> projectPanel.showPreviewLines(entry, result));
         });
     }
 
@@ -2042,6 +2136,26 @@ public class LanternaReplScreen implements SlashHost {
             terminalRows);
         helpPanel.setTerminalColumnsSupplier(
             () -> screen != null ? screen.getTerminalSize().getColumns() : 80);
+        // Left-docked project drawer — covering overlay over the transcript's
+        // left strip; zero size until toggled. Loads run on virtual threads.
+        projectPanel = new ProjectPanel(
+            () -> screen != null ? screen.getTerminalSize().getColumns() : 80,
+            () -> screen != null ? screen.getTerminalSize().getRows() : terminalRows);
+        projectPanelController = new ProjectPanelController(
+            projectCatalog, projectPanel,
+            task -> Thread.ofVirtual().name("project-catalog-io").start(task),
+            task -> gui.getGUIThread().invokeLater(task),
+            new ProjectPanel.Actions(
+                this::resumeSessionFromProjectPanel,
+                this::deleteSessionFromProjectPanel,
+                this::previewSessionFromProjectPanel,
+                () -> {
+                    if (inputPanel != null) {
+                        inputPanel.setSuppressed(false);
+                        inputPanel.setProjectsButtonActive(false);
+                    }
+                },
+                null));
         pluginSettingsPanel = new PluginSettingsPanel( // inline, zero height until shown
             new PluginPanelServices(plugins,
                 task -> Thread.ofVirtual().name("plugin-panel-io").start(task),
@@ -2215,7 +2329,8 @@ public class LanternaReplScreen implements SlashHost {
         // above window dispatch and paints the highlight over the full back
         // buffer after every draw (see SelectionAwareTextGUI).
         gui.wireSelection(selection, selectionController::handleMouse,
-            inputPanel::handleTasksPillMouse);
+            mouse -> inputPanel.handleProjectsButtonMouse(mouse)
+                || inputPanel.handleTasksPillMouse(mouse));
         // SlashHost is a pure command port; the components a slash command reads/renders into
         // are injected as plain references (see ReplRefs / SlashHost).
         ReplRefs replRefs = new ReplRefs(gui, messagePanel, inputPanel, messageHistory,
@@ -2444,6 +2559,7 @@ public class LanternaReplScreen implements SlashHost {
         scene.register(copyPicker);
         scene.register(diffDialog);
         scene.register(helpPanel);
+        scene.register(projectPanel);
         scene.register(pluginSettingsPanel);
         scene.register(mcpDialog);
         scene.register(worktreeExitDialog);
@@ -2492,6 +2608,7 @@ public class LanternaReplScreen implements SlashHost {
             copyPicker,
             diffDialog,
             helpPanel,
+            projectPanel,
             pluginSettingsPanel,
             permissionsFeature.addDirectoryView(),
             preferencesFeature.settingsView(),
@@ -2861,6 +2978,9 @@ public class LanternaReplScreen implements SlashHost {
             handleInput(text);
         }
         @Override public void cancel() {
+            // Before anything aborts, rescue the in-flight thinking body (197 runs this at
+            // the top of its cancel handler, ahead of the abort and the prompt salvage).
+            if (turnView != null) turnView.salvageInterruptedThinking();
             featureRuntime.loopWakeups().cancelAll();
             if (interactionCoordinator != null) {
                 interactionCoordinator.cancelSession(queryEngine.conversation().getSessionId());
@@ -2954,6 +3074,7 @@ public class LanternaReplScreen implements SlashHost {
             if (statusLineController != null) statusLineController.scheduleUpdate();
         }
         @Override public void openTasksDialog() { LanternaReplScreen.this.openTasksDialog(); }
+        @Override public void toggleProjectPanel() { LanternaReplScreen.this.toggleProjectPanel(); }
         @Override public void openWorkflowDialog(String taskId) {
             LanternaReplScreen.this.openWorkflowsDialog(taskId, false);
         }
@@ -3516,8 +3637,10 @@ public class LanternaReplScreen implements SlashHost {
                 + "error messages, or content you generated), read the full transcript at: "
                 + previousTranscript;
         String teamHint = hasAgentTool
-            ? "\nIf this plan can be broken down into multiple independent tasks, consider spawning "
-                + "named teammates with the Agent tool (pass a `name`) to parallelize the work."
+            ? """
+                
+                If this plan can be broken down into multiple independent tasks, consider spawning \
+                named teammates with the Agent tool (pass a `name`) to parallelize the work."""
             : "";
         String normalizedFeedback = StringUtils.trimToNull(feedback);
         String feedbackSuffix = normalizedFeedback == null ? ""

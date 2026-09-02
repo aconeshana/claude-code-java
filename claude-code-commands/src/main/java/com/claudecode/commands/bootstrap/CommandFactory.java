@@ -46,6 +46,7 @@ import com.claudecode.commands.impl.terminal.StatuslineCommand;
 import com.claudecode.commands.impl.info.StubCommand;
 import com.claudecode.commands.impl.info.TagCommand;
 import com.claudecode.commands.impl.terminal.TasksCommand;
+import com.claudecode.commands.impl.terminal.ProjectCommand;
 import com.claudecode.commands.impl.config.ThemeCommand;
 import com.claudecode.commands.impl.info.UsageCommand;
 import com.claudecode.commands.impl.info.VersionCommand;
@@ -127,6 +128,7 @@ public final class CommandFactory {
         builtIns.add(new PokemonCommand());
         builtIns.add(new RewindCommand());
         builtIns.add(new TasksCommand());
+        builtIns.add(new ProjectCommand());
         builtIns.add(new WorkflowsCommand());
         builtIns.add(new KeybindingsCommand());
         builtIns.add(new StatuslineCommand());

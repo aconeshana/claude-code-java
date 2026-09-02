@@ -74,7 +74,8 @@ class InputPanelMouseCursorTest {
     @Test
     void clickClearsFooterSelectionBeforeRestoringPromptInput() {
         InputPanel panel = panel("draft", new RecordingActions());
-        panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN));
+        panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // ≡ projects button (extension stop)
+        panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)); // → Collaboration
         assertTrue(panel.isCollaborationPillSelected());
 
         panel.handlePromptBareClickForTest(6, 4, ORIGIN, SIZE);

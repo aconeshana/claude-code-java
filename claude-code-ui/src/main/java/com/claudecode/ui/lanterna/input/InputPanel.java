@@ -154,6 +154,17 @@ public class InputPanel extends Panel {
     /** Permanent keyboard-focusable footer entry for one optional IM channel. */
     @Explanation("Permanent per-session IM collaboration footer control")
     private final Label collaborationPillLabel;
+    /**
+     * ≡ project-drawer button — leftmost footer stop (its spatial position).
+     * A Java-side extension with no 197 counterpart. Selected via keyboard
+     * (first ↓ from empty input), clicked, Enter toggles the drawer;
+     * {@code projectsButtonActive} mirrors the drawer's open state.
+     */
+    private final Label projectsButtonLabel;
+    private boolean projectsButtonSelected;
+    private boolean projectsButtonActive;
+    private boolean projectsButtonMousePressed;
+    private boolean projectsButtonMouseHovered;
     private volatile SessionCollaborationController collaborationController;
     private AutoCloseable collaborationSubscription;
     private boolean collaborationPillSelected;
@@ -325,11 +336,11 @@ public class InputPanel extends Panel {
     private long draftUndoSuppressionGeneration;
 
     private StashedPrompt stashedPrompt;
-// Defaults to an unshared identity so a bare `new InputPanel` (tests,
+    // Defaults to an unshared identity so a bare `new InputPanel` (tests,
     // any caller that doesn't wire a session) keeps working; real wiring
-// replaces this via wireSessionIdentity with the SAME instance the
-// QuerySession/HookEngine use, so a single switchToSession call is
-// visible here too without a separate setSessionId sync step.
+    // replaces this via wireSessionIdentity with the SAME instance the
+    // QuerySession/HookEngine use, so a single switchToSession call is
+    // visible here too without a separate setSessionId sync step.
     private SessionIdentity sessionIdentity = SessionIdentity.newRandom();
 
     /**
@@ -360,8 +371,8 @@ public class InputPanel extends Panel {
     private boolean messageActionsActive = false;
     private String messageActionsHint = "";
 
-// ── History navigation state ───────────────────────────────────────────── ── History
-// navigation (Up/Down/Ctrl+R) — extracted to InputHistoryController ──.
+    // ── History navigation state ───────────────────────────────────────────── ── History
+    // navigation (Up/Down/Ctrl+R) — extracted to InputHistoryController ──.
     private final InputHistoryController historyController =
         new InputHistoryController(new InputEditingSurface() {
             @Override public String currentText() { return textBox.getText(); }
@@ -472,7 +483,7 @@ public class InputPanel extends Panel {
     // When true, Ctrl+E fires actions.transcriptShowAll() instead of engine.end().
     private volatile boolean  isTranscriptMode = false;
 
-// ── Temporary hint notification state ───────────────────────────────────.
+    // ── Temporary hint notification state ───────────────────────────────────.
     private static final long HINT_TIMEOUT_MS = 1000;
     private ScheduledFuture<?> hintTimer = null;
     private String historySearchStatus;
@@ -523,11 +534,11 @@ public class InputPanel extends Panel {
         promptLabel = new Label("❯ ");
         promptLabel.setForegroundColor(LanternaTheme.toolSuccess());
 
-// Inline highlights painted over the input text.
+        // Inline highlights painted over the input text.
 
 
         // ultrareview, buddy, tokenBudget, slackChannel, btw); add more
-// suppliers as their commands are implemented.
+        // suppliers as their commands are implemented.
         Supplier<List<Highlight>> highlightSupplier = () -> currentHighlights;
         textBox = new PromptTextBox(new TerminalSize(80, 1),
                                     TextBox.Style.MULTI_LINE,
@@ -581,8 +592,8 @@ public class InputPanel extends Panel {
         // Suggestion dropdown — lives between the bottom divider and the hint row
         suggestionPanel = new SuggestionPanel();
 
-// Inline ghost text — dim argument hint shown at the caret for commands that
-// have a progressive argument contract.
+        // Inline ghost text — dim argument hint shown at the caret for commands that
+        // have a progressive argument contract.
 
         // tracks the latest selected suggestion + current input.
         ((HighlightedTextBox) textBox).setGhostTextSupplier(this::inlineGhostText);
@@ -596,9 +607,14 @@ public class InputPanel extends Panel {
         tasksHintLabel  = new Label("");
         collaborationPillLabel = new Label("Collaboration: Off");
         collaborationPillLabel.setForegroundColor(LanternaTheme.welcomeDim());
+        projectsButtonLabel = new Label("≡ ");
+        projectsButtonLabel.setForegroundColor(LanternaTheme.welcomeDim());
         vimModeLabel    = new Label("");
         vimModeLabel.setForegroundColor(LanternaTheme.welcomeDim());
         hintRow = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        // ≡ is the leftmost footer control, so it is also the first keyboard
+        // stop (↓/→ walk the footer left→right).
+        hintRow.addComponent(projectsButtonLabel);
         hintRow.addComponent(hintMainLabel);
         hintRow.addComponent(hintSuffixLabel);
 
@@ -818,7 +834,7 @@ public class InputPanel extends Panel {
             if (inVimKeyDispatch) {
                 return super.handleKeyStroke(key);
             }
-// DEC 1004 focus events — route to MessagePanel.setFocused via callback.
+            // DEC 1004 focus events — route to MessagePanel.setFocused via callback.
 
             if (key.getKeyType() == KeyType.FOCUS_EVENT && key instanceof FocusEventKeyStroke fek) {
                 if (actions != null) actions.focusChanged(fek.isFocused());
@@ -833,7 +849,7 @@ public class InputPanel extends Panel {
                 return Result.UNHANDLED;
             }
             if (canUsePlainCharacterFastPath(key)) {
-// The established PromptInput sends ordinary text directly to its
+                // The established PromptInput sends ordinary text directly to its
                 // input buffer. Avoid walking every modal/readline/navigation
                 // stage when none of those states can own this character.
                 KillRing.INSTANCE.resetAccumulation();
@@ -1137,6 +1153,7 @@ public class InputPanel extends Panel {
         private Result tryHandleFooterKeyStroke(KeyStroke key) {
             boolean footerSelected = workflowFooterSelected
                 || isCoordinatorPanelSelected()
+                || projectsButtonSelected
                 || taskNavigation.isPillSelected()
                 || collaborationPillSelected;
             if (!footerSelected) return null;
@@ -1151,12 +1168,15 @@ public class InputPanel extends Panel {
 
         private Result handleSelectedFooterNativeKey(KeyStroke key) {
             KeyStroke normalized = normalizeNativeFooterKey(key);
+            if (projectsButtonSelected) {
+                return handleProjectsButtonKey(normalized);
+            }
             if (workflowFooterSelected) {
                 Result r = handleWorkflowFooterKey(normalized);
                 if (r != null) return r;
             }
             // Subagent coordinator panel owns footer focus independently of the
-// teammate/bash pill.
+            // teammate/bash pill.
             if (isCoordinatorPanelSelected()) {
                 Result r = handleCoordinatorPanelKey(normalized);
                 if (r != null) return r;
@@ -1176,9 +1196,40 @@ public class InputPanel extends Panel {
                 return Result.HANDLED;
             }
             if (normalized.getKeyType() == KeyType.ARROW_LEFT) {
+                // ← walks back left — from the tasks pill that is the ≡ button.
+                selectProjectsButton();
                 return Result.HANDLED;
             }
             return taskNavigation.handlePillKey(normalized, taskNavigationHost);
+        }
+
+        /**
+         * Keys while the ≡ projects button is selected: ↑/Esc leave the footer,
+         * ↓/→ resume the released pill chain, Enter toggles the drawer.
+         */
+        private Result handleProjectsButtonKey(KeyStroke key) {
+            KeyType type = key.getKeyType();
+            if (type == KeyType.ARROW_UP || type == KeyType.ESCAPE) {
+                clearFooterSelection();
+                updateHint();
+                return Result.HANDLED;
+            }
+            if (type == KeyType.ARROW_DOWN || type == KeyType.ARROW_RIGHT) {
+                selectFirstFooterStopAfterProjectsButton();
+                updateHint();
+                return Result.HANDLED;
+            }
+            if (type == KeyType.ARROW_LEFT) {
+                return Result.HANDLED; // leftmost stop — nowhere further to go
+            }
+            if (type == KeyType.ENTER && !key.isShiftDown()) {
+                projectsButtonSelected = false;
+                refreshFooterPills();
+                updateHint();
+                if (actions != null) actions.toggleProjectPanel();
+                return Result.HANDLED;
+            }
+            return Result.HANDLED; // swallow everything else while footer-focused
         }
 
         private KeyStroke normalizeNativeFooterKey(KeyStroke key) {
@@ -1354,7 +1405,7 @@ public class InputPanel extends Panel {
                     if (ctrlResult != null) return ctrlResult;
                 }
 
-// Alt+X: Lanterna sets isAltDown for ESC-prefixed sequences.
+                // Alt+X: Lanterna sets isAltDown for ESC-prefixed sequences.
                 if (key.isAltDown()) {
                     Result altResult = switch (ch) {
                         case 'b', 'B' -> engine.prevWord();
@@ -1673,7 +1724,7 @@ public class InputPanel extends Panel {
             return historyDownOrEnterFooter();
         }
 
-/**
+        /**
          * Ctrl+L — redraw screen (clears visual artifacts).
          */
         private Result rl_redrawScreen() {
@@ -1681,7 +1732,7 @@ public class InputPanel extends Panel {
             return Result.HANDLED;
         }
 
-/**
+        /**
          * Ctrl+O — toggle transcript mode.
          */
         private Result rl_toggleTranscript() {
@@ -1689,7 +1740,7 @@ public class InputPanel extends Panel {
             return Result.HANDLED;
         }
 
-/**
+        /**
          * Ctrl+G — open external editor.
          */
         private Result rl_externalEditor() {
@@ -1697,7 +1748,7 @@ public class InputPanel extends Panel {
             return Result.HANDLED;
         }
 
-/**
+        /**
          * Ctrl+S — push/pop the current prompt.
          */
         private Result rl_stash() {
@@ -1727,7 +1778,7 @@ public class InputPanel extends Panel {
             return Result.HANDLED;
         }
 
-/**
+        /**
          * Ctrl+_ — restore the previous prompt draft.
          */
         private void rl_undo() {
@@ -2085,8 +2136,6 @@ public class InputPanel extends Panel {
     // ── Layout ──────────────────────────────────────────────────────────────
 
 
-
-
     private void refreshInputHighlights() {
         List<HighlightedTextBox.Highlight> next = new ArrayList<>();
         List<BtwTriggers.Trigger> btwTriggers = BtwTriggers.find(currentText);
@@ -2196,7 +2245,7 @@ public class InputPanel extends Panel {
             topDividerLeft.setForegroundColor(borderColor);
             // Bottom divider must also follow the current border color —
             // otherwise /color pink flips the top border but the bottom one
-// stays gray. matches the banner-active branch below.
+            // stays gray. matches the banner-active branch below.
             bottomDivider.setForegroundColor(borderColor);
             bottomDivider.setBackgroundColor(TextColor.ANSI.DEFAULT);
         } else {
@@ -2401,7 +2450,7 @@ public class InputPanel extends Panel {
         }
 
         // session color paints the input's TOP/BOTTOM BORDER, not the prompt
-// pointer. updatePromptColor re-renders ❯ in its mode-only color
+        // pointer. updatePromptColor re-renders ❯ in its mode-only color
         // (bash/plan/default) — sessionColor no longer touches the pointer.
         updateBorderColor();
         updatePromptColor();
@@ -2433,7 +2482,7 @@ public class InputPanel extends Panel {
 
     private InputTruncation truncateForInput(String text) {
         if (text == null) return new InputTruncation("", false);
-// Take an id only once the length gate passes — nextId increments a counter.
+        // Take an id only once the length gate passes — nextId increments a counter.
         if (text.length() <= InputPasteTruncation.TRUNCATION_THRESHOLD) {
             return new InputTruncation(text, false);
         }
@@ -2859,7 +2908,7 @@ public class InputPanel extends Panel {
         return historyController.isNavigating();
     }
 
-/**
+    /**
      * Reset history navigation state after a submit.
      */
     public void resetHistory() {
@@ -2872,7 +2921,7 @@ public class InputPanel extends Panel {
     }
 
     // History navigation (Up=Ctrl+P / Down=Ctrl+N) + reverse-i-search moved to
-// InputHistoryController.
+    // InputHistoryController.
 
     /**
      * Apply a history entry: set text, restore pasted contents, and advance the pasted-content
@@ -2999,7 +3048,7 @@ public class InputPanel extends Panel {
         fireQueryChange();
     }
 
-/**
+    /**
      * Replace the input text with the chosen suggestion's primary text.
      */
     private void fillFromSuggestion(String primary) {
@@ -3017,10 +3066,10 @@ public class InputPanel extends Panel {
             return;
         }
 
-// ── File / directory suggestion: locate @token and replace it ─────.
+        // ── File / directory suggestion: locate @token and replace it ─────.
 
-// AT_TOKEN_HEAD_RE = /^@[\p{L}\p{N}\p{M}_\-./\\[\]~:]*/u
-// PATH_CHAR_HEAD_RE = /^[\p{L}\p{N}\p{M}_\-./\\[\]~:]+/u
+        // AT_TOKEN_HEAD_RE = /^@[\p{L}\p{N}\p{M}_\-./\\[\]~:]*/u
+        // PATH_CHAR_HEAD_RE = /^[\p{L}\p{N}\p{M}_\-./\\[\]~:]+/u
 
         // Steps:
         //  1. Find the last @ before cursor that is preceded by start or whitespace.
@@ -3051,7 +3100,7 @@ public class InputPanel extends Panel {
         if (atIdx >= 0) {
             // Token head: everything from @ to cursor
             String tokenHead = beforeCursor.substring(atIdx); // includes '@'
-// Token tail: leading path chars after cursor (matches PATH_CHAR_HEAD_RE)
+            // Token tail: leading path chars after cursor (matches PATH_CHAR_HEAD_RE)
             Matcher tailM = Pattern
                 .compile("^[\\w\\p{L}\\p{N}\\p{M}_\\-./\\\\()\\[\\]~:]+")
                 .matcher(afterCursor);
@@ -3059,7 +3108,7 @@ public class InputPanel extends Panel {
 
             int tokenLen = tokenHead.length() + tokenTail.length();
 
-// Build replacement value (matches formatReplacementValue)
+            // Build replacement value (matches formatReplacementValue)
             boolean needsQuotes = Strings.CS.contains(clean, " ");
             String replacement = needsQuotes
                 ? "@\"" + clean + "\" "
@@ -3225,7 +3274,7 @@ public class InputPanel extends Panel {
         vim.processKey(c);
         textBox.setText(vim.getBuffer());
         // Push vim's updated cursor back to the textBox so the caret stays
-// visually aligned. Without this, setText resets the textBox caret
+        // visually aligned. Without this, setText resets the textBox caret
         // and successive readline shortcuts work off a stale position.
         TextBoxOffsetAdapter.setOffset(textBox, vim.getCursor());
         updateMode();
@@ -3339,7 +3388,7 @@ public class InputPanel extends Panel {
         if (modeOverride != null) {
             // modeOverride is set when a history entry had its prefix stripped.
 
-// until resetMode (Escape) or submit. The text in the box has no prefix.
+            // until resetMode (Escape) or submit. The text in the box has no prefix.
             // Only clear override if user explicitly types a new mode prefix at position 0.
             if (prefixMode != Mode.NORMAL) {
                 modeOverride = null;  // user typed "!" naturally → text-based detection takes over
@@ -3379,10 +3428,7 @@ public class InputPanel extends Panel {
         //     foreground, letting the terminal palette default through.
         //   • {@link #sessionColor} (the /color value) does NOT touch the ❯
 
-//     — see {@link #updateBorderColor}. Teammate-color tinting of ❯
-
-
-
+        //     — see {@link #updateBorderColor}. Teammate-color tinting of ❯
 
 
         TextColor color;
@@ -3428,28 +3474,60 @@ public class InputPanel extends Panel {
 
     private TextBox.Result historyDownOrEnterFooter() {
         if (historyController.atBottom()) {
-            if (coordinatorNavigation != null && coordinatorNavigation.panelAvailable()) {
-                workflowFooterSelected = false;
-                collaborationPillSelected = false;
-                boolean hasBackgroundPill = taskNavigation.pillAvailable();
-                coordinatorNavigation.selectPanel(hasBackgroundPill);
-                if (hasBackgroundPill) taskNavigation.selectPill();
-                else taskNavigation.deselectPill();
-                refreshCoordinatorPanel();
-                refreshFooterPills();
-                return TextBox.Result.HANDLED;
-            }
-            if (!visibleWorkflowRuns().isEmpty() && !taskNavigation.pillAvailable()) {
-                collaborationPillSelected = false;
-                selectCurrentWorkflowFooter();
-                return TextBox.Result.HANDLED;
-            }
-            collaborationPillSelected = !taskNavigation.pillAvailable();
-            if (!collaborationPillSelected) taskNavigation.selectPill();
-            refreshFooterPills();
+            // The ≡ projects button is the leftmost footer control, so the
+            // first ↓ from the prompt selects it; the next ↓/→ resumes the
+            // released chain via selectFirstFooterStopAfterProjectsButton().
+            selectProjectsButton();
             return TextBox.Result.HANDLED;
         }
         return historyController.down();
+    }
+
+    /**
+     * The released 197 footer entry chain, reached when advancing past the ≡
+     * button: coordinator panel → workflow footer → tasks pill → Collaboration.
+     */
+    private void selectFirstFooterStopAfterProjectsButton() {
+        projectsButtonSelected = false;
+        if (coordinatorNavigation != null && coordinatorNavigation.panelAvailable()) {
+            workflowFooterSelected = false;
+            collaborationPillSelected = false;
+            boolean hasBackgroundPill = taskNavigation.pillAvailable();
+            coordinatorNavigation.selectPanel(hasBackgroundPill);
+            if (hasBackgroundPill) taskNavigation.selectPill();
+            else taskNavigation.deselectPill();
+            refreshCoordinatorPanel();
+            refreshFooterPills();
+            return;
+        }
+        if (!visibleWorkflowRuns().isEmpty() && !taskNavigation.pillAvailable()) {
+            collaborationPillSelected = false;
+            selectCurrentWorkflowFooter();
+            return;
+        }
+        collaborationPillSelected = !taskNavigation.pillAvailable();
+        if (!collaborationPillSelected) taskNavigation.selectPill();
+        refreshFooterPills();
+    }
+
+    /** Selects the ≡ button as the sole footer selection. */
+    private void selectProjectsButton() {
+        workflowFooterSelected = false;
+        selectedWorkflowTaskId = null;
+        collaborationPillSelected = false;
+        taskNavigation.deselectPill();
+        if (coordinatorNavigation != null) coordinatorNavigation.deselectPanel();
+        projectsButtonSelected = true;
+        refreshCoordinatorPanel();
+        refreshFooterPills();
+        updateHint();
+    }
+
+    /** Mirrors the project drawer's open state on the ≡ button. */
+    public synchronized void setProjectsButtonActive(boolean active) {
+        if (projectsButtonActive == active) return;
+        projectsButtonActive = active;
+        refreshFooterPills();
     }
 
     /** Whether the subagent coordinator panel currently owns keyboard focus. */
@@ -3801,6 +3879,7 @@ public class InputPanel extends Panel {
     }
 
     private synchronized void refreshFooterPills() {
+        refreshProjectsButton();
         refreshTasksPill();
         String value = collaborationController == null
             ? "Off" : collaborationController.current().displayValue();
@@ -3808,6 +3887,17 @@ public class InputPanel extends Panel {
             "Collaboration: " + value);
         if (collaborationPillSelected) collaborationPillLabel.addStyle(SGR.REVERSE);
         else collaborationPillLabel.removeStyle(SGR.REVERSE);
+    }
+
+    /** ≡ reflects three states: keyboard-selected (REVERSE), drawer-open (accent), idle (dim). */
+    private void refreshProjectsButton() {
+        projectsButtonLabel.setForegroundColor(projectsButtonActive
+            ? LanternaTheme.suggestion() : LanternaTheme.welcomeDim());
+        if (projectsButtonSelected || projectsButtonMouseHovered) {
+            projectsButtonLabel.addStyle(SGR.REVERSE);
+        } else {
+            projectsButtonLabel.removeStyle(SGR.REVERSE);
+        }
     }
 
     /**
@@ -3853,6 +3943,62 @@ public class InputPanel extends Panel {
     }
 
     /**
+     * Click handling for the footer ≡ button — same press/release latch as the
+     * tasks pill: press inside arms it, release inside activates, release
+     * outside cancels. Java-side extension, no 197 counterpart.
+     */
+    public boolean handleProjectsButtonMouse(MouseAction mouse) {
+        return handleProjectsButtonMouseForTest(mouse, projectsButtonLabel.getGlobalPosition(),
+            projectsButtonLabel.getSize());
+    }
+
+    boolean handleProjectsButtonMouseForTest(MouseAction mouse, TerminalPosition origin,
+                                             TerminalSize size) {
+        if (mouse == null || origin == null || size == null) {
+            projectsButtonMousePressed = false;
+            projectsButtonMouseHovered = false;
+            return false;
+        }
+        TerminalPosition point = mouse.getPosition();
+        boolean inside = point.getColumn() >= origin.getColumn()
+            && point.getColumn() < origin.getColumn() + size.getColumns()
+            && point.getRow() >= origin.getRow()
+            && point.getRow() < origin.getRow() + size.getRows();
+        return switch (mouse.getActionType()) {
+            case MOVE -> {
+                if (projectsButtonMouseHovered != inside) {
+                    projectsButtonMouseHovered = inside;
+                    refreshProjectsButton();
+                }
+                yield inside;
+            }
+            case CLICK_DOWN -> {
+                if (mouse.getButton() != 1) yield false;
+                projectsButtonMousePressed = inside;
+                yield inside;
+            }
+            case DRAG -> projectsButtonMousePressed;
+            case CLICK_RELEASE -> {
+                if (mouse.getButton() != 1) yield false;
+                boolean activate = projectsButtonMousePressed && inside;
+                boolean consume = projectsButtonMousePressed;
+                projectsButtonMousePressed = false;
+                if (activate) {
+                    projectsButtonSelected = false;
+                    refreshFooterPills();
+                    updateHint();
+                    if (actions != null) actions.toggleProjectPanel();
+                }
+                yield consume;
+            }
+            default -> false;
+        };
+    }
+
+    boolean isProjectsButtonSelectedForTest() { return projectsButtonSelected; }
+    boolean isProjectsButtonActiveForTest() { return projectsButtonActive; }
+
+    /**
      * Handles the established prompt wrapper's bare-click cursor positioning.
      * Coordinates are absolute terminal cells and the hit target begins at the
      * text box, deliberately excluding the prompt glyph and layout gap.
@@ -3892,7 +4038,8 @@ public class InputPanel extends Panel {
         boolean footerSelected = taskNavigation.isPillSelected()
             || isCoordinatorPanelSelected()
             || workflowFooterSelected
-            || collaborationPillSelected;
+            || collaborationPillSelected
+            || projectsButtonSelected;
         if (!footerSelected) return;
         taskNavigation.deselectPill();
         taskNavigationHost.setTeammateTreeExpanded(false);
@@ -3900,6 +4047,7 @@ public class InputPanel extends Panel {
         workflowFooterSelected = false;
         selectedWorkflowTaskId = null;
         collaborationPillSelected = false;
+        projectsButtonSelected = false;
         refreshCoordinatorPanel();
         refreshFooterPills();
         updateHint();
