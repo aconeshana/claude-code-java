@@ -127,6 +127,8 @@ public final class ToolApprovalInteraction {
         this.interactionCoordinator = interactionCoordinator;
         this.messagePanel = messagePanel;
         this.taskRegistry = taskRegistry;
+        questionDialog.setTerminalColumnsSupplier(
+            () -> gui.getScreen() != null ? gui.getScreen().getTerminalSize().getColumns() : 80);
     }
 
     public PermissionDialog leaderView() { return leaderDialog; }
