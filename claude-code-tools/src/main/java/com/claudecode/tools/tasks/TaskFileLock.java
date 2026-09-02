@@ -77,7 +77,6 @@ final class TaskFileLock {
         }
         if (!attributes.isRegularFile()) return false;
 
-        boolean deleteAfterClose = false;
         try (FileChannel channel = FileChannel.open(companion, StandardOpenOption.WRITE)) {
             FileLock lock;
             try {
@@ -90,14 +89,16 @@ final class TaskFileLock {
                 try {
                     return Files.deleteIfExists(companion);
                 } catch (AccessDeniedException _) {
-                    // Windows may require the channel to close before deleting the old artifact.
-                    deleteAfterClose = true;
+                    // Windows may require the channel to close before deleting the old artifact;
+                    // fall through to retry the delete once after the channel is closed.
                 }
             }
         } catch (NoSuchFileException _) {
             return true;
         }
-        if (!deleteAfterClose) return false;
+        // Reaching here only via the AccessDenied path above (the inner deleteIfExists always
+        // returns otherwise), so the channels have closed and the legacy regular file can be
+        // retried for deletion.
         try {
             return Files.deleteIfExists(companion);
         } catch (AccessDeniedException _) {

@@ -296,20 +296,28 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
         List<Message> result = new ArrayList<>(messages.size());
         boolean changed = false;
         for (Message msg : messages) {
-            if (!(msg instanceof UserMessage um) || um.message() == null || um.message().blocks() == null) {
+            if (!(msg instanceof UserMessage(
+                String uuid, MessageContent message, boolean isMeta, boolean isCompactSummary,
+                Object toolUseResult, com.claudecode.core.message.MessageOrigin origin,
+                String parentUuidValue, java.time.Instant timestampValue,
+                List<Integer> imagePasteIds, String permissionMode, String sessionIdValue,
+                String sourceToolAssistantUUID, String sourceToolUseID, Boolean isVirtual,
+                Map<String, Object> mcpMeta, Boolean isVisibleInTranscriptOnly, String planContent,
+                com.claudecode.core.message.SummarizeMetadata summarizeMetadata
+            )) || message == null || message.blocks() == null) {
                 result.add(msg);
                 continue;
             }
-            List<ContentBlock> newBlocks = stripMediaBlocks(um.message().blocks());
-            if (newBlocks != um.message().blocks()) {
+            List<ContentBlock> newBlocks = stripMediaBlocks(message.blocks());
+            if (newBlocks != message.blocks()) {
                 changed = true;
                 result.add(new UserMessage(
-                    um.uuid(), MessageContent.ofBlocks(newBlocks), um.isMeta(), um.isCompactSummary(),
-                    um.toolUseResult(), um.origin(), um.parentUuidValue(),
-                    um.timestampValue(), um.imagePasteIds(), um.permissionMode(),
-                    um.sessionIdValue(), um.sourceToolAssistantUUID(), um.sourceToolUseID(),
-                    um.isVirtual(), um.mcpMeta(), um.isVisibleInTranscriptOnly(),
-                    um.planContent(), um.summarizeMetadata()));
+                    uuid, MessageContent.ofBlocks(newBlocks), isMeta, isCompactSummary,
+                    toolUseResult, origin, parentUuidValue,
+                    timestampValue, imagePasteIds, permissionMode,
+                    sessionIdValue, sourceToolAssistantUUID, sourceToolUseID,
+                    isVirtual, mcpMeta, isVisibleInTranscriptOnly,
+                    planContent, summarizeMetadata));
             } else {
                 result.add(msg);
             }
@@ -511,7 +519,7 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
 
         // Compact the target portion
         MessageCompactor.CompactionResult compactionResult = null;
-        if (!toCompact.isEmpty() && compactSummarizer != null) {
+        if (compactSummarizer != null) {
 
             String partialPrompt = CompactService.buildPartialCompactPrompt(
                 customInstructions, direction);
@@ -644,11 +652,6 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
     }
 
 
-    List<AttachmentPayload> buildMcpInstructionsAttachment(Map<String, String> instructions) {
-        return buildMcpInstructionsAttachment(instructions, List.of());
-    }
-
-
     List<AttachmentPayload> buildMcpInstructionsAttachment(
             Map<String, String> instructions, List<Message> preservedMessages) {
         if (instructions == null || instructions.isEmpty()) return List.of();
@@ -662,11 +665,6 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
             .filter(name -> !current.contains(name)).sorted().toList();
         if (names.isEmpty() && removed.isEmpty()) return List.of();
         return List.of(new McpInstructionsDeltaAttachment(names, blocks, removed));
-    }
-
-
-    List<AttachmentPayload> buildAgentListingAttachment(String fullListing) {
-        return buildAgentListingAttachment(fullListing, List.of());
     }
 
 
@@ -875,8 +873,8 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
     private static boolean startsWithFileUnchangedStub(List<ContentBlock> content) {
         if (content == null) return false;
         for (ContentBlock block : content) {
-            if (block instanceof TextBlock text) {
-                return Strings.CS.startsWith(text.text(), "[file_unchanged]");
+            if (block instanceof TextBlock(String text1)) {
+                return Strings.CS.startsWith(text1, "[file_unchanged]");
             }
         }
         return false;

@@ -330,7 +330,7 @@ public final class PermissionsPanel extends Panel implements InlineOverlay {
         };
     }
 
-    private final class RecentDenialsTab extends Panel {
+    private static final class RecentDenialsTab extends Panel {
         private boolean tabVisible;
 
         private RecentDenialsTab() {

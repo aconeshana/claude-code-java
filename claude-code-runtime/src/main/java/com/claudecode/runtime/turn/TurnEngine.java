@@ -366,7 +366,7 @@ public final class TurnEngine {
         String restoredPermMode = null;
         if (shouldRestore) {
             try {
-// Undo the history entry added on submit.
+                // Undo the history entry added on submit.
                 conversation.dropLastPromptHistoryEntry();
                 // Capture image chips + permission mode from the removed message before it's gone.
                 UserMessage rewoundMsg = conversation.rewindBeforeLastRealUser();

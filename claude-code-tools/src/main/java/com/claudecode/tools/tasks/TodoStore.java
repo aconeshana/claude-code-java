@@ -105,7 +105,8 @@ public class TodoStore {
             try {
                 for (TaskPersistence.StoredTask stored : TaskPersistence.loadStoredTasks(tasksDir,
                         (file, error) -> LOG.warn(
-                            "Skipping malformed task file {}: {}", file, error.getMessage()))) {
+                            "Skipping malformed task file {} during reload: {}", file,
+                            error.getMessage()))) {
                     reloaded.put(stored.storageId(), stored.task());
                 }
             } catch (IOException e) {
@@ -197,7 +198,8 @@ public class TodoStore {
             Optional<Task> claimed = TaskPersistence.claimTask(
                 tasksDir, taskId, owner,
                 (file, error) -> LOG.warn(
-                    "Skipping malformed task file {}: {}", file, error.getMessage()));
+                    "Skipping malformed task file {} while claiming task {}: {}", file,
+                    taskId, error.getMessage()));
             claimed.ifPresent(task -> tasks.put(storageId, task));
             return claimed;
         } catch (IOException e) {
@@ -319,7 +321,8 @@ public class TodoStore {
         try {
             for (TaskPersistence.StoredTask stored : TaskPersistence.loadStoredTasks(tasksDir,
                     (file, error) -> LOG.warn(
-                            "Skipping malformed task file {}: {}", file, error.getMessage()))) {
+                            "Skipping malformed task file {} while loading store: {}",
+                            file, error.getMessage()))) {
                 tasks.put(stored.storageId(), stored.task());
             }
         } catch (IOException e) {

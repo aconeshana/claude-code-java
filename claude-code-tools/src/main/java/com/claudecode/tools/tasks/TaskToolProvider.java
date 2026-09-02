@@ -71,11 +71,11 @@ public class TaskToolProvider implements AutoCloseable {
         registry.register(new TaskUpdateTool(taskBoard));
         // Background-task tools use the process-wide TaskRegistry store.
         // TaskStop must read the SAME in-memory store (and live handles) as
-// BashTool/AgentTool use — TaskRegistry.global — or it can never
+        // BashTool/AgentTool use — TaskRegistry.global — or it can never
         // find a real background task.
         registry.register(new TaskStopTool(TaskRegistry.global().store()));
-// TaskOutput reads BACKGROUND task output — those tasks live only in TaskRegistry.global's
-// in-memory store.
+        // TaskOutput reads BACKGROUND task output — those tasks live only in TaskRegistry.global's
+        // in-memory store.
         registry.register(new TaskOutputTool(TaskRegistry.global().store()));
 
         initialized = true;

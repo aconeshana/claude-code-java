@@ -137,7 +137,7 @@ final class PlanCatalogStore {
                         blank ? Status.ABANDONED.name() : Status.APPROVED.name(),
                         record.createdAt(), blank ? null : now, revisesPlanId));
                 } else if (!blank && revisesPlanId != null
-                        && record.planId().equals(revisesPlanId)) {
+                        && Strings.CS.equals(record.planId(), revisesPlanId)) {
                     updated.add(new PlanRecord(
                         record.planId(), record.ordinal(), record.fileName(),
                         record.title(), record.summary(), Status.SUPERSEDED.name(),
