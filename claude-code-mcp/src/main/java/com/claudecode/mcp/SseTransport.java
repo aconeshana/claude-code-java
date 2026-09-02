@@ -10,12 +10,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,6 +32,14 @@ import okhttp3.ResponseBody;
 /**
  * MCP transport over HTTP Server-Sent Events (SSE) — the legacy dual-endpoint pattern from MCP spec
  * 2024-11-05.
+ *
+ * <ul>
+ *   <li>node_modules/@modelcontextprotocol/sdk → client/sse.js (SSEClientTransport) —
+ *       {@code start()} resolves only after the server streams the {@code endpoint} event
+ *       (validated to share the connection origin), and {@code send()} throws
+ *       "Not connected" when no endpoint was negotiated. Verified against the released
+ *       2.1.197 bundle.</li>
+ * </ul>
  */
 public class SseTransport implements McpTransport {
 
@@ -42,9 +52,16 @@ public class SseTransport implements McpTransport {
     private final McpOAuthProvider oauth;
     private final OkHttpClient postClient;
     private final OkHttpClient streamClient;
+    private final Duration endpointTimeout;
     private final AtomicInteger requestId = new AtomicInteger(0);
     private volatile boolean connected = false;
     private volatile String postEndpoint;
+    /**
+     * Completes when the SSE stream delivers the {@code endpoint} event; completes
+     * exceptionally on stream failure or {@link #close}. {@link #connect} blocks on
+     * this so the first POST never races the endpoint negotiation.
+     */
+    private final CompletableFuture<String> endpointFuture = new CompletableFuture<>();
     private final ConcurrentHashMap<Integer, CompletableFuture<JsonNode>> pending
         = new ConcurrentHashMap<>();
     /**
@@ -81,6 +98,12 @@ public class SseTransport implements McpTransport {
 
     SseTransport(McpServerConfig config, McpOAuthProvider oauth,
                  OkHttpClient postClient, OkHttpClient streamClient) {
+        this(config, oauth, postClient, streamClient, McpTimeouts.responseHeadersTimeout());
+    }
+
+    /** Test constructor: injectable endpoint-wait timeout. */
+    SseTransport(McpServerConfig config, McpOAuthProvider oauth,
+                 OkHttpClient postClient, OkHttpClient streamClient, Duration endpointTimeout) {
         if (StringUtils.isBlank(config.url())) {
             throw new McpException("SSE transport requires 'url' field for server '"
                 + config.name() + "'");
@@ -91,6 +114,7 @@ public class SseTransport implements McpTransport {
         this.oauth = Objects.requireNonNull(oauth, "oauth");
         this.postClient = Objects.requireNonNull(postClient, "postClient");
         this.streamClient = Objects.requireNonNull(streamClient, "streamClient");
+        this.endpointTimeout = Objects.requireNonNull(endpointTimeout, "endpointTimeout");
     }
 
     /**
@@ -107,10 +131,15 @@ public class SseTransport implements McpTransport {
         this.oauth = null;
         this.postClient = McpHttpClient.requestResponse();
         this.streamClient = McpHttpClient.eventStream();
+        this.endpointTimeout = McpTimeouts.responseHeadersTimeout();
     }
 
     /**
-     * Connects to the SSE endpoint. Starts listening for events.
+     * Connects to the SSE endpoint. Starts listening for events and blocks until the
+     * server streams the {@code endpoint} event — released-197 parity, where
+     * {@code SSEClientTransport.start()} resolves only after the endpoint arrives, so
+     * the first POST (initialize) always targets the negotiated message endpoint and
+     * never the SSE stream URL itself.
      */
     public void connect() {
         LOG.info("SSE transport connecting to {}", serverConfig != null
@@ -118,6 +147,32 @@ public class SseTransport implements McpTransport {
         // Start SSE listener in background
         connected = true;
         sseThread = Thread.ofVirtual().start(this::listenSse);
+        try {
+            endpointFuture.get(endpointTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            closeQuietly();
+            throw new McpException(
+                "Interrupted waiting for SSE endpoint from " + serverUrl, e);
+        } catch (TimeoutException e) {
+            closeQuietly();
+            throw new McpException(
+                "Timed out waiting for SSE endpoint event from " + serverUrl, e);
+        } catch (ExecutionException e) {
+            closeQuietly();
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof McpException mcpFailure) throw mcpFailure;
+            throw new McpException("SSE connection to " + serverUrl + " failed: "
+                + cause.getMessage(), cause);
+        }
+    }
+
+    private void closeQuietly() {
+        try {
+            close();
+        } catch (Exception e) {
+            LOG.debug("SSE cleanup after connect failure: {}", e.getMessage());
+        }
     }
 
     private void listenSse() {
@@ -132,6 +187,8 @@ public class SseTransport implements McpTransport {
             if (response.code() != 200) {
                 LOG.error("SSE connection failed: HTTP {}", response.code());
                 connected = false;
+                endpointFuture.completeExceptionally(
+                    new McpException("SSE connection failed: HTTP " + response.code()));
                 return;
             }
 
@@ -141,6 +198,8 @@ public class SseTransport implements McpTransport {
             if (connected) {
                 LOG.error("SSE listener error: {}", e.getMessage());
                 connected = false;
+                endpointFuture.completeExceptionally(
+                    new McpException("SSE listener failed: " + e.getMessage(), e));
             } else {
                 LOG.debug("SSE listener stopped");
             }
@@ -176,8 +235,7 @@ public class SseTransport implements McpTransport {
         try {
             if (Strings.CS.equals("endpoint", eventType)) {
                 // Server tells us where to POST requests
-                postEndpoint = data;
-                LOG.debug("SSE post endpoint: {}", postEndpoint);
+                acceptPostEndpoint(data);
             } else if (Strings.CS.equals("message", eventType) || eventType == null) {
                 JsonNode node = JsonUtils.getMapper().readTree(data);
                 McpMessageDispatcher.dispatch(
@@ -190,14 +248,64 @@ public class SseTransport implements McpTransport {
     }
 
     /**
+     * Accepts the server-advertised POST endpoint. Released-197 parity: the URI is
+     * resolved against the SSE URL (relative endpoints are legal) and must share its
+     * origin — a cross-origin endpoint fails the connect and closes the stream
+     * ("Endpoint origin does not match connection origin").
+     */
+    private void acceptPostEndpoint(String data) {
+        try {
+            URI base = URI.create(serverUrl);
+            URI resolved = base.resolve(data.trim());
+            if (!sameOrigin(base, resolved)) {
+                failEndpointNegotiation(new McpException(
+                    "Endpoint origin does not match connection origin: " + originOf(resolved)));
+                return;
+            }
+            postEndpoint = resolved.toASCIIString();
+            endpointFuture.complete(postEndpoint);
+            LOG.debug("SSE post endpoint: {}", postEndpoint);
+        } catch (RuntimeException e) {
+            failEndpointNegotiation(
+                new McpException("Invalid SSE endpoint URI: " + data, e));
+        }
+    }
+
+    private void failEndpointNegotiation(McpException failure) {
+        connected = false;
+        endpointFuture.completeExceptionally(failure);
+        Call call = sseCall;
+        if (call != null) call.cancel();
+    }
+
+    /** JS {@code URL.origin} semantics: scheme + host + port, default ports elided. */
+    private static boolean sameOrigin(URI a, URI b) {
+        return Strings.CI.equals(a.getScheme(), b.getScheme())
+            && Strings.CI.equals(a.getHost(), b.getHost())
+            && effectivePort(a) == effectivePort(b);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        if ("http".equalsIgnoreCase(uri.getScheme())) return 80;
+        if ("https".equalsIgnoreCase(uri.getScheme())) return 443;
+        return -1;
+    }
+
+    private static String originOf(URI uri) {
+        return uri.getScheme() + "://" + uri.getHost()
+            + (uri.getPort() == -1 ? "" : ":" + uri.getPort());
+    }
+
+    /**
      * Posts a JSON-RPC reply object back to the server's POST endpoint. Used
      * by {@link McpMessageDispatcher} when a server-initiated request needs
      * a response. Errors are logged but not thrown — the transport can't
      * usefully react to reply-send failures beyond noting them.
      */
     private void sendReplyPost(ObjectNode reply) {
-        if (!connected) return;
-        String endpoint = postEndpoint != null ? postEndpoint : serverUrl;
+        String endpoint = postEndpoint;
+        if (!connected || endpoint == null) return;
         try {
             Request.Builder builder = new Request.Builder()
                     .url(endpoint)
@@ -225,7 +333,10 @@ public class SseTransport implements McpTransport {
 
     @Override
     public JsonNode sendRequest(String method, JsonNode params) {
-        if (!connected) {
+        // 197: send() throws "Not connected" when no endpoint was negotiated — never
+        // fall back to POSTing the SSE stream URL itself.
+        String endpoint = postEndpoint;
+        if (!connected || endpoint == null) {
             throw new McpException(
                 "SSE transport not connected to " + serverUrl);
         }
@@ -241,7 +352,6 @@ public class SseTransport implements McpTransport {
         long operationDeadline = System.nanoTime() + operationTimeout.toNanos();
 
         try {
-            String endpoint = postEndpoint != null ? postEndpoint : serverUrl;
             Request.Builder builder = new Request.Builder()
                     .url(endpoint)
                     .header("Content-Type", "application/json")
@@ -287,7 +397,8 @@ public class SseTransport implements McpTransport {
 
     @Override
     public void sendNotification(String method, JsonNode params) {
-        if (!connected) {
+        String endpoint = postEndpoint;
+        if (!connected || endpoint == null) {
             throw new McpException("SSE transport not connected to " + serverUrl);
         }
         try {
@@ -295,7 +406,6 @@ public class SseTransport implements McpTransport {
             notif.put("jsonrpc", "2.0");
             notif.put("method", method);
             if (params != null) notif.set("params", params);
-            String endpoint = postEndpoint != null ? postEndpoint : serverUrl;
             Request.Builder builder = new Request.Builder()
                     .url(endpoint)
                     .header("Content-Type", "application/json")
@@ -344,6 +454,8 @@ public class SseTransport implements McpTransport {
     @Override
     public void close() throws Exception {
         connected = false;
+        endpointFuture.completeExceptionally(
+            new McpException("Transport closed"));
         pending.values().forEach(f ->
             f.completeExceptionally(
                 new McpException("Transport closed")));
