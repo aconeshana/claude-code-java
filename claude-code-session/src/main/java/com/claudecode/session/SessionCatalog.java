@@ -163,7 +163,7 @@ final class SessionCatalog {
             includeProgrammatic).orElse(null)).stream().filter(Objects::nonNull).toList();
     }
 
-    private static List<Source> allProjectSources(SessionManager manager) {
+    static List<Source> allProjectSources(SessionManager manager) {
         List<Source> result = new ArrayList<>();
         Path root = manager.projectsRoot();
         if (!Files.isDirectory(root)) return result;
@@ -174,7 +174,7 @@ final class SessionCatalog {
         return result;
     }
 
-    private static List<Candidate> candidates(List<Source> sources) {
+    static List<Candidate> candidates(List<Source> sources) {
         List<Candidate> result = parallelMap(filenames(sources), candidate -> {
             try {
                 BasicFileAttributes attributes = Files.readAttributes(candidate.transcript(), BasicFileAttributes.class);
@@ -208,7 +208,7 @@ final class SessionCatalog {
         return result;
     }
 
-    private static List<Candidate> deduplicate(List<Candidate> candidates) {
+    static List<Candidate> deduplicate(List<Candidate> candidates) {
         List<Candidate> sorted = new ArrayList<>(candidates);
         sorted.sort(Candidate.ORDER);
         Map<String, Candidate> newest = new LinkedHashMap<>();
@@ -257,7 +257,7 @@ final class SessionCatalog {
         synchronized int nextIndex() { return nextIndex; }
     }
 
-    private static Optional<LiteSessionReader.LiteSessionFile> read(Candidate candidate) {
+    static Optional<LiteSessionReader.LiteSessionFile> read(Candidate candidate) {
         byte[] buffer = null;
         try {
             buffer = BUFFERS.take();
@@ -317,7 +317,7 @@ final class SessionCatalog {
         return result;
     }
 
-    private static Optional<Entry> enrich(Candidate candidate, LiteSessionReader.LiteSessionFile lite,
+    static Optional<Entry> enrich(Candidate candidate, LiteSessionReader.LiteSessionFile lite,
                                           Predicate<String> builtInCommand, Visibility visibility) {
         String head = lite.head();
         String tail = lite.tail();

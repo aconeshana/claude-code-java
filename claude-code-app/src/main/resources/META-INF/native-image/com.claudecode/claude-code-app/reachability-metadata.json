@@ -1052,6 +1052,24 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.session.ProjectIndexSnapshot",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.ProjectIndexSnapshot$CachedDir",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.ProjectIndexSnapshot$CachedSession",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$Manifest",
       "allDeclaredFields": true,
       "allPublicMethods": true,
