@@ -2,6 +2,7 @@ package com.claudecode.cli;
 
 import com.claudecode.cli.daemon.DaemonWorkerDispatcher;
 import com.claudecode.runtime.query.AutoDreamEngine;
+import com.claudecode.core.config.VersionInfo;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.tools.mcp.ManagedMcpRuntime;
@@ -32,7 +33,7 @@ import picocli.CommandLine.Parameters;
  */
 @Command(
     name = "claude",
-    version = "claude-code-java 0.1.0",
+    versionProvider = ClaudeCodeCli.BuildVersionProvider.class,
     description = "Claude Code — AI-powered CLI tool for software development",
     mixinStandardHelpOptions = true,
     subcommands = {McpCliCommand.class}
@@ -40,6 +41,19 @@ import picocli.CommandLine.Parameters;
 public class ClaudeCodeCli implements Callable<Integer> {
 
     private static final Logger log = LoggerFactory.getLogger(ClaudeCodeCli.class);
+
+    /**
+     * Reports the version stamped into the jar manifest at build time, so {@code --version}
+     * cannot drift from the release tag the way a literal in {@code @Command} does. Shares
+     * {@link VersionInfo} with {@code /version}, {@code /doctor}, telemetry, and the
+     * {@code user-agent} header.
+     */
+    static final class BuildVersionProvider implements CommandLine.IVersionProvider {
+        @Override
+        public String[] getVersion() {
+            return new String[] { "claude-code-java " + VersionInfo.version() };
+        }
+    }
 
     static final class EffortLevelConverter implements CommandLine.ITypeConverter<String> {
         @Override
