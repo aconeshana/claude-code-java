@@ -151,6 +151,27 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
             return gitStatusCache.isEmpty() ? null : gitStatusCache;
         }
     }
+
+    /**
+     * Computes the status block for another project without disturbing the memo. Paired with
+     * {@link #publishGitStatusSnapshot} so a cross-project resume can pay for the git
+     * subprocesses off the event loop and still discard the result if the resume aborts.
+     */
+    public static String computeGitStatusSnapshot(String cwd) {
+        return StringUtils.isBlank(cwd) ? null : buildGitStatus(cwd);
+    }
+
+    /**
+     * Replaces the memo once a project switch is committed. The memo exists to keep the
+     * status block byte-identical across turns so the system prompt stays a stable API-cache
+     * prefix; a project switch has already invalidated that prefix, so refreshing here costs
+     * nothing and avoids reporting the abandoned project's branch for the rest of the session.
+     */
+    public static void publishGitStatusSnapshot(String snapshot) {
+        synchronized (DefaultQuerySession.class) {
+            gitStatusCache = snapshot != null ? snapshot : "";
+        }
+    }
     private final MessageCompactor compactService;
     private volatile HookDispatcher hookDispatcher;
     private final Object startupReadinessLock = new Object();

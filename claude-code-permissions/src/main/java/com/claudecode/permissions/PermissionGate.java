@@ -454,6 +454,23 @@ public final class PermissionGate {
     }
 
     /**
+     * Repoints the gate at another project root after a cross-project resume. The mode and
+     * session-scoped rules survive the move; {@code additionalDirs} do not, because every
+     * {@code /add-dir} entry was granted against the project being left behind. Disk-sourced
+     * rules are replaced separately by the settings reload that accompanies the switch.
+     */
+    public void retargetProject(Path workingDirectory, PermissionPathContext pathContext) {
+        Objects.requireNonNull(workingDirectory, "workingDirectory");
+        contextRef.updateAndGet(ctx -> reconcileClassifierRules(ToolPermissionContext.builder()
+            .workingDirectory(workingDirectory)
+            .mode(ctx.mode())
+            .rules(ctx.rules())
+            .additionalDirs(Map.of())
+            .pathContext(pathContext)
+            .build()));
+    }
+
+    /**
      * Resolves the currently-active file-read {@code deny} rules into glob patterns to exclude from
      * GlobTool results.
      */

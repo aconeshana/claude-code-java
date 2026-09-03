@@ -28,8 +28,11 @@ class CliProjectCatalogAdapterTest {
     Path base;
 
     private CliProjectCatalogAdapter adapter() {
+        // Same-thread persistence: the production catalog flushes its index on a
+        // background virtual thread, which would race @TempDir teardown.
         ProjectCatalog catalog = new ProjectCatalog(new SessionManager(base, "/proj/a"),
-            new FileProjectIndexStore(base.resolve("cache/project-index.json")));
+            new FileProjectIndexStore(base.resolve("cache/project-index.json")),
+            null, Runnable::run);
         return new CliProjectCatalogAdapter(catalog);
     }
 

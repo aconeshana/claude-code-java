@@ -29,8 +29,11 @@ class ProjectCatalogTest {
     }
 
     private ProjectCatalog catalog(String cwd) {
+        // Same-thread persistence: production flushes the index on a background
+        // virtual thread, which would make every "a fresh instance reads the
+        // cache" assertion below a race.
         return new ProjectCatalog(new SessionManager(base, cwd),
-            new FileProjectIndexStore(storePath()));
+            new FileProjectIndexStore(storePath()), null, Runnable::run);
     }
 
     private Path dirOf(String projectPath) {
@@ -162,5 +165,56 @@ class ProjectCatalogTest {
         // the rebuilt snapshot on disk also keeps the prefs (third instance reads it)
         assertEquals(List.of("/proj/a"),
             catalog("/proj/a").preferences().pinnedProjects());
+    }
+
+    @Test
+    void cachesDirectoriesThatFilterDownToNothing() throws Exception {
+        // A sidechain is invisible to the picker, so /proj/a contributes no
+        // sessions — but "no sessions" is a fact worth caching, otherwise the
+        // directory is re-read on every open.
+        Path dir = dirOf("/proj/a");
+        Files.createDirectories(dir);
+        Path file = dir.resolve(uuid(1) + ".jsonl");
+        Files.writeString(file, "{\"type\":\"user\",\"uuid\":\"" + UUID.randomUUID() + "\","
+            + "\"timestamp\":\"2026-07-01T00:00:00.000Z\",\"isSidechain\":true,"
+            + "\"cwd\":\"/proj/a\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n");
+        Files.setLastModifiedTime(file, FileTime.fromMillis(1000));
+
+        assertEquals(List.of(), catalog("/proj/a").listProjects());
+
+        String dirName = dir.getFileName().toString();
+        assertEquals(List.of(dirName),
+            new FileProjectIndexStore(storePath()).load().dirs().stream()
+                .map(ProjectIndexSnapshot.CachedDir::dirName).toList(),
+            "an empty result must still be persisted as a fingerprinted dir");
+    }
+
+    @Test
+    void cachedProjectsServesTheIndexWithoutRevalidating() throws Exception {
+        writeRawSession("/proj/a", uuid(1), "/proj/a", 1000);
+        catalog("/proj/a").listProjects();          // populates the on-disk index
+
+        // A second session on disk that the cache knows nothing about: the
+        // cached view must ignore it, the revalidated one must pick it up.
+        writeRawSession("/proj/a", uuid(2), "/proj/a", 2000);
+
+        ProjectCatalog fresh = catalog("/proj/a");
+        assertEquals(1, fresh.cachedProjects().getFirst().sessionCount(),
+            "cachedProjects must not stat or re-read");
+        assertEquals(2, fresh.listProjects().getFirst().sessionCount());
+        assertEquals(2, fresh.cachedProjects().getFirst().sessionCount(),
+            "the refreshed state is what later cached reads serve");
+    }
+
+    @Test
+    void warmUpMakesTheNextCachedReadComplete() throws Exception {
+        writeRawSession("/proj/a", uuid(1), "/proj/a", 1000);
+
+        ProjectCatalog cold = catalog("/proj/a");
+        assertEquals(List.of(), cold.cachedProjects(), "nothing indexed yet");
+        cold.warmUp();
+
+        assertEquals(1, catalog("/proj/a").cachedProjects().size(),
+            "warm-up alone must leave a usable index behind");
     }
 }

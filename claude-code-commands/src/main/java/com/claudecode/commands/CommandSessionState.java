@@ -19,15 +19,6 @@ import java.util.function.Supplier;
 import java.util.function.ToDoubleFunction;
 
 
-
-
-
-
-
-
-
-
-
 public record CommandSessionState(
     String fallbackModel,
     Supplier<String> modelSupplier,
@@ -36,7 +27,7 @@ public record CommandSessionState(
     Consumer<String> setModel,
     Supplier<Usage> usageSupplier,
     ToDoubleFunction<Usage> costCalculator,
-    String workingDirectory,
+    Supplier<String> workingDirectorySupplier,
     boolean remoteMode,
     Consumer<List<Message>> loadMessages,
     Consumer<List<Message>> loadCompactedMessages,
@@ -69,6 +60,14 @@ public record CommandSessionState(
     PromptShellExecutor promptShellExecutor,
     boolean nonInteractive
 ) {
+    /**
+     * The session's live working directory. Resolved per call rather than captured, because a
+     * Bash {@code cd} or a cross-project resume can move it after this state was assembled.
+     */
+    public String workingDirectory() {
+        return workingDirectorySupplier == null ? null : workingDirectorySupplier.get();
+    }
+
     public String model() {
         if (modelSupplier == null) return fallbackModel;
         try {

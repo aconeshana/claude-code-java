@@ -133,7 +133,6 @@ import com.claudecode.ui.lanterna.features.help.HelpPanel;
 import com.claudecode.ui.lanterna.features.memory.MemoryFeature;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanel;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanelController;
-import com.claudecode.ui.lanterna.features.projects.ProjectPreviewFormatter;
 import com.claudecode.ui.lanterna.features.sandbox.SandboxFeature;
 import com.claudecode.ui.lanterna.features.settings.AutoModeEntryWarningController;
 import com.claudecode.ui.lanterna.features.settings.BypassPermissionsStartupGate;
@@ -305,7 +304,7 @@ public class LanternaReplScreen implements SlashHost {
     private HelpPanel helpPanel;
     /** Left-docked project drawer (Java-side extension, no 197 counterpart);
      *  covers the transcript's left strip when active, toggled by
-     *  {@code toggleProjectPanel} (≡ footer button, /project). */
+     *  {@code toggleProjectPanel} — the footer button is its only entry point. */
     private ProjectPanel projectPanel;
     private ProjectPanelController projectPanelController;
     /** Inline /plugin settings panel — sibling of helpPanel; collapses to (0,0)
@@ -379,7 +378,7 @@ public class LanternaReplScreen implements SlashHost {
      *  Keyboard handlers still drive selection state directly via
      *  {@link SelectionController#getSelection}. */
     private SelectionController selectionController;
-/** Alias to {@link SelectionController#getSelection} — set once at
+    /** Alias to {@link SelectionController#getSelection} — set once at
      *  buildLayout so the keyboard branches can keep the concise
      *  {@code selection.xxx} form. */
     private Selection selection;
@@ -387,7 +386,7 @@ public class LanternaReplScreen implements SlashHost {
     private ImmediateCommandUiAdapter immediateAdapter;
 
     private BashModeExecutor bashModeExecutor;
-/**
+    /**
      * Slash-command + skill dispatcher.
      */
     private SlashCommandDispatcher slashDispatcher;
@@ -809,6 +808,13 @@ public class LanternaReplScreen implements SlashHost {
         applyPreparedStartup(preparedStartup.getNow(null), startupSessionId);
         startupReadiness.mark("hot-dialogs");
         startupReadiness.mark("input-ready");
+        // Rebuild the project index off the critical path. The first drawer open
+        // is the expensive one (stat every transcript directory, lite-read the
+        // stale ones); paying it here means the user never waits for it. Delayed
+        // so it does not contend with startup's own disk traffic.
+        CompletableFuture.runAsync(projectPanelController::warmUp,
+            CompletableFuture.delayedExecutor(2, TimeUnit.SECONDS,
+                task -> Thread.ofVirtual().name("project-catalog-warmup").start(task)));
         startupPromptCoordinator = new StartupPromptCoordinator(
             initialPrompt,
             startupResumePickerRequested
@@ -1284,7 +1290,7 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * Toggles the left-docked project drawer (≡ footer button, {@code /project}).
+     * Toggles the left-docked project drawer (≡ footer button).
      * Java-side extension with no 197 counterpart.
      */
     public void toggleProjectPanel() {
@@ -1300,32 +1306,19 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * Drawer resume — same scope rules as the released picker: a session from
-     * another directory is never resumed in place (its new messages would land
-     * in THIS project's transcript dir); print the cd command + OSC52 copy.
+     * Drawer resume. The drawer lists every project, so picking a session from another
+     * directory carries the session's own project through as the resume target and the
+     * runtime moves the whole app there before restoring — the released picker instead
+     * prints a {@code cd} command, which makes a drawer that can browse but not open.
      */
     private void resumeSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
         gui.getGUIThread().invokeLater(() -> {
-            String currentCwd = commandContext.session().workingDirectory();
-            if (!StringUtils.isBlank(entry.cwd()) && !entry.cwd().equals(currentCwd)) {
-                String crossCmd = "cd " + SessionController.shellQuote(entry.cwd())
-                    + " && claude --resume " + entry.id();
-                OSC52Helper.copyToClipboard(crossCmd);
-                appendLine("", LanternaTheme.welcomeDim());
-                appendLine("This conversation is from a different directory.",
-                    LanternaTheme.welcomeDim());
-                appendLine("", LanternaTheme.welcomeDim());
-                appendLine("To resume, run:", LanternaTheme.welcomeDim());
-                appendLine("  " + crossCmd, LanternaTheme.welcomeDim());
-                appendLine("", LanternaTheme.welcomeDim());
-                appendLine("(Command copied to clipboard)", LanternaTheme.welcomeDim());
-                return;
-            }
-            if (sessionController != null) {
-                sessionController.resume(new ResumeRequest(
-                    entry.id(), entry.transcriptPath(), currentCwd,
-                    ResumeRequest.Entrypoint.SLASH_COMMAND_PICKER));
-            }
+            if (sessionController == null) return;
+            String targetCwd = StringUtils.isBlank(entry.cwd())
+                ? commandContext.session().workingDirectory() : entry.cwd();
+            sessionController.resume(new ResumeRequest(
+                entry.id(), entry.transcriptPath(), targetCwd,
+                ResumeRequest.Entrypoint.SLASH_COMMAND_PICKER));
         });
     }
 
@@ -1351,18 +1344,21 @@ public class LanternaReplScreen implements SlashHost {
         });
     }
 
-    /** Drawer preview — transcript read off the GUI thread, lines pushed back when ready. */
+    /** Drawer preview — transcript read off the GUI thread, replayed when it lands. */
     private void previewSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
         Thread.ofVirtual().name("project-panel-preview").start(() -> {
-            List<String> lines;
+            List<Message> messages;
             try {
-                lines = ProjectPreviewFormatter
-                    .toPreviewLines(interactiveSessions.readMessages(entry.transcriptPath()));
-            } catch (RuntimeException _) {
-                lines = List.of("(failed to read transcript)");
+                // Same filter the resume picker applies: retracted turns are not
+                // part of the conversation the user would resume into.
+                messages = RetractedMessages.filter(
+                    interactiveSessions.readMessages(entry.transcriptPath()));
+            } catch (RuntimeException failure) {
+                log.warn("Failed to read the transcript for the drawer preview", failure);
+                messages = null;   // null reports the failure to the panel
             }
-            List<String> result = lines;
-            gui.getGUIThread().invokeLater(() -> projectPanel.showPreviewLines(entry, result));
+            List<Message> result = messages;
+            gui.getGUIThread().invokeLater(() -> projectPanel.showPreviewMessages(entry, result));
         });
     }
 

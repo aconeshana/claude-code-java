@@ -49,6 +49,7 @@ import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.input.KillRing;
 import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
 import com.claudecode.ui.lanterna.input.MouseScrollHandler;
+import com.claudecode.ui.lanterna.input.SessionPreviewKey;
 import com.claudecode.ui.lanterna.components.LanternaDraw;
 import com.claudecode.ui.lanterna.components.LoadingStateLabel;
 import com.claudecode.ui.lanterna.components.SmartLayout;
@@ -198,7 +199,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
         // headerLines min=8 (no tags, no filter line); max=10 (tags + filter).
         // Allocate for max capacity (headerLines=8) → 3 extra label slots;
-// renderPreview / refreshDisplay only fills up to filtered.size.
+        // renderPreview / refreshDisplay only fills up to filtered.size.
 
         this.visibleCount = Math.max(1, (termRows - 10) / 3);
 
@@ -337,7 +338,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
 
                 // has no {type:"pr-link"} JSONL entry writer yet (add matching
-// to the OR chain when PR-tracking commands are implemented).
+                // to the OR chain when PR-tracking commands are implemented).
                 String branch = s.gitBranch() != null ? s.gitBranch().toLowerCase(Locale.ROOT) : "";
                 String tagStr = tag != null ? tag.toLowerCase(Locale.ROOT) : "";
                 if (!Strings.CI.contains(title, q) && !Strings.CS.contains(branch, q)
@@ -356,7 +357,7 @@ public class SessionSelectorDialog extends BasicWindow {
         if (selectedTagIndex > uniqueTags.size()) selectedTagIndex = 0;
 
         // Tag filter — "All" (index 0) shows everything; otherwise filter by tag.
-// The `> uniqueTags.size` clamp above guarantees the upper bound.
+        // The `> uniqueTags.size` clamp above guarantees the upper bound.
         if (selectedTagIndex > 0) {
             String filterTag = uniqueTags.get(selectedTagIndex - 1);
             all = all.stream().filter(e -> filterTag.equals(e.tag())).toList();
@@ -371,7 +372,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
         // "any session with a different cwd" heuristic misfired catastrophically
         // in all-projects mode, filtering every cross-project session right back
-// out of the Ctrl+A list (found via tmux while implementation cross-project
+        // out of the Ctrl+A list (found via tmux while implementation cross-project
         // resume, 2026-07-12).
         if (!showAllWorktrees && currentCwd != null && hasMultipleWorktrees) {
             all = all.stream().filter(e -> e.info().alias()
@@ -387,7 +388,7 @@ public class SessionSelectorDialog extends BasicWindow {
         groups = new ArrayList<>();
         for (var entry : byGroup.entrySet()) {
             List<DisplayEntry> list = entry.getValue();
-// Sort by lastModified descending (newest first).
+            // Sort by lastModified descending (newest first).
             list.sort((a, b) -> Long.compare(b.info().lastModified(), a.info().lastModified()));
             if (list.size() == 1) {
                 groups.add(new SessionGroup(entry.getKey(), list.getFirst(), List.of(), false));
@@ -442,8 +443,8 @@ public class SessionSelectorDialog extends BasicWindow {
         // metadata tail scan.
 
 
-// SessionManager.buildSessionInfo filters sidechain sessions using the
-// first-line "isSidechain":true check, so the picker never
+        // SessionManager.buildSessionInfo filters sidechain sessions using the
+        // first-line "isSidechain":true check, so the picker never
         // sees them — the suffix is unreachable and intentionally omitted.
         String title = StringUtils.isNotBlank(s.customTitle()) ? s.customTitle() : s.summary();
         if (StringUtils.isNotBlank(title)) {
@@ -479,7 +480,7 @@ public class SessionSelectorDialog extends BasicWindow {
             renderPreview(termWidth);
             return;
         }
-// Every other mode lives in the list tree.
+        // Every other mode lives in the list tree.
         if (getComponent() != listRoot) setComponent(listRoot);
         if (viewMode == ViewMode.DELETE_CONFIRM) {
             renderDeleteConfirmation(termWidth);
@@ -490,7 +491,7 @@ public class SessionSelectorDialog extends BasicWindow {
         // Divider line — full width ─
         divider.setText(repeat('─', termWidth));
 
-// Title — TagTabs when tags exist.
+        // Title — TagTabs when tags exist.
         if (!uniqueTags.isEmpty()) {
             List<String> tabs = new ArrayList<>();
             tabs.add("All");
@@ -556,7 +557,7 @@ public class SessionSelectorDialog extends BasicWindow {
         searchBoxLine3.setVisible(true);
         searchTextBox.setVisible(false);
         if (viewMode == ViewMode.SEARCH) {
-// Query text + block cursor at searchCursorOffset.
+            // Query text + block cursor at searchCursorOffset.
             searchBoxLine2.setText(LanternaDraw.borderedSearchBoxContent(true, searchQuery.toString(), searchCursorOffset, boxWidth));
             searchBoxLine2.setForegroundColor(LanternaTheme.suggestion());
             searchBoxLine2.setVisible(true);
@@ -567,7 +568,7 @@ public class SessionSelectorDialog extends BasicWindow {
             searchBoxLine2.setVisible(true);
         }
 
-// filterIndicators — hidden in SEARCH mode.
+        // filterIndicators — hidden in SEARCH mode.
         if (viewMode == ViewMode.SEARCH) {
             projectLabel.setText("");
         } else {
@@ -627,26 +628,26 @@ public class SessionSelectorDialog extends BasicWindow {
                 String metaIndent = fi.isChild() ? "      " : "  ";
                 String metaLine = metaIndent + FormatUtils.truncate(e.meta, termWidth - metaIndent.length() - 1);
 
-              listRows[i].setText(titleLine);
-              listRows[i].setBackgroundColor(TextColor.ANSI.DEFAULT);
-              if (selected) {
+                listRows[i].setText(titleLine);
+                listRows[i].setBackgroundColor(TextColor.ANSI.DEFAULT);
+                if (selected) {
 
-                listRows[i].setForegroundColor(LanternaTheme.suggestion());
+                    listRows[i].setForegroundColor(LanternaTheme.suggestion());
                     listRows[i].removeStyle(SGR.BOLD);
                     metaRows[i].setText(metaLine);
                     metaRows[i].setBackgroundColor(TextColor.ANSI.DEFAULT);
                     metaRows[i].setForegroundColor(LanternaTheme.suggestion());
-              } else {
+                } else {
 
-                listRows[i].setForegroundColor(TextColor.ANSI.DEFAULT);
+                    listRows[i].setForegroundColor(TextColor.ANSI.DEFAULT);
                     listRows[i].removeStyle(SGR.BOLD);
                     metaRows[i].setText(metaLine);
                     metaRows[i].setBackgroundColor(TextColor.ANSI.DEFAULT);
 
                     metaRows[i].setForegroundColor(LanternaTheme.ghostText());
-              }
-              metaRows[i].removeStyle(SGR.BOLD);
-// Blank spacer row after each item.
+                }
+                metaRows[i].removeStyle(SGR.BOLD);
+                // Blank spacer row after each item.
                 blankRows[i].setText(" ");
             }
         }
@@ -656,7 +657,7 @@ public class SessionSelectorDialog extends BasicWindow {
             setFooter("  Type to Search · Enter to select · Esc to clear");
             return;
         }
-// RENAME mode: "Enter to save · Esc to cancel".
+        // RENAME mode: "Enter to save · Esc to cancel".
         if (viewMode == ViewMode.RENAME) {
             setFooter("  Enter to save · Esc to cancel");
             return;
@@ -818,7 +819,7 @@ public class SessionSelectorDialog extends BasicWindow {
         String after  = text.substring(Math.min(renameCursorOffset, text.length()));
         String inputLine;
         if (text.isEmpty()) {
-// Show current title as greyed placeholder.
+            // Show current title as greyed placeholder.
             String placeholder = !flatList.isEmpty() && selectedIndex < flatList.size()
                 ? flatList.get(selectedIndex).entry().title() : "Enter new session name";
             inputLine = "  " + placeholder + "█";
@@ -853,7 +854,7 @@ public class SessionSelectorDialog extends BasicWindow {
         String newName = renameBuffer.toString().trim();
         if (newName.isEmpty() || sessionStorage == null) { viewMode = ViewMode.LIST; refreshDisplay(); return; }
         DisplayEntry entry = flatList.get(selectedIndex).entry();
-// Append a {type:"custom-title"} JSONL entry.
+        // Append a {type:"custom-title"} JSONL entry.
         if (guiInvoker == null) {
             if (persistRename(entry, newName)) finishRename(entry, newName);
             return;
@@ -927,7 +928,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
             previewTranscript.scrollToBottom();
             if (failure == null && msgs != null && previewSession != null) {
-// Preserve the catalog's complete transcript count.
+                // Preserve the catalog's complete transcript count.
                 int count = previewSession.messageCount() >= 0
                     ? previewSession.messageCount() : msgs.size();
                 previewMetadata = previewMetadata(previewSession, count);
@@ -1057,7 +1058,7 @@ public class SessionSelectorDialog extends BasicWindow {
             }
             return true; // swallow all other keys in rename mode
         }
-// ── Double-press Ctrl+C / Ctrl+D to exit.
+        // ── Double-press Ctrl+C / Ctrl+D to exit.
         if (key.getKeyType() == KeyType.CHARACTER && key.isCtrlDown()
                 && key.getCharacter() != null && Character.toLowerCase(key.getCharacter()) == 'c') {
             handleExitKeyPress("Ctrl-C");
@@ -1073,12 +1074,12 @@ public class SessionSelectorDialog extends BasicWindow {
                     viewMode = ViewMode.LIST;
                     refreshDisplay();
                 } else if (searchCursorOffset < searchQuery.length()) {
-// Non-empty query, cursor not at end → forward-delete char (cursor.del)
+                    // Non-empty query, cursor not at end → forward-delete char (cursor.del)
                     searchQuery.deleteCharAt(searchCursorOffset);
                     selectedIndex = 0; scrollOffset = 0;
                     rebuildEntries(); refreshDisplay();
                 }
-// Non-empty query, cursor at end → no-op (cursor.del at end returns unchanged)
+                // Non-empty query, cursor at end → no-op (cursor.del at end returns unchanged)
                 return true;
             }
             // Otherwise: trigger double-press exit flow
@@ -1118,7 +1119,7 @@ public class SessionSelectorDialog extends BasicWindow {
         }
 
         if (key.getKeyType() == KeyType.ESCAPE) {
-// SEARCH mode: Esc clears non-empty query first; exits search on empty.
+            // SEARCH mode: Esc clears non-empty query first; exits search on empty.
             if (viewMode == ViewMode.SEARCH) {
                 if (!searchQuery.isEmpty()) {
                     searchQuery.setLength(0);
@@ -1136,7 +1137,7 @@ public class SessionSelectorDialog extends BasicWindow {
             close();
             return true;
         }
-// SEARCH mode: Down/Up/Enter exit search → return to list.
+        // SEARCH mode: Down/Up/Enter exit search → return to list.
 
         if (viewMode == ViewMode.SEARCH
                 && (key.getKeyType() == KeyType.ARROW_DOWN
@@ -1154,7 +1155,7 @@ public class SessionSelectorDialog extends BasicWindow {
             moveListNext();
             return true;
         }
-// ← collapse / → expand group header.
+        // ← collapse / → expand group header.
         if ((key.getKeyType() == KeyType.ARROW_LEFT || key.getKeyType() == KeyType.ARROW_RIGHT)
                 && !flatList.isEmpty() && selectedIndex >= 0 && selectedIndex < flatList.size()) {
             FlatItem fi = flatList.get(selectedIndex);
@@ -1165,7 +1166,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
                     expandedGroups.add(gk);
                 } else {
-// ← collapse only if currently expanded.
+                    // ← collapse only if currently expanded.
                     expandedGroups.remove(gk);
                 }
                 rebuildEntries();
@@ -1173,7 +1174,7 @@ public class SessionSelectorDialog extends BasicWindow {
                 return true;
             }
             if (!right && fi.isChild() && fi.group() != null) {
-// ← on child → collapse parent group + focus parent header.
+                // ← on child → collapse parent group + focus parent header.
                 String gk = fi.group().groupKey();
                 expandedGroups.remove(gk);
                 rebuildEntries();
@@ -1224,7 +1225,7 @@ public class SessionSelectorDialog extends BasicWindow {
                 .whenComplete((msgs, failure) -> applyPreviewResult(generation, msgs, failure));
             return true;
         }
-// ── SEARCH mode: direct searchQuery manipulation (Label-only, no TextBox) ──.
+        // ── SEARCH mode: direct searchQuery manipulation (Label-only, no TextBox) ──.
         if (viewMode == ViewMode.SEARCH) {
 
             if (!searchIsKillKey(key)) KillRing.INSTANCE.resetAccumulation();
@@ -1295,7 +1296,7 @@ public class SessionSelectorDialog extends BasicWindow {
             }
             if (key.getKeyType() == KeyType.ARROW_LEFT) {
                 if (key.isCtrlDown() || key.isAltDown()) {
-// Ctrl+Left / Meta+Left = jump to previous word start.
+                    // Ctrl+Left / Meta+Left = jump to previous word start.
                     searchCursorOffset = prevWordOffset(searchQuery, searchCursorOffset);
                 } else if (searchCursorOffset > 0) {
                     searchCursorOffset--;
@@ -1305,7 +1306,7 @@ public class SessionSelectorDialog extends BasicWindow {
             }
             if (key.getKeyType() == KeyType.ARROW_RIGHT) {
                 if (key.isCtrlDown() || key.isAltDown()) {
-// Ctrl+Right / Meta+Right = jump to next word start.
+                    // Ctrl+Right / Meta+Right = jump to next word start.
                     searchCursorOffset = nextWordOffset(searchQuery, searchCursorOffset);
                 } else if (searchCursorOffset < searchQuery.length()) {
                     searchCursorOffset++;
@@ -1321,7 +1322,7 @@ public class SessionSelectorDialog extends BasicWindow {
             }
             if (key.getKeyType() == KeyType.BACKSPACE) {
                 if (key.isAltDown()) {
-// Meta+Backspace = kill word before.
+                    // Meta+Backspace = kill word before.
                     int i = prevWordOffset(searchQuery, searchCursorOffset);
                     if (i < searchCursorOffset) {
                         KillRing.INSTANCE.push(searchQuery.substring(i, searchCursorOffset), KillRing.Direction.PREPEND);
@@ -1385,8 +1386,8 @@ public class SessionSelectorDialog extends BasicWindow {
             // Arrow up/down and Enter fall through to exit-search handlers below
         }
 
-// ── LIST mode: any printable char enters search; "/" → empty query, other char → initial
-// query ──.
+        // ── LIST mode: any printable char enters search; "/" → empty query, other char → initial
+        // query ──.
         if (viewMode == ViewMode.LIST
                 && key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
                 && key.getCharacter() > 0x20
@@ -1456,7 +1457,7 @@ public class SessionSelectorDialog extends BasicWindow {
             refreshDisplay();
             return true;
         }
-// Ctrl+R — rename selected session.
+        // Ctrl+R — rename selected session.
         if (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() == 'r' && key.isCtrlDown()
                 && !flatList.isEmpty()) {
             renameSelected();
@@ -1473,7 +1474,7 @@ public class SessionSelectorDialog extends BasicWindow {
             }
             return true;
         }
-// Tab / Shift+Tab — cycle tag filter.
+        // Tab / Shift+Tab — cycle tag filter.
         if (key.getKeyType() == KeyType.TAB && !uniqueTags.isEmpty()) {
             int offset = key.isShiftDown() ? -1 : 1;
             int len = uniqueTags.size() + 1;
@@ -1509,10 +1510,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
 
     private static boolean isPreviewTriggerKey(KeyStroke key) {
-        if (key.getKeyType() != KeyType.CHARACTER || key.getCharacter() == null) return false;
-        char c = key.getCharacter();
-        if (c == ' ') return !key.isCtrlDown() && !key.isAltDown();
-        return key.isCtrlDown() && Character.toLowerCase(c) == 'v';
+        return SessionPreviewKey.isTrigger(key);
     }
 
     /**

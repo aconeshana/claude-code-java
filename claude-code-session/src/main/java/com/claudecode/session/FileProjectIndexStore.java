@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -85,7 +86,10 @@ public final class FileProjectIndexStore implements ProjectIndexStore {
     @Override
     public void save(ProjectIndexSnapshot snapshot) {
         try {
-            byte[] data = JsonUtils.toPrettyJson(snapshot).getBytes(StandardCharsets.UTF_8);
+            // Compact, not pretty: nobody reads this by hand, and on a large
+            // history the indentation is a third of the bytes written on a path
+            // that runs every time the drawer opens.
+            byte[] data = JsonUtils.toJson(snapshot).getBytes(StandardCharsets.UTF_8);
             FileUtils.atomicReplace(cachePath, tempPath -> {
                 try (var channel = FileChannel.open(tempPath,
                         StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -93,7 +97,7 @@ public final class FileProjectIndexStore implements ProjectIndexStore {
                     channel.force(true);
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
             LOG.warn("Failed to save project index cache: {}", e.getMessage());
         }
     }

@@ -193,9 +193,11 @@ public final class QuerySessionSpec {
     /** Session-live gate for Bash git guidance and initial git status context. */
     private final Supplier<Boolean> includeGitInstructionsSupplier;
     /**
-     * Working directory used for the memoized startup git-status snapshot.
+     * Working directory used for the memoized startup git-status snapshot. Anchored to the
+     * session's project rather than its shell cwd, and therefore mutable only through
+     * {@link #setGitStatusWorkingDirectory} on a project switch.
      */
-    private final String gitStatusWorkingDirectory;
+    private volatile String gitStatusWorkingDirectory;
 
     /**
      * The resolved {@code settings.sandbox} snapshot supplier. Supplied (not a
@@ -475,6 +477,17 @@ public final class QuerySessionSpec {
     public Supplier<Boolean> includeGitInstructionsSupplier() { return includeGitInstructionsSupplier; }
 
     public String gitStatusWorkingDirectory() { return gitStatusWorkingDirectory; }
+
+    /**
+     * Repoints the status anchor after a cross-project resume. Unlike
+     * {@link #setWorkingDirectory}, which tracks the shell cwd and therefore moves with a Bash
+     * {@code cd}, this follows the session's project identity only.
+     */
+    public void setGitStatusWorkingDirectory(String directory) {
+        if (StringUtils.isNotBlank(directory)) {
+            this.gitStatusWorkingDirectory = directory;
+        }
+    }
 
     public Supplier<SandboxConfig> sandboxConfigSupplier() { return sandboxConfigSupplier; }
 

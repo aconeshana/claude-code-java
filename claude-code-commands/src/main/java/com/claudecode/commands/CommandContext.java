@@ -30,15 +30,6 @@ import java.util.function.Supplier;
 import java.util.function.ToDoubleFunction;
 
 
-
-
-
-
-
-
-
-
-
 public record CommandContext(
     CommandSessionState session,
     CommandApplicationPorts application,
@@ -101,7 +92,7 @@ public record CommandContext(
         private Supplier<String> currentSessionId;
         private final Supplier<Usage> usageSupplier;
         private final ToDoubleFunction<Usage> costCalculator;
-        private final String workingDirectory;
+        private Supplier<String> workingDirectory;
         private final boolean remoteMode;
         private PermissionCommandPort permissionCommands = PermissionCommandPort.none();
         private SessionCommandPort sessionCommands = SessionCommandPort.none();
@@ -162,7 +153,6 @@ public record CommandContext(
         private CopyApplyFromDialog copyApplyFromDialog;
         private Runnable diffDialogLauncher;
         private Runnable helpDialogLauncher;
-        private Runnable projectPanelLauncher;
         private Runnable skillsDialogLauncher;
         private Consumer<String> pluginDialogLauncher;
         private PluginRuntimePort pluginRuntime;
@@ -185,8 +175,18 @@ public record CommandContext(
             this.setModel = setModel;
             this.usageSupplier = usageSupplier;
             this.costCalculator = costCalculator;
-            this.workingDirectory = workingDirectory;
+            this.workingDirectory = () -> workingDirectory;
             this.remoteMode = remoteMode;
+        }
+
+        /**
+         * Replaces the fixed directory given to {@link #builder} with a live one, so commands
+         * keep resolving against the session's current project after a Bash {@code cd} or a
+         * cross-project resume rather than against wherever the process was launched.
+         */
+        public Builder workingDirectorySupplier(Supplier<String> v) {
+            if (v != null) workingDirectory = v;
+            return this;
         }
 
         public Builder modelSupplier(Supplier<String> v) { modelSupplier = v; return this; }
@@ -265,7 +265,6 @@ public record CommandContext(
         public Builder copyApplyFromDialog(CopyApplyFromDialog v) { copyApplyFromDialog = v; return this; }
         public Builder diffDialogLauncher(Runnable v) { diffDialogLauncher = v; return this; }
         public Builder helpDialogLauncher(Runnable v) { helpDialogLauncher = v; return this; }
-        public Builder projectPanelLauncher(Runnable v) { projectPanelLauncher = v; return this; }
         public Builder skillsDialogLauncher(Runnable v) { skillsDialogLauncher = v; return this; }
         public Builder pluginDialogLauncher(Consumer<String> v) { pluginDialogLauncher = v; return this; }
         public Builder pluginRuntime(PluginRuntimePort v) { pluginRuntime = v; return this; }
@@ -305,7 +304,7 @@ public record CommandContext(
                 copyPickerLauncher, copyApplyFromDialog, diffDialogLauncher,
                 helpDialogLauncher, skillsDialogLauncher, pluginDialogLauncher,
                 tasksDialogLauncher, workflowsDialogLauncher, statsDialogLauncher,
-                tagRemovalLauncher, projectPanelLauncher);
+                tagRemovalLauncher);
             return new CommandContext(session, application, presentation);
         }
     }

@@ -188,8 +188,10 @@ final class CliSessionLifecycleBootstrap {
         engine.execution().setTranscriptSink(persistSession ? transcriptRecorder : null);
         hookEngine.setPromptIdSupplier(() -> transcriptRecorder.currentPromptId(engine.conversation().getSessionId()));
         if (persistSession && engine.conversation().getFileHistoryManager() != null) {
+            // Reads the recorder's live project so a cross-project resume moves the
+            // file-history rows along with the transcript they annotate.
             engine.conversation().getFileHistoryManager().setSnapshotSink(
-                new SessionFileHistorySink(new SessionStorage(), transcriptSessionManager));
+                new SessionFileHistorySink(new SessionStorage(), transcriptRecorder::sessionManager));
         }
         if (interactive) {
             CliStartupTasks.run("file-history-cleanup", CliSessionLifecycleBootstrap::cleanupFileHistory);

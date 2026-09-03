@@ -47,9 +47,14 @@ public class TranscriptRecorder implements TranscriptSink {
 
     private static final Logger log = LoggerFactory.getLogger(TranscriptRecorder.class);
 
-    private final SessionManager sessionManager;
+    /**
+     * Project root this recorder writes to, swapped wholesale rather than mutated so
+     * a concurrent write either sees the old project or the new one, never a mix.
+     */
+    private record ProjectTarget(SessionManager sessionManager, String cwd) {}
+
+    private volatile ProjectTarget target;
     private final SessionStorage sessionStorage;
-    private final String cwd;
     private final boolean isSidechain;
     private final String agentId;
     private final String attributionAgent;
@@ -141,16 +146,31 @@ public class TranscriptRecorder implements TranscriptSink {
                        Path explicitTranscriptFile,
                        String attributionAgent,
                        Supplier<String> gitBranchSupplier) {
-        this.sessionManager = sessionManager;
+        this.target = new ProjectTarget(
+            sessionManager, cwd != null ? cwd : System.getProperty("user.dir"));
         this.sessionStorage = sessionStorage;
-        this.cwd = cwd != null ? cwd : System.getProperty("user.dir");
         this.isSidechain = isSidechain;
         this.agentId = agentId;
         this.attributionAgent = attributionAgent;
         this.explicitTranscriptFile = explicitTranscriptFile;
         this.gitBranchSupplier = gitBranchSupplier != null
             ? gitBranchSupplier
-            : () -> GitUtils.currentBranch(Path.of(this.cwd));
+            : () -> GitUtils.currentBranch(Path.of(cwd()));
+    }
+
+    /** The session manager for the project this recorder currently writes to. */
+    public SessionManager sessionManager() { return target.sessionManager(); }
+
+    private String cwd() { return target.cwd(); }
+
+    /**
+     * Repoints this recorder at another project root so a cross-project resume writes
+     * its new messages into the target project's transcript directory instead of the
+     * launch project's. The branch stamp follows unless an explicit supplier was given.
+     */
+    public void retargetProject(String projectCwd) {
+        if (StringUtils.isBlank(projectCwd)) return;
+        target = new ProjectTarget(new SessionManager(projectCwd), projectCwd);
     }
 
     public TranscriptRecorder(SessionManager sessionManager, SessionStorage sessionStorage) {
@@ -841,8 +861,8 @@ public class TranscriptRecorder implements TranscriptSink {
 
     private Path sessionFile(String sessionId) {
         return explicitTranscriptFile != null ? explicitTranscriptFile : agentId != null
-            ? sessionManager.getAgentTranscriptPath(sessionId, agentId)
-            : sessionManager.getSessionFile(sessionId);
+            ? sessionManager().getAgentTranscriptPath(sessionId, agentId)
+            : sessionManager().getSessionFile(sessionId);
     }
 
     private void enqueue(Path sessionFile, Runnable write) {
@@ -889,7 +909,7 @@ public class TranscriptRecorder implements TranscriptSink {
                             // No uuid → cannot dedup or chain; write directly.
                             SessionFileLock.withLock(sessionFile, () ->
                                 sessionStorage.appendMessageWithParent(sessionFile, message,
-                                    sessionId, cwd, isSidechain, agentId,
+                                    sessionId, cwd(), isSidechain, agentId,
                                     currentBranch(), slug, null, null,
                                     promptId, promptSource, attributionAgent, teamInfo));
                             return;
@@ -920,7 +940,7 @@ public class TranscriptRecorder implements TranscriptSink {
                                     }
                                 }
                                 sessionStorage.appendMessageWithParent(sessionFile, message,
-                                    sessionId, cwd, isSidechain, agentId,
+                                    sessionId, cwd(), isSidechain, agentId,
                                     currentBranch(), slug,
                                     logicalParent, parent, promptId, promptSource,
                                     attributionAgent, teamInfo);

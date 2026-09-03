@@ -500,19 +500,13 @@ final class CliToolchainAssembler {
         Path settingsRoot = CwdState.getOriginalCwd() == null
             ? cwdPath : CwdState.getOriginalCwd();
 
-        // while rooted settings patterns resolve through the session-root map below
-
-        PermissionPathContext permissionPathContext = PermissionPathContext.forSession(cwdPath, Map.of(
-            RuleSource.USER_SETTINGS,
-                SettingsPaths.userSettingsPath().toAbsolutePath().normalize().getParent(),
-            RuleSource.PROJECT_SETTINGS, settingsRoot,
-            RuleSource.LOCAL_SETTINGS, settingsRoot,
-            RuleSource.POLICY_SETTINGS, settingsRoot,
-            RuleSource.FLAG_SETTINGS, SettingsSources.flagSettingsRootPath(settingsRoot.toString())), Set.of());
+        PermissionPathContext permissionPathContext = newPermissionPathContext(cwdPath, settingsRoot);
         ToolPermissionContext permissionContext = ToolPermissionContext.builder()
             .workingDirectory(cwdPath).pathContext(permissionPathContext).build();
         PermissionGate gate = new PermissionGate(permissionContext,
-            new CliPermissionPaths(cwdPath, workspace.sessionIdentity().get()));
+            new CliPermissionPaths(
+                () -> Path.of(CliProjectSwitch.currentProjectRoot()),
+                workspace.sessionIdentity()::get));
         PermissionMode initialPermissionMode = resolvePermissionMode(workspace.request().permissions());
         boolean bypassLaunchAllowed = workspace.request().permissions().dangerouslySkipPermissions()
             || workspace.request().permissions().allowDangerouslySkipPermissions()
@@ -525,6 +519,22 @@ final class CliToolchainAssembler {
             PermissionSettings::isAutoModeGateEnabledBySettings);
         gate.setMode(initialPermissionMode);
         return gate;
+    }
+
+    /**
+     * Builds the rooted-pattern resolution map for a project. Rooted settings patterns
+     * resolve through this session-root map, so a cross-project resume has to rebuild it
+     * against the incoming project rather than keep the launch project's roots.
+     */
+    static PermissionPathContext newPermissionPathContext(Path cwdPath, Path settingsRoot) {
+        return PermissionPathContext.forSession(cwdPath, Map.of(
+            RuleSource.USER_SETTINGS,
+                SettingsPaths.userSettingsPath().toAbsolutePath().normalize().getParent(),
+            RuleSource.PROJECT_SETTINGS, settingsRoot,
+            RuleSource.LOCAL_SETTINGS, settingsRoot,
+            RuleSource.POLICY_SETTINGS, settingsRoot,
+            RuleSource.FLAG_SETTINGS,
+                SettingsSources.flagSettingsRootPath(settingsRoot.toString())), Set.of());
     }
 
     static String resolveQuestionPreviewFormat(

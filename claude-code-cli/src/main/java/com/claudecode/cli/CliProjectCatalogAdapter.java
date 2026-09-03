@@ -44,6 +44,17 @@ public final class CliProjectCatalogAdapter implements ProjectCatalogPort {
     }
 
     @Override
+    public List<ProjectEntry> cachedProjects() {
+        return catalog.cachedProjects().stream()
+            .map(CliProjectCatalogAdapter::entry).toList();
+    }
+
+    @Override
+    public void warmUp() {
+        catalog.warmUp();
+    }
+
+    @Override
     public ProjectPreferences projectPreferences() {
         ProjectCatalog.ProjectPreferences prefs = catalog.preferences();
         return new ProjectPreferences(prefs.pinnedProjects(), prefs.collapsedProjects());

@@ -1,11 +1,19 @@
 package com.claudecode.ui.lanterna.features.projects;
 
+import com.claudecode.core.message.Message;
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.ui.lanterna.components.SmartLayout;
+import com.claudecode.ui.lanterna.input.SessionPreviewKey;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectEntry;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectPreferences;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectSessionEntry;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
+import com.claudecode.ui.lanterna.transcript.MessageCollapser;
+import com.claudecode.ui.lanterna.transcript.MessagePanel;
+import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
@@ -22,14 +30,18 @@ import com.googlecode.lanterna.input.KeyType;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Left-docked project-management drawer: a two-level project→session tree that
@@ -49,9 +61,19 @@ import org.apache.commons.lang3.StringUtils;
  * session back to its project, or closes the drawer at the top level), Enter on
  * a project toggles it, Enter on a session resumes it via the host callback, x
  * on a session arms a two-stage delete (second x confirms, any other key
- * disarms), p opens a wide scrollable preview of the session's transcript
- * (Esc/←/p returns to the tree), Esc closes. Every key — including PASTE — is
+ * disarms), Space (or Ctrl+V) opens a wide scrollable preview of the session's
+ * transcript — the same binding the resume picker uses, see
+ * {@link com.claudecode.ui.lanterna.input.SessionPreviewKey} — and Esc/←/Space
+ * returns to the tree, Esc closes. Every key — including PASTE — is
  * consumed while active so nothing leaks into the prompt behind the overlay.
+ *
+ * <p>Preview mode swaps the hand-painted tree for a real {@link MessagePanel}
+ * subtree driven by {@link TranscriptReplay} through the same
+ * {@link MessageCollapser}/{@link LanternaMessageDispatcher} pipeline the live
+ * transcript and the resume picker's preview use, so a skimmed session looks
+ * exactly like the session it will become when resumed. The two views are
+ * sibling children toggled by visibility; {@code LinearLayout} skips the hidden
+ * one, so only the active view contributes to the drawer's preferred size.
  */
 public final class ProjectPanel extends Panel implements InlineOverlay {
 
@@ -84,13 +106,19 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
     private static final int STRIP_MAX = 38;
     private static final int HEADER_ROWS = 2; // title + divider
     private static final int FOOTER_ROWS = 1; // key hints
+    /** Preview chrome: divider + session meta + key hints, pinned under the transcript. */
+    private static final int PREVIEW_CHROME_ROWS = 3;
     private static final String TITLE = "Projects";
     private static final String EMPTY_HINT = "No sessions found";
     private static final String LOADING_HINT = "Loading projects…";
     private static final String LOADING_PREVIEW_HINT = "Loading preview…";
-    private static final String FOOTER_HINT = "↑↓ move · → expand · Enter open · Esc close";
+    private static final String FAILED_PREVIEW_HINT = "(failed to read transcript)";
+    private static final String FOOTER_HINT = "↑↓ move · → expand · Esc close";
+    private static final String FOOTER_HINT_SESSION = "Space preview · x delete · Enter open";
     private static final String FOOTER_HINT_ARMED = "x again to delete · Esc cancel";
     private static final String FOOTER_HINT_PREVIEW = "↑↓ scroll · Esc back";
+
+    private static final Logger log = LoggerFactory.getLogger(ProjectPanel.class);
 
     private final IntSupplier terminalColumns;
     private final IntSupplier terminalRows;
@@ -106,26 +134,65 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
     private Actions actions = new Actions(null, null, null);
     /** Session id armed for deletion by the first x; the second x confirms. */
     private String pendingDeleteId;
-    /** Preview mode: the session being skimmed; null lines mean "still loading". */
+    /**
+     * Optimistically deleted session ids. A catalog refresh may still be carrying
+     * them (its scan predates the delete), and a row popping back would look like
+     * the delete failed.
+     */
+    private final Set<String> removedSessionIds = new HashSet<>();
+    /** Preview mode: the session being skimmed, or null while the tree is showing. */
     private ProjectSessionEntry previewSession;
-    private List<String> previewLines;
-    private int previewScroll;
+    /** False until the host's asynchronous transcript read lands. */
+    private boolean previewLoaded;
+    private boolean previewFailed;
+
+    private final DrawerArea treeArea = new DrawerArea();
+    private final Panel previewRoot = new PreviewArea();
+    private final MessagePanel previewTranscript = new MessagePanel();
+    private final LanternaMessageDispatcher previewDispatcher = new LanternaMessageDispatcher();
+    private final MessageCollapser previewCollapser;
 
     public ProjectPanel(IntSupplier terminalColumns, IntSupplier terminalRows) {
         super(new LinearLayout(Direction.VERTICAL).setSpacing(0));
         this.terminalColumns = terminalColumns != null ? terminalColumns : () -> 80;
         this.terminalRows = terminalRows != null ? terminalRows : () -> 24;
-        DrawerArea area = new DrawerArea();
-        area.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
-        addComponent(area);
+        treeArea.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
+        addComponent(treeArea);
+
+        // Same pipeline configuration as the resume picker's preview: verbose so
+        // tool detail survives, showAll so nothing is folded away in a view the
+        // user opened precisely to read.
+        previewDispatcher.setVerbose(true);
+        previewCollapser = new MessageCollapser(previewDispatcher, true);
+        previewCollapser.setShowAll(true);
+        // SmartLayout: the transcript absorbs the remaining rows and the chrome
+        // pins to the bottom. A LinearLayout would hand MessagePanel its full
+        // content height and overflow the drawer.
+        previewRoot.setFillColorOverride(TextColor.ANSI.DEFAULT);
+        previewRoot.addComponent(previewTranscript);
+        previewRoot.addComponent(new PreviewChrome());
+        // BEGINNING, not FILL: the preview is deliberately narrower than the
+        // drawer's rect (SmartLayout hands every covering overlay the full
+        // terminal width), and FILL would stretch it across the whole screen.
+        previewRoot.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.BEGINNING));
+        previewRoot.setVisible(false);
+        addComponent(previewRoot);
     }
 
-    /** Shows the drawer with a loading placeholder. Must run on the GUI thread. */
-    public synchronized void showLoading() {
+    /**
+     * Shows the drawer with a loading placeholder. The host's actions are taken
+     * now rather than at {@link #show} time so Esc still closes cleanly while the
+     * catalog is loading — without them the close callback that un-suppresses the
+     * prompt would be missing exactly when the user wants out. Must run on the
+     * GUI thread.
+     */
+    public synchronized void showLoading(Actions actions) {
+        this.actions = actions != null ? actions : new Actions(null, null, null);
         active = true;
         loading = true;
         projects = List.of();
         rows = List.of();
+        removedSessionIds.clear();
         focus = 0;
         visibleFrom = 0;
         invalidate();
@@ -148,10 +215,30 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
         this.focus = 0;
         this.visibleFrom = 0;
         this.pendingDeleteId = null;
-        this.previewSession = null;
-        this.previewLines = null;
-        this.previewScroll = 0;
+        setPreviewMode(null);
+        this.removedSessionIds.clear();
         rebuildRows();
+        invalidate();
+    }
+
+    /**
+     * Swaps in a revalidated catalog without disturbing the user: focus follows
+     * the same project/session, collapse state, armed delete, preview and scroll
+     * all survive. This is the second half of the cached-then-refreshed open, so
+     * it must never feel like the drawer reopened. Sessions already deleted
+     * optimistically stay gone even if the fresh listing still carries them.
+     * Must run on the GUI thread.
+     */
+    public synchronized void refresh(List<ProjectEntry> catalog) {
+        if (!active) return;
+        String focusedProject = focusedProjectPath();
+        String focusedSession = focusedSessionId();
+        this.projects = withoutRemoved(
+            orderPinnedFirst(catalog != null ? catalog : List.of(), pinned));
+        this.loading = false;
+        rebuildRows();
+        restoreFocus(focusedProject, focusedSession);
+        adjustWindow();
         invalidate();
     }
 
@@ -160,21 +247,35 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
         active = false;
         loading = false;
         pendingDeleteId = null;
-        previewSession = null;
-        previewLines = null;
+        setPreviewMode(null);
         invalidate();
     }
 
     /**
-     * Delivers the asynchronously loaded preview content. A result for any
-     * session other than the one being previewed is dropped — the host's read
-     * may resolve after the user moved on. Must run on the GUI thread.
+     * Delivers the asynchronously loaded transcript and replays it through the
+     * shared collapser/dispatcher pipeline. A result for any session other than
+     * the one being previewed is dropped — the host's read may resolve after the
+     * user moved on. A null {@code messages} reports a failed read. Must run on
+     * the GUI thread ({@link TranscriptReplay} mutates live components).
      */
-    public synchronized void showPreviewLines(ProjectSessionEntry session, List<String> lines) {
+    public synchronized void showPreviewMessages(ProjectSessionEntry session,
+                                                 List<Message> messages) {
         if (previewSession == null || session == null
                 || !previewSession.id().equals(session.id())) return;
-        previewLines = lines != null ? List.copyOf(lines) : List.of();
-        previewScroll = 0;
+        previewTranscript.clear();
+        previewLoaded = true;
+        previewFailed = messages == null;
+        if (messages != null) {
+            try {
+                TranscriptReplay.replay(messages, previewCollapser, previewTranscript, null);
+            } catch (RuntimeException failure) {
+                log.warn("Failed to render the project drawer's session preview", failure);
+                previewFailed = true;
+            }
+        }
+        // Newest content first, matching the resume picker: a preview is opened
+        // to answer "where did I leave off", not "how did this start".
+        previewTranscript.scrollToBottom();
         invalidate();
     }
 
@@ -187,7 +288,15 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
         // Every key is consumed, including PASTE, so nothing leaks into the
         // main input behind this overlay (InlineOverlay has no real GUI focus).
         deliver.set(false);
-        if (key.getKeyType() == KeyType.PASTE || loading) return;
+        if (key.getKeyType() == KeyType.PASTE) return;
+        if (loading) {
+            // The tree isn't there to navigate yet, but the drawer must never
+            // feel wedged: dismissal stays live for the whole load.
+            if (key.getKeyType() == KeyType.ESCAPE || key.getKeyType() == KeyType.ARROW_LEFT) {
+                close();
+            }
+            return;
+        }
 
         if (previewSession != null) {
             handlePreviewKey(key);
@@ -214,10 +323,7 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
             case ESCAPE -> close();
             case CHARACTER -> {
                 if (plainX) handleDeleteKey();
-                else if (key.getCharacter() != null && key.getCharacter() == 'p'
-                        && !key.isCtrlDown() && !key.isAltDown()) {
-                    startPreview();
-                }
+                else if (SessionPreviewKey.isTrigger(key)) startPreview();
             }
             default -> { /* swallowed: the drawer owns the input stream while active */ }
         }
@@ -245,6 +351,7 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
     private void removeSessionOptimistically(int projectIndex, int sessionIndex) {
         ProjectEntry project = projects.get(projectIndex);
         List<ProjectSessionEntry> remaining = new ArrayList<>(project.sessions());
+        removedSessionIds.add(remaining.get(sessionIndex).id());
         remaining.remove(sessionIndex);
         List<ProjectEntry> rebuilt = new ArrayList<>(projects);
         if (remaining.isEmpty()) {
@@ -262,25 +369,22 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
 
     private void startPreview() {
         if (!(focusedRow() instanceof Row.SessionRow(int projectIndex, int sessionIndex))) return;
-        previewSession = projects.get(projectIndex).sessions().get(sessionIndex);
-        previewLines = null;
-        previewScroll = 0;
+        setPreviewMode(projects.get(projectIndex).sessions().get(sessionIndex));
         invalidate();
         if (actions.onPreview() != null) actions.onPreview().accept(previewSession);
     }
 
     private void handlePreviewKey(KeyStroke key) {
-        int lineCount = previewLines != null ? previewLines.size() : 0;
         switch (key.getKeyType()) {
-            case ARROW_UP -> previewScroll = Math.max(0, previewScroll - 1);
-            case ARROW_DOWN -> previewScroll = Math.min(Math.max(0, lineCount - 1), previewScroll + 1);
-            case PAGE_UP -> previewScroll = Math.max(0, previewScroll - visibleRowCount());
-            case PAGE_DOWN -> previewScroll = Math.min(Math.max(0, lineCount - 1),
-                previewScroll + visibleRowCount());
+            case ARROW_UP -> previewTranscript.scrollUp(1);
+            case ARROW_DOWN -> previewTranscript.scrollDown(1);
+            case PAGE_UP -> previewTranscript.pageUp();
+            case PAGE_DOWN -> previewTranscript.pageDown();
+            case HOME -> previewTranscript.scrollToTop();
+            case END -> previewTranscript.scrollToBottom();
             case ESCAPE, ARROW_LEFT -> exitPreview();
             case CHARACTER -> {
-                if (key.getCharacter() != null && key.getCharacter() == 'p'
-                        && !key.isCtrlDown() && !key.isAltDown()) exitPreview();
+                if (SessionPreviewKey.isTrigger(key)) exitPreview();
             }
             default -> { /* swallowed */ }
         }
@@ -288,10 +392,33 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
     }
 
     private void exitPreview() {
-        previewSession = null;
-        previewLines = null;
-        previewScroll = 0;
+        setPreviewMode(null);
         invalidate();
+    }
+
+    /**
+     * Switches the drawer between its two sibling views. The transcript is
+     * cleared on every transition — a {@link MessagePanel} kept across opens
+     * would replay the previous session's messages under the new session's
+     * header until the fresh read lands.
+     */
+    private void setPreviewMode(ProjectSessionEntry session) {
+        previewSession = session;
+        previewLoaded = false;
+        previewFailed = false;
+        previewTranscript.clear();
+        previewRoot.setVisible(session != null);
+        treeArea.setVisible(session == null);
+    }
+
+    /**
+     * The strip is at most {@value #STRIP_MAX} columns, so the footer advertises
+     * only what the focused row can actually do — a single all-verbs line would
+     * be truncated mid-word and hide the very bindings it lists.
+     */
+    private String footerHint() {
+        if (pendingDeleteId != null) return FOOTER_HINT_ARMED;
+        return focusedRow() instanceof Row.SessionRow ? FOOTER_HINT_SESSION : FOOTER_HINT;
     }
 
     private void moveFocus(int delta) {
@@ -387,6 +514,60 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
         rows = List.copyOf(rebuilt);
     }
 
+    /** Drops rows the user already deleted, and projects left empty by that. */
+    private List<ProjectEntry> withoutRemoved(List<ProjectEntry> catalog) {
+        if (removedSessionIds.isEmpty()) return catalog;
+        List<ProjectEntry> kept = new ArrayList<>(catalog.size());
+        for (ProjectEntry project : catalog) {
+            List<ProjectSessionEntry> sessions = project.sessions().stream()
+                .filter(session -> !removedSessionIds.contains(session.id())).toList();
+            if (sessions.isEmpty()) continue;
+            kept.add(sessions.size() == project.sessions().size() ? project
+                : new ProjectEntry(project.projectPath(), project.projectName(),
+                    sessions.size(), project.lastActivityMs(), sessions));
+        }
+        return List.copyOf(kept);
+    }
+
+    /**
+     * Re-anchors focus after the row list was rebuilt from a new catalog: the
+     * same session if it survived, else its project, else the nearest valid row.
+     */
+    private void restoreFocus(String projectPath, String sessionId) {
+        if (rows.isEmpty()) {
+            focus = 0;
+            return;
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i) instanceof Row.SessionRow(int p, int s)
+                    && projects.get(p).sessions().get(s).id().equals(sessionId)) {
+                focus = i;
+                return;
+            }
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i) instanceof Row.ProjectRow(int p)
+                    && projects.get(p).projectPath().equals(projectPath)) {
+                focus = i;
+                return;
+            }
+        }
+        focus = Math.min(focus, rows.size() - 1);
+    }
+
+    private String focusedProjectPath() {
+        return switch (focusedRow()) {
+            case Row.ProjectRow(int p) -> projects.get(p).projectPath();
+            case Row.SessionRow(int p, int ignored) -> projects.get(p).projectPath();
+            case null -> null;
+        };
+    }
+
+    private String focusedSessionId() {
+        return focusedRow() instanceof Row.SessionRow(int p, int s)
+            ? projects.get(p).sessions().get(s).id() : null;
+    }
+
     private static List<ProjectEntry> orderPinnedFirst(List<ProjectEntry> catalog,
                                                        List<String> pinned) {
         if (pinned.isEmpty()) return List.copyOf(catalog);
@@ -445,6 +626,22 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
         return session.id().substring(0, Math.min(8, session.id().length()));
     }
 
+    /**
+     * Project rows carry the path itself rather than the directory name: the drawer lists every
+     * project on the machine, so same-named checkouts are otherwise indistinguishable. The home
+     * prefix collapses to {@code ~} and the middle is elided, which keeps the trailing session
+     * count visible at any strip width.
+     *
+     * @param width columns available to the row text, excluding the focus pointer
+     */
+    static String projectRowLabel(ProjectEntry project, boolean collapsed, int width) {
+        String glyph = collapsed ? "▸ " : "▾ ";
+        String suffix = " (" + project.sessionCount() + ")";
+        int budget = width - FormatUtils.displayWidth(glyph) - FormatUtils.displayWidth(suffix);
+        String path = PathUtils.abbreviateTilde(project.projectPath());
+        return glyph + FormatUtils.truncatePathMiddle(path, Math.max(0, budget)) + suffix;
+    }
+
     @Override
     public synchronized TerminalSize calculatePreferredSize() {
         if (!active) return new TerminalSize(0, 0);
@@ -462,19 +659,84 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
     // ── test accessors (package-private) ─────────────────────────────────────
 
     String focusedProjectPathForTest() {
-        return switch (focusedRow()) {
-            case Row.ProjectRow(int p) -> projects.get(p).projectPath();
-            case Row.SessionRow(int p, int ignored) -> projects.get(p).projectPath();
-            case null -> null;
-        };
+        return focusedProjectPath();
     }
 
     String focusedSessionIdForTest() {
-        return focusedRow() instanceof Row.SessionRow(int p, int s)
-            ? projects.get(p).sessions().get(s).id() : null;
+        return focusedSessionId();
     }
 
     // ── renderer ─────────────────────────────────────────────────────────────
+
+    /**
+     * Host for the preview subtree. It reports the narrow preview rect rather
+     * than the drawer's full-width one, so {@link SmartLayout} inside it hands
+     * {@link MessagePanel} the width the transcript is actually wrapped to.
+     */
+    private final class PreviewArea extends Panel {
+        private PreviewArea() {
+            super(new SmartLayout());
+        }
+
+        @Override
+        public synchronized TerminalSize calculatePreferredSize() {
+            return new TerminalSize(previewWidth(safeColumns()), safeRows());
+        }
+    }
+
+    /** Divider + session metadata + key hints, pinned below the preview transcript. */
+    private final class PreviewChrome extends AbstractComponent<PreviewChrome> {
+        @Override protected ComponentRenderer<PreviewChrome> createDefaultRenderer() {
+            return new ComponentRenderer<>() {
+                @Override public TerminalSize getPreferredSize(PreviewChrome c) {
+                    return new TerminalSize(previewWidth(safeColumns()), PREVIEW_CHROME_ROWS);
+                }
+
+                @Override public void drawComponent(TextGUIGraphics g, PreviewChrome c) {
+                    int width = g.getSize().getColumns();
+                    if (width <= 0 || previewSession == null) return;
+                    int row = paintLine(g, 0, width, "─".repeat(Math.max(0, width - 1)),
+                        LanternaTheme.professionalBlue(), false);
+                    row = paintLine(g, row, width, previewMeta(),
+                        LanternaTheme.inputText(), false);
+                    paintLine(g, row, width, FOOTER_HINT_PREVIEW,
+                        LanternaTheme.welcomeDim(), false);
+                }
+            };
+        }
+    }
+
+    /**
+     * The metadata line doubles as the preview's status line: it names the
+     * session once the transcript is on screen, and reports loading/failure
+     * while there is nothing to name it against.
+     */
+    private String previewMeta() {
+        if (!previewLoaded) return LOADING_PREVIEW_HINT;
+        if (previewFailed) return FAILED_PREVIEW_HINT;
+        String relative = FormatUtils.formatRelativeTimeAgo(
+            Instant.ofEpochMilli(previewSession.lastModified()),
+            FormatUtils.RelativeTimeStyle.NARROW);
+        return sessionLabel(previewSession) + " · "
+            + Math.max(0, previewSession.messageCount()) + " messages · " + relative;
+    }
+
+    /**
+     * Paints one full row of the drawer: every cell is written (text padded with
+     * spaces) so the transcript never bleeds through inside the drawer's rect.
+     */
+    private static int paintLine(TextGUIGraphics g, int row, int width, String text,
+                                 TextColor color, boolean bold) {
+        if (row < 0 || row >= g.getSize().getRows()) return row + 1;
+        g.setBackgroundColor(TextColor.ANSI.DEFAULT);
+        g.setForegroundColor(color != null ? color : LanternaTheme.inputText());
+        if (bold) g.enableModifiers(SGR.BOLD);
+        String clipped = FormatUtils.truncateNoEllipsis(text, Math.max(0, width));
+        g.putString(0, row, clipped + " ".repeat(Math.max(0, width
+            - FormatUtils.displayWidth(clipped))));
+        if (bold) g.disableModifiers(SGR.BOLD);
+        return row + 1;
+    }
 
     private final class DrawerArea extends AbstractComponent<DrawerArea> {
         @Override protected ComponentRenderer<DrawerArea> createDefaultRenderer() {
@@ -494,10 +756,6 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
             if (!active) return;
             int height = g.getSize().getRows();
             if (height <= 0) return;
-            if (previewSession != null) {
-                drawPreview(g, height);
-                return;
-            }
             int width = stripWidth(g.getSize().getColumns());
             if (width <= 0) return;
 
@@ -521,37 +779,8 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
                 }
             }
             while (row < listBottom) row = paintLine(g, row, width, "", null, false);
-            paintLine(g, height - 1, width,
-                pendingDeleteId != null ? FOOTER_HINT_ARMED : FOOTER_HINT,
+            paintLine(g, height - 1, width, footerHint(),
                 LanternaTheme.welcomeDim(), false);
-        }
-
-        /** Preview mode paints a wider area (the tree strip alone is too narrow to skim). */
-        private void drawPreview(TextGUIGraphics g, int height) {
-            int width = previewWidth(g.getSize().getColumns());
-            if (width <= 0) return;
-            int row = 0;
-            row = paintLine(g, row, width, "▸ " + sessionLabel(previewSession),
-                LanternaTheme.professionalBlue(), true);
-            row = paintLine(g, row, width, "─".repeat(Math.max(0, width - 1)),
-                LanternaTheme.professionalBlue(), false);
-
-            int listBottom = Math.max(row, height - FOOTER_ROWS);
-            if (previewLines == null) {
-                row = paintLine(g, row, width, LOADING_PREVIEW_HINT,
-                    LanternaTheme.welcomeDim(), false);
-            } else {
-                int visible = Math.max(1, listBottom - row);
-                int maxScroll = Math.max(0, previewLines.size() - visible);
-                if (previewScroll > maxScroll) previewScroll = maxScroll;
-                int to = Math.min(previewLines.size(), previewScroll + visible);
-                for (int i = previewScroll; i < to && row < listBottom; i++) {
-                    row = paintLine(g, row, width, previewLines.get(i),
-                        LanternaTheme.inputText(), false);
-                }
-            }
-            while (row < listBottom) row = paintLine(g, row, width, "", null, false);
-            paintLine(g, height - 1, width, FOOTER_HINT_PREVIEW, LanternaTheme.welcomeDim(), false);
         }
 
         private int paintTreeRow(TextGUIGraphics g, int row, int width, int index) {
@@ -560,8 +789,8 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
             String text = switch (rows.get(index)) {
                 case Row.ProjectRow(int p) -> {
                     ProjectEntry project = projects.get(p);
-                    String glyph = isCollapsed(project.projectPath()) ? "▸ " : "▾ ";
-                    yield glyph + project.projectName() + " (" + project.sessionCount() + ")";
+                    // Budget excludes the pointer column paintLine prepends below.
+                    yield projectRowLabel(project, isCollapsed(project.projectPath()), width - 1);
                 }
                 case Row.SessionRow(int p, int s) -> {
                     ProjectSessionEntry session = projects.get(p).sessions().get(s);
@@ -579,23 +808,6 @@ public final class ProjectPanel extends Panel implements InlineOverlay {
                 && projects.get(p).sessions().get(s).id().equals(pendingDeleteId);
             return paintLine(g, row, width, pointer + text,
                 armed ? LanternaTheme.toolError() : color, focused);
-        }
-
-        /**
-         * Paints one full strip row: every cell is written (text padded with
-         * spaces) so the transcript never bleeds through inside the strip.
-         */
-        private int paintLine(TextGUIGraphics g, int row, int width, String text,
-                              TextColor color, boolean bold) {
-            if (row < 0 || row >= g.getSize().getRows()) return row + 1;
-            g.setBackgroundColor(TextColor.ANSI.DEFAULT);
-            g.setForegroundColor(color != null ? color : LanternaTheme.inputText());
-            if (bold) g.enableModifiers(SGR.BOLD);
-            String clipped = FormatUtils.truncateNoEllipsis(text, Math.max(0, width));
-            g.putString(0, row, clipped + " ".repeat(Math.max(0, width
-                - FormatUtils.displayWidth(clipped))));
-            if (bold) g.disableModifiers(SGR.BOLD);
-            return row + 1;
         }
     }
 }

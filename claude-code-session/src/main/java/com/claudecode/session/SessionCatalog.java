@@ -72,8 +72,20 @@ final class SessionCatalog {
     static List<Entry> searchEntries(List<SessionManager> managers, Predicate<String> builtInCommand) {
         List<Candidate> discovered = candidates(managerSources(managers));
         if (discovered.isEmpty()) discovered = candidates(historicalSources(managers));
-        return parallelMap(discovered, candidate -> read(candidate)
-            .flatMap(lite -> enrich(candidate, lite, builtInCommand, Visibility.PICKER)).orElse(null))
+        return enrichBatch(discovered, builtInCommand, Visibility.PICKER);
+    }
+
+    /**
+     * Reads and enriches every candidate through the shared {@link #IO_CONCURRENCY}-way
+     * pool. Callers that hold a complete work list must use this rather than looping
+     * over {@link #read}/{@link #enrich}: enrichment is head/tail parse-bound, so a
+     * serial loop over a few thousand transcripts costs seconds where this costs
+     * hundreds of milliseconds.
+     */
+    static List<Entry> enrichBatch(List<Candidate> candidates, Predicate<String> builtInCommand,
+                                   Visibility visibility) {
+        return parallelMap(candidates, candidate -> read(candidate)
+            .flatMap(lite -> enrich(candidate, lite, builtInCommand, visibility)).orElse(null))
             .stream().filter(Objects::nonNull).toList();
     }
 
@@ -175,7 +187,37 @@ final class SessionCatalog {
     }
 
     static List<Candidate> candidates(List<Source> sources) {
-        List<Candidate> result = parallelMap(filenames(sources), candidate -> {
+        List<Candidate> sorted = new ArrayList<>(statAll(filenames(sources)));
+        sorted.sort(Candidate.ORDER);
+        return List.copyOf(sorted);
+    }
+
+    /**
+     * One stat pass over every source, bucketed by transcript directory name.
+     * Directories that hold no usable transcript keep an empty bucket — for a
+     * cache keyed by directory an empty result is a fact worth storing, not a
+     * miss. Fingerprint callers need neither dedup nor ordering, so this skips
+     * both; more importantly it stats every directory's files in a single
+     * {@link #parallelMap}, where a per-directory {@link #candidates} loop would
+     * shrink the effective concurrency to one directory's file count.
+     */
+    static Map<String, List<Candidate>> candidatesByDirectory(List<Source> sources) {
+        Map<String, List<Candidate>> grouped = new LinkedHashMap<>();
+        for (Source source : sources == null ? List.<Source>of() : sources) {
+            grouped.put(source.directory().getFileName().toString(), new ArrayList<>());
+        }
+        for (Candidate candidate : statAll(filenames(sources))) {
+            Path parent = candidate.transcript().getParent();
+            if (parent == null) continue;
+            grouped.computeIfAbsent(parent.getFileName().toString(), _ -> new ArrayList<>())
+                .add(candidate);
+        }
+        grouped.replaceAll((_, bucket) -> List.copyOf(bucket));
+        return grouped;
+    }
+
+    private static List<Candidate> statAll(List<Candidate> named) {
+        return parallelMap(named, candidate -> {
             try {
                 BasicFileAttributes attributes = Files.readAttributes(candidate.transcript(), BasicFileAttributes.class);
                 return candidate.withStat(attributes.lastModifiedTime().toMillis(),
@@ -185,9 +227,6 @@ final class SessionCatalog {
                 return null;
             }
         }).stream().filter(Objects::nonNull).toList();
-        List<Candidate> sorted = new ArrayList<>(result);
-        sorted.sort(Candidate.ORDER);
-        return List.copyOf(sorted);
     }
 
     private static List<Candidate> filenames(List<Source> sources) {

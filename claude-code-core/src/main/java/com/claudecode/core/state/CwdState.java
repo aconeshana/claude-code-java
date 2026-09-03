@@ -12,8 +12,9 @@ public final class CwdState {
     private CwdState() {}
 
     /**
-     * NFC-normalized,
-     * absolute, set at startup and on worktree transitions.
+     * NFC-normalized, absolute, set at startup and whenever the session's project identity
+     * moves — worktree transitions and cross-project resumes. A Bash {@code cd} deliberately
+     * does not come through here: it moves the shell cwd, not the project the session belongs to.
      */
     public static void setOriginalCwd(Path cwd) {
         if (cwd == null) {

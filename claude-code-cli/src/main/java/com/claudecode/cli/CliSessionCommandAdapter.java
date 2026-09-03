@@ -18,50 +18,72 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
  * CLI leaf adapter for command-facing session persistence use cases.
+ *
+ * <p>Everything here is scoped to one project's transcript directory, so the scope is resolved
+ * per call from the session's live project identity instead of being captured at assembly
+ * time: after a cross-project resume, {@code /resume} must list the project the session moved
+ * to, not the one the process was launched in.
  */
 final class CliSessionCommandAdapter implements SessionCommandPort {
-    private final String cwd;
-    private final SessionManager manager;
+    private final Supplier<String> cwd;
     private final SessionStorage storage;
-    private final SessionSearch search;
     private final SessionForkService forks;
+    private volatile Target target;
 
-    CliSessionCommandAdapter(String cwd) {
-        this(new SessionManager(cwd), new SessionStorage(), cwd);
-    }
+    /** Project-scoped collaborators, swapped as a unit so they can never disagree. */
+    private record Target(String cwd, SessionManager manager, SessionSearch search) {}
 
-    private CliSessionCommandAdapter(SessionManager manager, SessionStorage storage, String cwd) {
-        this.manager = manager;
-        this.storage = storage;
+    CliSessionCommandAdapter(Supplier<String> cwd) {
         this.cwd = cwd;
-        this.search = new SessionSearch(manager);
+        this.storage = new SessionStorage();
         this.forks = new SessionForkService();
     }
 
+    /** Fixed-project variant for tests and single-project embedders. */
+    CliSessionCommandAdapter(String cwd) {
+        this(() -> cwd);
+    }
+
+    private Target target() {
+        String current = cwd.get();
+        Target cached = target;
+        if (cached != null && cached.cwd().equals(current)) return cached;
+        SessionManager manager = new SessionManager(current);
+        Target fresh = new Target(current, manager, new SessionSearch(manager));
+        target = fresh;
+        return fresh;
+    }
+
+    private SessionManager manager() { return target().manager(); }
+
+    private SessionSearch search() { return target().search(); }
+
     @Override public List<LocatedSession> listSessions() {
-        return search.listSessions().stream().map(CliSessionCommandAdapter::map).toList();
+        return search().listSessions().stream().map(CliSessionCommandAdapter::map).toList();
     }
     @Override public Optional<LocatedSession> findExactSessionId(String id) {
-        return search.findExactSessionId(id).map(CliSessionCommandAdapter::map);
+        return search().findExactSessionId(id).map(CliSessionCommandAdapter::map);
     }
     @Override public List<LocatedSession> searchExactCustomTitle(String title) {
-        return search.searchExactCustomTitle(title).stream().map(CliSessionCommandAdapter::map).toList();
+        return search().searchExactCustomTitle(title).stream().map(CliSessionCommandAdapter::map).toList();
     }
     @Override public List<Message> readMessages(Path transcript) {
         return storage.loadTranscriptFromFile(transcript).messages();
     }
-    @Override public String createSession() { return manager.createSession(); }
-    @Override public Path transcriptPath(String sessionId) { return manager.getSessionFile(sessionId); }
+    @Override public String createSession() { return manager().createSession(); }
+    @Override public Path transcriptPath(String sessionId) { return manager().getSessionFile(sessionId); }
     @Override public boolean hasTranscript(String sessionId) {
-        Path transcript = manager.getSessionFile(sessionId);
+        Path transcript = manager().getSessionFile(sessionId);
         try { return Files.isRegularFile(transcript) && Files.size(transcript) > 0; }
         catch (Exception _) { return false; }
     }
     @Override public ForkResult fork(String sourceSessionId, String forkSessionId) {
+        SessionManager manager = manager();
         Path source = manager.getSessionFile(sourceSessionId);
         Path target = manager.getSessionFile(forkSessionId);
         try {
@@ -77,9 +99,9 @@ final class CliSessionCommandAdapter implements SessionCommandPort {
         }
     }
     @Override public void appendMessages(String sessionId, List<Message> messages) {
-        Path target = manager.getSessionFile(sessionId);
+        Path target = manager().getSessionFile(sessionId);
         for (Message message : TranscriptMessageCleaner.cleanMessagesForLogging(messages)) {
-            storage.appendMessage(target, message, sessionId, cwd, false, null);
+            storage.appendMessage(target, message, sessionId, cwd.get(), false, null);
         }
     }
     @Override public void saveCustomTitle(String sessionId, String title) {
@@ -93,13 +115,14 @@ final class CliSessionCommandAdapter implements SessionCommandPort {
     }
     @Override public void saveTag(String sessionId, String tag) { append(sessionId, "tag", "tag", tag); }
     @Override public String readTag(String sessionId) {
-        return storage.scanMetadata(manager.getSessionFile(sessionId)).tag().orElse(null);
+        return storage.scanMetadata(manager().getSessionFile(sessionId)).tag().orElse(null);
     }
-    @Override public String readCustomTitle(String sessionId) { return manager.readCustomTitle(sessionId); }
-    @Override public Path toolResultsDirectory(String sessionId) { return manager.getToolResultsDir(sessionId); }
+    @Override public String readCustomTitle(String sessionId) { return manager().readCustomTitle(sessionId); }
+    @Override public Path toolResultsDirectory(String sessionId) { return manager().getToolResultsDir(sessionId); }
     @Override public void recordSessionAlias(Path targetDirectory, String activeSessionId) {
+        SessionManager manager = manager();
         Path source = activeSessionId == null ? manager.getSessionFile("placeholder").getParent()
-            : search.findExactSessionId(activeSessionId).map(SessionSearch.LocatedSession::sessionFile)
+            : search().findExactSessionId(activeSessionId).map(SessionSearch.LocatedSession::sessionFile)
                 .map(Path::getParent).orElse(manager.getSessionFile(activeSessionId).getParent());
         manager.recordSessionAlias(targetDirectory, source);
     }
@@ -121,7 +144,7 @@ final class CliSessionCommandAdapter implements SessionCommandPort {
         entry.put("type", type);
         entry.put(key, value);
         entry.put("sessionId", sessionId);
-        storage.appendCustomEntry(manager.getSessionFile(sessionId), entry);
+        storage.appendCustomEntry(manager().getSessionFile(sessionId), entry);
     }
     private static LocatedSession map(SessionSearch.LocatedSession located) {
         return new LocatedSession(located.id(), located.sessionFile(), located.cwd(), located.customTitle());

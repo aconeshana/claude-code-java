@@ -1,5 +1,6 @@
 package com.claudecode.session;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -7,7 +8,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Groups all on-disk sessions into per-project aggregates for the project-management
@@ -24,8 +30,31 @@ import java.util.function.Predicate;
  * appends/additions/deletions — ours or an external tool's — trigger a rescan of
  * exactly the affected directory. User preferences (pinned/collapsed) persist in
  * the same store and survive cache rebuilds.
+ *
+ * <p>Three properties keep the drawer's open latency bounded on a large history
+ * (thousands of directories, gigabytes of transcripts):
+ * <ul>
+ *   <li>the whole revalidation is one flat stat pass plus <b>one</b> batched
+ *       enrichment, both running on {@link SessionCatalog}'s shared concurrent
+ *       pool, rather than a per-directory loop;</li>
+ *   <li>directories whose transcripts are all filtered out cache an <b>empty</b>
+ *       bucket, so they are not re-read on every call;</li>
+ *   <li>index writes are handed to a background executor and collapsed, so a
+ *       listing never blocks on serializing the full snapshot — the live project's
+ *       directory changes fingerprint on every keystroke, so this path is hit
+ *       every single time the drawer opens.</li>
+ * </ul>
+ * {@link #cachedProjects()} exposes the cache-only view so a caller can paint
+ * immediately and refresh once {@link #listProjects()} has revalidated.
  */
 public final class ProjectCatalog {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjectCatalog.class);
+
+    /** Shared writer: index writes are rare, tiny and must never block a listing. */
+    private static final Executor DEFAULT_PERSIST_EXECUTOR =
+        Executors.newSingleThreadExecutor(
+            runnable -> Thread.ofVirtual().name("project-index-writer").unstarted(runnable));
 
     /** Panel-level user preferences, persisted alongside the cache. */
     public record ProjectPreferences(
@@ -46,8 +75,10 @@ public final class ProjectCatalog {
     private final SessionManager manager;
     private final ProjectIndexStore store;
     private final Predicate<String> builtInCommand;
+    private final Executor persistExecutor;
 
     private final Map<String, DirState> memory = new LinkedHashMap<>();
+    private final AtomicReference<ProjectIndexSnapshot> pendingWrite = new AtomicReference<>();
     private List<String> pinned = List.of();
     private Map<String, Boolean> collapsed = Map.of();
     private boolean loaded;
@@ -60,9 +91,16 @@ public final class ProjectCatalog {
     /** Production wiring: the commands module supplies the real builtin predicate. */
     public ProjectCatalog(SessionManager manager, ProjectIndexStore store,
                           Predicate<String> builtInCommand) {
+        this(manager, store, builtInCommand, DEFAULT_PERSIST_EXECUTOR);
+    }
+
+    /** Test seam: a same-thread executor makes cache writes observable synchronously. */
+    public ProjectCatalog(SessionManager manager, ProjectIndexStore store,
+                          Predicate<String> builtInCommand, Executor persistExecutor) {
         this.manager = Objects.requireNonNull(manager);
         this.store = Objects.requireNonNull(store);
         this.builtInCommand = builtInCommand != null ? builtInCommand : _ -> false;
+        this.persistExecutor = persistExecutor != null ? persistExecutor : DEFAULT_PERSIST_EXECUTOR;
     }
 
     public synchronized ProjectPreferences preferences() {
@@ -76,49 +114,82 @@ public final class ProjectCatalog {
         pinned = pinnedProjects != null ? List.copyOf(pinnedProjects) : List.of();
         collapsed = collapsedProjects != null ? Map.copyOf(collapsedProjects) : Map.of();
         dirty = true;
-        persist();
+        // An explicit user gesture, rare and small: write it through so it cannot
+        // be lost to a process exit between the click and the background flush.
+        persistNow();
     }
 
     /**
      * Fingerprint-validated project listing: unchanged directories are served from
      * the persisted cache without transcript reads; stale or new directories are
-     * rescanned (stat-pass + lite head/tail enrich, same pipeline as
+     * rescanned in one batch (stat-pass + lite head/tail enrich, same pipeline as
      * {@link SessionCatalog#forAllProjects}).
      */
     public synchronized List<ProjectInfo> listProjects() {
         ensureLoaded();
+        revalidate();
+        return aggregate();
+    }
 
-        // One stat pass over every transcript directory yields both the live
-        // fingerprints and the rescan input for stale dirs.
-        Map<String, List<SessionCatalog.Candidate>> perDir = new LinkedHashMap<>();
+    /**
+     * The cache as it stands, with no stat pass and no transcript reads — possibly
+     * stale, always instant. Callers that want responsiveness paint this first and
+     * then refresh with {@link #listProjects()}.
+     */
+    public synchronized List<ProjectInfo> cachedProjects() {
+        ensureLoaded();
+        return aggregate();
+    }
+
+    /** Rebuilds the cache without producing a listing (startup pre-warm). */
+    public synchronized void warmUp() {
+        ensureLoaded();
+        revalidate();
+    }
+
+    /** Drops memory/disk state whose directory fingerprint moved, then rescans it. */
+    private void revalidate() {
+        Map<String, List<SessionCatalog.Candidate>> perDir =
+            SessionCatalog.candidatesByDirectory(SessionCatalog.allProjectSources(manager));
         Map<String, DirFingerprint> live = new LinkedHashMap<>();
-        for (SessionCatalog.Source source : SessionCatalog.allProjectSources(manager)) {
-            String dirName = source.directory().getFileName().toString();
-            List<SessionCatalog.Candidate> candidates = SessionCatalog.candidates(List.of(source));
-            perDir.put(dirName, candidates);
-            live.put(dirName, fingerprint(candidates));
-        }
+        perDir.forEach((dirName, candidates) -> live.put(dirName, fingerprint(candidates)));
 
-        memory.entrySet().removeIf(e -> {
-            DirFingerprint current = live.get(e.getKey());
-            return current == null || !current.equals(e.getValue().fingerprint());
-        });
-        final boolean[] rescanned = {false};
+        // A vanished directory has no live fingerprint, so it is evicted too.
+        memory.entrySet().removeIf(
+            entry -> !Objects.equals(live.get(entry.getKey()), entry.getValue().fingerprint()));
+
+        List<String> staleDirs = new ArrayList<>();
+        List<SessionCatalog.Candidate> stale = new ArrayList<>();
         perDir.forEach((dirName, candidates) -> {
             if (memory.containsKey(dirName)) return;
-            List<ProjectSessionRef> sessions = scan(candidates);
-            if (!sessions.isEmpty()) {
-                memory.put(dirName, new DirState(live.get(dirName), sessions));
-                rescanned[0] = true;
-            }
+            staleDirs.add(dirName);
+            stale.addAll(candidates);
         });
-        if (rescanned[0]) {
-            dirty = true;
-            persist();
-        }
+        if (staleDirs.isEmpty()) return;
 
-        // Cross-dir merge: a session id may appear in several directories
-        // (aliases/copies) — keep the newest — then group by content cwd.
+        Map<String, List<ProjectSessionRef>> scanned = new LinkedHashMap<>();
+        for (SessionCatalog.Entry entry
+                : SessionCatalog.enrichBatch(stale, builtInCommand, SessionCatalog.Visibility.PICKER)) {
+            Path parent = entry.transcript().getParent();
+            if (parent == null) continue;
+            scanned.computeIfAbsent(parent.getFileName().toString(), _ -> new ArrayList<>())
+                .add(new ProjectSessionRef(entry.info(), entry.transcript()));
+        }
+        for (String dirName : staleDirs) {
+            // Empty buckets are cached deliberately: a directory holding only
+            // sidechains, SDK or /loop sessions filters down to nothing, and
+            // without this it would be re-read on every single open.
+            memory.put(dirName, new DirState(live.get(dirName),
+                List.copyOf(scanned.getOrDefault(dirName, List.of()))));
+        }
+        dirty = true;
+        persistLater();
+    }
+
+    /** Cross-dir merge then cwd grouping; pure in-memory, no I/O. */
+    private List<ProjectInfo> aggregate() {
+        // A session id may appear in several directories (aliases/copies) — keep
+        // the newest — before grouping by content cwd.
         Map<String, ProjectSessionRef> deduped = new LinkedHashMap<>();
         memory.values().stream()
             .flatMap(state -> state.sessions().stream())
@@ -153,19 +224,38 @@ public final class ProjectCatalog {
                 .map(cs -> new ProjectSessionRef(toSessionInfo(cs),
                     manager.projectsRoot().resolve(dir.dirName()).resolve(cs.id() + ".jsonl")))
                 .toList();
-            if (!sessions.isEmpty()) {
-                memory.put(dir.dirName(),
-                    new DirState(new DirFingerprint(dir.fileCount(), dir.maxFileMtimeMs()),
-                        sessions));
-            }
+            memory.put(dir.dirName(),
+                new DirState(new DirFingerprint(dir.fileCount(), dir.maxFileMtimeMs()), sessions));
         }
         pinned = snapshot.pinnedProjects();
         collapsed = snapshot.collapsedProjects();
     }
 
-    private void persist() {
+    private void persistNow() {
         if (!dirty) return;
         dirty = false;
+        store.save(snapshot());
+    }
+
+    private void persistLater() {
+        if (!dirty) return;
+        dirty = false;
+        pendingWrite.set(snapshot());
+        persistExecutor.execute(this::flushPending);
+    }
+
+    /** Collapses write bursts: an earlier task may already have flushed this state. */
+    private void flushPending() {
+        ProjectIndexSnapshot snapshot = pendingWrite.getAndSet(null);
+        if (snapshot == null) return;
+        try {
+            store.save(snapshot);
+        } catch (RuntimeException failure) {
+            log.debug("Project index cache write failed", failure);
+        }
+    }
+
+    private ProjectIndexSnapshot snapshot() {
         List<ProjectIndexSnapshot.CachedDir> dirs = memory.entrySet().stream()
             .map(e -> new ProjectIndexSnapshot.CachedDir(e.getKey(),
                 e.getValue().fingerprint().fileCount(),
@@ -173,8 +263,8 @@ public final class ProjectCatalog {
                 e.getValue().sessions().stream()
                     .map(ref -> toCachedSession(ref.info())).toList()))
             .toList();
-        store.save(new ProjectIndexSnapshot(ProjectIndexSnapshot.CURRENT_VERSION,
-            dirs, pinned, collapsed));
+        return new ProjectIndexSnapshot(ProjectIndexSnapshot.CURRENT_VERSION,
+            dirs, pinned, collapsed);
     }
 
     private static DirFingerprint fingerprint(List<SessionCatalog.Candidate> candidates) {
@@ -183,18 +273,6 @@ public final class ProjectCatalog {
             max = Math.max(max, candidate.mtime());
         }
         return new DirFingerprint(candidates.size(), max);
-    }
-
-    private List<ProjectSessionRef> scan(List<SessionCatalog.Candidate> candidates) {
-        List<ProjectSessionRef> sessions = new ArrayList<>(candidates.size());
-        for (SessionCatalog.Candidate candidate : candidates) {
-            SessionCatalog.read(candidate)
-                .flatMap(lite -> SessionCatalog.enrich(candidate, lite, builtInCommand,
-                    SessionCatalog.Visibility.PICKER))
-                .ifPresent(entry -> sessions.add(
-                    new ProjectSessionRef(entry.info(), entry.transcript())));
-        }
-        return List.copyOf(sessions);
     }
 
     private static SessionInfo toSessionInfo(ProjectIndexSnapshot.CachedSession cs) {

@@ -82,6 +82,28 @@ class TranscriptRecorderTest {
     }
 
     @Test
+    void retargetProjectMovesFutureWritesIntoTheIncomingProjectDirectory() {
+        Path beforeSwitch = recorder.sessionManager().getSessionFile("s1");
+
+        recorder.retargetProject("/test/other-project");
+        Path afterSwitch = recorder.sessionManager().getSessionFile("s1");
+
+        assertEquals(new SessionManager("/test/other-project").getSessionFile("s1"), afterSwitch,
+            "a cross-project resume writes into the target project's transcript directory");
+        assertNotEquals(beforeSwitch.getParent(), afterSwitch.getParent());
+        assertEquals("s1.jsonl", afterSwitch.getFileName().toString());
+    }
+
+    @Test
+    void retargetProjectIgnoresABlankRoot() {
+        Path unchanged = recorder.sessionManager().getSessionFile("s1");
+
+        recorder.retargetProject("  ");
+
+        assertEquals(unchanged, recorder.sessionManager().getSessionFile("s1"));
+    }
+
+    @Test
     void teamInfoIsStampedOnEveryRecordedMessageAndFrozenBeforeAsyncWrite() throws Exception {
         String sessionId = sessionManager.createSession();
         var current = new AtomicReference<>(

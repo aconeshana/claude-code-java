@@ -209,9 +209,13 @@ final class CliEngineAssembler {
             final AtomicReference<QuerySession> engineRef = new AtomicReference<>();
             Supplier<String> claudeMdSupplier = () -> {
                 try {
+                    // Read live: a cross-project resume repoints the project identity, and
+                    // the next turn has to load the incoming project's CLAUDE.md, not the
+                    // one this engine was assembled against.
+                    Path projectRoot = Path.of(CliProjectSwitch.currentProjectRoot());
                     var scanner = MemoryFileScanner.forConfigHome(
                         ClaudePaths.CLAUDE_HOME,
-                        WorkspaceSettings.loadClaudeMdExcludes(cwd),
+                        WorkspaceSettings.loadClaudeMdExcludes(projectRoot.toString()),
                         hookDispatcherRef.get());
                     // Pull the live --add-dir list from the permission gate so
                     // /add-dir at runtime immediately widens the memory scan
@@ -222,7 +226,7 @@ final class CliEngineAssembler {
                     }
                     QuerySession liveEngine = engineRef.get();
                     return new MemoryPromptBuilder(scanner).build(
-                        workingDirPath, extraDirs, enabledScopes,
+                        projectRoot, extraDirs, enabledScopes,
                         liveEngine != null ? liveEngine.forks().getFileStateCache() : null);
                 } catch (Throwable t) {
                     log.warn("Memory content load failed: {}", t.getMessage());
@@ -230,7 +234,7 @@ final class CliEngineAssembler {
                 }
             };
 
-// Build engine config.
+            // Build engine config.
 
             final Integer cliMaxTokensOverride = maxTokens;
 

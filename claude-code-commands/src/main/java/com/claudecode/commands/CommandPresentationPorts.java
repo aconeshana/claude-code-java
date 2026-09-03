@@ -1,19 +1,10 @@
 package com.claudecode.commands;
 
 import com.claudecode.core.pokemon.PokemonProfile;
-
 import java.nio.file.Path;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-
-
-
-
-
-
-
-
 
 public record CommandPresentationPorts(
     Consumer<String> btwDialogLauncher,
@@ -50,7 +41,5 @@ public record CommandPresentationPorts(
     Runnable tasksDialogLauncher,
     Runnable workflowsDialogLauncher,
     Runnable statsDialogLauncher,
-    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher,
-    /** Toggles the left-docked project drawer (Java-side extension, no 197 counterpart). */
-    Runnable projectPanelLauncher
+    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher
 ) { }

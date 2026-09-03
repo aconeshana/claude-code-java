@@ -69,6 +69,20 @@ public interface ProjectCatalogPort {
      */
     default List<ProjectEntry> listProjects() { return List.of(); }
 
+    /**
+     * The cached listing with no revalidation — possibly stale, always cheap.
+     * The drawer paints this first so the user sees content immediately, then
+     * refreshes with {@link #listProjects()}.
+     */
+    default List<ProjectEntry> cachedProjects() { return List.of(); }
+
+    /**
+     * Rebuilds the cache without producing a listing. Called once after startup
+     * so the first open does not pay for a cold index — must run off the GUI
+     * thread like {@link #listProjects()}.
+     */
+    default void warmUp() {}
+
     default ProjectPreferences projectPreferences() { return ProjectPreferences.empty(); }
 
     default void updateProjectPreferences(List<String> pinnedProjects,

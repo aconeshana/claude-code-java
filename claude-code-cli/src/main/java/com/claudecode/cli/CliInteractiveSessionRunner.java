@@ -381,13 +381,15 @@ final class CliInteractiveSessionRunner {
                             .parseUserSpecifiedModel(engine.configuration().getConfig().model())).calculateCost(u),
                         System.getProperty("user.dir"),
                         false)
+                        .workingDirectorySupplier(() -> System.getProperty("user.dir"))
                         .modelSupplier(engine.configuration().getConfig()::model)
                         .modelAllowed(ModelAllowlist::isAllowed)
                         .loadMessages(engine.conversation()::loadMessages)
                         .loadCompactedMessages(engine.conversation()::loadCompactedMessages)
                         .currentSessionId(() -> engine.conversation().getSessionId())
                         .permissionCommands(new CliPermissionCommandAdapter(permissionGate))
-                        .sessionCommands(new CliSessionCommandAdapter(System.getProperty("user.dir")))
+                        .sessionCommands(new CliSessionCommandAdapter(
+                            CliProjectSwitch::currentProjectRoot))
                         .toolingCommands(interactiveRuntime.toolingCommands())
                         .promptShellExecutor(CliHeadlessSessionRunner.newPromptShellExecutor(
                             engine, toolRegistry, permissionGate))
@@ -506,10 +508,6 @@ final class CliInteractiveSessionRunner {
                             LanternaReplScreen s = screenRef.get();
                             if (s != null) s.openHelpPanel();
                         })
-                        .projectPanelLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.toggleProjectPanel();
-                        })
                         .pluginDialogLauncher(args -> {
                             LanternaReplScreen s = screenRef.get();
                             if (s != null) s.openPluginPanel(args);
@@ -540,7 +538,8 @@ final class CliInteractiveSessionRunner {
                 var permissionExplainer = sideQuery != null
                     ? new PermissionExplainerService(sideQuery, resolvedModel) : null;
                 CliRuntimeAdapters.configureUiSettingsBackend();
-                SessionLifecycle sessionLifecycle = CliSessionRestoreCoordinator.newSessionLifecycle(engine);
+                SessionLifecycle sessionLifecycle = CliSessionRestoreCoordinator.newSessionLifecycle(
+                    engine, transcriptRecorder, permissionGate, settingsReload);
                 HookConfigurationPort hookConfiguration =
                     CliRuntimeAdapters.newHookConfigurationPort(settingsReload, hookEngine);
                 var memoryCatalog = CliRuntimeAdapters.newMemoryCatalog(interactiveCwd);

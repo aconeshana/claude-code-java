@@ -1455,12 +1455,6 @@ class SessionControllerTest {
     }
 
 
-    @Test
-    void shellQuote_safePathPassesBare() {
-        assertEquals("/Users/x/proj-1.2",
-            SessionController.shellQuote("/Users/x/proj-1.2"));
-    }
-
     // ── GUI-thread affinity ──────────────────────────────────────────────────
     // /clear and /resume run on a slash-command virtual thread. A Lanterna
     // component mutated from there locks the component and then walks the
@@ -1565,14 +1559,6 @@ class SessionControllerTest {
                 }
             }
         };
-    }
-
-    @Test
-    void shellQuote_spacesAndQuotesGetSingleQuoted() {
-        assertEquals("'/Users/x/my proj'",
-            SessionController.shellQuote("/Users/x/my proj"));
-        assertEquals("'/x/it'\\''s'",
-            SessionController.shellQuote("/x/it's"));
     }
 
 

@@ -5,6 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.claudecode.core.message.AssistantContent;
+import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.text.FormatUtils;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectEntry;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectPreferences;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort.ProjectSessionEntry;
@@ -50,6 +58,15 @@ class ProjectPanelTest {
         panel.handleKey(key, new AtomicBoolean(true));
     }
 
+    private static UserMessage user(String text) {
+        return new UserMessage("u-" + text.hashCode(), MessageContent.ofText(text));
+    }
+
+    private static AssistantMessage assistant(String text) {
+        return new AssistantMessage("a-" + text.hashCode(),
+            AssistantContent.of(List.<ContentBlock>of(new TextBlock(text))));
+    }
+
     private static String render(ProjectPanel panel, int columns, int rows) {
         TerminalSize size = new TerminalSize(columns, rows);
         panel.setSize(size);
@@ -85,7 +102,7 @@ class ProjectPanelTest {
         assertTrue(panel.calculatePreferredSize().getRows() > 0);
 
         String rendered = render(panel, 100, 30);
-        assertTrue(Strings.CS.contains(rendered, "beta") && rendered.indexOf("beta") < rendered.indexOf("alpha"),
+        assertTrue(Strings.CS.contains(rendered, "/p/b") && rendered.indexOf("/p/b") < rendered.indexOf("/p/a"),
             "host order is preserved (catalog sorts by activity): " + rendered);
         assertTrue(Strings.CS.contains(rendered, "Projects"), rendered);
     }
@@ -229,6 +246,29 @@ class ProjectPanelTest {
     }
 
     @Test
+    void projectRowShowsPathWithHomeAbbreviated() {
+        String home = System.getProperty("user.home");
+        ProjectEntry inHome = project(home + "/Projects/repo", "repo", 2000);
+        assertEquals("▸ ~/Projects/repo (0)",
+            ProjectPanel.projectRowLabel(inHome, true, 40));
+        assertEquals("▾ /opt/elsewhere (0)",
+            ProjectPanel.projectRowLabel(project("/opt/elsewhere", "elsewhere", 2000), false, 40));
+    }
+
+    @Test
+    void projectRowElidesPathMiddleAndKeepsSessionCount() {
+        ProjectEntry deep = project("/p/very/long/nested/checkout", "checkout", 2000,
+            session("s1", "/p/very/long/nested/checkout", 2000, null, "x"));
+        String label = ProjectPanel.projectRowLabel(deep, true, 22);
+
+        assertEquals(22, FormatUtils.displayWidth(label), label);
+        assertTrue(Strings.CS.startsWith(label, "▸ "), label);
+        assertTrue(Strings.CS.endsWith(label, "/checkout (1)"),
+            "the leaf directory and the count both survive: " + label);
+        assertTrue(Strings.CS.contains(label, "…"), "the middle is elided: " + label);
+    }
+
+    @Test
     void emptyCatalogShowsHintInsteadOfBlankStrip() {
         ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
         panel.show(List.of(), ProjectPreferences.empty(), new ProjectPanel.Actions(null, null, null));
@@ -327,8 +367,8 @@ class ProjectPanelTest {
         route(panel, new KeyStroke('x', false, false));
 
         String rendered = render(panel, 100, 30);
-        assertFalse(Strings.CS.contains(rendered, "alpha"), "a project with no sessions left disappears");
-        assertTrue(Strings.CS.contains(rendered, "beta"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "/p/a"), "a project with no sessions left disappears");
+        assertTrue(Strings.CS.contains(rendered, "/p/b"), rendered);
     }
 
     @Test
@@ -343,10 +383,10 @@ class ProjectPanelTest {
         assertNull(deleted.get(), "delete is a session-level action");
     }
 
-    // ── preview (p) ──────────────────────────────────────────────────────────
+    // ── preview (Space / Ctrl+V, matching the resume picker) ─────────────────
 
     @Test
-    void pOnSessionFiresPreviewCallbackAndShowsLoading() {
+    void spaceOnSessionFiresPreviewCallbackAndShowsLoading() {
         AtomicReference<ProjectSessionEntry> previewed = new AtomicReference<>();
         ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
         ProjectPanel.Actions actions = new ProjectPanel.Actions(
@@ -356,7 +396,7 @@ class ProjectPanelTest {
             new ProjectPreferences(List.of(), Map.of("/p/a", false)), actions);
 
         route(panel, new KeyStroke(KeyType.ARROW_DOWN));
-        route(panel, new KeyStroke('p', false, false));
+        route(panel, new KeyStroke(' ', false, false));
 
         assertEquals("s1", previewed.get().id());
         assertTrue(Strings.CS.contains(render(panel, 100, 30), "Loading preview"),
@@ -364,7 +404,7 @@ class ProjectPanelTest {
     }
 
     @Test
-    void previewRendersLinesAndEscReturnsToTree() {
+    void previewReplaysTheTranscriptAndEscReturnsToTree() {
         ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
         ProjectSessionEntry s1 = session("s1", "/p/a", 2000, null, "first");
         panel.show(List.of(project("/p/a", "alpha", 2000, s1)),
@@ -372,39 +412,43 @@ class ProjectPanelTest {
             new ProjectPanel.Actions(null, null, _ -> {}, null, null));
 
         route(panel, new KeyStroke(KeyType.ARROW_DOWN));
-        route(panel, new KeyStroke('p', false, false));
-        panel.showPreviewLines(s1, List.of("You: hello", "Claude: hi there"));
+        route(panel, new KeyStroke(' ', false, false));
+        panel.showPreviewMessages(s1, List.of(user("hello"), assistant("hi there")));
 
         String rendered = render(panel, 100, 30);
-        assertTrue(Strings.CS.contains(rendered, "You: hello"), rendered);
-        assertTrue(Strings.CS.contains(rendered, "Claude: hi there"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "hello"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "hi there"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "3 messages"),
+            "the chrome names the session once its transcript is on screen: " + rendered);
 
         route(panel, new KeyStroke(KeyType.ESCAPE));
         String tree = render(panel, 100, 30);
         assertTrue(Strings.CS.contains(tree, "first"), "Esc returns to the tree");
-        assertFalse(Strings.CS.contains(tree, "You: hello"), "preview content is gone");
+        assertFalse(Strings.CS.contains(tree, "hi there"), "preview content is gone");
     }
 
     @Test
-    void previewScrollsLongTranscripts() {
-        ProjectPanel panel = new ProjectPanel(() -> 60, () -> 10);
+    void previewOpensAtTheTailAndScrollsBack() {
+        ProjectPanel panel = new ProjectPanel(() -> 80, () -> 12);
         ProjectSessionEntry s1 = session("s1", "/p/a", 2000, null, "first");
         panel.show(List.of(project("/p/a", "alpha", 2000, s1)),
             new ProjectPreferences(List.of(), Map.of("/p/a", false)),
             new ProjectPanel.Actions(null, null, _ -> {}, null, null));
 
         route(panel, new KeyStroke(KeyType.ARROW_DOWN));
-        route(panel, new KeyStroke('p', false, false));
-        panel.showPreviewLines(s1,
-            IntStream.range(0, 50).mapToObj(i -> "line " + i).toList());
+        route(panel, new KeyStroke(' ', false, false));
+        panel.showPreviewMessages(s1,
+            IntStream.range(0, 60).mapToObj(i -> (Message) user("turn " + i)).toList());
 
-        String top = render(panel, 60, 10);
-        assertTrue(Strings.CS.contains(top, "line 0"), top);
-        assertFalse(Strings.CS.contains(top, "line 49"), top);
+        // Like the resume picker, the preview lands on the newest turn — the
+        // answer to "where did I leave off".
+        String tail = render(panel, 80, 12);
+        assertTrue(Strings.CS.contains(tail, "turn 59"), tail);
+        assertFalse(Strings.CS.contains(tail, "turn 0 "), tail);
 
-        for (int i = 0; i < 45; i++) route(panel, new KeyStroke(KeyType.ARROW_DOWN));
-        String scrolled = render(panel, 60, 10);
-        assertTrue(Strings.CS.contains(scrolled, "line 49"), "scrolling clamps at the tail: " + scrolled);
+        for (int i = 0; i < 200; i++) route(panel, new KeyStroke(KeyType.ARROW_UP));
+        assertTrue(Strings.CS.contains(render(panel, 80, 12), "turn 0"),
+            "scrolling up reaches the head and clamps there");
     }
 
     @Test
@@ -417,10 +461,82 @@ class ProjectPanelTest {
             new ProjectPanel.Actions(null, null, _ -> {}, null, null));
 
         route(panel, new KeyStroke(KeyType.ARROW_DOWN));
-        route(panel, new KeyStroke('p', false, false)); // preview s1
-        panel.showPreviewLines(s2, List.of("STALE CONTENT"));
+        route(panel, new KeyStroke(' ', false, false)); // preview s1
+        panel.showPreviewMessages(s2, List.of(user("STALE CONTENT")));
 
         assertFalse(Strings.CS.contains(render(panel, 100, 30), "STALE CONTENT"),
             "a late result for a different session must not clobber the open preview");
+    }
+
+    @Test
+    void reopeningThePreviewDoesNotShowThePreviousSessionsTranscript() {
+        ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
+        ProjectSessionEntry s1 = session("s1", "/p/a", 2000, null, "first");
+        ProjectSessionEntry s2 = session("s2", "/p/a", 1000, null, "second");
+        panel.show(List.of(project("/p/a", "alpha", 2000, s1, s2)),
+            new ProjectPreferences(List.of(), Map.of("/p/a", false)),
+            new ProjectPanel.Actions(null, null, _ -> {}, null, null));
+
+        route(panel, new KeyStroke(KeyType.ARROW_DOWN));
+        route(panel, new KeyStroke(' ', false, false));
+        panel.showPreviewMessages(s1, List.of(user("only in s1")));
+        route(panel, new KeyStroke(KeyType.ESCAPE));
+
+        route(panel, new KeyStroke(KeyType.ARROW_DOWN)); // now on s2
+        route(panel, new KeyStroke(' ', false, false));
+
+        String rendered = render(panel, 100, 30);
+        assertFalse(Strings.CS.contains(rendered, "only in s1"),
+            "the shared MessagePanel must be cleared between opens: " + rendered);
+        assertTrue(Strings.CS.contains(rendered, "Loading preview"), rendered);
+    }
+
+    @Test
+    void failedTranscriptReadIsReportedInThePreview() {
+        ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
+        ProjectSessionEntry s1 = session("s1", "/p/a", 2000, null, "first");
+        panel.show(List.of(project("/p/a", "alpha", 2000, s1)),
+            new ProjectPreferences(List.of(), Map.of("/p/a", false)),
+            new ProjectPanel.Actions(null, null, _ -> {}, null, null));
+
+        route(panel, new KeyStroke(KeyType.ARROW_DOWN));
+        route(panel, new KeyStroke(' ', false, false));
+        panel.showPreviewMessages(s1, null);
+
+        assertTrue(Strings.CS.contains(render(panel, 100, 30), "failed to read transcript"),
+            "a failed read must not look like an empty session");
+    }
+
+    @Test
+    void ctrlVAlsoOpensThePreview() {
+        AtomicReference<ProjectSessionEntry> previewed = new AtomicReference<>();
+        ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
+        panel.show(List.of(
+            project("/p/a", "alpha", 2000, session("s1", "/p/a", 2000, null, "first"))),
+            new ProjectPreferences(List.of(), Map.of("/p/a", false)),
+            new ProjectPanel.Actions(null, null, previewed::set, null, null));
+
+        route(panel, new KeyStroke(KeyType.ARROW_DOWN));
+        route(panel, new KeyStroke('v', true, false));   // older builds' binding
+
+        assertEquals("s1", previewed.get().id());
+    }
+
+    @Test
+    void footerAdvertisesPreviewOnlyWhereItApplies() {
+        ProjectPanel panel = new ProjectPanel(() -> 100, () -> 30);
+        panel.show(List.of(
+            project("/p/a", "alpha", 2000, session("s1", "/p/a", 2000, null, "first"))),
+            new ProjectPreferences(List.of(), Map.of("/p/a", false)),
+            new ProjectPanel.Actions(null, null, _ -> {}, null, null));
+
+        // The strip is 38 columns at most, so a project row cannot afford the
+        // session verbs — but a session row must name the preview binding, or
+        // the feature is undiscoverable.
+        assertFalse(Strings.CS.contains(render(panel, 100, 30), "Space preview"),
+            "project row: expand/move verbs only");
+        route(panel, new KeyStroke(KeyType.ARROW_DOWN));
+        assertTrue(Strings.CS.contains(render(panel, 100, 30), "Space preview"),
+            "session row must advertise the preview key");
     }
 }

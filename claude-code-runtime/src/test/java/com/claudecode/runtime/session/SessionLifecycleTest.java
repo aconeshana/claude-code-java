@@ -7,12 +7,15 @@ import com.claudecode.core.engine.ToolResultBudget;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.UserMessage;
+
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,12 +64,53 @@ class SessionLifecycleTest {
             new SessionResumeRequest("incoming", Path.of("incoming.jsonl"), "/other"),
             "/current");
 
-        assertEquals(List.of("read:incoming.jsonl", "capture-cost:incoming",
-            "save-cost:outgoing"), events);
+        assertEquals(List.of("read:incoming.jsonl", "prepare-switch:/other",
+            "capture-cost:incoming", "save-cost:outgoing"), events);
         assertEquals("outgoing", prepared.outgoingSessionId());
         assertEquals(messages, prepared.messages());
         assertEquals(replacements, prepared.contentReplacements());
         assertTrue(prepared.crossProject());
+    }
+
+    @Test
+    void crossProjectActivateSwitchesProjectBeforeAnyStateMoves() throws Exception {
+        DefaultQuerySession engine = engine("outgoing");
+        List<String> events = new ArrayList<>();
+        SessionLifecycle lifecycle = new SessionLifecycle(
+            engine, _ -> new SessionLifecycle.TranscriptSnapshot(List.of(), List.of()),
+            new RecordingPorts(events, engine));
+        PreparedSessionResume prepared = lifecycle.prepare(
+            new SessionResumeRequest("incoming", Path.of("incoming.jsonl"), "/other"),
+            "/current");
+        events.clear();
+
+        lifecycle.activate(prepared, _ -> {});
+
+        assertEquals("apply-switch:/other", events.getFirst(),
+            "the project moves before the transcript sink and cost store are touched: " + events);
+        assertEquals("before-switch:outgoing", events.get(1), events.toString());
+        assertTrue(events.contains("after-switch:incoming.jsonl:/other"), events.toString());
+    }
+
+    @Test
+    void rejectedProjectSwitchAbortsBeforeAnyCostIsCaptured() {
+        DefaultQuerySession engine = engine("outgoing");
+        List<String> events = new ArrayList<>();
+        SessionLifecycle lifecycle = new SessionLifecycle(
+            engine, _ -> new SessionLifecycle.TranscriptSnapshot(List.of(), List.of()),
+            new RecordingPorts(events, engine) {
+                @Override
+                public void prepareProjectSwitch(String targetCwd) throws Exception {
+                    throw new IOException("gone: " + targetCwd);
+                }
+            });
+
+        assertThrows(IOException.class, () -> lifecycle.prepare(
+            new SessionResumeRequest("incoming", Path.of("incoming.jsonl"), "/gone"),
+            "/current"));
+        assertEquals(List.of(), events,
+            "no cost is captured, so the outgoing session is left exactly as it was");
+        assertEquals("outgoing", engine.getSessionId());
     }
 
     @Test
@@ -113,6 +157,9 @@ class SessionLifecycleTest {
         lifecycle.activate(prepared, _ -> {});
 
         assertFalse(prepared.crossProject());
+        assertFalse(events.stream().anyMatch(
+                e -> e.startsWith("prepare-switch") || e.startsWith("apply-switch")),
+            "a same-project resume never moves the app: " + events);
     }
 
     @Test
@@ -130,13 +177,24 @@ class SessionLifecycleTest {
         assertEquals("incoming", engine.getSessionId());
     }
 
-    private static final class RecordingPorts implements SessionLifecycle.Ports {
+    /** Non-final so a single test can override one port inline. */
+    private static class RecordingPorts implements SessionLifecycle.Ports {
         private final List<String> events;
         private final DefaultQuerySession engine;
 
-        private RecordingPorts(List<String> events, DefaultQuerySession engine) {
+        RecordingPorts(List<String> events, DefaultQuerySession engine) {
             this.events = events;
             this.engine = engine;
+        }
+
+        @Override
+        public void prepareProjectSwitch(String targetCwd) throws Exception {
+            events.add("prepare-switch:" + targetCwd);
+        }
+
+        @Override
+        public void applyProjectSwitch(String targetCwd) {
+            events.add("apply-switch:" + targetCwd);
         }
 
         @Override

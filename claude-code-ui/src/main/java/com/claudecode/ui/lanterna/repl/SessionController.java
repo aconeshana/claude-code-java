@@ -18,6 +18,7 @@ import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.ThinkingClearLatch;
 import com.claudecode.core.git.GitUtils;
 import com.claudecode.core.imagestore.ImageStore;
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.message.HumanTurns;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
@@ -69,7 +70,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
-import com.claudecode.ui.lanterna.components.OSC52Helper;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessageCollapser;
@@ -503,26 +503,10 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         }
 
 
-        // session from a different directory is NOT resumed in place — resuming
-        // here would write its new messages into THIS project's transcript dir.
-        // Print the cd command and copy it to the clipboard instead.
-        String currentCwd = commandContext.session().workingDirectory();
-        if (dialog.isShowAllProjects() && selected.cwd() != null && !StringUtils.isBlank(selected.cwd())
-                && !selected.cwd().equals(currentCwd)) {
-            String crossCmd = "cd " + shellQuote(selected.cwd())
-                + " && claude --resume " + selected.id();
-            OSC52Helper.copyToClipboard(crossCmd);
-            appendLine("", LanternaTheme.welcomeDim());
-            appendLine("This conversation is from a different directory.", LanternaTheme.welcomeDim());
-            appendLine("", LanternaTheme.welcomeDim());
-            appendLine("To resume, run:", LanternaTheme.welcomeDim());
-            appendLine("  " + crossCmd, LanternaTheme.welcomeDim());
-            appendLine("", LanternaTheme.welcomeDim());
-            appendLine("(Command copied to clipboard)", LanternaTheme.welcomeDim());
-            onSettled.run();
-            return;
-        }
-
+        // "Show all projects" lists sessions the current project does not own, and
+        // selecting one carries its own project through as the resume target: the runtime
+        // moves the whole app there first, so the new messages land in that project's
+        // transcript dir rather than this one's.
         resume(new ResumeRequest(
             selected.id(), selected.transcriptPath(), selected.projectPath(),
             ResumeRequest.Entrypoint.SLASH_COMMAND_PICKER), onSettled);
@@ -625,7 +609,9 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                 String header = String.format(
                     "  [Resumed session %s — %d message%s loaded%s]",
                     request.sessionId(), msgs.size(), msgs.size() == 1 ? "" : "s",
-                    prepared.crossProject() ? " · cross-project" : "");
+                    prepared.crossProject()
+                        ? " · switched to " + PathUtils.abbreviateTilde(prepared.restoredCwd())
+                        : "");
                 messagePanel.appendLine(header, LanternaTheme.welcomeDim());
 // Restore prompt-bar agentName / customTitle / agentColor from the resumed JSONL.
                 applyPreparedSessionColor(
@@ -1395,11 +1381,6 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         UserMessage selected = (UserMessage) msgs.get(selectedIndex);
         msgs.subList(selectedIndex, msgs.size()).clear();
         return selected;
-    }
-
-    static String shellQuote(String arg) {
-        if (arg.matches("[A-Za-z0-9_./@:=%+,-]+")) return arg;
-        return "'" + arg.replace("'", "'\\''" ) + "'";
     }
 
     private boolean detectMultipleWorktrees() {

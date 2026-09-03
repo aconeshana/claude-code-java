@@ -7,7 +7,9 @@ import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.permissions.PermissionGate;
 import com.claudecode.runtime.session.SessionLifecycle;
+import com.claudecode.services.config.SettingsReloadOrchestrator;
 import com.claudecode.services.cost.CostStatePersistence;
 import com.claudecode.services.hooks.HookEngine;
 import com.claudecode.runtime.session.MessagesDeserializer;
@@ -17,6 +19,7 @@ import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionSearch;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -254,10 +257,23 @@ final class CliSessionRestoreCoordinator {
         }
     }
 
-    /** Creates the runtime-owned interactive session-switch bridge. */
-    static SessionLifecycle newSessionLifecycle(QuerySession engine) {
+    /**
+     * Creates the runtime-owned interactive session-switch bridge.
+     *
+     * @param transcriptRecorder retargeted on a cross-project resume; {@code null} when session
+     *                           persistence is off, in which case there is nothing to move
+     * @param permissionGate     rebound to the incoming project's root
+     * @param settingsReload     repointed at the incoming project's settings tiers
+     */
+    static SessionLifecycle newSessionLifecycle(
+            QuerySession engine,
+            TranscriptRecorder transcriptRecorder,
+            PermissionGate permissionGate,
+            SettingsReloadOrchestrator settingsReload) {
         SessionStorage storage = new SessionStorage();
         ResumeStateRestorer restorer = newResumeRestorer(engine, storage);
+        CliProjectSwitch projectSwitch = new CliProjectSwitch(
+            engine, transcriptRecorder, permissionGate, settingsReload);
         AtomicReference<SessionCostState.Snapshot> capturedTargetCost =
             new AtomicReference<>();
         return new SessionLifecycle(
@@ -307,6 +323,16 @@ final class CliSessionRestoreCoordinator {
                 @Override
                 public void afterSwitch(Path sessionFile, List<Message> messages, String cwd) {
                     restorer.postSwitch(sessionFile, messages, cwd);
+                }
+
+                @Override
+                public void prepareProjectSwitch(String targetCwd) throws IOException {
+                    projectSwitch.prepare(targetCwd);
+                }
+
+                @Override
+                public void applyProjectSwitch(String targetCwd) {
+                    projectSwitch.apply(targetCwd);
                 }
             });
     }

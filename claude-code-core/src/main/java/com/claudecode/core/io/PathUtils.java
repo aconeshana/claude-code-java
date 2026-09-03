@@ -34,6 +34,19 @@ public final class PathUtils {
         return path;
     }
 
+    /**
+     * Inverse of {@link #expandTilde}: rewrites the home prefix back to {@code ~} so absolute
+     * paths stay legible in narrow terminal chrome. Only a whole leading path segment matches,
+     * so a sibling directory such as {@code /Users/xmly-backup} is left alone.
+     */
+    public static String abbreviateTilde(String path) {
+        if (StringUtils.isEmpty(path)) return path;
+        String home = System.getProperty("user.home");
+        if (StringUtils.isEmpty(home)) return path;
+        if (Strings.CS.equals(path, home)) return "~";
+        return Strings.CS.startsWith(path, home + "/") ? "~" + path.substring(home.length()) : path;
+    }
+
     /** Implements {@code path.posix.extname} semantics consistently on every host platform. */
     private static String posixExtname(String name) {
         int startDot = -1;

@@ -28,9 +28,9 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
     private final PermissionGate permissionGate;
     private final HookEngine hookEngine;
     private volatile Consumer<String> uiSink;
-    private final String cwd;
+    private volatile String cwd;
     private final boolean trustImplicitlyEstablished;
-    private final SettingsHotReloader reloader;
+    private volatile SettingsHotReloader reloader;
     private final AutoCloseable flagSettingsSubscription;
     private final CopyOnWriteArrayList<Runnable> reloadListeners = new CopyOnWriteArrayList<>();
 
@@ -61,10 +61,19 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
         this.cwd = cwd;
         this.uiSink = uiSink;
         this.trustImplicitlyEstablished = trustImplicitlyEstablished;
-        this.reloader = new SettingsHotReloader(
+        this.reloader = newReloader(cwd);
+        this.flagSettingsSubscription = SettingsSources.subscribeFlagSettingsChanged(
+
+            // which fans out directly and does not run ConfigChange hooks. The
+            // same rule applies to the process-local flag overlay here.
+            () -> reload(RuleSource.FLAG_SETTINGS, null, false));
+    }
+
+    private SettingsHotReloader newReloader(String projectCwd) {
+        return new SettingsHotReloader(
             SettingsPaths.userSettingsPath(),
-            SettingsPaths.sessionProjectSettingsPath(cwd),
-            SettingsPaths.sessionLocalSettingsPath(cwd),
+            SettingsPaths.sessionProjectSettingsPath(projectCwd),
+            SettingsPaths.sessionLocalSettingsPath(projectCwd),
             SettingsPaths.policySettingsPath(),
             new SettingsChangeListener() {
                 @Override
@@ -82,11 +91,24 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
                     }
                 }
         });
-        this.flagSettingsSubscription = SettingsSources.subscribeFlagSettingsChanged(
+    }
 
-            // which fans out directly and does not run ConfigChange hooks. The
-            // same rule applies to the process-local flag overlay here.
-            () -> reload(RuleSource.FLAG_SETTINGS, null, false));
+    /**
+     * Repoints the watcher at another project root after a cross-project resume and
+     * applies that project's settings immediately. Subscribed reload listeners and the
+     * UI sink survive: only the watched project/local paths change.
+     */
+    public void retargetProject(String projectCwd) throws IOException {
+        if (projectCwd == null || projectCwd.equals(cwd)) return;
+        SettingsHotReloader previous = reloader;
+        cwd = projectCwd;
+        SettingsHotReloader replacement = newReloader(projectCwd);
+        reloader = replacement;
+        previous.close();
+        replacement.start();
+        // The project/local tiers just changed underneath the gate; a ConfigChange hook
+        // must not be able to veto a switch the user already committed to.
+        reload(RuleSource.PROJECT_SETTINGS, null, false);
     }
 
     /** Starts the underlying file watcher. Safe to call multiple times. */
