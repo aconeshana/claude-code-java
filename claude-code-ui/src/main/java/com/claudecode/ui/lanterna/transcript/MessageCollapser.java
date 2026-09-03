@@ -4,15 +4,20 @@ import org.apache.commons.lang3.Strings;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.StringUtils;
 
+import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.constants.Figures;
 import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.tools.mcp.McpCollapseClassifier;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TextColor;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -20,8 +25,14 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -30,6 +41,35 @@ import org.slf4j.LoggerFactory;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 
+/**
+ * Projects a run of consecutive read/search, MCP, and thinking messages onto a single collapsed
+ * group line plus an optional {@code ⎿} detail row, replacing the per-tool transcript entries the
+ * dispatcher would otherwise emit.
+ *
+ * <ul>
+ *   <li>Covers {@code src/components/messages/CollapsedToolUseGroup.tsx} — the collapsed
+ *       read/search group: header counts, active/finished verb forms, the blinking bullet, the
+ *       {@code ⎿} hint row, and the ctrl+o expansion registration.</li>
+ *   <li>Covers the group reducer that walks the transcript and folds adjacent collapsible tool
+ *       calls into one projection, including the MCP server-name and query hints.</li>
+ *   <li>Covers {@code src/utils/git.ts}'s post-Bash operation detection — the commit/push/merge/PR
+ *       badge appended after a Bash tool result.</li>
+ *   <li><b>Thinking display is ported from the 2.1.236 bundle, not 197</b> (the rest of this
+ *       repository's terminal UI baseline). 197's collapsed group has no thinking branch at all.
+ *       From 236: {@code VBp} (the collapsed_read_search reducer) with its {@code YDa} initializer
+ *       and {@code nIS} projection supply {@code thoughtForMs} — {@code += min(Δtimestamp, $ui)}
+ *       with {@code $ui = 600000} — and {@code latestThinkingSummary}, which every {@code tool_use}
+ *       resets; {@code XxS} restricts the source to a non-blank {@code thinking} block at
+ *       {@code content[0]}; {@code N3l} emits the {@code Thinking for}/{@code Thought for} header
+ *       segment ahead of every count part; {@code DCh} is the one-second live clock; {@code G0h}
+ *       holds the summary {@code egw = 3000} ms past its reset; and {@code ngw} clamps the summary
+ *       row to {@code tgw = 10} wrapped lines at {@code width - u7i} columns.</li>
+ * </ul>
+ *
+ * <p>236's {@code isLiveBriefTurn} has no Java counterpart and is treated as constantly false, and
+ * its {@code Ps()} fullscreen gate on the live clock is treated as constantly true because this
+ * Lanterna TUI is always fullscreen-equivalent.
+ */
 public class MessageCollapser {
 
     private static final Logger log = LoggerFactory.getLogger(MessageCollapser.class);
@@ -38,6 +78,27 @@ public class MessageCollapser {
 
 
     static final Set<String> READ_SEARCH_TOOLS = Set.of("Read", "Grep", "Glob", "LS");
+
+    /** 236's {@code $ui}: the most a single inter-message gap may contribute to the total. */
+    private static final long MAX_THINKING_SPAN_MS = 600_000;
+    /** 236's {@code egw}: how long the {@code ⎿} row keeps a summary a tool call has reset. */
+    private static final long SUMMARY_HOLD_MS = 3_000;
+    /** 236's {@code tgw}: the summary row's wrapped-line budget. */
+    private static final int SUMMARY_MAX_LINES = 10;
+    /** 236's {@code DCh} redraws on a {@code Cg(1000)} interval. */
+    private static final long CLOCK_TICK_MS = 1_000;
+
+    /**
+     * Drives the live "Thinking for 24s" counter. One shared daemon thread for every collapser,
+     * mirroring {@link MessagePanel}'s blink scheduler: the panel serialises its own mutations, so
+     * repainting a group header off the event thread is safe.
+     */
+    private static final ScheduledExecutorService THINKING_CLOCK_SCHEDULER =
+        Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "thinking-clock");
+            thread.setDaemon(true);
+            return thread;
+        });
 
     private final LanternaMessageDispatcher downstream;
     private boolean verbose;
@@ -71,6 +132,30 @@ public class MessageCollapser {
     private int                  memoryWriteCount  = 0;
     private int                  searchCount       = 0;  // Grep/Glob pattern searches
     private int                  listCount         = 0;  // LS calls (split from readSearchRun for active-form phrasing)
+
+    // ── Thinking projection (2.1.236) ────────────────────────────────────────
+
+    /** 236's {@code thoughtForMs}: the group's accumulated, per-gap-clamped thinking time. */
+    private long    thoughtForMs           = 0;
+    /** 236's {@code latestThinkingSummary}: live value, reset to absent by any tool call. */
+    private String  thinkingSummary        = null;
+    /** {@code G0h}'s retained value — the last non-null summary, kept past its reset. */
+    private String  heldSummary            = null;
+    private long    heldSummaryExpiresAtMs = 0;
+    /** Anchor for the live clock's "time since the last thinking block" term. */
+    private long    lastThinkingAtMs       = 0;
+    /** 236's {@code s}: the previously seen message's timestamp, the Δ baseline. */
+    private Instant previousMessageAt      = null;
+
+    private LongSupplier clock = System::currentTimeMillis;
+    private ScheduledFuture<?> thinkingClock;
+    private String renderedThinkingDuration = null;
+
+    /**
+     * Serialises the group repaint between the event thread and the clock ticker. The GUI thread
+     * never acquires it, so it can never invert against the panel's own lock.
+     */
+    private final Object renderLock = new Object();
 
 /**
      * Last non-read-search tool name (Bash/Edit/Write/…) — used by buildActiveGroupPhrase to render
@@ -110,10 +195,13 @@ public class MessageCollapser {
     public void setShowAll(boolean showAll) { this.showAll = showAll; }
     public void setKeybindingsStore(UserKeybindingsStore store) { this.keybindingsStore = store; }
 
+    /** Test seam for the live thinking clock — production always reads the wall clock. */
+    void setClock(LongSupplier clock) { this.clock = clock; }
+
 
     public void setLoading(boolean loading, MessagePanel panel) {
         this.loading = loading;
-        if (!loading && (readSearchRun > 0 || mcpCallCount > 0)) {
+        if (!loading && (readSearchRun > 0 || mcpCallCount > 0 || hasThinking())) {
             flushReadSearchRun(panel);
         }
         emitPhrase();
@@ -249,13 +337,19 @@ public class MessageCollapser {
             return;
         }
 
+        // 236 tracks the previous message's timestamp across the whole transcript walk; the Δ a
+        // thinking block contributes is measured against whatever came before it.
+        Instant previousAt = previousMessageAt;
+        timestampOf(message).ifPresent(at -> previousMessageAt = at);
+
         if (message instanceof SDKMessage.User user
                 && absorbCollapsedToolResults(user, panel)) {
             return;
         }
         // The final assistant envelope repeats streamed tool_use blocks. It must
         // not seal the active projection before their real results arrive.
-        if (message instanceof SDKMessage.Assistant) {
+        if (message instanceof SDKMessage.Assistant assistant) {
+            absorbThinking(assistant, previousAt, panel);
             downstream.dispatch(message, panel);
             return;
         }
@@ -269,9 +363,118 @@ public class MessageCollapser {
         downstream.dispatch(message, panel);
     }
 
+    // ── Thinking projection ─────────────────────────────────────────────────
+
+    /** 236's {@code se}: whether the group has anything thinking-related to show. */
+    private boolean hasThinking() {
+        return thoughtForMs > 0 || thinkingSummary != null;
+    }
+
+    /**
+     * Folds one assistant message's leading thinking block into the group. The block itself is
+     * still handed downstream, which renders nothing for it outside verbose/transcript mode — so
+     * the collapsed header stays the only visible trace, exactly as in 236.
+     */
+    private void absorbThinking(SDKMessage.Assistant assistant, Instant previousAt,
+            MessagePanel panel) {
+        String thinking = leadingThinkingText(assistant);
+        if (thinking == null) return;
+
+        String summary = FormatUtils.flattenToSingleLine(thinking);
+        if (!summary.isEmpty()) {
+            thinkingSummary        = summary;
+            heldSummary            = summary;
+            heldSummaryExpiresAtMs = Long.MAX_VALUE;
+        }
+        Instant at = assistant.message().timestamp().orElse(null);
+        if (previousAt != null && at != null) {
+            long elapsed = Duration.between(previousAt, at).toMillis();
+            if (elapsed > 0) thoughtForMs += Math.min(elapsed, MAX_THINKING_SPAN_MS);
+        }
+        lastThinkingAtMs = clock.getAsLong();
+        renderCollapsedGroup(panel, true);
+    }
+
+    /** 236's {@code XxS}: only {@code content[0]}, and only when the thinking text is non-blank. */
+    private static String leadingThinkingText(SDKMessage.Assistant assistant) {
+        AssistantMessage envelope = assistant.message();
+        if (envelope == null || envelope.message() == null) return null;
+        List<ContentBlock> content = envelope.message().content();
+        if (content == null || content.isEmpty()
+                || !(content.getFirst() instanceof ThinkingBlock block)
+                || org.apache.commons.lang3.StringUtils.isBlank(block.thinking())) {
+            return null;
+        }
+        return block.thinking();
+    }
+
+    /** 236 resets {@code latestThinkingSummary} on every tool call; {@code G0h} holds it 3s. */
+    private void clearThinkingSummary() {
+        if (thinkingSummary == null) return;
+        thinkingSummary        = null;
+        heldSummaryExpiresAtMs = clock.getAsLong() + SUMMARY_HOLD_MS;
+    }
+
+    /** The summary the {@code ⎿} row should show, or {@code null} once the 3s hold lapses. */
+    private String stickyThinkingSummary() {
+        if (heldSummary == null) return null;
+        return clock.getAsLong() < heldSummaryExpiresAtMs ? heldSummary : null;
+    }
+
+    /** 236's {@code aa(Math.max(1000, ie))}, with the live term {@code DCh} adds while active. */
+    private String thinkingDurationText(boolean active) {
+        long total = thoughtForMs;
+        if (active && lastThinkingAtMs > 0) {
+            total += Math.min(MAX_THINKING_SPAN_MS,
+                Math.max(0, clock.getAsLong() - lastThinkingAtMs));
+        }
+        return FormatUtils.formatDuration(Math.max(1000, total));
+    }
+
+    private static Optional<Instant> timestampOf(SDKMessage message) {
+        return switch (message) {
+            case SDKMessage.Assistant assistant -> assistant.message() == null
+                ? Optional.empty() : assistant.message().timestamp();
+            case SDKMessage.User user -> user.message() == null
+                ? Optional.empty() : user.message().timestamp();
+            default -> Optional.empty();
+        };
+    }
+
+    private void startThinkingClock(MessagePanel panel) {
+        if (panel == null || thinkingClock != null) return;
+        thinkingClock = THINKING_CLOCK_SCHEDULER.scheduleAtFixedRate(
+            () -> tickThinkingClock(panel), CLOCK_TICK_MS, CLOCK_TICK_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void stopThinkingClock() {
+        if (thinkingClock != null) {
+            thinkingClock.cancel(false);
+            thinkingClock = null;
+        }
+        renderedThinkingDuration = null;
+    }
+
+    /** Repaints only when the rendered second actually changed, so idle ticks cost nothing. */
+    private void tickThinkingClock(MessagePanel panel) {
+        try {
+            synchronized (renderLock) {
+                if (!hasThinking() || activeRunLineIdx < 0
+                        || Strings.CS.equals(renderedThinkingDuration,
+                            thinkingDurationText(true))) {
+                    return;
+                }
+            }
+            renderCollapsedGroup(panel, true);
+        } catch (RuntimeException e) {
+            log.debug("[COLLAPSER] thinking clock tick failed", e);
+        }
+    }
+
     // ── Internal ────────────────────────────────────────────────────────────
 
     private void handleToolCallStart(SDKMessage.StreamEvent event, MessagePanel panel) {
+        clearThinkingSummary();
         String info     = event.data() instanceof String s ? s : "";
         String toolName = Strings.CS.contains(info, "|") ? info.split("\\|", 2)[0] : info;
         String argsJson = "";
@@ -430,7 +633,7 @@ public class MessageCollapser {
      * Emit the collapsed summary and optional ⤿ hint line when a run ends.
      */
     private void flushReadSearchRun(MessagePanel panel) {
-        if (readSearchRun == 0 && mcpCallCount == 0) return;
+        if (readSearchRun == 0 && mcpCallCount == 0 && !hasThinking()) return;
         if (panel != null) {
             renderCollapsedGroup(panel, false);
             int groupStart = activeRunLineIdx >= 0
@@ -455,6 +658,12 @@ public class MessageCollapser {
         collapsedGroupHasError = false;
         readSearchMessages.clear();
         latestDisplayHint = null;
+        stopThinkingClock();
+        thoughtForMs           = 0;
+        thinkingSummary        = null;
+        heldSummary            = null;
+        heldSummaryExpiresAtMs = 0;
+        lastThinkingAtMs       = 0;
         mcpCallCount     = 0;
         mcpServerNames.clear();
         memoryReadCount  = 0;
@@ -535,32 +744,54 @@ public class MessageCollapser {
     }
 
     private void renderCollapsedGroup(MessagePanel panel, boolean active) {
-        if (panel == null || (readSearchRun == 0 && mcpCallCount == 0)) return;
-        List<List<MessagePanel.Segment>> rows = collapsedGroupRows(active);
-        if (activeRunLineIdx < 0) {
-            if (panel.snapshotLineCount() > 0) panel.appendMixed(List.of());
-            activeRunLineIdx = panel.snapshotLineCount();
-            for (List<MessagePanel.Segment> row : rows) panel.appendMixed(row);
-        } else if (activeRunLineIdx < panel.snapshotLineCount()) {
-            panel.replaceLines(activeRunLineIdx, activeRunRowCount, rows);
-        } else if (!active) {
-            // Lightweight test panels may record appendMixed without retaining
-            // MessagePanel's internal rows. Preserve their observable projection.
-            panel.appendMixed(rows.getFirst());
+        if (panel == null
+                || (readSearchRun == 0 && mcpCallCount == 0 && !hasThinking())) {
+            return;
         }
-        activeRunRowCount = rows.size();
-        if (active && !collapsedGroupHasError) {
-            panel.startBlinkLine(activeRunLineIdx, rows.getFirst());
-        } else {
-            panel.stopBlinkLine(activeRunLineIdx, rows.getFirst());
+        synchronized (renderLock) {
+            List<List<MessagePanel.Segment>> rows = collapsedGroupRows(active, panel);
+            if (activeRunLineIdx < 0) {
+                if (panel.snapshotLineCount() > 0) panel.appendMixed(List.of());
+                activeRunLineIdx = panel.snapshotLineCount();
+                for (List<MessagePanel.Segment> row : rows) panel.appendMixed(row);
+            } else if (activeRunLineIdx < panel.snapshotLineCount()) {
+                panel.replaceLines(activeRunLineIdx, activeRunRowCount, rows);
+            } else if (!active) {
+                // Lightweight test panels may record appendMixed without retaining
+                // MessagePanel's internal rows. Preserve their observable projection.
+                panel.appendMixed(rows.getFirst());
+            }
+            activeRunRowCount = rows.size();
+            if (active && !collapsedGroupHasError) {
+                panel.startBlinkLine(activeRunLineIdx, rows.getFirst());
+            } else {
+                panel.stopBlinkLine(activeRunLineIdx, rows.getFirst());
+            }
+            renderedThinkingDuration = hasThinking() ? thinkingDurationText(active) : null;
+            if (active && hasThinking()) {
+                startThinkingClock(panel);
+            } else if (!active) {
+                stopThinkingClock();
+            }
         }
     }
 
-    private List<List<MessagePanel.Segment>> collapsedGroupRows(boolean active) {
+    private List<List<MessagePanel.Segment>> collapsedGroupRows(boolean active,
+            MessagePanel panel) {
         TextColor color = active ? TextColor.ANSI.DEFAULT : LanternaTheme.welcomeDim();
         List<MessagePanel.Segment> header = new ArrayList<>();
         header.add(new MessagePanel.Segment(active ? Figures.BLACK_CIRCLE + " " : "  ",
             active ? LanternaTheme.assistantDot() : color));
+
+        // 236 pushes this segment first, which is what makes every count part below read as a
+        // comma-joined, lower-cased continuation: "Thinking for 24s, searching for 3 patterns…".
+        boolean thinking = hasThinking();
+        if (thinking) {
+            header.add(new MessagePanel.Segment(
+                active ? "Thinking for " : "Thought for ", color));
+            header.add(new MessagePanel.Segment(thinkingDurationText(active),
+                color, null, null, Set.of(SGR.BOLD)));
+        }
 
 // Each count-part's "first" flag is derived from its index in a runtime-built list, so the
 // leading part is not a compile-time constant.
@@ -589,7 +820,7 @@ public class MessageCollapser {
                 listCount, "directory", "directories"));
         }
         for (int i = 0; i < parts.size(); i++) {
-            boolean first = i == 0;
+            boolean first = i == 0 && !thinking;
             CountPart p = parts.get(i);
             String verb = active
                 ? first ? p.activeFirst() : p.active()
@@ -598,7 +829,7 @@ public class MessageCollapser {
                 p.count() == 1 ? p.singular() : p.plural(), color);
         }
         if (mcpCallCount > 0) {
-            boolean first = parts.isEmpty();
+            boolean first = parts.isEmpty() && !thinking;
             if (!first) header.add(new MessagePanel.Segment(", ", color));
             String serverLabel = mcpServerNames.isEmpty()
                 ? "MCP" : String.join(", ", mcpServerNames);
@@ -620,12 +851,28 @@ public class MessageCollapser {
 
         List<List<MessagePanel.Segment>> rows = new ArrayList<>();
         rows.add(List.copyOf(header));
-        if (active && latestDisplayHint != null) {
+        // One row, two sources: a live thinking summary wins over the tool display hint, and
+        // reverts to it once G0h's hold lapses.
+        String summary = active ? stickyThinkingSummary() : null;
+        String body = summary != null
+            ? MessagePanel.truncateToLines(summary, summaryWidth(panel), SUMMARY_MAX_LINES)
+            : latestDisplayHint;
+        if (active && body != null) {
             rows.add(List.of(
-                new MessagePanel.Segment("  ⎿  ", LanternaTheme.welcomeDim()),
-                new MessagePanel.Segment(latestDisplayHint, LanternaTheme.welcomeDim())));
+                new MessagePanel.Segment(Figures.RESULT_PREFIX, LanternaTheme.welcomeDim()),
+                summary != null
+                    ? new MessagePanel.Segment(body, LanternaTheme.welcomeDim(), null, null,
+                        Set.of(SGR.ITALIC))
+                    : new MessagePanel.Segment(body, LanternaTheme.welcomeDim())));
         }
         return rows;
+    }
+
+    /** 236's {@code y - u7i}: the columns left once the {@code ⎿} gutter is subtracted. */
+    private static int summaryWidth(MessagePanel panel) {
+        var size = panel == null ? null : panel.getSize();
+        int columns = size == null || size.getColumns() <= 0 ? 80 : size.getColumns();
+        return Math.max(1, columns - Figures.INDENT_COLS);
     }
 
     private static void appendCountPart(List<MessagePanel.Segment> target,

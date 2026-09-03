@@ -30,6 +30,12 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 /**
  * Scrollable message area — the main content panel.
+ *
+ * <ul>
+ *   <li>Covers the 2.1.236 bundle's {@code ngw} line clamp — see
+ *       {@link #truncateToLines(String, int, int)}, used by {@link MessageCollapser} for the
+ *       collapsed group's thinking-summary row.</li>
+ * </ul>
  */
 public class MessagePanel extends AbstractComponent<MessagePanel> {
 
@@ -380,18 +386,6 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             List.of(StyledLine.toolOutput(content, color, true, expandHint())));
     }
 
-    /** Append a horizontal divider line. */
-    public void appendDivider() {
-        lock.writeLock().lock();
-        try {
-            lines.add(StyledLine.DIVIDER);
-            markRenderChangedLocked();
-        } finally {
-            lock.writeLock().unlock();
-        }
-        invalidate();
-    }
-
     /** Mark current point in the message log, so we can later truncate back to it. */
     public int snapshotLineCount() {
         lock.readLock().lock();
@@ -546,23 +540,6 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
     /** Token used by external replaceable blocks to detect clear/trim/resume invalidation. */
     public long contentEpoch() { return contentEpoch.get(); }
 
-    /**
-     * Updates the line at {@code index} in-place if it exists, otherwise appends.
-     * Needed by MessageCollapser: in real terminals the live "⏺ Reading…" line exists
-     * and can be replaced; in test StubPanels that don't call super.appendMixed, the
-     * internal list is empty, so we fall back to appendMixed for correct capture.
-     */
-    public void updateLineOrAppend(int index, List<Segment> segments) {
-        lock.writeLock().lock();
-        int sz;
-        try { sz = lines.size(); } finally { lock.writeLock().unlock(); }
-        if (index >= 0 && index < sz) {
-            updateLine(index, segments);
-        } else {
-            appendMixed(segments);
-        }
-    }
-
     /** Drop all lines added after the given snapshot point. */
     public void truncateLinesTo(int snapshot) {
         lock.writeLock().lock();
@@ -629,29 +606,6 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
 
     public void scrollSelectionDragDown(int lines) {
         scroll(+lines, SelectionScrollMode.ANCHOR_ONLY);
-    }
-
-    /**
-     * Get the text of the line at the current scroll position.
-     * Used by message actions copy/edit. Returns null if no line is available.
-     */
-    public String getSelectedText() {
-        lock.readLock().lock();
-        try {
-            if (lines.isEmpty()) return null;
-            int idx = lines.size() - 1 - scrollOffset;
-            if (idx < 0 || idx >= lines.size()) return null;
-            StyledLine line = lines.get(idx);
-            if (line.isDivider()) return null;
-            StringBuilder sb = new StringBuilder();
-            for (Segment seg : line.segments()) {
-                sb.append(seg.text());
-            }
-            String text = sb.toString().trim();
-            return text.isEmpty() ? null : text;
-        } finally {
-            lock.readLock().unlock();
-        }
     }
 
     /** Register a rendered logical message without coupling navigation to wrapped rows. */
@@ -1488,7 +1442,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         return rows;
     }
 
-    private static List<String> wordWrapAtBoundaries(String text, int width) {
+    static List<String> wordWrapAtBoundaries(String text, int width) {
         if (StringUtils.isEmpty(text)) return List.of("");
         List<String> rows = new ArrayList<>();
         String remaining = text.strip();
@@ -1520,6 +1474,28 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             remaining = remaining.substring(cut).stripLeading();
         }
         return rows;
+    }
+
+    /**
+     * Clamps {@code text} to at most {@code maxLines} wrapped rows, ending in an ellipsis. Wrapping
+     * is measured with {@link #wordWrapAtBoundaries} so the budget matches what this panel will
+     * actually render; the ellipsis is fitted by shrinking the head until it stops spilling over,
+     * one grapheme at a time so a surrogate pair is never cut in half.
+     */
+    static String truncateToLines(String text, int width, int maxLines) {
+        if (StringUtils.isEmpty(text) || width <= 0 || maxLines <= 0) return text;
+        List<String> lines = wordWrapAtBoundaries(text, width);
+        if (lines.size() <= maxLines) return text;
+        StringBuilder head = new StringBuilder(
+            String.join(" ", lines.subList(0, maxLines)).replaceAll("\\s+", " ").strip());
+        while (!head.isEmpty() && wordWrapAtBoundaries(head + "…", width).size() > maxLines) {
+            int length = head.length();
+            int drop = length >= 2
+                && Character.isSurrogatePair(head.charAt(length - 2), head.charAt(length - 1))
+                ? 2 : 1;
+            head.setLength(length - drop);
+        }
+        return head.toString().stripTrailing() + "…";
     }
 
     private static void appendStyledChunk(List<Segment> row, StringBuilder chunk, Segment source) {

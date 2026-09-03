@@ -261,4 +261,46 @@ class FormatUtilsTest {
         assertEquals(2, FormatUtils.charDisplayWidth('你'));
         assertEquals(0, FormatUtils.charDisplayWidth('\u001B'));
     }
+
+    // ── flattenToSingleLine (2.1.236 `pm(us(x))`) ────────────────────────
+
+    @Test
+    void flattenToSingleLineDropsAnsiStyling() {
+        assertEquals("bold link", FormatUtils.flattenToSingleLine(
+            "\u001B[1mbold\u001B[0m \u001B]8;;http://x\u0007link\u001B]8;;\u0007"));
+    }
+
+    @Test
+    void flattenToSingleLineDropsOscTerminatedByStringTerminator() {
+        assertEquals("after", FormatUtils.flattenToSingleLine("\u001B]0;title\u001B\\after"));
+    }
+
+    @Test
+    void flattenToSingleLineCollapsesEveryWhitespaceRun() {
+        assertEquals("one two three", FormatUtils.flattenToSingleLine("  one\n\n\ttwo   three  "));
+    }
+
+    @Test
+    void flattenToSingleLineDropsControlCharactersButKeepsTheGapTheyLeave() {
+        // U+0007 is inside `pct`; the surrounding newline still separates the two words.
+        assertEquals("a b", FormatUtils.flattenToSingleLine("a\u0007\nb"));
+    }
+
+    @Test
+    void flattenToSingleLineCollapsesNonBreakingSpaceLikeEcmascript() {
+        // Java's own \s would leave U+00A0 alone; ECMAScript's does not.
+        assertEquals("a b", FormatUtils.flattenToSingleLine("a\u00A0\u00A0b"));
+    }
+
+    @Test
+    void flattenToSingleLineKeepsPrintableUnicode() {
+        assertEquals("caf\u00e9 \u4e2d\u6587 \ud83c\udf89",
+            FormatUtils.flattenToSingleLine("caf\u00e9\n\u4e2d\u6587\t\ud83c\udf89"));
+    }
+
+    @Test
+    void flattenToSingleLineTreatsBlankInputAsEmpty() {
+        assertEquals("", FormatUtils.flattenToSingleLine(null));
+        assertEquals("", FormatUtils.flattenToSingleLine("   \n\t "));
+    }
 }

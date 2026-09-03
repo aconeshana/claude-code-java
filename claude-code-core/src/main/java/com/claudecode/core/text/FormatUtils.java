@@ -9,6 +9,7 @@ import java.text.NumberFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +31,10 @@ import java.util.List;
  *   <li>Covers:  compact notation (upper/lower-case suffix)</li>
  *   <li>{@code yyyy-MM-dd-HHmmss}</li>
  *   <li>Covers: {@code Date.prototype.toISOString} shape — {@code yyyy-MM-dd'T'HH:mm:ss.SSS'Z'}</li>
+ *   <li>Covers: the 2.1.236 bundle's {@code pm(us(x))} pair — {@code us} is {@code Bun.stripANSI}
+ *       and {@code pm} drops the {@code pct} control-character class then collapses whitespace —
+ *       used to derive a collapsed group's {@code latestThinkingSummary} from a thinking block.
+ *       See {@link #flattenToSingleLine(String)}.</li>
  * </ul>
  * All methods are static; this class is not instantiated.
  */
@@ -286,6 +291,35 @@ public final class FormatUtils {
         long hours = d.toHours();
         if (hours < 24) return "(" + hours + "h ago)";
         return "(" + d.toDays() + "d ago)";
+    }
+
+    // ── Single-line flattening ──────────────────────────────────────────────
+
+    /** The 2.1.236 bundle's {@code pct} class: C0 and C1 controls except {@code \t\n\v\f\r}. */
+    private static final Pattern CONTROL_CHARACTERS =
+        Pattern.compile("[\\x00-\\x08\\x0E-\\x1F\\x7F-\\u009F]");
+
+    /** ECMAScript's {@code \s}, which is wider than Java's — notably {@code U+00A0} and friends. */
+    private static final Pattern WHITESPACE_RUN = Pattern.compile(
+        "[\\t\\n\\x0B\\f\\r \\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]+");
+
+    /**
+     * Strips ANSI escape sequences and non-printing control characters, then collapses every
+     * whitespace run to a single space and trims. Line structure is deliberately destroyed: the
+     * result is meant for a one-line preview whose own wrapping is decided by the renderer.
+     */
+    public static String flattenToSingleLine(String value) {
+        if (StringUtils.isEmpty(value)) return "";
+        StringBuilder stripped = new StringBuilder(value.length());
+        for (int index = 0; index < value.length();) {
+            if (value.charAt(index) == '\u001B') {
+                index = ansiSequenceEnd(value, index);
+                continue;
+            }
+            stripped.append(value.charAt(index++));
+        }
+        String printable = CONTROL_CHARACTERS.matcher(stripped).replaceAll("");
+        return WHITESPACE_RUN.matcher(printable).replaceAll(" ").strip();
     }
 
     // ── String truncation ───────────────────────────────────────────────────
