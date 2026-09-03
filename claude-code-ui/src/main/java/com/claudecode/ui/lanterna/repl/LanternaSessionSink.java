@@ -18,6 +18,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
@@ -64,6 +65,14 @@ import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
 /**
  * Lanterna (TUI) implementation of {@link SessionSink} — the first adapter for the headless {@link
  * TurnEngine}.
+ *
+ * <ul>
+ *   <li>{@code src/screens/REPL.tsx} — the stream handler's assistant arm feeding the
+ *       {@code StreamingThinking} slot, and the ESC cancel handler that drains it into a
+ *       virtual assistant message. Held here in {@link InterruptedThinkingCache} and
+ *       exposed as {@link #salvageInterruptedThinking()}; distinct from the interrupted
+ *       <em>prompt</em> rescue wired through {@link #setInterruptSalvage}.</li>
+ * </ul>
  */
 public final class LanternaSessionSink implements SessionSink {
 
@@ -100,6 +109,9 @@ public final class LanternaSessionSink implements SessionSink {
     /** Salvage callback for an interrupted prompt whose rewind was suppressed by a
      *  live UI-state guard; see {@link #setInterruptSalvage}. */
     private volatile Consumer<String> interruptSalvage = _ -> { };
+
+    /** Last completed thinking body, salvaged into the transcript on ESC. */
+    private final InterruptedThinkingCache interruptedThinking = new InterruptedThinkingCache();
 
     /** Per-turn spinner state machine — created in {@link #onTurnStart}, driven in {@link #onMessage}. */
     private volatile SpinnerStateMachine spinnerMachine;
@@ -417,6 +429,19 @@ public final class LanternaSessionSink implements SessionSink {
             if (experienceGain > 0) pokemonExperienceConsumer.accept(experienceGain);
         }
 
+        // Cache the completed thinking body so ESC can salvage it; see
+        // InterruptedThinkingCache. 197 writes the slot from the assistant arm only —
+        // thinking_delta deliberately does not feed it.
+        if (msg instanceof SDKMessage.Assistant assistant
+                && assistant.message().message() != null
+                && assistant.message().message().content() != null) {
+            assistant.message().message().content().stream()
+                .filter(ThinkingBlock.class::isInstance)
+                .findFirst()
+                .ifPresent(block -> interruptedThinking.store(
+                    ((ThinkingBlock) block).thinking(), System.currentTimeMillis()));
+        }
+
         // Drive the spinner state machine directly (it marshals its own mutations).
         SpinnerStateMachine machine = this.spinnerMachine;
         if (machine != null) {
@@ -654,7 +679,7 @@ public final class LanternaSessionSink implements SessionSink {
         try {
             return queryEngine.conversation().getMessageQueue().snapshot().stream()
                 .anyMatch(cmd -> cmd.agentId() == null);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             return false;
         }
     }
@@ -788,6 +813,27 @@ public final class LanternaSessionSink implements SessionSink {
      */
     void setInterruptSalvage(Consumer<String> interruptSalvage) {
         this.interruptSalvage = interruptSalvage != null ? interruptSalvage : _ -> { };
+    }
+
+    /**
+     * Appends the last completed thinking body to the transcript when ESC lands during an
+     * active thinking stretch. Distinct from {@link #setInterruptSalvage}, which rescues
+     * the interrupted <em>prompt text</em> into prompt history; this one rescues the
+     * model's <em>thinking</em> into the message list as a virtual assistant message.
+     *
+     * <p>Deferred through the delta batcher so pending stream deltas flush first, the row
+     * lands ahead of the {@code Interrupted} line that {@code onTurnComplete} appends, and
+     * it cannot be wiped by a later {@code truncateLinesTo(streamStartSnapshot)}.
+     *
+     * <p>Usually invisible — see {@link InterruptedThinkingCache} for why that is the
+     * ported behaviour rather than a bug.
+     */
+    void salvageInterruptedThinking() {
+        if (spinnerComponent == null || !spinnerComponent.isThinkingActive()) return;
+        String thinking = interruptedThinking.peekFresh(System.currentTimeMillis());
+        if (thinking == null) return;
+        streamDeltaBatcher.runAfterPending(() -> dispatchOnUi(
+            InterruptedThinkingCache.virtualThinkingMessage(thinking)));
     }
 
     /**

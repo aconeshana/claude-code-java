@@ -1,6 +1,5 @@
 package com.claudecode.runtime.query;
 
-
 import com.claudecode.core.attachment.AttachmentContext;
 import com.claudecode.core.attachment.FeatureFlag;
 import com.claudecode.core.effort.EffortHelpers;
@@ -94,11 +93,9 @@ import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 class QueryLoop implements SdkEventSequencedIterator {
 
     private static final Logger log = LoggerFactory.getLogger(QueryLoop.class);
-
 
     private static final int MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
 
@@ -313,8 +310,8 @@ class QueryLoop implements SdkEventSequencedIterator {
             .build();
         var attachments = svc.collect(ctx);
         for (var payload : attachments) {
-// Native JSONL normally records the typed attachment event as well as rendering it into
-// the request's merged user message.
+            // Native JSONL normally records the typed attachment event as well as rendering it into
+            // the request's merged user message.
             AttachmentMessage attachment =
                 new AttachmentMessage(UUID.randomUUID().toString(), payload);
             engine.getMutableMessages().add(attachment);
@@ -327,8 +324,8 @@ class QueryLoop implements SdkEventSequencedIterator {
             }
         }
         engine.clearNestedMemoryAttachmentTriggers();
-// Snapshot this turn's announced tools so next turn's deferred_tools_delta can diff against
-// them.
+        // Snapshot this turn's announced tools so next turn's deferred_tools_delta can diff against
+        // them.
         engine.setPreviousTurnTools(engine.getConfig().tools());
     }
 
@@ -2022,11 +2019,11 @@ class QueryLoop implements SdkEventSequencedIterator {
                 || Strings.CS.startsWith(content.text(), "<local-command-stderr>");
         }
         if (content.blocks() == null || content.blocks().size() != 1
-                || !(content.blocks().getFirst() instanceof TextBlock text)) {
+                || !(content.blocks().getFirst() instanceof TextBlock(String text1))) {
             return false;
         }
-        return Strings.CS.startsWith(text.text(), "<local-command-stdout>")
-            || Strings.CS.startsWith(text.text(), "<local-command-stderr>");
+        return Strings.CS.startsWith(text1, "<local-command-stdout>")
+            || Strings.CS.startsWith(text1, "<local-command-stderr>");
     }
 
     /**

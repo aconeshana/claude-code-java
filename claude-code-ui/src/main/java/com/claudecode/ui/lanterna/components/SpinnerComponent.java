@@ -15,9 +15,7 @@ import com.googlecode.lanterna.gui2.InteractableRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -27,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.function.BooleanSupplier;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
@@ -475,11 +474,11 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
             }
         }
 
-        List<TreeRow> rows = new java.util.ArrayList<>();
+        List<TreeRow> rows = new ArrayList<>();
         boolean leaderForegrounded = viewed == null;
         boolean leaderSelected = selecting && selected == -1;
         boolean leaderHighlighted = leaderForegrounded || leaderSelected;
-        List<TreeSegment> leader = new java.util.ArrayList<>();
+        List<TreeSegment> leader = new ArrayList<>();
         leader.add(segment("   ", null, false));
         leader.add(segment(leaderSelected ? "❯" : " ",
             leaderSelected ? LanternaTheme.suggestion() : null, leaderSelected));
@@ -509,7 +508,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
             boolean highlighted = selectedRow || foregrounded;
             boolean last = !selecting && index == teammates.size() - 1;
             String connector = highlighted ? (last ? "╘═ " : "╞═ ") : (last ? "└─ " : "├─ ");
-            List<TreeSegment> line = new java.util.ArrayList<>();
+            List<TreeSegment> line = new ArrayList<>();
             line.add(segment("   ", null, false));
             line.add(segment(selectedRow ? "❯" : " ",
                 selectedRow ? LanternaTheme.suggestion() : null, selectedRow));
@@ -683,8 +682,8 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
                 && availableSpace > used + (used > 0 ? 3 : 0)
                     + FormatUtils.displayWidth(tokensStr);
 
-// thinkingOnly: only thinking is shown (no suffix/timer/tokens) — rendered without dim
-// wrapper so thinking shimmer is the sole color.
+        // thinkingOnly: only thinking is shown (no suffix/timer/tokens) — rendered without dim
+        // wrapper so thinking shimmer is the sole color.
         boolean thinkingOnly = showThinking && thinkingStatus instanceof String
                 && sfx.isEmpty() && !showTimer && !showTokens;
 
@@ -827,6 +826,14 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         this.thinkingStatus = thinking ? "thinking" : null;
     }
 
+    /**
+     * Whether the model is currently in an active thinking stretch — the port of 197's
+     * {@code thinkingStartedAt !== null} guard, which gates salvaging thinking on cancel.
+     */
+    public boolean isThinkingActive() {
+        return thinkingStartMs >= 0;
+    }
+
 
     public void setThinkingDuration(long durationMs) {
         this.thinkingStartMs = -1;
@@ -856,10 +863,10 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
     /** Finds the first pending task not blocked by an unresolved task. */
     private TaskBoardPort.TaskItem findNextPendingTask() {
         List<TaskBoardPort.TaskItem> tasks = taskSnapshot.tasks();
-        java.util.Set<String> unresolved = tasks.stream()
+        Set<String> unresolved = tasks.stream()
             .filter(task -> task.status() != TaskBoardPort.Status.COMPLETED)
             .map(TaskBoardPort.TaskItem::id)
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
         TaskBoardPort.TaskItem fallback = null;
         for (TaskBoardPort.TaskItem task : tasks) {
             if (task.status() != TaskBoardPort.Status.PENDING) continue;
@@ -971,9 +978,9 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
                 }
             }
 
-// Shimmer effect — delegates to ShimmerAnimation.compute() so the math (speed / cycle
-// length / lead offset / stalled sentinel) lives in one place with its unit tests,
-// instead of being duplicated as magic numbers here.
+            // Shimmer effect — delegates to ShimmerAnimation.compute() so the math (speed / cycle
+            // length / lead offset / stalled sentinel) lives in one place with its unit tests,
+            // instead of being duplicated as magic numbers here.
             TextColor shimmerColor = overrideShimmerColor != null ? overrideShimmerColor : LanternaTheme.claudeShimmer();
             String verbStr = renderedVerb;
             int verbStart = 2; // icon + space prefix
@@ -1041,7 +1048,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
                     String pct = " " + percent + "%";
                     int fillCells = (int) Math.round(percent / 100.0 * barWidth);
                     for (int i = 0; i < bar.length() && COMPACT_BAR_INDENT + i < maxW; i++) {
-// Fill cells use the terminal default foreground; empty cells are dim.
+                        // Fill cells use the terminal default foreground; empty cells are dim.
                         TextColor cellColor = i < fillCells
                             ? TextColor.ANSI.DEFAULT : dimColor;
                         g.setCharacter(COMPACT_BAR_INDENT + i, nextRow,
@@ -1078,8 +1085,8 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
                 g.setForegroundColor(TextColor.ANSI.DEFAULT);
             }
 
-// Render effective tip on the next row — auto-selects /btw or /clear tip by elapsed
-// time, falling back to the externally-set spinnerTip.
+            // Render effective tip on the next row — auto-selects /btw or /clear tip by elapsed
+            // time, falling back to the externally-set spinnerTip.
             String tip = treeRows.isEmpty() ? effectiveTip() : null;
             if (StringUtils.isNotBlank(tip) && g.getSize().getRows() > nextRow) {
                 int maxTipW = g.getSize().getColumns() - 2;
@@ -1169,7 +1176,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         TaskBoardPort.TaskItem nextTask = findNextPendingTask();
 
         if (tipsEnabled) {
-// Auto-tips suppressed when a next task is queued.
+            // Auto-tips suppressed when a next task is queued.
             if (elapsed > CLEAR_TIP_THRESHOLD_MS && nextTask == null) return CLEAR_TIP;
             if (elapsed > BTW_TIP_THRESHOLD_MS && btwUseCount == 0 && nextTask == null) return BTW_TIP;
         }

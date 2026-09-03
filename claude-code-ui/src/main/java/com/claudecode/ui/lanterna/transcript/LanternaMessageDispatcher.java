@@ -16,6 +16,7 @@ import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.ProgressMessage;
+import com.claudecode.core.message.RedactedThinkingBlock;
 import com.claudecode.core.message.RefusalErrorMessage;
 import com.claudecode.core.message.RefusalLearnMoreLink;
 import com.claudecode.core.message.RefusalFallbackFeature;
@@ -60,10 +61,7 @@ import com.googlecode.lanterna.SGR;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.function.BiFunction;
-import java.util.function.BooleanSupplier;
-import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.function.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -75,6 +73,21 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Dispatches SDKMessage to MessagePanel.
+ *
+ * <ul>
+ *   <li>{@code src/components/messages/AssistantThinkingMessage.tsx} — the thinking body
+ *       layout: a {@code minWidth: 2} dim+italic {@code ∴} gutter with dim Markdown
+ *       beside it, no label word and no leading blank row. Authoritative formula from the
+ *       2.1.197 bundle's {@code Fzn}; its non-Markdown else branch is dead there because
+ *       the dispatch gate already forces the flag on, so it is not ported.</li>
+ *   <li>{@code src/components/messages/AssistantRedactedThinkingMessage.tsx} — the
+ *       sibling redacted-thinking component ({@code Dcl} in the 2.1.197 bundle),
+ *       rendering the single row {@code ✻ Thinking…} with no body.</li>
+ *   <li>{@code src/components/Message.tsx} — the thinking dispatch gate
+ *       {@code if (!verbose && !transcript) return null}, mirrored by
+ *       {@link #shouldRenderCompletedThinking} plus the verbose/transcript checks on the
+ *       redacted arm.</li>
+ * </ul>
  */
 public class LanternaMessageDispatcher {
 
@@ -109,10 +122,10 @@ public class LanternaMessageDispatcher {
      * com.claudecode.ui.lanterna.components.SpinnerStateMachine#onStreamTextVisibility}.
      * Null when no consumer is registered (e.g. replay-only dispatch).
      */
-    private java.util.function.Consumer<Boolean> onStreamTextVisibility;
+    private Consumer<Boolean> onStreamTextVisibility;
 
     /** Register a consumer notified when the visible-streaming-text window opens/closes. */
-    public void onStreamTextVisibility(java.util.function.Consumer<Boolean> listener) {
+    public void onStreamTextVisibility(Consumer<Boolean> listener) {
         this.onStreamTextVisibility = listener;
     }
 
@@ -145,6 +158,11 @@ public class LanternaMessageDispatcher {
 
     /** Shared markdown renderer — thread-safe (Caffeine cache internally). */
     private static final MarkdownRenderer MARKDOWN_RENDERER = MarkdownRenderer.shared();
+
+    /** Two-column gutter carrying the thinking glyph on the first body row. */
+    private static final String THINKING_GUTTER = "∴ ";
+    /** Continuation rows align under the gutter. */
+    private static final String THINKING_INDENT = "  ";
 
     /** Parses {@code <channel source="..." [attrs]>content</channel>} — compiled once. */
     private static final Pattern CHANNEL_RE = Pattern.compile(
@@ -1193,6 +1211,18 @@ public class LanternaMessageDispatcher {
                         renderThinking(thinking, panel, ctx);
                     }
                 }
+                case RedactedThinkingBlock _ -> {
+                    // Encrypted thinking has no renderable body, so the row is the whole
+                    // message. Gated only by verbose/transcript — deliberately NOT routed
+                    // through shouldRenderCompletedThinking: findLastThinkingBlockId only
+                    // ever matches ThinkingBlock, so a redacted block could never be the
+                    // whitelisted id and would be permanently invisible in ctrl+o.
+                    if (verbose || transcriptMode) {
+                        panel.appendMixed(List.of(new MessagePanel.Segment(
+                            Figures.TEARDROP_ASTERISK + " Thinking…",
+                            LanternaTheme.welcomeDim(), null, null, Set.of(SGR.ITALIC))));
+                    }
+                }
                 default -> {}
             }
             if (block instanceof ToolUseBlock toolUse) {
@@ -1265,7 +1295,7 @@ public class LanternaMessageDispatcher {
                 // with OpenAI-compatible streams), and the final Assistant commit
                 // repaints authoritative text anyway, so dropping these costs
                 // nothing. Mid-text newlines (window already open) are unaffected.
-                if (!streamedThisTurn && evData.isBlank()) return;
+                if (!streamedThisTurn && StringUtils.isBlank(evData)) return;
                 if (!streamedThisTurn) {
                     if (toolResultRenderedThisTurn) {
                         panel.appendLine("", TextColor.ANSI.DEFAULT);
@@ -4466,12 +4496,13 @@ public class LanternaMessageDispatcher {
     }
 
     /**
-     * Renders a thinking block, adapting label/token colors based on {@code ctx}.
+     * Renders a completed thinking block, adapting glyph/token colors based on {@code ctx}.
      *
      * <p>In queued-preview context, delegates to {@link HighlightedThinkingRenderer}
      * which uses {@link com.claudecode.ui.render.ThinkingStyle#forContext(RenderingContext)}
-     * to pick dim/subtle styling. In normal context, uses the existing collapsed/expanded
-     * rendering logic driven by {@code verbose} and {@code transcriptMode}.
+     * to pick dim/subtle styling. Outside that context the body is hidden entirely unless
+     * {@code verbose} or {@code transcriptMode} is on, and is then laid out as a
+     * {@link #THINKING_GUTTER} column followed by dim Markdown.
      */
     void renderThinking(ThinkingBlock thinking, MessagePanel panel, RenderingContext ctx) {
 
@@ -4487,23 +4518,27 @@ public class LanternaMessageDispatcher {
         }
 
         if (!verbose && !transcriptMode) return;
-        // Verbose/transcript: dim+italic "∴ Thinking…", one-row gap, then dim Markdown.
-        panel.appendMixed(List.of(new MessagePanel.Segment("∴ Thinking…",
-            LanternaTheme.welcomeDim(), null, null, Set.of(SGR.ITALIC))));
-        panel.appendLine("", TextColor.ANSI.DEFAULT);
-        String rendered = MARKDOWN_RENDERER.renderDimmed(thinkingText, markdownWidth(panel) - 2);
+        // Verbose/transcript: a 2-column dim+italic "∴" gutter on the FIRST body row,
+        // then the dim Markdown column. No label word and no gap row — the "Thinking"
+        // wording belongs to the spinner and the queued-preview renderer, not here.
+        String rendered = MARKDOWN_RENDERER.renderDimmed(
+            thinkingText.trim(), markdownWidth(panel) - 2);
         List<List<MessagePanel.Segment>> mdLines = AnsiToSegments.ansiToLines(rendered, LanternaTheme.welcomeDim());
         int last = mdLines.size();
         while (last > 0 && mdLines.get(last - 1).isEmpty()) last--;
+        MessagePanel.Segment gutter = new MessagePanel.Segment(THINKING_GUTTER,
+            LanternaTheme.welcomeDim(), null, null, Set.of(SGR.ITALIC));
+        if (last == 0) {
+            // An all-whitespace body still renders the gutter: the glyph is an
+            // unconditional column, not a decoration on the first text row.
+            panel.appendMixed(List.of(gutter));
+            return;
+        }
         for (int i = 0; i < last; i++) {
             List<MessagePanel.Segment> line = mdLines.get(i);
             List<MessagePanel.Segment> indented = new ArrayList<>(line.size() + 1);
-            indented.add(new MessagePanel.Segment("  ", LanternaTheme.welcomeDim()));
-
-
-
-
-
+            indented.add(i == 0 ? gutter
+                : new MessagePanel.Segment(THINKING_INDENT, LanternaTheme.welcomeDim()));
             for (MessagePanel.Segment segment : line) {
                 indented.add(new MessagePanel.Segment(segment.text(),
                     LanternaTheme.welcomeDim(), segment.bgColor(),

@@ -14,6 +14,8 @@ import com.claudecode.core.message.Usage;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.render.RenderingContext;
 import com.googlecode.lanterna.SGR;
+
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
@@ -169,7 +171,7 @@ class StreamingMarkdownDispatcherTest {
     }
 
     @Test
-    void expandedThinkingMatchesOfficialDimItalicHeaderGapAndDimmedMarkdown() {
+    void expandedThinkingMatchesOfficialDimItalicGutterAndDimmedMarkdown() {
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         dispatcher.setVerbose(true);
         MessagePanel panel = new MessagePanel();
@@ -177,11 +179,14 @@ class StreamingMarkdownDispatcherTest {
         dispatcher.renderThinking(new ThinkingBlock("**reasoning** and `code`"), panel,
             RenderingContext.NORMAL);
 
+        // 197's Fzn puts a minWidth:2 dim+italic glyph beside the body — no label word
+        // and no gap row, so the very first row already carries the reasoning text.
         List<MessagePanel.StyledLine> rows = panel.displayRowsForTest(100);
-        assertEquals("∴ Thinking…", rows.getFirst().text());
-        assertTrue(rows.getFirst().segments().getFirst().modifiers().contains(SGR.ITALIC));
-        assertEquals("", rows.get(1).text());
-        assertTrue(rows.subList(2, rows.size()).stream()
+        MessagePanel.StyledLine first = rows.getFirst();
+        assertEquals("∴ ", first.segments().getFirst().text());
+        assertTrue(first.segments().getFirst().modifiers().contains(SGR.ITALIC));
+        assertEquals("∴ reasoning and code", first.text());
+        assertTrue(rows.stream()
             .flatMap(row -> row.segments().stream())
             .allMatch(segment -> segment.color().equals(
                 LanternaTheme.welcomeDim())));
@@ -191,7 +196,7 @@ class StreamingMarkdownDispatcherTest {
     void visibleStreamingTextWindow_notifiesListenerOpen() {
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         MessagePanel panel = new MessagePanel();
-        java.util.List<Boolean> windows = new java.util.ArrayList<>();
+        List<Boolean> windows = new ArrayList<>();
         dispatcher.onStreamTextVisibility(windows::add);
         assertEquals(0, windows.size(), "no window before any streaming");
 
@@ -217,7 +222,7 @@ class StreamingMarkdownDispatcherTest {
         // (streamedThisTurn) must nevertheless stay open until the RESULT commits.
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         MessagePanel panel = new MessagePanel();
-        java.util.List<Boolean> windows = new java.util.ArrayList<>();
+        List<Boolean> windows = new ArrayList<>();
         dispatcher.onStreamTextVisibility(windows::add);
 
         dispatcher.dispatch(new SDKMessage.StreamEvent(
@@ -248,7 +253,7 @@ class StreamingMarkdownDispatcherTest {
         // otherwise the spinner vanishes for the entire blocking command.
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         MessagePanel panel = new MessagePanel();
-        java.util.List<Boolean> windows = new java.util.ArrayList<>();
+        List<Boolean> windows = new ArrayList<>();
         dispatcher.onStreamTextVisibility(windows::add);
 
         dispatcher.dispatch(new SDKMessage.StreamEvent(
@@ -278,7 +283,7 @@ class StreamingMarkdownDispatcherTest {
         // the ⎿ result body remained).
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         MessagePanel panel = new MessagePanel();
-        java.util.List<Boolean> windows = new java.util.ArrayList<>();
+        List<Boolean> windows = new ArrayList<>();
         dispatcher.onStreamTextVisibility(windows::add);
 
         dispatcher.dispatch(new SDKMessage.StreamEvent(
