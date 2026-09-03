@@ -3750,10 +3750,22 @@ public class LanternaReplScreen implements SlashHost {
         if (gui == null) render.run(); else gui.getGUIThread().invokeLater(render);
     }
 
-    /** Routes the Agent-only background hint into its owning tool card. */
+    /**
+     * Routes the background affordance to its owning tool card, or to the status line for tool
+     * uses that have no card of their own (a plain Bash call, or an Agent folded into a group).
+     * Upstream shows the same component either way; dropping it for card-less calls would make
+     * the affordance disappear exactly where the user is most likely to want it.
+     */
     public void showAgentBackgroundHint(String toolUseId) {
-        if (toolUseId == null || messagePanel == null) return;
-        Runnable render = () -> dispatcher.showAgentBackgroundHint(toolUseId, messagePanel);
+        if (toolUseId == null) return;
+        Runnable render = () -> {
+            if (messagePanel == null
+                    || !dispatcher.showAgentBackgroundHint(toolUseId, messagePanel)) {
+                inputPanel.setTransientStatusLine(
+                    LanternaMessageDispatcher.BACKGROUND_HINT_TEXT,
+                    LanternaMessageDispatcher.BACKGROUND_HINT_PADDING);
+            }
+        };
         if (gui == null) render.run(); else gui.getGUIThread().invokeLater(render);
     }
 

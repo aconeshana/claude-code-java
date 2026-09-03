@@ -233,7 +233,7 @@ final class ToolExecution {
                     }
 
                     if (stamped.dataType() != null
-                            && !Strings.CS.equals("agent_background_hint", stamped.dataType())
+                            && !stamped.uiAffordanceOnly()
                             && emit != null) {
                         emit.accept(new SDKMessage.Progress(
                             MessageFactory.createProgressMessage(

@@ -169,6 +169,31 @@ class BashToolTest {
     }
 
     @Test
+    void aBackgroundAffordanceShownDuringARunIsRetiredWhenTheCommandFinishes() throws Exception {
+        TaskRegistry registry = new TaskRegistry(TaskStore.inMemory());
+        TaskRegistry.setGlobalForTest(registry);
+        List<ToolExecutionContext.ProgressUpdate> updates = new ArrayList<>();
+        ToolExecutionContext context = ToolExecutionContext
+            .builder(new AbortController(), "test-session")
+            .workingDirectory(System.getProperty("user.dir"))
+            .progressSink(updates::add)
+            .build();
+        try {
+            String result = (String) tool.call(mapper.createObjectNode()
+                .put("command", "printf ready; sleep 3"), context);
+
+            assertFalse(Strings.CS.startsWith(result, "Error:"), result);
+            assertEquals(1, updates.stream().filter(
+                    ToolExecutionContext.ProgressUpdate::uiAffordanceOnly).count(),
+                "the affordance is shown once past the two-second threshold: " + updates);
+            assertTrue(updates.getLast().complete(),
+                "a normal completion must retire the affordance, not leave it pinned: " + updates);
+        } finally {
+            TaskRegistry.resetGlobalForTest();
+        }
+    }
+
+    @Test
     void foregroundCommandCtrlBContinuesSameProcessAsBackground(@TempDir Path project)
             throws Exception {
         TaskRegistry registry = new TaskRegistry(TaskStore.inMemory());

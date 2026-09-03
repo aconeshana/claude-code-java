@@ -387,16 +387,21 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
             }
         }
 
+        BackgroundHint backgroundHint = new BackgroundHint(context);
         try {
             if (runInBackground) {
                 return executeBackgroundCommand(command, context, decision);
             }
-            return executeCommand(command, timeoutMs, context, decision);
+            return executeCommand(command, timeoutMs, context, decision, backgroundHint);
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return "Error: command was interrupted";
         } catch (IOException e) {
             return "Error: " + e.getMessage();
+        } finally {
+            // Upstream tears the affordance down in a finally around the whole run, so
+            // completion, timeout, interrupt, and failure are all covered by one statement.
+            backgroundHint.clear();
         }
     }
 
@@ -489,7 +494,8 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
 
     private Object executeCommand(String command, long timeoutMs,
                                    ToolExecutionContext context,
-                                   SandboxDecision decision) throws IOException, InterruptedException {
+                                   SandboxDecision decision,
+                                   BackgroundHint backgroundHint) throws IOException, InterruptedException {
         SudoCommandAdapter.Result sudoResult =
             SudoCommandAdapter.prepare(command, sudoPasswordInteraction);
         if (sudoResult instanceof SudoCommandAdapter.Result.Rejected(var message)) {
@@ -674,7 +680,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
                 registered.setProcess(process);
                 foregroundHandle.set(registered);
                 foregroundRegistry.registerShellForeground(registered);
-                context.reportProgress(0.0, "Press Ctrl+B to run in background");
+                backgroundHint.show();
             }
             ForegroundShellTask liveForegroundHandle = foregroundHandle.get();
             if (!completed && liveForegroundHandle != null
@@ -686,6 +692,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
                         progressDone, progressFuture, progressScheduler, detachedOutput,
                         decision, bareGitCwd, bareGitBefore, cwdTracker,
                         liveForegroundHandle, detachedRemaining));
+                backgroundHint.disarm();
                 context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                     .complete(true)
                     .build());
@@ -761,8 +768,8 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
             ClaudeCodeHintStore.getInstance().recordPluginHint(hint);
         }
 
-// BASH_MAX_OUTPUT_LENGTH truncation — applied to the stripped output so hint lines never
-// reach the model.
+        // BASH_MAX_OUTPUT_LENGTH truncation — applied to the stripped output so hint lines never
+        // reach the model.
         String strippedOutput = OutputLimits.stripEmptyLines(outExtraction.stripped());
         String strippedErrors = errExtraction.stripped();
         boolean inlineOutputTruncated = OutputLimits.wouldTruncate(strippedOutput, envLookup)

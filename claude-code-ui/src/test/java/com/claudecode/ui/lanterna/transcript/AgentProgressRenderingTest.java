@@ -492,12 +492,37 @@ class AgentProgressRenderingTest {
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         MessagePanel panel = new MessagePanel();
         startAgent(dispatcher, panel, "agent-call-1", "first");
-        dispatcher.showAgentBackgroundHint("agent-call-1", panel);
+        assertTrue(dispatcher.showAgentBackgroundHint("agent-call-1", panel));
         dispatcher.dispatch(progress("agent-call-1", "Read", "alpha.java"), panel);
 
         String text = text(panel);
         assertTrue(Strings.CS.contains(text, "Read(alpha.java)"));
         assertTrue(Strings.CS.contains(text, "Press Ctrl+B to run in background"));
+    }
+
+    @Test
+    void clearingProgressAlsoRetiresTheBackgroundHint() {
+        LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
+        MessagePanel panel = new MessagePanel();
+        startAgent(dispatcher, panel, "agent-call-1", "first");
+        dispatcher.showAgentBackgroundHint("agent-call-1", panel);
+        dispatcher.dispatch(progress("agent-call-1", "Read", "alpha.java"), panel);
+
+        dispatcher.clearAgentProgress("agent-call-1", panel);
+
+        String text = text(panel);
+        assertFalse(Strings.CS.contains(text, "Press Ctrl+B to run in background"), text);
+    }
+
+    @Test
+    void aToolUseWithoutACardReportsThatItCannotHostTheHint() {
+        LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
+        MessagePanel panel = new MessagePanel();
+
+        // A plain Bash call never gets an agent progress block, so the caller has to fall
+        // back to the status line rather than silently dropping the affordance.
+        assertFalse(dispatcher.showAgentBackgroundHint("bash-call-1", panel));
+        assertFalse(Strings.CS.contains(text(panel), "Press Ctrl+B to run in background"));
     }
 
     @Test

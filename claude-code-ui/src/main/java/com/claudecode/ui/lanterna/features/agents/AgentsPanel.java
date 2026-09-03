@@ -983,7 +983,9 @@ final class AgentsPanel extends Panel implements InlineOverlay {
             } else {
                 line.append("▶ ").append(name);
                 if (!Strings.CS.equals(name, agentType) && !agentType.isEmpty()) line.append(" · ").append(agentType);
-                String summary = task.progressSummary().orElse(task.description());
+                String summary = task.progressSummary()
+                    .filter(StringUtils::isNotBlank)
+                    .orElse(task.description());
                 line.append(" · ").append(FormatUtils.truncate(summary.replace('\n', ' '), 50));
                 long elapsed = Math.max(0, Duration.between(task.startTime(), Instant.now()).toMillis());
                 line.append(" · ").append(FormatUtils.formatDuration(elapsed));

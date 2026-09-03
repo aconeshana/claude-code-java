@@ -273,6 +273,36 @@ class DefaultSubAgentFactoryTest {
     }
 
     @Test
+    void theProgressBridgeDropsUiAffordancesAndForwardsRealProgress() {
+        List<String> reported = new ArrayList<>();
+        ToolExecutionContext.ProgressSink sink = DefaultSubAgentFactory.flatteningProgressSink(
+            new SubAgentRequest.ProgressCallback() {
+                @Override
+                public void onProgress(String status, double progressPercent) {
+                    reported.add(status);
+                }
+
+                @Override
+                public void onAgentUsage(String id, Usage usage) {
+                }
+            });
+
+        // The parent's callback writes whatever it receives into the task's progress summary,
+        // which the coordinator/agents panels render as the task description. Letting the
+        // background affordance through would pin it there permanently.
+        sink.accept(ToolExecutionContext.ProgressUpdate.agentBackgroundHint());
+        sink.accept(ToolExecutionContext.ProgressUpdate.of(0.0, "Bash(ls)"));
+
+        assertEquals(List.of("Bash(ls)"), reported);
+    }
+
+    @Test
+    void theProgressBridgeIsNoopWithoutAParentCallback() {
+        assertSame(ToolExecutionContext.ProgressSink.NOOP,
+            DefaultSubAgentFactory.flatteningProgressSink(null));
+    }
+
+    @Test
     void parentQueue_isPassedToSubEngineConfig_whenPresent() {
 
         SessionIdentity shared = SessionIdentity.of("parent-session-id");

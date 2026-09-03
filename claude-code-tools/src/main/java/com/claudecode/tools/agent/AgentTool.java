@@ -48,6 +48,7 @@ import com.claudecode.tools.ToolTexts;
 import com.claudecode.tools.ToolUseRenderContext;
 import com.claudecode.tools.ToolUseTag;
 import com.claudecode.tools.tasks.InProcessTeammateTask;
+import com.claudecode.tools.tasks.BackgroundHint;
 import com.claudecode.tools.tasks.BackgroundTaskGate;
 import com.claudecode.tools.tasks.LocalAgentTask;
 import com.claudecode.tools.tasks.TaskOutputPaths;
@@ -669,11 +670,11 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             taskId, handle, startedAt);
         registry.registerAgentForeground(handle);
         registry.registerAgentName(agentName, taskId);
+        BackgroundHint hint = new BackgroundHint(context);
         ScheduledFuture<?> hintFuture = BACKGROUND_SCHEDULER.schedule(() -> {
                 if (registry.listForegroundBackgroundable().stream()
                         .anyMatch(candidate -> candidate.id().equals(taskId))) {
-                    context.reportProgress(
-                        ToolExecutionContext.ProgressUpdate.agentBackgroundHint());
+                    hint.show();
                 }
             }, BACKGROUND_HINT_DELAY_MS, TimeUnit.MILLISECONDS);
         long autoBackgroundMs = autoBackgroundDelayMs();
@@ -738,7 +739,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
                 completion, handle.backgroundSignal()).get();
             if (winner == null) {
                 closeAbortLink(parentAbortLink);
-                cancelBackgroundTimers(hintFuture, autoBackgroundFuture);
+                cancelBackgroundTimers(hint, hintFuture, autoBackgroundFuture);
                 context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                     .complete(true)
                     .build());
@@ -748,7 +749,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
                 return asyncLaunchResult(foregroundRequest, description, context, taskId, outputPath);
             }
             SubAgentResult result = completion.get();
-            cancelBackgroundTimers(hintFuture, autoBackgroundFuture);
+            cancelBackgroundTimers(hint, hintFuture, autoBackgroundFuture);
             registry.unregisterForegroundAgent(taskId);
             context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                 .complete(true)
@@ -761,7 +762,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
                 ? parentAbortController.getReason() : null;
             abortController.abort(reason != null ? reason : "user-cancel");
             Thread.currentThread().interrupt();
-            cancelBackgroundTimers(hintFuture, autoBackgroundFuture);
+            cancelBackgroundTimers(hint, hintFuture, autoBackgroundFuture);
             registry.unregisterForegroundAgent(taskId);
             context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                 .complete(true)
@@ -770,7 +771,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
                 "failed", null, startedAt);
             return failedResult(e, request, taskId);
         } catch (Exception e) {
-            cancelBackgroundTimers(hintFuture, autoBackgroundFuture);
+            cancelBackgroundTimers(hint, hintFuture, autoBackgroundFuture);
             registry.unregisterForegroundAgent(taskId);
             context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                 .complete(true)
@@ -791,9 +792,15 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         }
     }
 
-    private static void cancelBackgroundTimers(ScheduledFuture<?> hintFuture,
+    /**
+     * Stops the timers and closes the background-hint window before the caller emits its own
+     * {@code complete(true)}. {@code cancel(false)} alone cannot stop a hint callback that has
+     * already started running, so the affordance would otherwise reappear after teardown.
+     */
+    private static void cancelBackgroundTimers(BackgroundHint hint, ScheduledFuture<?> hintFuture,
             ScheduledFuture<?> autoBackgroundFuture) {
         hintFuture.cancel(false);
+        hint.disarm();
         if (autoBackgroundFuture != null) autoBackgroundFuture.cancel(false);
     }
 

@@ -287,6 +287,18 @@ public class LanternaMessageDispatcher {
     private static final int ESTIMATED_AGENT_LINES_PER_TOOL = 9;
     private static final int AGENT_TERMINAL_BUFFER_LINES = 7;
 
+    /**
+     * Wording for the background affordance. It lives here, not on the progress event, because
+     * upstream's renderer builds the component from a bare {@code {kind:"background_hint"}}.
+     */
+    public static final String BACKGROUND_HINT_TEXT = "Press Ctrl+B to run in background";
+
+    /** Upstream renders the affordance under {@code <Box paddingLeft={5}>}. */
+    public static final int BACKGROUND_HINT_PADDING = 5;
+
+    private static final String BACKGROUND_HINT_ROW =
+        " ".repeat(BACKGROUND_HINT_PADDING) + BACKGROUND_HINT_TEXT;
+
     private static final class AgentProgressBlock {
         private int start;
         private int rowCount;
@@ -2327,13 +2339,22 @@ public class LanternaMessageDispatcher {
     }
 
 
-    public void showAgentBackgroundHint(String toolUseId, MessagePanel panel) {
-        if (toolUseId == null) return;
-        if (agentGroupsByToolUseId.containsKey(toolUseId)) return;
+    /**
+     * Renders the background affordance inside its owning tool card.
+     *
+     * @return {@code false} when this tool use has no card of its own (a plain Bash call, or an
+     *     Agent folded into a group), so the caller can fall back to the status line instead of
+     *     silently dropping the affordance.
+     */
+    public boolean showAgentBackgroundHint(String toolUseId, MessagePanel panel) {
+        if (toolUseId == null) return false;
+        if (agentGroupsByToolUseId.containsKey(toolUseId)) return false;
         AgentProgressBlock block = agentProgressBlocks.get(toolUseId);
-        if (block == null || block.backgroundHint) return;
+        if (block == null) return false;
+        if (block.backgroundHint) return true;
         block.backgroundHint = true;
         replaceAgentProgressRows(block, agentProgressRows(block, panel), panel);
+        return true;
     }
 
     /** Removes one completed/backgrounded Agent's transient progress projection. */
@@ -2615,8 +2636,7 @@ public class LanternaMessageDispatcher {
                 "  ⎿  Initializing…", LanternaTheme.welcomeDim())));
             if (block.backgroundHint) {
                 rows.add(List.of(new MessagePanel.Segment(
-                    "     Press Ctrl+B to run in background",
-                    LanternaTheme.welcomeDim())));
+                    BACKGROUND_HINT_ROW, LanternaTheme.welcomeDim())));
             }
             return rows;
         }
@@ -2652,8 +2672,7 @@ public class LanternaMessageDispatcher {
         }
         if (block.backgroundHint) {
             rows.add(List.of(new MessagePanel.Segment(
-                "     Press Ctrl+B to run in background",
-                LanternaTheme.welcomeDim())));
+                BACKGROUND_HINT_ROW, LanternaTheme.welcomeDim())));
         }
         return rows;
     }

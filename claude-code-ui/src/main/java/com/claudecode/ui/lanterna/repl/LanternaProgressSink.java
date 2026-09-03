@@ -20,8 +20,7 @@ public class LanternaProgressSink implements ToolExecutionContext.ProgressSink {
         if (screen != null && update != null) {
             if (update.complete()) {
                 screen.clearAgentProgress(update.toolUseId());
-            } else if (Strings.CS.equals("agent_background_hint", update.dataType())
-                    && update.toolUseId() != null) {
+            } else if (update.uiAffordanceOnly() && update.toolUseId() != null) {
                 screen.showAgentBackgroundHint(update.toolUseId());
             } else if (!Strings.CS.equals("agent_progress", update.dataType())) {
                 screen.showAgentProgress(compose(update));

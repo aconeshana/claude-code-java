@@ -293,6 +293,26 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     }
 
     /**
+     * Flattens the sub-agent's structured progress into the single status string the parent's
+     * callback accepts.
+     *
+     * <p>UI-affordance events are dropped rather than flattened. They carry no displayable text
+     * by design, and the parent's callback writes whatever it receives into the task's progress
+     * summary — which the coordinator panel, the agents panel, and the teammate tree all render
+     * as the task's description, and which nothing ever resets. Letting the "press Ctrl+B"
+     * affordance through would replace a backgrounded task's description with it permanently.
+     */
+    static ToolExecutionContext.ProgressSink flatteningProgressSink(
+            SubAgentRequest.ProgressCallback callback) {
+        if (callback == null) return ToolExecutionContext.ProgressSink.NOOP;
+        return update -> {
+            if (update.uiAffordanceOnly()) return;
+            callback.onProgress(
+                update.message() == null ? "" : update.message(), update.progress());
+        };
+    }
+
+    /**
      * Builds the sub-engine's config — split out from {@link #executeSubAgent}
      * so tests can assert the {@code sessionIdentity} sharing contract (see
      * this class's Javadoc) without running a full sub-agent turn.
@@ -595,10 +615,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         // sets the parent's toolUseID on re-emitted bash_progress ticks).
         final SubAgentRequest.ProgressCallback progressCb = progressCallback;
         final String parentTuid = agentId;
-        ToolExecutionContext.ProgressSink baseSink = (progressCb == null)
-            ? ToolExecutionContext.ProgressSink.NOOP
-            : update -> progressCb.onProgress(
-                update.message() == null ? "" : update.message(), update.progress());
+        ToolExecutionContext.ProgressSink baseSink = flatteningProgressSink(progressCb);
         ToolExecutionContext.ProgressSink nestedSink = (baseSink == ToolExecutionContext.ProgressSink.NOOP)
             ? baseSink
             : update -> baseSink.accept(update.withIdentity(update.toolUseId(), parentTuid));

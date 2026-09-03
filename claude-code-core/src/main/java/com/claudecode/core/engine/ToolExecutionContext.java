@@ -9,6 +9,8 @@ import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
+import org.apache.commons.lang3.Strings;
+
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.model.PermissionModeKind;
@@ -456,9 +458,24 @@ public record ToolExecutionContext(
         }
 
 
+        /**
+         * Discriminator for the payload-free "this call can be backgrounded" affordance.
+         * The wording lives in the renderer, never on the event.
+         */
+        public static final String BACKGROUND_HINT = "agent_background_hint";
+
         public static ProgressUpdate agentBackgroundHint() {
-            return builder().message("Press Ctrl+B to run in background")
-                .dataType("agent_background_hint").build();
+            return builder().dataType(BACKGROUND_HINT).build();
+        }
+
+        /**
+         * True for progress events that exist only to drive a UI affordance and carry no
+         * text a caller may display. Bridges that flatten nested progress into a parent's
+         * status string must skip these, or the affordance leaks into the parent task's
+         * description and never clears.
+         */
+        public boolean uiAffordanceOnly() {
+            return Strings.CS.equals(BACKGROUND_HINT, dataType);
         }
 
 /** Raw MCP progress payload consumed by x. */
