@@ -65,6 +65,34 @@ Upgrade your buddy into a Pokemon system — **38 kinds of Pokémon to gacha**.
 
 <video src="docs/acceptance-assets/pokemon-hatch-evolve.mp4" controls style="max-width: 100%;"></video>
 
+### 5. Project menu and cross-project resume
+
+The official resume picker is a **flat list of sessions within one project**, and it
+**refuses cross-directory resumes** outright — picking another project only prints a
+`cd … && claude --resume …` hint and leaves you to start a new process yourself.
+
+We turned it into a left-docked **project drawer** (a Codex-desktop-style two-level
+project → session tree): opened by the leftmost footer button, by click, or by `/project`;
+`↑/↓` walks rows, `→/←` expands and collapses, `Enter` resumes, `x` arms a two-stage
+delete, and `Space` opens a wide scrollable transcript preview driven by the same
+rendering pipeline the resume picker uses — so a skimmed session looks exactly like the
+session it will become. The project index is backed by a **fingerprint-validated
+persistent cache** (file count + newest mtime): unchanged directories are served from
+cache, and a changed directory rescans only itself, so hundreds of sessions stay snappy.
+
+More importantly, **cross-project resume is a real in-process switch**: `user.dir`, the
+QuerySession working directory, and the project identity (which selects the transcript
+directory, the settings tiers, the project-scoped `CLAUDE.md`, and the permission root)
+are all repointed together, and the transcript recorder, permission root, git-status
+snapshot, and settings watcher are rebuilt. The switch is two-phase — the prepare phase
+runs on a virtual thread, validates the target directory, and only stages; the apply
+phase commits on the UI thread — so **an aborted resume leaves the outgoing project
+untouched**.
+
+> Known limits (deliberately deferred, not papered over): project-scoped MCP servers keep
+> the outgoing project's connections, LSP roots are not restarted, and plugin/skill
+> discovery is not rescanned.
+
 ## Architecture
 
 ```

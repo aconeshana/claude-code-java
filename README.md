@@ -61,6 +61,26 @@ agent sdk、以非交互式方式启动。
 <!-- 媒体位 4：宝可梦孵化 / 进化演示 -->
 <video src="docs/acceptance-assets/pokemon-hatch-evolve.mp4" controls style="max-width: 100%;"></video>
 
+### 5. 项目菜单与跨项目 resume
+
+官方的 resume 选择器是**单项目内的平铺会话列表**，且**拒绝跨目录 resume**——选到别的项目
+只会打印一条 `cd … && claude --resume …` 提示让你自己重开一个进程。
+
+我们把它做成了左侧常驻的**项目抽屉**（Codex desktop 风格的两级 项目 → 会话 树）：
+footer 最左侧按钮、点击或 `/project` 打开，`↑/↓` 走行、`→/←` 展开收起、`Enter` resume、
+`x` 两段式删除、`Space` 直接开一个宽幅可滚动的会话预览（和 resume 选择器同一条渲染管线，
+预览出来长什么样，resume 之后就长什么样）。项目索引带**指纹校验的持久化缓存**（文件数 +
+最新 mtime），没变过的目录直接命中缓存，改动过的目录只重扫那一个目录，几百个会话也不卡。
+
+更关键的是**跨项目 resume 是进程内真实切换**：`user.dir`、QuerySession 的工作目录、
+项目身份（决定 transcript 目录 / settings 层级 / 项目级 `CLAUDE.md` 作用域 / 权限根）一起
+重新指向新项目，transcript recorder、权限根、git status 快照、settings 监听器全部重建。
+切换分两阶段——准备阶段在虚拟线程上校验目标目录、只做暂存，提交阶段在 UI 线程上原子生效，
+所以**失败的 resume 不会破坏当前项目**。
+
+> 已知边界（有意后置，不做假装）：项目级 MCP 连接仍保持切换前项目的连接、LSP root 不重启、
+> plugin/skill 不重新扫描。
+
 ## Architecture
 
 ```
