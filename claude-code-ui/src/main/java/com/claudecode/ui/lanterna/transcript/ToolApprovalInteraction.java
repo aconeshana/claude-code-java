@@ -25,6 +25,7 @@ import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.dialog.PermissionPreviewPreparer;
 import com.claudecode.ui.lanterna.dialog.PreparedPermissionPrompt;
 import com.claudecode.ui.lanterna.dialog.RefusalFallbackDialog;
+import com.claudecode.ui.lanterna.dialog.question.QuestionOutcome;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.core.serialization.JsonUtils;
@@ -129,6 +130,8 @@ public final class ToolApprovalInteraction {
         this.taskRegistry = taskRegistry;
         questionDialog.setTerminalColumnsSupplier(
             () -> gui.getScreen() != null ? gui.getScreen().getTerminalSize().getColumns() : 80);
+        questionDialog.setTerminalRowsSupplier(
+            () -> gui.getScreen() != null ? gui.getScreen().getTerminalSize().getRows() : 40);
     }
 
     public PermissionDialog leaderView() { return leaderDialog; }
@@ -438,20 +441,27 @@ public final class ToolApprovalInteraction {
         return Math.clamp((int) Math.round(used * 100.0 / contextWindow), 0, 100);
     }
 
-    private PermissionAskCallback.Result resolveQuestion(PermissionAskContext context,
-                                                          PermissionDialog fallbackDialog,
-                                                          Runnable onClose,
-                                                          BooleanSupplier cancelled) {
+    /** Package-private so the outcome-to-{@code Result} mapping can be driven directly in tests. */
+    PermissionAskCallback.Result resolveQuestion(PermissionAskContext context,
+                                                 PermissionDialog fallbackDialog,
+                                                 Runnable onClose,
+                                                 BooleanSupplier cancelled) {
         var questions = AskUserQuestionTool.parseQuestions(context.input());
         if (questions == null) {
             PreparedPermissionPrompt prepared = previewPreparer.prepare(context);
             return fallbackDialog.showAndWait(gui, prepared, explainer, _ -> {}, onClose,
                 _ -> {}, cancelled);
         }
-        var answers = questionDialog.showAndWait(gui, questions, onClose, cancelled);
-        if (answers == null) return PermissionAskCallback.Result.deny();
-        JsonNode updated = AskUserQuestionTool.buildAnswerInput(context.input(), answers);
-        return PermissionAskCallback.Result.allowWithInput(updated);
+        var outcome = questionDialog.showAndWait(gui, questions, onClose, cancelled);
+        return switch (outcome) {
+            case QuestionOutcome.Submitted submitted -> PermissionAskCallback.Result.allowWithInput(
+                AskUserQuestionTool.buildAnswerInput(context.input(), submitted.answers()));
+            // k2g — "Chat about this" denies the call and hands the model a clarification prompt
+            // instead of aborting the turn.
+            case QuestionOutcome.Clarify clarify ->
+                PermissionAskCallback.Result.denyWithFeedback(clarify.feedback());
+            case QuestionOutcome.Cancelled _ -> PermissionAskCallback.Result.deny();
+        };
     }
 
     void applySuggestedUpdates(List<PermissionUpdate> updates) {

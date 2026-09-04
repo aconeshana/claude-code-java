@@ -42,6 +42,27 @@ public final class Figures {
     // MCP subscription
     public static final String CHANNEL_ARROW       = "←"; // ← - inbound channel
 
+    // ── figures package glyphs used by the AskUserQuestion design card ──────
+
+    /** ✔ — {@code figures.tick}, the chosen-option and Submit-tab mark. */
+    public static final String TICK                = "✔";
+    /** ☒ — {@code figures.checkboxOn}, an answered question's tab. */
+    public static final String CHECKBOX_ON         = "☒";
+    /** ☐ — {@code figures.checkboxOff}, an unanswered question's tab. */
+    public static final String CHECKBOX_OFF        = "☐";
+    /** ← — {@code figures.arrowLeft}, the tab strip's previous-question affordance. */
+    public static final String ARROW_LEFT          = "←";
+    /** → — {@code figures.arrowRight}, the tab strip's next-question affordance and the
+     *  answer marker on the review screen. */
+    public static final String ARROW_RIGHT         = "→";
+    /** ✂ — U+2702, the preview box's "N lines hidden" cut bar. */
+    public static final String SCISSORS            = "✂";
+    /** ⚠ — {@code figures.warning}, the review screen's unanswered-questions status icon. */
+    public static final String WARNING             = "⚠";
+    /** ● — U+25CF, {@code figures.bullet}. Unlike {@link #BLACK_CIRCLE} this glyph does not switch
+     *  on the platform; the bundle's {@code figures} table uses it verbatim everywhere. */
+    public static final String BULLET              = "●";
+
     // Review status (ultrareview diamond states)
     public static final String DIAMOND_OPEN        = "◇"; // ◇ - running
     public static final String DIAMOND_FILLED      = "◆"; // ◆ - completed/failed

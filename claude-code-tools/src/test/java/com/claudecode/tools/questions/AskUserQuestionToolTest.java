@@ -151,28 +151,29 @@ class AskUserQuestionToolTest {
     }
 
     @Test
-    void buildAnswerInput_onlyWritesAnnotationsWhenNonEmpty() {
+    void buildAnswerInput_writesAnEmptyAnnotationsNodeWhenNoQuestionCarriesPreviewOrNotes() {
         ObjectNode original = questionsInput();
         Map<String, QuestionPresenter.Answer> answers = new LinkedHashMap<>();
-        // Plain answer, no preview/notes → no annotations node.
         answers.put("Which base?", new QuestionPresenter.Answer("197", null, null));
 
         JsonNode rewritten = AskUserQuestionTool.buildAnswerInput(original, answers);
 
         assertEquals("197", rewritten.at("/answers/Which base?").asText());
-        assertFalse(rewritten.has("annotations"),
-            "annotations node must be omitted when no question has preview/notes");
+        // zys (and 2.1.197's yCf) spread `annotations` unconditionally — only its entries are
+        // conditional, so an answer with neither preview nor notes still leaves an empty object.
+        assertTrue(rewritten.get("annotations").isObject());
+        assertEquals(0, rewritten.get("annotations").size());
     }
 
     @Test
-    void buildAnswerInput_nullAnswersYieldsEmptyAnswersAndNoAnnotations() {
+    void buildAnswerInput_nullAnswersYieldsEmptyAnswersAndEmptyAnnotations() {
         ObjectNode original = questionsInput();
 
         JsonNode rewritten = AskUserQuestionTool.buildAnswerInput(original, null);
 
         assertTrue(rewritten.has("answers"));
         assertEquals(0, rewritten.get("answers").size());
-        assertFalse(rewritten.has("annotations"));
+        assertEquals(0, rewritten.get("annotations").size());
     }
 
     @Test

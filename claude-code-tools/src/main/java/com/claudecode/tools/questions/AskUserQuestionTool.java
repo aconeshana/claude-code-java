@@ -306,6 +306,10 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
     /**
      * Folds collected answers into a rewritten tool input, to be handed back through the permission
      * callback's {@code updatedInput}.
+     *
+     * <p>{@code annotations} is always written, even when it stays empty — {@code zys} builds
+     * {@code {...input, answers, annotations}} unconditionally, and so did its 2.1.197 counterpart
+     * {@code yCf}. Only the per-question entries are conditional.
      */
     public static JsonNode buildAnswerInput(JsonNode originalInput,
                                              Map<String, QuestionPresenter.Answer> answers) {
@@ -326,10 +330,6 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
                     if (hasNotes) ann.put("notes", a.notes());
                 }
             }
-        }
-
-        if (annNode.isEmpty()) {
-            copy.remove("annotations");
         }
         return copy;
     }

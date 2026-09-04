@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.dialog;
 
 import com.claudecode.tools.questions.QuestionPresenter;
+import com.claudecode.ui.lanterna.dialog.question.QuestionOutcome;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TerminalTextUtils;
@@ -31,23 +32,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * Enter (empty/whitespace Other cancels), digits 1-9 addressing options by index
  * (preset submits, Other's digit focuses/submits), typing on a preset ignored;
  * multi-select 197 parity — Enter/Space/digits toggle the focused option, a
- * Submit/Next row submits (its key focus still feeds the Other text), the Other
- * checkbox mirrors its text live; "Other" free text on a single placeholder row
- * ("Type something." / "Type something") with cursor-based editing (mid-text
+ * Submit/Next row records the question (its key focus still feeds the Other text),
+ * the Other checkbox mirrors its text live; "Other" free text on a single placeholder
+ * row ("Type something." / "Type something") with cursor-based editing (mid-text
  * insert/backspace/paste, Ctrl+A/E, Home/End/Delete, inverse-video cursor,
- * cursor-anchored scroll window), notes from leftover Other text on a preset
- * selection, preview propagation, multi-question flow, and Esc cancel.
+ * cursor-anchored scroll window), preview propagation, multi-question flow, and
+ * Esc cancel.
+ *
+ * <p>Only a lone single-select question auto-submits ({@code I$c}); everything else
+ * lands on {@code ReviewScreen} first, so those flows carry one closing Enter.
+ * Questions routed to the design card have their own coverage in
+ * {@code DesignQuestionViewTest}.
  */
 class AskUserQuestionDialogTest {
-
-    @Test
-    void selectionGlyphsMatchClaudeCode197() {
-        assertEquals("[ ]", AskUserQuestionDialog.multiSelectMarker(false));
-        assertEquals("[✓]", AskUserQuestionDialog.multiSelectMarker(true));
-        assertEquals("1. ", AskUserQuestionDialog.optionIndex(0, 4));
-        assertEquals("10. ", AskUserQuestionDialog.optionIndex(9, 12));
-        assertEquals(" 1. ", AskUserQuestionDialog.optionIndex(0, 12));
-    }
 
     private static QuestionPresenter.Question q(String text, boolean multi,
                                                 QuestionPresenter.Option... opts) {
@@ -62,8 +59,7 @@ class AskUserQuestionDialogTest {
     private static final class Harness {
         final AskUserQuestionDialog dialog = new AskUserQuestionDialog();
         final MultiWindowTextGUI gui;
-        final CompletableFuture<Map<String, QuestionPresenter.Answer>> result =
-            new CompletableFuture<>();
+        final CompletableFuture<QuestionOutcome> result = new CompletableFuture<>();
 
         Harness(List<QuestionPresenter.Question> questions) throws Exception {
             var term = new DefaultVirtualTerminal(new TerminalSize(100, 40));
@@ -90,7 +86,13 @@ class AskUserQuestionDialogTest {
             for (char c : s.toCharArray()) key(new KeyStroke(c, false, false));
         }
 
+        /** The submitted answers, or null when the dialog was cancelled. */
         Map<String, QuestionPresenter.Answer> await() throws Exception {
+            return result.get(2, TimeUnit.SECONDS) instanceof QuestionOutcome.Submitted submitted
+                ? submitted.answers() : null;
+        }
+
+        QuestionOutcome outcome() throws Exception {
             return result.get(2, TimeUnit.SECONDS);
         }
     }
@@ -118,7 +120,8 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(' ', false, false));    // toggle C
         h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other
         h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Submit row
-        h.key(new KeyStroke(KeyType.ENTER));        // submits (197: only the Submit row does)
+        h.key(new KeyStroke(KeyType.ENTER));        // records (197: only the Submit row does)
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         var answers = h.await();
         assertEquals("A, C", answers.get("Pick many?").answer());
     }
@@ -135,7 +138,8 @@ class AskUserQuestionDialogTest {
         assertTrue(h.dialog.isActive(), "second Enter toggles off again");
         h.key(new KeyStroke(KeyType.ENTER));        // toggle A on
         h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
-        h.key(new KeyStroke(KeyType.ENTER));        // submits
+        h.key(new KeyStroke(KeyType.ENTER));        // records the question
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("A", h.await().get("Q?").answer());
     }
 
@@ -152,6 +156,7 @@ class AskUserQuestionDialogTest {
         assertTrue(h.dialog.isActive(), "Enter on Other must not submit the question");
         h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Submit row
         h.key(new KeyStroke(KeyType.ENTER));
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("自定义答案", h.await().get("Q?").answer());
     }
 
@@ -254,9 +259,9 @@ class AskUserQuestionDialogTest {
     }
 
     @Test
-    void bracketedPasteOnPresetSelectionBecomesNotes() throws Exception {
-        // 197 flow: text can only be entered on the Other row; a leftover buffer
-        // becomes notes when a preset option is submitted.
+    void aPlainListCardNeverProducesNotesFromItsLeftoverOtherText() throws Exception {
+        // zys / yCf gate annotations on the design predicate (!multiSelect && some preview), so a
+        // plain list card's leftover Other buffer is dropped rather than promoted to notes.
         Harness h = new Harness(List.of(
             q("Choose?", false, opt("Preset", null), opt("Alt", null))));
         h.key(new KeyStroke(KeyType.ARROW_UP));     // focus Other (index 2)
@@ -266,7 +271,7 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(KeyType.ENTER));
         var answers = h.await();
         assertEquals("Preset", answers.get("Choose?").answer());
-        assertEquals("pasted notes", answers.get("Choose?").notes());
+        assertNull(answers.get("Choose?").notes());
     }
 
     // ── cursor-based editing of the Other free text (197 TextInput parity) ──
@@ -349,7 +354,8 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(KeyType.ARROW_LEFT));   // must move cursor, not switch question
         h.type("X");
         h.key(new KeyStroke(KeyType.ENTER));        // records Other for First?, advances
-        h.key(new KeyStroke(KeyType.ENTER));        // S1 → submits
+        h.key(new KeyStroke(KeyType.ENTER));        // S1 → advances to the review screen
+        h.key(new KeyStroke(KeyType.ENTER));        // Submit answers
         var answers = h.await();
         assertEquals("aXb", answers.get("First?").answer());
         assertEquals("S1", answers.get("Second?").answer());
@@ -362,45 +368,29 @@ class AskUserQuestionDialogTest {
             q("Second?", false, opt("S1", null), opt("S2", null))));
         h.key(new KeyStroke(KeyType.ARROW_RIGHT));  // question 2
         h.key(new KeyStroke(KeyType.ARROW_DOWN));
-        h.key(new KeyStroke(KeyType.ENTER));        // S2 → submits; First? stays unanswered
+        h.key(new KeyStroke(KeyType.ENTER));        // S2 → review screen
+        h.key(new KeyStroke(KeyType.ENTER));        // Submit answers
         var answers = h.await();
-        assertEquals("", answers.get("First?").answer());
+        // zys only carries answered questions; First? was never touched.
+        assertFalse(answers.containsKey("First?"));
         assertEquals("S2", answers.get("Second?").answer());
     }
 
     @Test
-    void textWindowKeepsCursorVisibleInLongText() {
-        // short text: everything visible
-        var shortWindow = AskUserQuestionDialog.textWindow("abc", 3, 10);
-        assertEquals(0, shortWindow.start());
-        assertEquals("abc", shortWindow.visible());
-        assertEquals(3, shortWindow.cursorColumn());
-
-        // long pasted text, cursor at end (post-paste state): tail visible, not the prefix
-        var end = AskUserQuestionDialog.textWindow("0123456789", 10, 5);
-        assertEquals("56789", end.visible());
-        assertEquals(5, end.cursorColumn());
-
-        // Ctrl+A: window snaps back to the start
-        var home = AskUserQuestionDialog.textWindow("0123456789", 0, 5);
-        assertEquals("01234", home.visible());
-        assertEquals(0, home.cursorColumn());
-
-        // mid-text backspace target stays on screen
-        var mid = AskUserQuestionDialog.textWindow("0123456789", 8, 5);
-        assertEquals("45678", mid.visible());
-        assertEquals(4, mid.cursorColumn());
-
-        // double-width (CJK) text: the window measures display columns, not chars —
-        // 10 chars = 20 columns, so a 6-column window shows only the last 3 chars
-        var cjk = AskUserQuestionDialog.textWindow("一二三四五六七八九十", 10, 6);
-        assertEquals("八九十", cjk.visible());
-        assertEquals(3, cjk.cursorColumn());
-
-        // mixed narrow/wide text scrolls on column boundaries
-        var mixed = AskUserQuestionDialog.textWindow("ab天地cd", 4, 6);
-        assertEquals("b天地c", mixed.visible());
-        assertEquals(3, mixed.cursorColumn());
+    void theTabIndexClampsAtBothEndsInsteadOfWrapping() throws Exception {
+        // p2g: prev stops at 0 and next stops at the Submit tab — the 197 list card's
+        // wrapping ←/→ was never the bundle's behaviour.
+        Harness h = new Harness(List.of(
+            q("First?", false, opt("F1", null), opt("F2", null)),
+            q("Second?", false, opt("S1", null), opt("S2", null))));
+        h.key(new KeyStroke(KeyType.ARROW_LEFT));   // already on question 1 → stays
+        h.key(new KeyStroke(KeyType.ENTER));        // F1, advances to question 2
+        h.key(new KeyStroke(KeyType.ARROW_RIGHT));  // review screen
+        h.key(new KeyStroke(KeyType.ARROW_RIGHT));  // clamped — still the review screen
+        h.key(new KeyStroke(KeyType.ENTER));        // Submit answers
+        var answers = h.await();
+        assertEquals("F1", answers.get("First?").answer());
+        assertFalse(answers.containsKey("Second?"));
     }
 
     /** Mounts the dialog in a real FULL_SCREEN window on a virtual terminal. */
@@ -408,8 +398,7 @@ class AskUserQuestionDialogTest {
         final DefaultVirtualTerminal term;
         final MultiWindowTextGUI gui;
         final AskUserQuestionDialog dialog = new AskUserQuestionDialog();
-        final CompletableFuture<Map<String, QuestionPresenter.Answer>> result =
-            new CompletableFuture<>();
+        final CompletableFuture<QuestionOutcome> result = new CompletableFuture<>();
 
         Rendered(int columns, int rows, List<QuestionPresenter.Question> questions)
                 throws Exception {
@@ -450,7 +439,7 @@ class AskUserQuestionDialogTest {
 
         void close() throws Exception {
             key(new KeyStroke(KeyType.ESCAPE));
-            assertNull(result.get(2, TimeUnit.SECONDS));
+            assertInstanceOf(QuestionOutcome.Cancelled.class, result.get(2, TimeUnit.SECONDS));
         }
     }
 
@@ -581,21 +570,6 @@ class AskUserQuestionDialogTest {
     }
 
     @Test
-    void descriptionWrapsAtWordBoundariesLikeReleased197() {
-        // Ink's default wrap="wrap" keeps long descriptions visible by wrapping
-        // instead of clipping (released 2.1.197 behavior in narrow terminals).
-        List<String> lines = AskUserQuestionDialog.descriptionLines(
-            "alpha beta gamma delta epsilon zeta", 12);
-        assertEquals(List.of("alpha beta", "gamma delta", "epsilon zeta"), lines);
-    }
-
-    @Test
-    void descriptionHardWrapsOverlongWords() {
-        List<String> lines = AskUserQuestionDialog.descriptionLines("abcdefghijklmnop", 6);
-        assertEquals(List.of("abcdef", "ghijkl", "mnop"), lines);
-    }
-
-    @Test
     void preferredSizeGrowsWithWrappedDescriptionsInNarrowTerminal() throws Exception {
         Harness h = new Harness(List.of(q("Pick?", false,
             new QuestionPresenter.Option("A",
@@ -612,19 +586,19 @@ class AskUserQuestionDialogTest {
     }
 
     @Test
-    void typedTextOnPresetSelectionBecomesNotes() throws Exception {
-        // 197: typing on a preset option is a no-op — notes come from leftover text
-        // typed on the Other row before submitting a preset (annotations.notes).
+    void aDesignCardPromotesItsNotesBufferIntoTheAnswer() throws Exception {
+        // The mirror image of the plain list card: the design predicate holds, so the notes
+        // editor's buffer rides along with the chosen option.
         Harness h = new Harness(List.of(
-            q("Choose?", false, opt("Preset", null), opt("Alt", null))));
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // focus Other (index 2)
+            q("Choose?", false, opt("Preset", "PRESET-PREVIEW"), opt("Alt", null))));
+        h.type("n");                                // open the notes editor
         h.type("some context");
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // Alt
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // Preset
-        h.key(new KeyStroke(KeyType.ENTER));
+        h.key(new KeyStroke(KeyType.ESCAPE));       // leave the editor, keep the buffer
+        h.key(new KeyStroke(KeyType.ENTER));        // choose Preset — a lone card auto-submits
         var answers = h.await();
         assertEquals("Preset", answers.get("Choose?").answer());
         assertEquals("some context", answers.get("Choose?").notes());
+        assertEquals("PRESET-PREVIEW", answers.get("Choose?").preview());
     }
 
     @Test
@@ -690,6 +664,7 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke('2', false, false));    // toggle B
         h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
         h.key(new KeyStroke(KeyType.ENTER));
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("B", h.await().get("Q?").answer());
     }
 
@@ -701,7 +676,8 @@ class AskUserQuestionDialogTest {
             q("Q?", true, opt("A", null), opt("B", null))));
         h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
         h.type("typed from submit");
-        h.key(new KeyStroke(KeyType.ENTER));        // Other text auto-selected → submits
+        h.key(new KeyStroke(KeyType.ENTER));        // Other text auto-selected → records
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("typed from submit", h.await().get("Q?").answer());
     }
 
@@ -713,7 +689,8 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(KeyType.ENTER));        // F1 → advances
         assertTrue(h.dialog.isActive(), "still active on question 2");
         h.key(new KeyStroke(KeyType.ARROW_DOWN));
-        h.key(new KeyStroke(KeyType.ENTER));        // S2 → submits
+        h.key(new KeyStroke(KeyType.ENTER));        // S2 → review screen
+        h.key(new KeyStroke(KeyType.ENTER));        // Submit answers
         var answers = h.await();
         assertEquals("F1", answers.get("First?").answer());
         assertEquals("S2", answers.get("Second?").answer());
@@ -752,7 +729,7 @@ class AskUserQuestionDialogTest {
         var gui = new MultiWindowTextGUI(new SameTextGUIThread.Factory(), screen);
         var dialog = new AskUserQuestionDialog();
         var cancelled = new AtomicBoolean(true);
-        var result = new CompletableFuture<Map<String, QuestionPresenter.Answer>>();
+        var result = new CompletableFuture<QuestionOutcome>();
 
         Thread.ofVirtual().start(() -> result.complete(dialog.showAndWait(gui,
             List.of(q("Q?", false, opt("A", null), opt("B", null))), () -> {},
@@ -764,7 +741,7 @@ class AskUserQuestionDialogTest {
             Thread.sleep(5);
         }
 
-        assertNull(result.get(2, TimeUnit.SECONDS));
+        assertInstanceOf(QuestionOutcome.Cancelled.class, result.get(2, TimeUnit.SECONDS));
         assertFalse(dialog.isActive());
     }
 
@@ -779,6 +756,7 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(' ', false, false));    // toggle A
         h.key(new KeyStroke(KeyType.ARROW_UP));     // back to Submit row
         h.key(new KeyStroke(KeyType.ENTER));
+        h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("A", h.await().get("Q?").answer());
     }
 }

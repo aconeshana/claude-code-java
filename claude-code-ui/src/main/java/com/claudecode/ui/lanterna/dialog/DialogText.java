@@ -7,7 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Text-layout helpers shared by hand-drawn Lanterna dialogs.
  */
-final class DialogText {
+public final class DialogText {
 
     private DialogText() { }
 
@@ -15,7 +15,7 @@ final class DialogText {
      * Wraps text at spaces while preserving explicit paragraph boundaries.
      * Words wider than {@code width} remain intact.
      */
-    static List<String> wrapWords(String text, int width) {
+    public static List<String> wrapWords(String text, int width) {
         if (StringUtils.isEmpty(text)) return List.of();
         if (width <= 0) throw new IllegalArgumentException("width must be positive");
 
