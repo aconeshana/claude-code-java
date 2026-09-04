@@ -42,7 +42,7 @@ class InputPanelHotPathTest {
         panel.handleKeyForTest(new KeyStroke('b', false, false));
 
         assertEquals("abc", panel.getText());
-        assertEquals(2, panel.caretOffsetForTest());
+        assertEquals(2, panel.caretCol());
     }
 
     @Test

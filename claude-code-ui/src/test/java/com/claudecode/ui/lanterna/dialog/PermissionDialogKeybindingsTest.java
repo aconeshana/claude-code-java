@@ -39,11 +39,11 @@ class PermissionDialogKeybindingsTest {
                 _ -> {}, result::set, () -> {});
 
             dialog.handleYesButtonKeyForTest(new KeyStroke(KeyType.ESCAPE));
-            assertTrue(dialog.activeForTest());
+            assertTrue(dialog.isActiveForTest());
             assertNull(result.get());
 
             dialog.handleYesButtonKeyForTest(new KeyStroke('x', false, false));
-            assertFalse(dialog.activeForTest());
+            assertFalse(dialog.isActiveForTest());
             assertNotNull(result.get());
             assertTrue(result.get().allowed());
         } finally {

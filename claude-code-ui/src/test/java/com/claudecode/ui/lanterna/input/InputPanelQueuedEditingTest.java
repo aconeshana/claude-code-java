@@ -28,7 +28,7 @@ class InputPanelQueuedEditingTest {
 
         assertEquals(1, actions.popCalls);
         assertEquals("queued [Image #4]\ndraft", panel.getText());
-        assertEquals(20, panel.caretOffsetForTest());
+        assertEquals(20, panel.caretCol());
         assertEquals(image, panel.getPastedContents().get(4));
     }
 
@@ -43,7 +43,7 @@ class InputPanelQueuedEditingTest {
 
         assertEquals(1, actions.popCalls);
         assertEquals("queued", panel.getText());
-        assertEquals(6, panel.caretOffsetForTest());
+        assertEquals(6, panel.caretCol());
     }
 
     @Test
@@ -59,7 +59,7 @@ class InputPanelQueuedEditingTest {
 
         assertEquals(0, actions.popCalls);
         assertEquals("abc\ndef", panel.getText());
-        assertEquals(2, panel.caretOffsetForTest());
+        assertEquals(2, panel.caretCol());
     }
 
     @Test

@@ -25,7 +25,7 @@ class InputPanelMouseCursorTest {
 
         assertTrue(panel.handlePromptBareClickForTest(8, 4, ORIGIN, SIZE));
 
-        assertEquals(5, panel.caretOffsetForTest());
+        assertEquals(5, panel.caretCol());
         assertEquals(5, actions.cursorOffset);
     }
 
@@ -34,11 +34,11 @@ class InputPanelMouseCursorTest {
         InputPanel panel = panel("draft", new RecordingActions());
 
         assertTrue(panel.handlePromptBareClickForTest(18, 4, ORIGIN, SIZE));
-        assertEquals(5, panel.caretOffsetForTest());
+        assertEquals(5, panel.caretCol());
 
         panel.setCaretOffsetForTest(2);
         assertFalse(panel.handlePromptBareClickForTest(2, 4, ORIGIN, SIZE));
-        assertEquals(2, panel.caretOffsetForTest());
+        assertEquals(2, panel.caretCol());
     }
 
     @Test
@@ -50,7 +50,7 @@ class InputPanelMouseCursorTest {
 
         assertTrue(wrapped.handlePromptBareClickForTest(
             3, 5, ORIGIN, new TerminalSize(7, 2)));
-        assertEquals(6, wrapped.caretOffsetForTest());
+        assertEquals(6, wrapped.caretCol());
 
         InputPanel wide = new InputPanel();
         wide.setSize(new TerminalSize(8, 20));
@@ -58,7 +58,7 @@ class InputPanelMouseCursorTest {
         wide.setText("中文A");
         assertTrue(wide.handlePromptBareClickForTest(
             5, 4, ORIGIN, new TerminalSize(5, 2)));
-        assertEquals(1, wide.caretOffsetForTest());
+        assertEquals(1, wide.caretCol());
     }
 
     @Test
@@ -68,7 +68,7 @@ class InputPanelMouseCursorTest {
         panel.handleKeyForTest(new KeyStroke('r', true, false));
 
         assertTrue(panel.handlePromptBareClickForTest(7, 4, ORIGIN, SIZE));
-        assertEquals(2, panel.caretOffsetForTest());
+        assertEquals(2, panel.caretCol());
     }
 
     @Test
@@ -81,7 +81,7 @@ class InputPanelMouseCursorTest {
         panel.handlePromptBareClickForTest(6, 4, ORIGIN, SIZE);
 
         assertFalse(panel.isCollaborationPillSelected());
-        assertEquals(3, panel.caretOffsetForTest());
+        assertEquals(3, panel.caretCol());
     }
 
     @Test
@@ -93,7 +93,7 @@ class InputPanelMouseCursorTest {
         panel.handleKeyForTest(new KeyStroke('X', false, false));
 
         assertEquals("abXcde", panel.getText());
-        assertEquals(3, panel.caretOffsetForTest());
+        assertEquals(3, panel.caretCol());
     }
 
     private static InputPanel panel(String text, RecordingActions actions) {

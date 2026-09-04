@@ -152,7 +152,7 @@ class ExitPlanModePermissionDialogTest {
                 PermissionAskContext.simple("ExitPlanMode", input, "toolu_exit_plan")),
             null, _ -> {}, _ -> {}, () -> {});
 
-        dialog.approvePlanFeedbackForTest("  keep the public API compatible  ");
+        dialog.approvePlanFeedback("  keep the public API compatible  ");
 
         assertEquals("keep the public API compatible", cleared.get().feedback());
     }

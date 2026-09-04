@@ -564,7 +564,7 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // → coordinator panel
 
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertTrue(f.panel().isCoordinatorPanelSelected(),
             "↓ past the ≡ button enters the subagent panel when a panel agent exists");
         assertFalse(f.panel().isTasksPillSelected(),
             "the coordinator panel must not also engage the tasks pill");
@@ -590,7 +590,7 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(DOWN); // Collaboration
 
         assertTrue(f.panel().isCollaborationPillSelected());
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
         int coordinatorVisualIndex = f.panel().getChildrenList().indexOf(coordinatorPanel);
         assertTrue(coordinatorVisualIndex >= 0,
             "the coordinator must render inside the prompt footer");
@@ -602,11 +602,11 @@ class InputPanelTasksPillTest {
             f.panel().collaborationRowVisualIndexForTest());
 
         f.panel().handleKeyForTest(UP);
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest());
+        assertTrue(f.panel().isCoordinatorPanelSelected());
         assertEquals(0, f.panel().coordinatorIndexForTest());
         assertFalse(f.panel().isCollaborationPillSelected());
         f.panel().handleKeyForTest(UP); // input
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
         assertFalse(f.panel().isCollaborationPillSelected());
     }
 
@@ -650,7 +650,7 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(ctrlN); // Collaboration
         assertTrue(f.panel().isCollaborationPillSelected());
         f.panel().handleKeyForTest(ctrlP); // tasks group resets to main
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest());
+        assertTrue(f.panel().isCoordinatorPanelSelected());
         assertEquals(0, f.panel().coordinatorIndexForTest());
     }
 
@@ -697,7 +697,7 @@ class InputPanelTasksPillTest {
         assertEquals("draft", f.panel().getText());
         assertEquals(1, f.actions().teammateViewChangedCalls.get(),
             "Enter must open the selected subagent transcript");
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertTrue(f.panel().isCoordinatorPanelSelected(),
             "197 enterTeammateView does not clear footerSelection=tasks");
     }
 
@@ -716,7 +716,7 @@ class InputPanelTasksPillTest {
 
         assertEquals("c", f.panel().getText(),
             "197 type-to-exit must deliver the same first key to the steering editor");
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertFalse(f.panel().isCoordinatorPanelSelected(),
             "typing in the viewed agent transfers focus away from the footer");
     }
 
@@ -736,7 +736,7 @@ class InputPanelTasksPillTest {
         assertEquals(TaskStatus.RUNNING, f.registry().store().get(agent.id()).orElseThrow().status());
         assertEquals("m", f.panel().getText(),
             "after returning to main, ordinary input must not be swallowed by stale selection");
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
     }
 
     @Test
@@ -752,7 +752,7 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(new KeyStroke('z', false, false));
 
         assertEquals("draft", f.panel().getText());
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertTrue(f.panel().isCoordinatorPanelSelected(),
             "197 TextInput focus=false while any footer item is selected");
     }
 
@@ -989,7 +989,7 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // → unified pill
 
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest());
+        assertTrue(f.panel().isCoordinatorPanelSelected());
         assertTrue(f.panel().isTasksPillSelected());
         assertEquals(-1, f.panel().coordinatorIndexForTest());
         f.panel().handleKeyForTest(DOWN);
@@ -1012,7 +1012,7 @@ class InputPanelTasksPillTest {
         f.registry().store().remove(shell.id());
         f.panel().refreshTasksPill();
 
-        assertTrue(f.panel().isCoordinatorPanelSelectedForTest());
+        assertTrue(f.panel().isCoordinatorPanelSelected());
         assertEquals(0, f.panel().coordinatorIndexForTest(),
             "the selected tasks group must not retain an invisible -1 row");
     }
@@ -1033,7 +1033,7 @@ class InputPanelTasksPillTest {
         f.registry().store().remove(agent.id());
         f.panel().refreshTasksPill();
 
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
         assertTrue(f.panel().isTasksPillSelected());
         f.panel().handleKeyForTest(DOWN);
         assertTrue(f.panel().isCollaborationPillSelected(),
@@ -1051,7 +1051,7 @@ class InputPanelTasksPillTest {
 
         assertTrue(f.panel().isTasksPillSelected(),
             "with no panel agent, ↓ past ≡ selects the tasks pill as before");
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertFalse(f.panel().isCoordinatorPanelSelected(),
             "a shell-only scene must not engage the subagent panel");
     }
 
@@ -1065,7 +1065,7 @@ class InputPanelTasksPillTest {
 
         f.panel().handleKeyForTest(DOWN);
 
-        assertFalse(f.panel().isCoordinatorPanelSelectedForTest(),
+        assertFalse(f.panel().isCoordinatorPanelSelected(),
             "a teammate-only scene belongs to the horizontal footer, not the subagent panel");
     }
 

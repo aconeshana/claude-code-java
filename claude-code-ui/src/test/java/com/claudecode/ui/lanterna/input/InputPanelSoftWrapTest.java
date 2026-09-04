@@ -39,10 +39,10 @@ class InputPanelSoftWrapTest {
         panel.setCaretOffsetForTest(9);
 
         panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_UP));
-        assertEquals(3, panel.caretOffsetForTest());
+        assertEquals(3, panel.caretCol());
 
         panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN));
-        assertEquals(9, panel.caretOffsetForTest());
+        assertEquals(9, panel.caretCol());
     }
 
     @Test
@@ -51,10 +51,10 @@ class InputPanelSoftWrapTest {
         panel.setCaretOffsetForTest(9);
 
         panel.handleKeyForTest(new KeyStroke('p', true, false));
-        assertEquals(3, panel.caretOffsetForTest());
+        assertEquals(3, panel.caretCol());
 
         panel.handleKeyForTest(new KeyStroke('n', true, false));
-        assertEquals(9, panel.caretOffsetForTest());
+        assertEquals(9, panel.caretCol());
     }
 
     @Test

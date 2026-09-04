@@ -83,7 +83,7 @@ class InputPanelKeyRoutingTest {
         RecordingActions actions = new RecordingActions();
         InputPanel panel = panel(actions);
         panel.setText("describe");
-        panel.beginPasteForTest();
+        panel.beginPaste();
 
         assertEquals(TextBox.Result.HANDLED,
             panel.handleKeyForTest(new KeyStroke(KeyType.ENTER)));
@@ -101,7 +101,7 @@ class InputPanelKeyRoutingTest {
         RecordingActions actions = new RecordingActions();
         InputPanel panel = panel(actions);
         panel.setText("draft");
-        panel.beginPasteForTest();
+        panel.beginPaste();
 
         panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
         panel.handleKeyForTest(new KeyStroke('x', false, false));
@@ -116,7 +116,7 @@ class InputPanelKeyRoutingTest {
         RecordingActions actions = new RecordingActions();
         InputPanel panel = panel(actions);
         panel.setText("keep going");
-        panel.beginPasteForTest();
+        panel.beginPaste();
 
         panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
         panel.completePasteForTest(null);
@@ -295,12 +295,12 @@ class InputPanelKeyRoutingTest {
             panel.handleKeyForTest(new KeyStroke('b', true, false)));
 
         assertEquals(1, actions.backgroundCalls.get());
-        assertEquals(2, panel.caretOffsetForTest(),
+        assertEquals(2, panel.caretCol(),
             "task:background must take priority over readline cursor-left");
 
         actions.backgroundForegroundTasks = false;
         panel.handleKeyForTest(new KeyStroke('b', true, false));
-        assertEquals(1, panel.caretOffsetForTest(),
+        assertEquals(1, panel.caretCol(),
             "without a foreground task Ctrl+B retains readline behavior");
     }
 
@@ -338,7 +338,7 @@ class InputPanelKeyRoutingTest {
         panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_LEFT));
 
         assertEquals(0, actions.agentsCalls.get());
-        assertEquals(0, panel.caretOffsetForTest());
+        assertEquals(0, panel.caretCol());
     }
 
     private static InputPanel panel(RecordingActions actions) {

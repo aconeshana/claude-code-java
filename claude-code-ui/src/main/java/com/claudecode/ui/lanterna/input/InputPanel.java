@@ -2574,7 +2574,8 @@ public class InputPanel extends Panel {
         return m.find() ? new int[]{offset - m.group().length(), offset} : null;
     }
 
-    private int caretCol() {
+    /** Package-private for {@code InputPanel*} tests (was exposed via {@code caretOffsetForTest()}). */
+    int caretCol() {
         try {
             if (currentTextRows == 1 && textBox != null) {
                 // The hot path is single-line. TextBoxOffsetAdapter otherwise
@@ -3530,8 +3531,10 @@ public class InputPanel extends Panel {
         refreshFooterPills();
     }
 
-    /** Whether the subagent coordinator panel currently owns keyboard focus. */
-    private boolean isCoordinatorPanelSelected() {
+    /** Whether the subagent coordinator panel currently owns keyboard focus.
+     *  Package-private for {@code InputPanelTasksPillTest} (was exposed via
+     *  {@code isCoordinatorPanelSelectedForTest()}). */
+    boolean isCoordinatorPanelSelected() {
         return coordinatorNavigation != null && coordinatorNavigation.isPanelSelected();
     }
 
@@ -4211,14 +4214,12 @@ public class InputPanel extends Panel {
     // Test hooks — package-private, no GUI thread needed.
     TextBox.Result handleKeyForTest(KeyStroke key) { return textBox.handleKeyStroke(key); }
     void setCaretOffsetForTest(int offset) { TextBoxOffsetAdapter.setOffset(textBox, offset); }
-    int caretOffsetForTest() { return caretCol(); }
     String queuedPreviewTextForTest() { return String.join("\n", queuedPreviewLines); }
     boolean isTasksPillSelected() { return taskNavigation.isPillSelected(); }
     boolean isWorkflowFooterSelectedForTest() { return workflowFooterSelected; }
     int workflowFooterIndexForTest() { return workflowFooterIndex; }
     String selectedWorkflowTaskIdForTest() { return selectedWorkflowTaskId; }
     boolean isCollaborationPillSelected() { return collaborationPillSelected; }
-    boolean isCoordinatorPanelSelectedForTest() { return isCoordinatorPanelSelected(); }
     int hintRowVisualIndexForTest() { return getChildrenList().indexOf(hintRow); }
     int collaborationRowVisualIndexForTest() {
         return getChildrenList().indexOf(collaborationRow);
@@ -4246,7 +4247,6 @@ public class InputPanel extends Panel {
     }
     boolean isHistorySearchingForTest() { return historyController.isSearching(); }
     String historySearchDraftForTest() { return historyController.searchDraftForTest(); }
-    void beginPasteForTest() { beginPaste(); }
     boolean isPastingForTest() { return pendingPastes.get() > 0; }
     void completePasteForTest(String insertedText) {
         completePasteOnGui(insertedText == null ? null : () -> insertChipAtCursor(insertedText));
@@ -4375,7 +4375,8 @@ public class InputPanel extends Panel {
         }
     }
 
-    private void beginPaste() {
+    /** Package-private for {@code InputPanelKeyRoutingTest} (was exposed via {@code beginPasteForTest()}). */
+    void beginPaste() {
         pendingPastes.incrementAndGet();
         updateHint();
     }

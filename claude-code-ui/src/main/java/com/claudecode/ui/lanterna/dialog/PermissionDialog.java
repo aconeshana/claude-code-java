@@ -768,7 +768,8 @@ public class PermissionDialog extends Panel {
         resolve(false);
     }
 
-    private void approvePlanFeedback(String feedback) {
+    /** Package-private for {@code ExitPlanModePermissionDialogTest}. */
+    void approvePlanFeedback(String feedback) {
         if (currentCtx == null) return;
         if (currentCtx.input() != null
                 && currentCtx.input().path("_uiShowClearContext").asBoolean(false)) {
@@ -1682,10 +1683,6 @@ public class PermissionDialog extends Panel {
         if (yesBtn != null) yesBtn.handleKeyStroke(new KeyStroke(KeyType.ENTER));
     }
 
-    void approvePlanFeedbackForTest(String feedback) {
-        approvePlanFeedback(feedback);
-    }
-
     void addPlanFeedbackImageForTest(String base64, String mediaType) {
         if (amendBox == null) amendBox = new TextBox(new TerminalSize(40, 1));
         addPlanFeedbackImage(amendBox, base64, mediaType);
@@ -1732,7 +1729,6 @@ public class PermissionDialog extends Panel {
     }
 
     boolean debugVisibleForTest() { return debugVisible; }
-    boolean activeForTest() { return active; }
 
     private static boolean isCtrlG(KeyStroke key) {
         return key != null && key.getKeyType() == KeyType.CHARACTER

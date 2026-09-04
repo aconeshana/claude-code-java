@@ -20,7 +20,7 @@ class InputPanelMultilineOffsetTest {
         panel.handleKeyForTest(new KeyStroke('X', false, false));
 
         assertEquals("abc\nDXEF", panel.getText());
-        assertEquals(6, panel.caretOffsetForTest());
+        assertEquals(6, panel.caretCol());
     }
 
     @Test
