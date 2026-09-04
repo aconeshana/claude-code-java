@@ -145,8 +145,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
      * {@code static final} field computed once per JVM fork from
      * {@code user.home} — {@code System.setProperty} redirection is
      * unreliable if it runs after that class's first load in the same fork,
-     * see {@link com.claudecode.session.SessionManager(Path, String)}'s own test-injection point).
-     * Pass {@code null} for the real default (every non-test constructor does).
+     * see {@link com.claudecode.session.SessionManager#SessionManager(Path, String)}'s own
+     * test-injection point). Pass {@code null} for the real default (every non-test constructor does).
      */
     DefaultSubAgentFactory(StreamingClient llmClient, ToolExecutor toolExecutor,
                            String workingDirectory, SubAgentProgressSummarizer summarizer,
