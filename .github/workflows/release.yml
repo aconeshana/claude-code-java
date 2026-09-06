@@ -68,9 +68,14 @@ jobs:
           distribution: "graalvm"
           component: "native-image"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: "gradle"
         # self-hosted runner 同样适用：该 action 会下载 GraalVM 并安装 native-image
         # 组件到 runner 工作目录，不影响宿主机已有环境。
+        #
+        # 不开 cache: "gradle"。发版构建每个 tag 只跑一次，缓存命中率本就低，而回存
+        # 的归档在 self-hosted runner 上约 2.3 GB：v0.1.1 的 darwin-arm64 传到 51.8%
+        # 报 internal error uploading cache archive，post-action 失败把整个 job 标成
+        # failure —— 尽管二进制已在上一步成功上传。宁可每次重新下载依赖，也不要让
+        # job 的红绿与构建结果脱钩。
 
       - name: Derive version
         shell: bash
