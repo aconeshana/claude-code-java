@@ -282,10 +282,10 @@ final class CliInteractiveSessionRunner {
                         return result;
                     };
                 }
-// Shared post-compact durability hook: after any compact (manual /compact via
-// CommandContext, or auto-compact via QuerySession.postCompactCallback) re-append
-// session metadata to JSONL EOF so customTitle/agentName/agentColor/tag stay within
-// the 64KB tail-scan window used by readLiteMetadata.
+                // Shared post-compact durability hook: after any compact (manual /compact via
+                // CommandContext, or auto-compact via QuerySession.postCompactCallback) re-append
+                // session metadata to JSONL EOF so customTitle/agentName/agentColor/tag stay within
+                // the 64KB tail-scan window used by readLiteMetadata.
                 Runnable reAppendMetadata = () -> {
                     String sid = engine.conversation().getSessionId();
                     if (StringUtils.isBlank(sid)) return;

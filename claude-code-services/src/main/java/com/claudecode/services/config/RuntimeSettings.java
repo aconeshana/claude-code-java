@@ -10,6 +10,19 @@ import org.apache.commons.lang3.Strings;
 
 /**
  * Runtime-facing scalar access to the effective settings snapshot.
+ *
+ * <p>Reads belong here unconditionally: defaults, tier precedence and legacy
+ * fallbacks want one home. A {@code saveXxx} belongs here only when something
+ * in the runtime consumes it — a domain port implementation
+ * ({@code saveAutoMemoryEnabled}, {@code saveAutoDreamEnabled}) or a callback
+ * handed to a stateful domain object ({@code saveFastModeEnabled} is passed to
+ * {@code FastModeController} as its persistence hook).
+ *
+ * <p>Plain settings.json rows surfaced by {@code /config} and the settings
+ * panel are written through {@code SettingsManagementPort}, which targets an
+ * injected settings path. Adding a {@code saveXxx} for those here produces a
+ * method nothing calls — it writes the default path and silently ignores the
+ * injected one.
  */
 public final class RuntimeSettings {
 
@@ -270,13 +283,6 @@ public final class RuntimeSettings {
         SettingsEditor.writeUserBoolean("fastMode", enabled);
     }
 
-    /**
-     * Persists the refusal-fallback switch in the user settings tier, which is the tier.
-     */
-    public static void saveSwitchModelsOnFlagEnabled(boolean enabled) {
-        SettingsEditor.writeUserBoolean("switchModelsOnFlag", enabled);
-    }
-
     /** Persists the spinner-tips switch in the local settings tier. */
     public static void saveSpinnerTipsEnabled(boolean enabled) {
         SettingsEditor.writeLocalBoolean(currentCwd(), "spinnerTipsEnabled", enabled);
@@ -285,11 +291,6 @@ public final class RuntimeSettings {
     /** Persists the reduced-motion switch in the local settings tier. */
     public static void savePrefersReducedMotion(boolean enabled) {
         SettingsEditor.writeLocalBoolean(currentCwd(), "prefersReducedMotion", enabled);
-    }
-
-    /** Persists the native HUD switch in the user settings tier. */
-    public static void saveClaudeHudEnabled(boolean enabled) {
-        SettingsEditor.writeUserBoolean("claudeHudEnabled", enabled);
     }
 
     /** Test seam for scalar precedence across injected file tiers; later tiers win. */

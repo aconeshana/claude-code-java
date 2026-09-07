@@ -19,21 +19,8 @@ interface ToolRunner {
      * @param toolUseBlocks       the {@code ToolUseBlock} entries from the assistant message
      *                            (caller filters to just the tool-use blocks)
      * @param engine              the query engine (message list, hooks, permission callback, etc.)
-     * @param structuredOutputMode reserved so a future runner can special-case
-     *                            structured-output tool calls without changing this signature again
-     * @param emit                sink for {@code SDKMessage}s the runner wants streamed to the caller
-     * @return whether any tool errored, plus the last error and the turn it happened on —
-     *         matches the three loop-local variables ({@code errorDuringExecution},
-     *         {@code lastError}, {@code errorWatermarkTurn}) this replaces
-     */
-    /**
-     * Runs every tool-use block from one assistant turn, in order.
-     *
-     * @param toolUseBlocks       the {@code ToolUseBlock} entries from the assistant message
-     *                            (caller filters to just the tool-use blocks)
-     * @param engine              the query engine (message list, hooks, permission callback, etc.)
-     * @param structuredOutputMode reserved so a future runner can special-case
-     *                            structured-output tool calls without changing this signature again
+     * @param structuredOutputMode whether the turn requires structured output
+     * @param currentTurn         the turn this assistant message belongs to
      * @param emit                sink for {@code SDKMessage}s the runner wants streamed to the caller
      * @return whether any tool errored, plus the last error and the turn it happened on —
      *         matches the three loop-local variables ({@code errorDuringExecution},
@@ -87,17 +74,5 @@ interface ToolRunner {
      */
     record RunOutcome(boolean errorDuringExecution, Exception lastError, int errorWatermarkTurn,
                       boolean preventContinuation, String stopReason, JsonNode structuredOutput) {
-        static final RunOutcome NO_ERROR = new RunOutcome(false, null, 0, false, null, null);
-
-        /** Compat constructor predating {@code structuredOutput}. */
-        RunOutcome(boolean errorDuringExecution, Exception lastError, int errorWatermarkTurn,
-                   boolean preventContinuation, String stopReason) {
-            this(errorDuringExecution, lastError, errorWatermarkTurn, preventContinuation, stopReason, null);
-        }
-
-        /** Compat constructor predating {@code preventContinuation}. */
-        RunOutcome(boolean errorDuringExecution, Exception lastError, int errorWatermarkTurn) {
-            this(errorDuringExecution, lastError, errorWatermarkTurn, false, null, null);
-        }
     }
 }

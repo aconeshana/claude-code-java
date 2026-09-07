@@ -8,8 +8,6 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.services.config.GlobalConfigStore;
 import com.claudecode.services.config.PermissionSettings;
 import com.claudecode.services.config.RuntimeSettings;
-import com.claudecode.services.config.SettingsSources;
-import com.claudecode.permissions.RuleSource;
 import com.claudecode.services.config.SandboxSettings;
 import com.claudecode.services.config.SettingsFileStore;
 import com.claudecode.services.config.SettingsPaths;
@@ -61,9 +59,7 @@ final class CliSettingsManagementAdapter implements SettingsManagementPort {
         public Map<String, String> values(String workingDirectory) {
             return ConfigCommand.currentValues(
                 () -> GlobalConfigStore.snapshot(globalConfigPath),
-                () -> SettingsSnapshots.effective(effectiveCwd(workingDirectory)),
-                () -> SettingsSources.settingsForSource(
-                    RuleSource.USER_SETTINGS, effectiveCwd(workingDirectory)));
+                () -> SettingsSnapshots.effective(effectiveCwd(workingDirectory)));
         }
 
         @Override

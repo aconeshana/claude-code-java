@@ -219,8 +219,8 @@ final class ToolExecution {
         // workingDirectory (NOT the process cwd) — ToolRunnerWorkingDirectoryTest.
         // Progress sink is wrapped to:
 
-// onProgress({toolUseID,...}) identity injection; (2) emit SDKMessage.Progress into the
-// message stream for structured progress.
+        // onProgress({toolUseID,...}) identity injection; (2) emit SDKMessage.Progress into the
+        // message stream for structured progress.
 
         ToolExecutionContext.ProgressSink parentSink = engine.getConfig().progressSink();
         ToolExecutionContext.ProgressSink stampedSink =

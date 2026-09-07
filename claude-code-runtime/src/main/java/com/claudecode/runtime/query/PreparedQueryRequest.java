@@ -27,23 +27,6 @@ public record PreparedQueryRequest(
     boolean skipCacheWrite,
     SubmitOptions submitOptions) {
 
-    /** Backward-compatible form for prepared queries that use normal cache writes. */
-    public PreparedQueryRequest(
-            List<Message> messages,
-            String systemPrompt,
-            String model,
-            String fallbackModel,
-            String querySource,
-            Integer maxOutputTokensOverride,
-            Integer maxTurns,
-            PermissionAskCallback canUseTool,
-            ToolExecutionContext toolUseContext,
-            SubmitOptions submitOptions) {
-        this(messages, systemPrompt, model, fallbackModel, querySource,
-            maxOutputTokensOverride, maxTurns, canUseTool, toolUseContext,
-            false, submitOptions);
-    }
-
     public PreparedQueryRequest {
         messages = messages == null ? List.of() : List.copyOf(messages);
         querySource = querySource == null ? "user" : querySource;

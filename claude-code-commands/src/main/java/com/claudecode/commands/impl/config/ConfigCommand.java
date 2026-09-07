@@ -168,24 +168,9 @@ public class ConfigCommand implements AnnotatedCommand {
             .syntaxHighlightingDisabled();
     }
 
-    /** User-tier persistence seam for ThemePicker's runtime syntax toggle. */
-    public static void setSyntaxHighlightingDisabled(
-            CommandContext context, boolean disabled) {
-        context.application().settings().configuration()
-            .saveSyntaxHighlightingDisabled(disabled);
-    }
-
     public static Map<String, String> currentValues(
             Supplier<ObjectNode> globalSnapshotSupplier,
             Supplier<ObjectNode> settingsSnapshotSupplier) {
-        return currentValues(globalSnapshotSupplier, settingsSnapshotSupplier,
-            settingsSnapshotSupplier);
-    }
-
-    public static Map<String, String> currentValues(
-            Supplier<ObjectNode> globalSnapshotSupplier,
-            Supplier<ObjectNode> settingsSnapshotSupplier,
-            Supplier<ObjectNode> userSettingsSnapshotSupplier) {
         ObjectNode globalSnapshot = globalSnapshotSupplier.get();
         ObjectNode settingsSnapshot = settingsSnapshotSupplier.get();
         Map<String, String> values = new LinkedHashMap<>();
