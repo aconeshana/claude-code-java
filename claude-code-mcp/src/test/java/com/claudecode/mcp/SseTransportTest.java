@@ -248,7 +248,7 @@ class SseTransportTest {
         long start = System.nanoTime();
         McpException failure = assertThrows(McpException.class, transport::connect);
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(failure.getMessage().contains("404"), failure.getMessage());
+        assertTrue(Strings.CS.contains(failure.getMessage(), "404"), failure.getMessage());
         assertTrue(elapsedMs < 10_000,
             "stream failure must surface immediately, not after the endpoint timeout: "
                 + elapsedMs + "ms");
@@ -267,7 +267,7 @@ class SseTransportTest {
         long start = System.nanoTime();
         McpException failure = assertThrows(McpException.class, transport::connect);
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(failure.getMessage().contains("Timed out"), failure.getMessage());
+        assertTrue(Strings.CS.contains(failure.getMessage(), "Timed out"), failure.getMessage());
         assertTrue(elapsedMs >= 350 && elapsedMs < 5_000, "took " + elapsedMs + "ms");
         release.countDown();
     }
@@ -284,7 +284,7 @@ class SseTransportTest {
 
         SseTransport transport = transport(config("/sse"), Duration.ofSeconds(10));
         McpException failure = assertThrows(McpException.class, transport::connect);
-        assertTrue(failure.getMessage().contains("origin"), failure.getMessage());
+        assertTrue(Strings.CS.contains(failure.getMessage(), "origin"), failure.getMessage());
         release.countDown();
     }
 }

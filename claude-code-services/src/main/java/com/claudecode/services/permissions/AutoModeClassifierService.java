@@ -1,5 +1,6 @@
 package com.claudecode.services.permissions;
 
+import com.claudecode.core.annotation.CacheTier;
 import com.claudecode.api.CreateMessageRequest;
 import com.claudecode.permissions.AutoModeClassifier;
 import com.claudecode.services.model.SideQuery;
@@ -19,6 +20,7 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang3.Strings;
 
 
+@CacheTier(CacheTier.Tier.MAIN_LOOP)
 public final class AutoModeClassifierService implements AutoModeClassifier {
 
     static final String STAGE_ONE_SUFFIX =

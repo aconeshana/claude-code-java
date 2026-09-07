@@ -51,7 +51,7 @@ class PromptTextLayoutTest {
 
         assertEquals(List.of("ab", "", "cd"), layout.lines().stream()
             .map(PromptTextLayout.VisualLine::text).toList());
-        assertTrue(layout.lines().get(0).endsWithNewline());
+        assertTrue(layout.lines().getFirst().endsWithNewline());
         assertTrue(layout.lines().get(1).endsWithNewline());
         assertTrue(layout.lines().get(2).precededByNewline());
 

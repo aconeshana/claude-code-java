@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Characterizes stateless hook-output parsing before extraction from {@link HookEngine}.
@@ -130,7 +131,7 @@ class HookOutputParserTest {
         assertInstanceOf(HookResult.Allow.class, decorated.result());
         assertEquals("still visible", decorated.effects().systemMessage().orElseThrow());
         assertTrue(decorated.effects().terminalSequence().isEmpty());
-        assertTrue(decorated.effects().validationError().contains("terminalSequence"));
+        assertTrue(Strings.CS.contains(decorated.effects().validationError(), "terminalSequence"));
     }
 
     @Test
@@ -143,18 +144,18 @@ class HookOutputParserTest {
                  "sessionTitle":7,"reloadSkills":"yes","watchPaths":["/tmp/a",9]}}
                 """, HookEvent.SESSION_START));
 
-        assertTrue(decorated.effects().validationError().contains(
+        assertTrue(Strings.CS.contains(decorated.effects().validationError(),
             "sessionTitle must be a string"));
-        assertTrue(decorated.effects().validationError().contains(
+        assertTrue(Strings.CS.contains(decorated.effects().validationError(),
             "reloadSkills must be a boolean"));
-        assertTrue(decorated.effects().validationError().contains(
+        assertTrue(Strings.CS.contains(decorated.effects().validationError(),
             "watchPaths entries must be strings"));
 
         HookResult.Decorated cwd = assertInstanceOf(HookResult.Decorated.class,
             parser.parse("""
                 {"hookSpecificOutput":{"hookEventName":"CwdChanged","watchPaths":"/tmp/a"}}
                 """, HookEvent.CWD_CHANGED));
-        assertTrue(cwd.effects().validationError().contains("watchPaths must be an array"));
+        assertTrue(Strings.CS.contains(cwd.effects().validationError(), "watchPaths must be an array"));
     }
 
     @Test

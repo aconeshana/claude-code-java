@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class SessionLifecycleTest {
 
@@ -158,7 +159,7 @@ class SessionLifecycleTest {
 
         assertFalse(prepared.crossProject());
         assertFalse(events.stream().anyMatch(
-                e -> e.startsWith("prepare-switch") || e.startsWith("apply-switch")),
+                e -> Strings.CS.startsWith(e, "prepare-switch") || Strings.CS.startsWith(e, "apply-switch")),
             "a same-project resume never moves the app: " + events);
     }
 

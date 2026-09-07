@@ -1,5 +1,6 @@
 package com.claudecode.services.session;
 
+import com.claudecode.core.annotation.CacheTier;
 import java.util.Locale;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -24,6 +25,7 @@ import java.util.List;
  * Agentic session search using a small-fast model to rank stored conversations by semantic
  * relevance.
  */
+@CacheTier(CacheTier.Tier.ONE_SHOT)
 public final class AgenticSessionSearch {
 
     private static final int MAX_TRANSCRIPT_CHARS = 2000;
@@ -122,7 +124,14 @@ public final class AgenticSessionSearch {
         String userMessage = "Sessions:\n" + sessionList + "\nSearch query: \"" + query + "\"\n\nFind the sessions that are most relevant to this query.";
 
         try {
-            String text = sideQuery.queryText(smallFastModel, SYSTEM_PROMPT, userMessage, 1024);
+            String text = sideQuery.queryTextOrThrow(new SideQuery.Request()
+                .model(smallFastModel)
+                .systemPrompt(SYSTEM_PROMPT)
+                .userPrompt(userMessage)
+                .maxTokens(1024)
+                // One-shot ranking query; the prefix is never replayed.
+                .promptCachingEnabled(false)
+                .querySource("session_search"));
             if (text == null) return List.of();
 
             // Extract JSON {"relevant_indices": [...]}

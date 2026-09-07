@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The {@code Fys} screen: what it lists, what it omits, and the two ways its confirm select
@@ -103,7 +104,7 @@ class ReviewScreenTest {
         ReviewScreen.Context context = context(all, answers(all, "Tabs", "Drawer"));
 
         assertTrue(context.allQuestionsAnswered());
-        assertFalse(lines(context, 0).stream().anyMatch(line -> line.contains("⚠")),
+        assertFalse(lines(context, 0).stream().anyMatch(line -> Strings.CS.contains(line, "⚠")),
             lines(context, 0).toString());
     }
 
@@ -113,7 +114,7 @@ class ReviewScreenTest {
         ReviewScreen.Context context = context(all, answers(all, ""));
 
         assertFalse(context.allQuestionsAnswered());
-        assertFalse(lines(context, 0).stream().anyMatch(line -> line.startsWith(" ● ")),
+        assertFalse(lines(context, 0).stream().anyMatch(line -> Strings.CS.startsWith(line, " ● ")),
             lines(context, 0).toString());
     }
 
@@ -152,11 +153,11 @@ class ReviewScreenTest {
 
         List<String> rendered =
             lines(context(List.of(wrapped), Map.of(wrapped.key(), "Tabs")), 0);
-        List<String> gutterRows = rendered.stream().filter(line -> line.startsWith(" │ ")).toList();
+        List<String> gutterRows = rendered.stream().filter(line -> Strings.CS.startsWith(line, " │ ")).toList();
 
         assertEquals(2, gutterRows.size(), rendered.toString());
-        assertTrue(gutterRows.getFirst().startsWith(" │ ● A"), gutterRows.toString());
-        assertTrue(gutterRows.get(1).startsWith(" │   A"), gutterRows.toString());
+        assertTrue(Strings.CS.startsWith(gutterRows.getFirst(), " │ ● A"), gutterRows.toString());
+        assertTrue(Strings.CS.startsWith(gutterRows.get(1), " │   A"), gutterRows.toString());
     }
 
     // ── keys ────────────────────────────────────────────────────────────────

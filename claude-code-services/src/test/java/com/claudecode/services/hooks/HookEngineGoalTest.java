@@ -22,9 +22,14 @@ import com.claudecode.core.message.MessageFactory;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.prompt.SystemPromptConstants;
+import com.claudecode.core.state.CwdState;
+import com.claudecode.permissions.RuleSource;
+import com.claudecode.services.config.SettingsSources;
 import com.claudecode.services.model.ModelOutputTokens;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -113,7 +118,8 @@ class HookEngineGoalTest {
         assertNotNull(request);
         assertEquals("hook_prompt", request.querySource());
         assertTrue(request.stream());
-        assertTrue(request.promptCachingEnabled());
+        // One-shot goal evaluation; one-shot side queries stay uncached.
+        assertFalse(request.promptCachingEnabled());
         assertEquals((int) ModelOutputTokens.getMaxOutputTokensForModel("claude-sonnet-4-6"),
             request.maxTokens());
         assertEquals("disabled", request.thinking().type());
@@ -406,6 +412,39 @@ class HookEngineGoalTest {
         assertEquals(List.of("Read"), client.request.tools().stream()
             .map(CreateMessageRequest.ToolDefinition::name)
             .toList());
+    }
+
+    @Test
+    void hookEvaluatorModelSettingOverridesTheLiveMainModel() throws Exception {
+        CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
+        HookEngine engine = engine(client);
+        engine.setLlmModelSupplier(() -> "claude-opus-4-8");
+        engine.setGoal("feature complete", 0L);
+
+        // Isolated settings root as the session cwd. Reconfiguring the allowed
+        // sources also invalidates the effective-snapshot cache, and pinning
+        // CwdState makes every root derivation (editable path, snapshot key)
+        // agree on the temp directory.
+        Path previousCwd = CwdState.getOriginalCwd();
+        Path root = Files.createTempDirectory("hook-evaluator-model");
+        try {
+            Files.createDirectories(root.resolve(".claude"));
+            Files.writeString(root.resolve(".claude").resolve("settings.local.json"),
+                "{\"hookEvaluatorModel\":\"glm-4.6-flash\"}");
+            CwdState.setOriginalCwd(root);
+            SettingsSources.configureAllowedSettingSources(
+                List.of(RuleSource.LOCAL_SETTINGS), root.toString(), false);
+
+            engine.dispatchStopWithOutcome("success", false);
+
+            assertEquals("glm-4.6-flash", client.request.model());
+        } finally {
+            if (previousCwd == null) CwdState.clearForTesting();
+            else CwdState.setOriginalCwd(previousCwd);
+            SettingsSources.configureAllowedSettingSources(
+                List.of(RuleSource.USER_SETTINGS, RuleSource.PROJECT_SETTINGS,
+                    RuleSource.LOCAL_SETTINGS), "/tmp", false);
+        }
     }
 
     private static HookEngine engine(CapturingClient client) {

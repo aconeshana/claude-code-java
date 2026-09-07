@@ -241,7 +241,7 @@ class TranscriptLogLoaderTest {
 
         SessionLog log = TranscriptLogLoader.loadAllLogsFromSessionFile(
             file, null, _ -> false).stream()
-            .filter(candidate -> "after".equals(candidate.leafUuid()))
+            .filter(candidate -> Strings.CS.equals("after", candidate.leafUuid()))
             .findFirst().orElseThrow();
 
         assertEquals(List.of("boundary", "head", "tail", "after"), uuids(log));
@@ -306,7 +306,7 @@ class TranscriptLogLoaderTest {
 
         SessionLog next = TranscriptLogLoader.loadAllLogsFromSessionFile(
             file, null, _ -> false).stream()
-            .filter(log -> "next".equals(log.leafUuid()))
+            .filter(log -> Strings.CS.equals("next", log.leafUuid()))
             .findFirst().orElseThrow();
 
         assertEquals(List.of(

@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 class BtwSideQuestionDialog197Test {
 
@@ -66,7 +67,7 @@ class BtwSideQuestionDialog197Test {
             return "because";
         }, null, () -> { });
         awaitResponse(first, "because");
-        assertTrue(wrapped.get().startsWith("<system-reminder>This is a side question"));
+        assertTrue(Strings.CS.startsWith(wrapped.get(), "<system-reminder>This is a side question"));
         first.hide();
 
         BtwSideQuestionDialog second = new BtwSideQuestionDialog();

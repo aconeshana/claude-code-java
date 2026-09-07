@@ -10,6 +10,7 @@ import com.claudecode.core.message.TaskReminderAttachment;
 import com.claudecode.core.message.TaskReminderItem;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.process.SubprocessEnvironment;
+import org.apache.commons.lang3.Strings;
 
 import java.util.List;
 import java.util.Objects;
@@ -97,7 +98,7 @@ public final class TaskReminderAttachmentProvider implements AttachmentProvider 
     }
 
     private static boolean remindersEnabledByMode() {
-        return !"off".equals(
+        return !Strings.CS.equals("off",
             SubprocessEnvironment.get("CLAUDE_CODE_TODO_REMINDER_MODE"));
     }
 }

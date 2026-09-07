@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.function.BooleanSupplier;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
@@ -426,8 +427,8 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         int rows = 2 + (compacting ? 1 : 0)
             + (treeRows.isEmpty() ? 0 : 1 + treeRows.size())
             + (StringUtils.isNotBlank(tip) ? 1 : 0);
-        int cols = text.length() + 1;
-        for (TreeRow row : treeRows) cols = Math.max(cols, row.text().length() + 1);
+        int cols = FormatUtils.displayWidth(text) + 1;
+        for (TreeRow row : treeRows) cols = Math.max(cols, FormatUtils.displayWidth(row.text()) + 1);
         if (compacting) {
             // indent + bar + space + "NN%" — so the bar row isn't clipped when
             // the spinner line itself is shorter than the bar.
@@ -597,7 +598,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         if (highlighted) return "";
         String activity = StringUtils.defaultIfBlank(teammate.activity(), teammate.verb());
         activity = StringUtils.defaultIfBlank(activity, "Working");
-        return activity.endsWith("…") ? activity : activity + "…";
+        return Strings.CS.endsWith(activity, "…") ? activity : activity + "…";
     }
 
     private static TreeSegment segment(String text, TextColor color, boolean bold) {
@@ -998,43 +999,22 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
                 : verbStart + verbGlimmer;
 
             int maxW = g.getSize().getColumns();
-            String display = text.length() > maxW ? text.substring(0, maxW) : text;
             int ms = metricStart, me = metricEnd;
             int ts = thinkingTextStart, te = thinkingTextEnd;
             TextColor dimColor = LanternaTheme.welcomeDim();
+            TextColor baseColor = color;
+            TextColor thinkingColor = thinkingGlowColor(now, ts, te, dimColor);
 
-
-            TextColor thinkingColor = null;
-            if (ts >= 0 && te >= 0 && thinkingStatus instanceof String && thinkingStartMs >= 0) {
-                long thinkElapsed = now - thinkingStartMs;
-                if (thinkElapsed > THINKING_DELAY_MS) {
-                    double elapsedSec = (thinkElapsed - THINKING_DELAY_MS) / 1000.0;
-                    double opacity = (Math.sin(elapsedSec * Math.PI * 2 / THINKING_GLOW_PERIOD_S) + 1) / 2.0;
-                    int rv = (int) (153 + 32 * opacity); // 153→185
-                    thinkingColor = new TextColor.RGB(rv, rv, rv);
-                } else {
-                    thinkingColor = dimColor; // pre-shimmer: plain dim
-                }
-            }
-
-            for (int i = 0; i < display.length(); i++) {
-                TextColor charColor = color;
-                // 1. Metric "(…)" → dim
-                if (ms >= 0 && me >= 0 && i >= ms && i < me) {
-                    charColor = dimColor;
-                }
-                // 2. Thinking sub-range → shimmer (overrides dim)
-                if (thinkingColor != null && i >= ts && i < te) {
-                    charColor = thinkingColor;
-                }
-                // 3. Verb shimmer → shimmerColor (overrides everything, verb range only)
+            drawRow(g, 1, text, maxW, i -> {
+                // Precedence, highest first: verb shimmer > thinking glow > metric dim > base.
                 if (glimmerIdx > -50 && Math.abs(i - glimmerIdx) <= 1
                         && i >= verbStart && i < verbStart + verbLen) {
-                    charColor = shimmerColor;
+                    return shimmerColor;
                 }
-                g.setCharacter(i, 1,
-                    TextCharacter.fromCharacter(display.charAt(i), charColor, TextColor.ANSI.DEFAULT));
-            }
+                if (thinkingColor != null && i >= ts && i < te) return thinkingColor;
+                if (ms >= 0 && me >= 0 && i >= ms && i < me) return dimColor;
+                return baseColor;
+            });
 
 
             int nextRow = 2;
@@ -1089,15 +1069,45 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
             // time, falling back to the externally-set spinnerTip.
             String tip = treeRows.isEmpty() ? effectiveTip() : null;
             if (StringUtils.isNotBlank(tip) && g.getSize().getRows() > nextRow) {
-                int maxTipW = g.getSize().getColumns() - 2;
-                String tipDisplay = tip.length() > maxTipW ? FormatUtils.truncate(tip, maxTipW) : tip;
-                tipDisplay = "  " + tipDisplay;
-                for (int i = 0; i < tipDisplay.length() && i < g.getSize().getColumns(); i++) {
-                    g.setCharacter(i, nextRow,
-                        TextCharacter.fromCharacter(tipDisplay.charAt(i),
-                            LanternaTheme.welcomeDim(), TextColor.ANSI.DEFAULT));
-                }
+                String tipDisplay = "  " + FormatUtils.truncate(tip, maxW - 2);
+                drawRow(g, nextRow, tipDisplay, maxW, _ -> LanternaTheme.welcomeDim());
             }
+        }
+
+        /**
+         * Draws {@code text} advancing one terminal column per <em>display cell</em>.
+         *
+         * <p>Double-width graphemes occupy two cells, so writing every character at its string
+         * index makes Lanterna blank each wide cell once the next character lands on its trailing
+         * half — which erased CJK spinner verbs and tips entirely.
+         *
+         * @param colorAt maps a character index within {@code text} to that cell's foreground
+         */
+        private void drawRow(TextGUIGraphics g, int row, String text, int maxColumns,
+                             IntFunction<TextColor> colorAt) {
+            int charIndex = 0;
+            int column = 0;
+            for (TextCharacter cell : TextCharacter.fromString(
+                    text, TextColor.ANSI.DEFAULT, TextColor.ANSI.DEFAULT)) {
+                int width = cell.isDoubleWidth() ? 2 : 1;
+                if (column + width > maxColumns) break;
+                g.setCharacter(column, row, cell.withForegroundColor(colorAt.apply(charIndex)));
+                charIndex += cell.getCharacterString().length();
+                column += width;
+            }
+        }
+
+        /** Sine-glow color for the thinking sub-range, or null when that range must not glow. */
+        private TextColor thinkingGlowColor(long now, int start, int end, TextColor dimColor) {
+            if (start < 0 || end < 0 || !(thinkingStatus instanceof String) || thinkingStartMs < 0) {
+                return null;
+            }
+            long thinkElapsed = now - thinkingStartMs;
+            if (thinkElapsed <= THINKING_DELAY_MS) return dimColor; // pre-shimmer: plain dim
+            double elapsedSec = (thinkElapsed - THINKING_DELAY_MS) / 1000.0;
+            double opacity = (Math.sin(elapsedSec * Math.PI * 2 / THINKING_GLOW_PERIOD_S) + 1) / 2.0;
+            int rv = (int) (153 + 32 * opacity); // 153→185
+            return new TextColor.RGB(rv, rv, rv);
         }
     }
 

@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Covers Request 2: a tool Pre/Post hook returning {@code continue:false}
@@ -292,8 +293,8 @@ class ToolExecutionPreventContinuationTest {
             editBlock(), engine, null, _ -> {}, "assistant-1");
 
         assertEquals(2, step.newMessages().size());
-        assertTrue(step.newMessages().getFirst().toString().contains("pre context"));
-        assertTrue(step.newMessages().getLast().toString().contains("post context"));
+        assertTrue(Strings.CS.contains(step.newMessages().getFirst().toString(), "pre context"));
+        assertTrue(Strings.CS.contains(step.newMessages().getLast().toString(), "post context"));
     }
 
     @Test

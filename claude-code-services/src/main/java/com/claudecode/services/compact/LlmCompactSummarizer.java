@@ -1,5 +1,6 @@
 package com.claudecode.services.compact;
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -85,6 +86,7 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
     }
 
     @Override
+    @CacheTier(CacheTier.Tier.FORKED_PREFIX)
     public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
         if (streamingClient != null) {
             return summarizeWithCacheSharingFork(messages, compactPrompt);
@@ -105,6 +107,10 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
             .systemPrompt(SYSTEM_PROMPT)
             .messages(apiMessages)
             .stream(false)
+            // 236 compact skipCacheWrite:true - the conversation prefix keeps
+            // its cache markers (shared with the main loop); only the trailing
+            // compact prompt is left uncached.
+            .skipCacheWrite(true)
             .querySource("compact")
             .build();
 

@@ -6,6 +6,7 @@ import com.googlecode.lanterna.TextColor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Column-accurate wrapping and slicing for lines of already-styled {@link Segment}s.
@@ -60,7 +61,7 @@ final class SegmentLines {
             }
             current.add(cell);
             currentWidth += cell.width();
-            if (" ".equals(cell.text())) breakAfter = current.size();
+            if (Strings.CS.equals(" ", cell.text())) breakAfter = current.size();
         }
         wrapped.add(List.copyOf(current));
 

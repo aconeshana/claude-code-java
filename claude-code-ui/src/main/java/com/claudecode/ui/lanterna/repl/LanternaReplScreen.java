@@ -477,6 +477,7 @@ public class LanternaReplScreen implements SlashHost {
 
     private CronScheduler cronScheduler;
     private volatile IdlePromptNotifier idlePromptNotifier;
+    private volatile AwaySummaryTrigger awaySummaryTrigger;
 
     /**
      * The last text submitted by the user.
@@ -926,6 +927,7 @@ public class LanternaReplScreen implements SlashHost {
                 cronScheduler.stop();
             }
             if (idlePromptNotifier != null) idlePromptNotifier.close();
+            if (awaySummaryTrigger != null) awaySummaryTrigger.close();
             releaseTerminalForExit();
         }
         } finally {
@@ -933,6 +935,7 @@ public class LanternaReplScreen implements SlashHost {
             // VirtualTerminal early return, and startup/runtime exceptions.
             if (statusLineController != null) statusLineController.close();
             if (idlePromptNotifier != null) idlePromptNotifier.close();
+            if (awaySummaryTrigger != null) awaySummaryTrigger.close();
             closeTaskBoardSubscriptions();
             releaseTerminalForExit();
         }
@@ -2407,6 +2410,7 @@ public class LanternaReplScreen implements SlashHost {
                 featureRuntime.loopWakeups().onTurnIdle();
                 if (cronScheduler != null) cronScheduler.checkNow();
                 if (idlePromptNotifier != null) idlePromptNotifier.turnCompleted();
+                if (awaySummaryTrigger != null) awaySummaryTrigger.turnCompleted();
             },
             this::addPokemonExperience);
         sessionController.setRewindStateReset(turnView::resetBackgroundWaitForRewind);
@@ -3147,6 +3151,8 @@ public class LanternaReplScreen implements SlashHost {
         }
         @Override public void focusChanged(boolean focused) {
             messagePanel.setFocused(focused);
+            AwaySummaryTrigger trigger = awaySummaryTrigger;
+            if (trigger != null) trigger.focusChanged(focused);
         }
         @Override public void teammateViewChanged() {
             transcriptController.teammateViewChanged();
@@ -3168,6 +3174,21 @@ public class LanternaReplScreen implements SlashHost {
         idlePromptNotifier = new IdlePromptNotifier(thresholdMs, notification,
             () -> inputPanel != null && inputPanel.isVisible()
                 && turnEngine != null && !turnEngine.isInFlight());
+    }
+
+    /**
+     * Installs the focus-driven away-summary trigger (236 {@code bQg}). The
+     * generation boundary is supplied by the composition root; the trigger
+     * itself only owns focus/turn scheduling and the disable-hint counter.
+     */
+    public synchronized void configureAwaySummary(
+            Supplier<List<Message>> messagesSupplier,
+            RecapGeneration generation) {
+        if (terminalReleasedForExit) return;
+        if (awaySummaryTrigger != null) awaySummaryTrigger.close();
+        awaySummaryTrigger = new AwaySummaryTrigger(
+            messagesSupplier, generation, this::postAwaySummary,
+            () -> turnEngine != null && turnEngine.isInFlight());
     }
 
     private void renderFreshConversationWelcome() {

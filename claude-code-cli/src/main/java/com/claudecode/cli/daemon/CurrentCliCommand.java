@@ -3,6 +3,7 @@ package com.claudecode.cli.daemon;
 import com.claudecode.cli.ClaudeCodeCli;
 import java.nio.file.Path;
 import java.util.List;
+import org.apache.commons.lang3.Strings;
 
 /** Reconstructs a command that launches this CLI in a fresh JVM. */
 public final class CurrentCliCommand {
@@ -14,7 +15,7 @@ public final class CurrentCliCommand {
         String sunCommand = System.getProperty("sun.java.command", "").trim();
         if (!sunCommand.isEmpty()) {
             String first = sunCommand.split("\\s+", 2)[0];
-            if (first.endsWith(".jar")) return List.of(java, "-jar", first);
+            if (Strings.CS.endsWith(first, ".jar")) return List.of(java, "-jar", first);
         }
         return List.of(java, "-cp", System.getProperty("java.class.path"),
             ClaudeCodeCli.class.getName());

@@ -4,6 +4,7 @@ import com.claudecode.commands.dream.DreamPort;
 import com.claudecode.commands.insights.InsightsPort;
 import com.claudecode.commands.plugins.PluginRuntimePort;
 import com.claudecode.commands.permissions.PermissionCommandPort;
+import com.claudecode.commands.recap.RecapPort;
 import com.claudecode.commands.session.SessionCommandPort;
 import com.claudecode.commands.tooling.ToolingCommandPorts;
 import com.claudecode.runtime.doctor.DoctorPort;
@@ -36,6 +37,7 @@ public record CommandApplicationPorts(
     DreamPort dream,
     PluginRuntimePort plugins,
     Supplier<InsightsPort> insights,
+    RecapPort recap,
     SettingsManagementPort settings,
     McpManagementPort mcp,
     PermissionCommandPort permissions,
@@ -44,7 +46,8 @@ public record CommandApplicationPorts(
 ) {
     public static CommandApplicationPorts empty() {
         return new CommandApplicationPorts(
-            null, null, null, null, SettingsManagementPort.none(),
+            null, null, null, null, RecapPort.none(),
+            SettingsManagementPort.none(),
             McpManagementPort.none(), PermissionCommandPort.none(), SessionCommandPort.none(),
             ToolingCommandPorts.none());
     }

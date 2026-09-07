@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class HelpPanelTest {
 
@@ -146,11 +147,11 @@ class HelpPanelTest {
 
         assertEquals(7, panel.visibleCount());
         assertEquals(24, panel.calculatePreferredSize().getRows());
-        assertFalse(lines.stream().anyMatch(line -> line.contains("Help  General")));
+        assertFalse(lines.stream().anyMatch(line -> Strings.CS.contains(line, "Help  General")));
         assertEquals("  Browse default commands", lines.get(2).stripTrailing());
         assertEquals("    /add-dir", lines.get(4).stripTrailing());
         assertEquals("  ↓ /cd", lines.get(16).stripTrailing());
-        assertFalse(lines.stream().anyMatch(line -> line.contains("/clear")));
+        assertFalse(lines.stream().anyMatch(line -> Strings.CS.contains(line, "/clear")));
         assertEquals("  For more help: https://code.claude.com/docs/en/overview",
             lines.get(20).stripTrailing());
         assertEquals("  Esc to cancel", lines.get(22).stripTrailing());

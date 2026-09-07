@@ -1,5 +1,6 @@
 package com.claudecode.services.titles;
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+@CacheTier(CacheTier.Tier.ONE_SHOT)
 public final class SessionTitleGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(SessionTitleGenerator.class);
@@ -45,7 +47,7 @@ public final class SessionTitleGenerator {
         String conversationText = extractConversationText(messages);
         if (conversationText.isEmpty()) return null;
 
-        String response = sideQuery.queryHaiku(SYSTEM_PROMPT, conversationText);
+        String response = sideQuery.queryHaiku(SYSTEM_PROMPT, conversationText, "renameModel");
         if (response == null) return null;
 
         return parseName(response);
@@ -92,9 +94,9 @@ public final class SessionTitleGenerator {
     private static String joinTextBlocks(List<? extends ContentBlock> blocks) {
         StringBuilder sb = new StringBuilder();
         for (ContentBlock b : blocks) {
-            if (b instanceof TextBlock tb) {
+            if (b instanceof TextBlock(String text)) {
                 if (!sb.isEmpty()) sb.append('\n');
-                sb.append(tb.text());
+                sb.append(text);
             }
         }
         return sb.isEmpty() ? null : sb.toString();

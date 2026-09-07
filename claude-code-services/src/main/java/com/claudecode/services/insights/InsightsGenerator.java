@@ -1,5 +1,6 @@
 package com.claudecode.services.insights;
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -296,6 +297,7 @@ public final class InsightsGenerator {
     }
 
 
+    @CacheTier(CacheTier.Tier.ONE_SHOT)
     private JsonNode generateSectionInsight(InsightSection section, String dataContext) {
         try {
             ApiMessage response = ApiCallAccounting.createMessage(llmClient,
@@ -305,6 +307,8 @@ public final class InsightsGenerator {
                 .messages(List.of(new CreateMessageRequest.RequestMessage(
                     "user", section.prompt() + "\n\nDATA:\n" + dataContext)))
                 .stream(false)
+                // One-shot facet analysis; the prefix is never replayed.
+                .promptCachingEnabled(false)
                 .querySource("insights")
                 .build());
 

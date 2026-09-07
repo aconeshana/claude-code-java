@@ -13,6 +13,7 @@ import com.claudecode.commands.CommandResult;
 import com.claudecode.commands.ConfigLiveSetters;
 import com.claudecode.commands.context.ContextData;
 import com.claudecode.commands.insights.InsightsPort;
+import com.claudecode.commands.recap.RecapPort;
 import com.claudecode.commands.impl.config.AddDirCommand;
 import com.claudecode.commands.impl.config.ModelCommand;
 import com.claudecode.commands.impl.integration.McpCommand;
@@ -356,6 +357,8 @@ final class CliInteractiveSessionRunner {
                     insightsPipelineSupplier = () -> insightsClient == null ? null
                         : CliHeadlessSessionRunner.insightsAdapter(
                             new InsightsPipeline(insightsClient, () -> {
+                            String override = RuntimeSettings.loadInsightsModel();
+                            if (override != null) return override;
                             String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
                             return StringUtils.isNotBlank(env) ? env
                                 : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
@@ -400,6 +403,7 @@ final class CliInteractiveSessionRunner {
                         .dream(CliRuntimeAdapters.newDreamPort())
 
                         .insightsPipeline(insightsPipelineSupplier)
+                        .recap(recapPort(llmClient))
                         .settingsManagement(settingsManagement)
                         .mcpManagement(mcpManagement)
 // disableNonInteractive: hidden in print / --no-interactive mode.
@@ -670,8 +674,33 @@ final class CliInteractiveSessionRunner {
                 "Claude is waiting for your input", null, "idle_prompt"));
         if (!settings.awaySummaryEnabled()) return;
         AwaySummaryService awaySummary = new AwaySummaryService(llmClient);
-        awaySummary.startIdleWatcher(
-            () -> engine.conversation().getMessages(), screen::postAwaySummary);
+        // Generation boundary for the focus-driven trigger (236 bQg): the
+        // conversation gates (et0/hQg) live in the service, publishing and the
+        // disable-hint counter live in the UI-side trigger.
+        screen.configureAwaySummary(
+            () -> engine.conversation().getMessages(),
+            messages -> awaySummary.shouldRecap(messages)
+                && !awaySummary.lastMessageIsAwaySummary(messages)
+                ? awaySummary.generateAwaySummary(messages)
+                : null);
+    }
+
+    /**
+     * Adapter from the model-facing away-summary generation to the
+     * {@link RecapPort} consumed by {@code /recap}. The {@link AwaySummaryService}
+     * is constructed lazily per call because its model pipeline may be absent
+     * (headless/offline); the service's prompt and 400-token cap stay the single
+     * point of truth shared with the idle watcher.
+     */
+    static RecapPort recapPort(LlmClient llmClient) {
+        if (llmClient == null) return RecapPort.none();
+        return messages -> {
+            if (messages == null || messages.isEmpty()) {
+                return RecapPort.Outcome.noTurn();
+            }
+            String text = new AwaySummaryService(llmClient).generateAwaySummary(messages);
+            return text != null ? RecapPort.Outcome.ok(text) : RecapPort.Outcome.failed();
+        };
     }
 
     static boolean showBuiltInModelFamilies(

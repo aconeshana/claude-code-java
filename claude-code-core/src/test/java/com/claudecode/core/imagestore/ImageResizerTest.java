@@ -1,6 +1,7 @@
 package com.claudecode.core.imagestore;
 
 import com.claudecode.core.paste.ImagePaste;
+import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -169,9 +170,9 @@ class ImageResizerTest {
         Path sourceFile = Path.of("src/main/java/com/claudecode/core/imagestore/ReleasedImageCodec.java");
         String source = Files.readString(sourceFile);
 
-        assertFalse(source.contains("IntStream"));
-        assertFalse(source.contains(".parallel()"));
-        assertFalse(source.contains("ForkJoinPool.commonPool"));
+        assertFalse(Strings.CS.contains(source, "IntStream"));
+        assertFalse(Strings.CS.contains(source, ".parallel()"));
+        assertFalse(Strings.CS.contains(source, "ForkJoinPool.commonPool"));
     }
 
     private static BufferedImage patternedArgb(int width, int height) {

@@ -41,7 +41,7 @@ class LogoPanelTest {
         List<MessagePanel.Segment> segs = LogoPanel.progressSegments(
             LanternaTheme.toolSuccess(), bar.filled(), bar.empty(), track);
         assertEquals(2, segs.size());
-        assertEquals(track, segs.get(0).bgColor(), "filled (partial block) carries track background");
+        assertEquals(track, segs.getFirst().bgColor(), "filled (partial block) carries track background");
         assertEquals(track, segs.get(1).bgColor(), "empty rail carries the same track background");
     }
 

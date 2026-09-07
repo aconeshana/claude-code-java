@@ -1,5 +1,6 @@
 package com.claudecode.core.paste;
 
+import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,11 +35,11 @@ class ClipboardImageBackendCommandsTest {
         assertEquals(List.of("powershell", "-NoProfile", "-NonInteractive", "-Sta", "-Command"),
             command.subList(0, 5));
         String script = command.get(5);
-        assertTrue(script.contains("[System.Windows.Forms.Clipboard]::ContainsImage()"));
-        assertTrue(script.contains("[System.Windows.Forms.Clipboard]::GetImage()"));
-        assertTrue(script.contains("[System.Drawing.Imaging.ImageFormat]::Png"));
-        assertTrue(script.contains("$env:CLAUDE_CODE_CLIPBOARD_IMAGE_PATH"));
-        assertFalse(script.contains(path.toString()));
+        assertTrue(Strings.CS.contains(script, "[System.Windows.Forms.Clipboard]::ContainsImage()"));
+        assertTrue(Strings.CS.contains(script, "[System.Windows.Forms.Clipboard]::GetImage()"));
+        assertTrue(Strings.CS.contains(script, "[System.Drawing.Imaging.ImageFormat]::Png"));
+        assertTrue(Strings.CS.contains(script, "$env:CLAUDE_CODE_CLIPBOARD_IMAGE_PATH"));
+        assertFalse(Strings.CS.contains(script, path.toString()));
         assertEquals(6, command.size());
         assertEquals(path.toString(), WindowsClipboardImageBackend.environment(path)
             .get("CLAUDE_CODE_CLIPBOARD_IMAGE_PATH"));
@@ -52,7 +53,7 @@ class ClipboardImageBackendCommandsTest {
 
         assertEquals("osascript", command.getFirst());
         assertTrue(command.contains("on run argv"));
-        assertFalse(command.stream().anyMatch(part -> part.contains(path.toString()) && !part.equals(path.toString())));
+        assertFalse(command.stream().anyMatch(part -> Strings.CS.contains(part, path.toString()) && !Strings.CS.equals(part, path.toString())));
         assertEquals(path.toString(), command.getLast());
     }
 

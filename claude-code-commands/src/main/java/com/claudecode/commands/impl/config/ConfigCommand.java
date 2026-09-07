@@ -100,6 +100,11 @@ public class ConfigCommand implements AnnotatedCommand {
             "Preferred output style"),
         new Setting("language", Type.STRING, Store.SETTINGS_JSON, "", null,
             "Preferred response and voice language"),
+        // Java-side extension row (no official counterpart; the Lanterna
+        // ConfigPanel intentionally keeps the 197 30-row inventory).
+        new Setting("sideQueryModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for one-shot side queries (titles, recaps, summaries); empty uses the "
+            + "default Haiku helper"),
         new Setting("editorMode", Type.ENUM, Store.GLOBAL_JSON, "normal",
             List.of("normal", "vim"),
             "Editor mode"),
@@ -120,7 +125,19 @@ public class ConfigCommand implements AnnotatedCommand {
         new Setting("subagentMaxDepth", Type.INTEGER, Store.SETTINGS_JSON, 2, null,
             "Maximum ordinary sub-agent nesting depth (1-5)"),
         new Setting("copyOnSelect", Type.BOOLEAN, Store.GLOBAL_JSON, true, null,
-            "Auto-copy to clipboard on mouse-up selection")
+            "Auto-copy to clipboard on mouse-up selection"),
+        new Setting("sessionTitleModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for first-prompt terminal session titles; empty uses sideQueryModel"),
+        new Setting("renameModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for /rename session-name generation; empty uses sideQueryModel"),
+        new Setting("toolSummaryModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for one-line tool-use summaries; empty uses sideQueryModel"),
+        new Setting("permissionExplainerModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for the permission-explainer side query; empty uses the main model"),
+        new Setting("hookEvaluatorModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for hook stop-condition and prompt-hook evaluators; empty uses the main model"),
+        new Setting("insightsModel", Type.STRING, Store.SETTINGS_JSON, "", null,
+            "Model for /insights facet analysis; empty uses ANTHROPIC_DEFAULT_OPUS_MODEL then the configured model")
     );
 
     private static final Map<String, Setting> BY_KEY = new LinkedHashMap<>();

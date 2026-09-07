@@ -19,6 +19,7 @@ final class StubLlmClient implements LlmClient {
     /** Configured response text; {@code null} simulates an API failure/abort. */
     volatile String response;
     final List<String> prompts = new ArrayList<>();
+    final List<CreateMessageRequest> requests = new ArrayList<>();
 
     StubLlmClient(String response) {
         this.response = response;
@@ -31,7 +32,8 @@ final class StubLlmClient implements LlmClient {
 
     @Override
     public ApiMessage createMessage(CreateMessageRequest request) {
-        String prompt = (String) request.messages().getFirst().content();
+        requests.add(request);
+        String prompt = (String) request.messages().getLast().content();
         prompts.add(prompt);
         if (response == null) return null;
         return ApiMessage.stub(request.model(), response);

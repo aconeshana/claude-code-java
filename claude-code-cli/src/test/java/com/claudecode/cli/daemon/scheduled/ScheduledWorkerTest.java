@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,7 +58,7 @@ class ScheduledWorkerTest {
 
         assertEquals(1, worker.snapshot().running());
         assertEquals(1, worker.snapshot().queued());
-        assertTrue(logs.stream().anyMatch(line -> line.contains("queue full: 1/1")));
+        assertTrue(logs.stream().anyMatch(line -> Strings.CS.contains(line, "queue full: 1/1")));
     }
 
     @Test

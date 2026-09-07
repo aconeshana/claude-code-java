@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.apache.commons.lang3.Strings;
 
 class CollaborationPickerDialogTest {
 
@@ -56,9 +57,9 @@ class CollaborationPickerDialogTest {
         dialog.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
 
         String rendered = renderedText(image);
-        assertTrue(rendered.contains("Mirror progress and interactions to"));
-        assertTrue(rendered.contains("one IM channel."));
-        assertTrue(rendered.contains("Enter to select · Esc to cancel"));
+        assertTrue(Strings.CS.contains(rendered, "Mirror progress and interactions to"));
+        assertTrue(Strings.CS.contains(rendered, "one IM channel."));
+        assertTrue(Strings.CS.contains(rendered, "Enter to select · Esc to cancel"));
     }
 
     @Test
@@ -201,7 +202,7 @@ class CollaborationPickerDialogTest {
         dialog.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
 
         String rendered = renderedText(image);
-        assertTrue(rendered.contains("11. c10"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "11. c10"), rendered);
     }
 
     @Test
@@ -253,10 +254,10 @@ class CollaborationPickerDialogTest {
 
         String rendered = renderedText(image);
         assertEquals(12, size.getRows());
-        assertTrue(rendered.contains("↑ 2. a"), rendered);
-        assertTrue(rendered.contains("❯ 6. e"), rendered);
-        assertFalse(rendered.contains("1. Off"), rendered);
-        assertFalse(rendered.contains("7. f"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "↑ 2. a"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "❯ 6. e"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "1. Off"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "7. f"), rendered);
     }
 
     @Test
@@ -270,12 +271,12 @@ class CollaborationPickerDialogTest {
         dialog.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
 
         String rendered = renderedText(image);
-        assertTrue(rendered.contains("────────────────"));
-        assertTrue(rendered.contains("1. Off"));
-        assertTrue(rendered.contains("2. Feishu ✓"));
-        assertTrue(rendered.contains("3. Slack"));
-        assertTrue(rendered.contains("Enter to select · Esc to cancel"));
-        assertFalse(rendered.contains("↑/↓ to navigate"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "────────────────"));
+        assertTrue(Strings.CS.contains(rendered, "1. Off"));
+        assertTrue(Strings.CS.contains(rendered, "2. Feishu ✓"));
+        assertTrue(Strings.CS.contains(rendered, "3. Slack"));
+        assertTrue(Strings.CS.contains(rendered, "Enter to select · Esc to cancel"));
+        assertFalse(Strings.CS.contains(rendered, "↑/↓ to navigate"), rendered);
     }
 
     @Test
@@ -288,12 +289,12 @@ class CollaborationPickerDialogTest {
         route(dialog, new KeyStroke('c', true, false));
 
         assertEquals('c', routed.get());
-        assertTrue(rendered(dialog).contains("Press Ctrl-C again to exit"));
+        assertTrue(Strings.CS.contains(rendered(dialog), "Press Ctrl-C again to exit"));
 
         route(dialog, new KeyStroke('d', true, false));
 
         assertEquals('d', routed.get());
-        assertTrue(rendered(dialog).contains("Press Ctrl-D again to exit"));
+        assertTrue(Strings.CS.contains(rendered(dialog), "Press Ctrl-D again to exit"));
         assertTrue(dialog.isActive(), "the global exit controller owns actual shutdown");
     }
 

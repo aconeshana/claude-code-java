@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * {@link AskUserQuestionDialog} interaction state machine, driven through
@@ -169,11 +170,11 @@ class AskUserQuestionDialogTest {
         r.key(new KeyStroke(KeyType.ARROW_DOWN));
         r.key(new KeyStroke(KeyType.ARROW_DOWN));   // focus Other
         r.type("海边");
-        assertTrue(r.render().contains("[✓] 海边"),
+        assertTrue(Strings.CS.contains(r.render(), "[✓] 海边"),
             "typing must check Other immediately");
         r.key(new KeyStroke(KeyType.BACKSPACE));
         r.key(new KeyStroke(KeyType.BACKSPACE));
-        assertTrue(r.render().contains("[ ] 【T】ype something"),
+        assertTrue(Strings.CS.contains(r.render(), "[ ] 【T】ype something"),
             "clearing the text must uncheck Other and show the dimmed placeholder");
         r.close();
     }
@@ -187,10 +188,10 @@ class AskUserQuestionDialogTest {
             q("Q?", false, opt("A", null), opt("B", null))));
         single.key(new KeyStroke(KeyType.ARROW_UP));    // focus Other
         String singleScreen = single.render();
-        assertTrue(singleScreen.contains("【T】ype something."),
+        assertTrue(Strings.CS.contains(singleScreen, "【T】ype something."),
             "single-select placeholder keeps its period, cursor inverts its first char; "
                 + "screen was:\n" + singleScreen);
-        assertFalse(singleScreen.contains("Other"), "no Other label row in 197");
+        assertFalse(Strings.CS.contains(singleScreen, "Other"), "no Other label row in 197");
         single.close();
 
         Rendered multi = new Rendered(60, 30, List.of(
@@ -198,10 +199,10 @@ class AskUserQuestionDialogTest {
         multi.key(new KeyStroke(KeyType.ARROW_DOWN));
         multi.key(new KeyStroke(KeyType.ARROW_DOWN));   // focus Other
         String multiScreen = multi.render();
-        assertTrue(multiScreen.contains("[ ] 【T】ype something"),
+        assertTrue(Strings.CS.contains(multiScreen, "[ ] 【T】ype something"),
             "multi-select placeholder has no period and sits after the checkbox; "
                 + "screen was:\n" + multiScreen);
-        assertFalse(multiScreen.contains("Type something."),
+        assertFalse(Strings.CS.contains(multiScreen, "Type something."),
             "multi placeholder must drop the period");
         multi.close();
     }
@@ -211,17 +212,17 @@ class AskUserQuestionDialogTest {
         Rendered r = new Rendered(60, 30, List.of(
             q("First?", true, opt("F1", null), opt("F2", null)),
             q("Second?", true, opt("S1", null), opt("S2", null))));
-        assertTrue(r.render().contains("Next"), "non-last question shows Next");
+        assertTrue(Strings.CS.contains(r.render(), "Next"), "non-last question shows Next");
         r.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
         String focused = r.render();
-        assertTrue(focused.contains("❯    Next"), "submit row takes the pointer");
+        assertTrue(Strings.CS.contains(focused, "❯    Next"), "submit row takes the pointer");
         r.key(new KeyStroke(KeyType.ENTER));        // nothing selected → ignored
         assertTrue(r.dialog.isActive(), "empty submit must be ignored");
         r.key(new KeyStroke(KeyType.ARROW_DOWN));   // wrap to F1
         r.key(new KeyStroke(KeyType.ENTER));        // toggle F1
         r.key(new KeyStroke(KeyType.ARROW_UP));     // back to Submit row
         r.key(new KeyStroke(KeyType.ENTER));        // advances to question 2
-        assertTrue(r.render().contains("Submit"), "last question shows Submit");
+        assertTrue(Strings.CS.contains(r.render(), "Submit"), "last question shows Submit");
         r.close();
     }
 
@@ -454,16 +455,16 @@ class AskUserQuestionDialogTest {
         r.type("abcdefghijklmnopqrstuvwxyz0123456789AB"); // 38 chars > 33 visible
 
         String rendered = r.render();
-        assertTrue(rendered.contains("fghijklmnopqrstuvwxyz0123456789AB【 】"),
+        assertTrue(Strings.CS.contains(rendered, "fghijklmnopqrstuvwxyz0123456789AB【 】"),
             "typed tail must stay visible with an inverse-blank cursor; screen was:\n"
                 + rendered);
-        assertFalse(rendered.contains("abcde"),
+        assertFalse(Strings.CS.contains(rendered, "abcde"),
             "scrolled-off prefix must not be drawn; screen was:\n" + rendered);
 
         // Backspace at the tail must visibly delete the last character
         r.key(new KeyStroke(KeyType.BACKSPACE));
         String afterBackspace = r.render();
-        assertTrue(afterBackspace.contains("efghijklmnopqrstuvwxyz0123456789A【 】"),
+        assertTrue(Strings.CS.contains(afterBackspace, "efghijklmnopqrstuvwxyz0123456789A【 】"),
             "backspace deletion must be visible; screen was:\n" + afterBackspace);
         r.close();
     }
@@ -479,9 +480,9 @@ class AskUserQuestionDialogTest {
         r.type("459436");
         r.key(new KeyStroke(KeyType.ARROW_LEFT));   // cursor between 3 and 6
         String rendered = r.render();
-        assertTrue(rendered.contains("45943【6】"),
+        assertTrue(Strings.CS.contains(rendered, "45943【6】"),
             "mid-text cursor must invert the character under it; screen was:\n" + rendered);
-        assertFalse(rendered.contains("45943 6"),
+        assertFalse(Strings.CS.contains(rendered, "45943 6"),
             "no phantom space may appear before the tail; screen was:\n" + rendered);
         r.close();
     }
@@ -496,17 +497,17 @@ class AskUserQuestionDialogTest {
         r.type("天地玄黄宇宙洪荒日月盈昃辰宿列张律吕调阳"); // 20 chars = 40 columns
 
         String rendered = r.render();
-        assertTrue(rendered.contains("列张律吕调阳【 】"),
+        assertTrue(Strings.CS.contains(rendered, "列张律吕调阳【 】"),
             "CJK typed tail must stay visible with an inverse-blank cursor; screen was:\n"
                 + rendered);
-        assertFalse(rendered.contains("天地玄"),
+        assertFalse(Strings.CS.contains(rendered, "天地玄"),
             "scrolled-off prefix must not be drawn; screen was:\n" + rendered);
 
         r.key(new KeyStroke(KeyType.BACKSPACE));
         String afterBackspace = r.render();
-        assertTrue(afterBackspace.contains("列张律吕调【 】"),
+        assertTrue(Strings.CS.contains(afterBackspace, "列张律吕调【 】"),
             "backspace deletion must be visible; screen was:\n" + afterBackspace);
-        assertFalse(afterBackspace.contains("调阳"),
+        assertFalse(Strings.CS.contains(afterBackspace, "调阳"),
             "deleted char must be gone; screen was:\n" + afterBackspace);
         r.close();
     }
@@ -525,26 +526,26 @@ class AskUserQuestionDialogTest {
             new QuestionPresenter.Option("短途露营", desc, null))));
 
         // focus starts on option 1 → top of the card is shown
-        assertTrue(r.render().contains("1. [ ] 山野徒步"),
+        assertTrue(Strings.CS.contains(r.render(), "1. [ ] 山野徒步"),
             "top of the card must be visible initially");
 
         // arrow to option 4 → its label+description block stays visible
         r.key(new KeyStroke(KeyType.ARROW_DOWN));
         r.key(new KeyStroke(KeyType.ARROW_DOWN));
         r.key(new KeyStroke(KeyType.ARROW_DOWN));
-        assertTrue(r.render().contains("4. [ ] 短途露营"),
+        assertTrue(Strings.CS.contains(r.render(), "4. [ ] 短途露营"),
             "focused option must stay visible while moving down");
 
         // arrow to Other → bottom-anchored: Other input row and hint all visible
         r.key(new KeyStroke(KeyType.ARROW_DOWN));
         String onOther = r.render();
-        assertTrue(onOther.contains("【T】ype something"),
+        assertTrue(Strings.CS.contains(onOther, "【T】ype something"),
             "Other input row must be reachable and visible (dimmed placeholder, "
                 + "inverse cursor on its first char)");
         // the multi-select hint exceeds 40 columns and clips its tail; assert its head
-        assertTrue(onOther.contains("tab to submit"), "hint row must be visible");
+        assertTrue(Strings.CS.contains(onOther, "tab to submit"), "hint row must be visible");
         r.type("想去海边");
-        assertTrue(r.render().contains("想去海边【 】"),
+        assertTrue(Strings.CS.contains(r.render(), "想去海边【 】"),
             "typed text on Other must be visible at the bottom");
         r.close();
     }

@@ -96,9 +96,10 @@ class DefaultManualCompactStrategyPtlPairingTest {
             if (!(m.content() instanceof List<?> blocks)) continue;
             for (Object b : blocks) {
                 if (!(b instanceof Map<?, ?> map)) continue;
-                if ("tool_use".equals(map.get("type")) || "server_tool_use".equals(map.get("type"))) {
+                if (Strings.CS.equals("tool_use", (CharSequence) map.get("type"))
+                        || Strings.CS.equals("server_tool_use", (CharSequence) map.get("type"))) {
                     toolUseIds.add((String) map.get("id"));
-                } else if ("tool_result".equals(map.get("type"))) {
+                } else if (Strings.CS.equals("tool_result", (CharSequence) map.get("type"))) {
                     toolResultIds.add((String) map.get("tool_use_id"));
                 }
             }
@@ -159,13 +160,13 @@ class DefaultManualCompactStrategyPtlPairingTest {
         for (Message m : truncated) {
             if (m instanceof AssistantMessage am && am.message() != null) {
                 for (ContentBlock b : am.message().content()) {
-                    assertFalse(b instanceof ToolUseBlock tu && tu.id().startsWith("tu-0-"),
+                    assertFalse(b instanceof ToolUseBlock tu && Strings.CS.startsWith(tu.id(), "tu-0-"),
                             "round 0's tool_use must not survive head truncation: " + truncated);
                 }
             }
             if (m instanceof UserMessage um && um.message() != null && um.message().blocks() != null) {
                 for (ContentBlock b : um.message().blocks()) {
-                    assertFalse(b instanceof ToolResultBlock tr && tr.toolUseId().startsWith("tu-0-"),
+                    assertFalse(b instanceof ToolResultBlock tr && Strings.CS.startsWith(tr.toolUseId(), "tu-0-"),
                             "round 0's tool_result must not survive orphaned after head truncation: " + truncated);
                 }
             }

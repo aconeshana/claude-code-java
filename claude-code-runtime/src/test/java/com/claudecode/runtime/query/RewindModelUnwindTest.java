@@ -12,6 +12,7 @@ import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class RewindModelUnwindTest {
 
@@ -102,7 +103,7 @@ class RewindModelUnwindTest {
             List.of(assistant("a1", "retired-model")),
             List.of(fallback("f1", "claude-sonnet-4-6", "claude-opus-4-6")),
             "claude-opus-4-6", true, "claude-sonnet-4-6",
-            model -> !model.equals("retired-model"));
+            model -> !Strings.CS.equals("retired-model", model));
 
         RewindModelUnwind.Restore restore = assertInstanceOf(
             RewindModelUnwind.Restore.class, result.model());
@@ -131,7 +132,7 @@ class RewindModelUnwindTest {
                 assistant("a2", "retired-model")),
             List.of(fallback("f1", "claude-sonnet-4-6", "claude-opus-4-6")),
             "claude-opus-4-6", true, "claude-haiku-4-5-20251001",
-            model -> !model.equals("retired-model"));
+            model -> !Strings.CS.equals("retired-model", model));
 
         RewindModelUnwind.Restore restore = assertInstanceOf(
             RewindModelUnwind.Restore.class, result.model());

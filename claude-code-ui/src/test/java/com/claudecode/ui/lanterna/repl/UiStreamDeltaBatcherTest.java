@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,7 @@ class UiStreamDeltaBatcherTest {
                 uiQueue::add, rendered::add,
                 (text, finalDelta) -> {
                     finalMarkers.add(finalDelta);
-                    return text.toUpperCase();
+                    return text.toUpperCase(Locale.ROOT);
                 }, scheduler, 60_000L);
 
             batcher.append("hello");

@@ -882,7 +882,7 @@ class HookEngineTest {
             (input, _) -> MAPPER.createObjectNode()
                 .set("hookSpecificOutput", MAPPER.createObjectNode()
                     .put("hookEventName", "MessageDisplay")
-                    .put("displayContent", input.extra().get("delta").toString().toUpperCase())),
+                    .put("displayContent", input.extra().get("delta").toString().toUpperCase(Locale.ROOT))),
             Optional.empty());
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
         engine.setSdkHooks(Map.of(HookEvent.MESSAGE_DISPLAY,

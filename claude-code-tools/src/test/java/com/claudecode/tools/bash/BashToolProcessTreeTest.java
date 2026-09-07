@@ -19,8 +19,8 @@ class BashToolProcessTreeTest {
     @Test
     void timeoutDoesNotLeaveAChildProcessReadingTheTerminal(@TempDir Path project)
             throws Exception {
-        Assumptions.assumeTrue(System.getProperty("os.name", "").toLowerCase().contains("mac")
-            || System.getProperty("os.name", "").toLowerCase().contains("linux"));
+        Assumptions.assumeTrue(Strings.CI.contains(System.getProperty("os.name", ""), "mac")
+            || Strings.CI.contains(System.getProperty("os.name", ""), "linux"));
         BashTool tool = new BashTool();
         Path pidFile = project.resolve("child.pid");
         ToolExecutionContext context = ToolExecutionContext.builder(

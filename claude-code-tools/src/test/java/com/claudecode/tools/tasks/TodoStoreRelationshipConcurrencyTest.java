@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 class TodoStoreRelationshipConcurrencyTest {
 
@@ -112,7 +113,7 @@ class TodoStoreRelationshipConcurrencyTest {
 
         String owner = new TodoStore(tasksBase, "session").get(task.id())
             .orElseThrow().owner().orElseThrow();
-        assertTrue(owner.equals("alpha") || owner.equals("beta"));
+        assertTrue(Strings.CS.equals("alpha", owner) || Strings.CS.equals("beta", owner));
         assertFalse(owner.isEmpty());
     }
 }

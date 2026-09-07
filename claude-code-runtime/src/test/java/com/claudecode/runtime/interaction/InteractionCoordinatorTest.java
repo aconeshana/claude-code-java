@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class InteractionCoordinatorTest {
 
@@ -138,7 +139,7 @@ class InteractionCoordinatorTest {
         InteractionUnsupported event = unsupported.get(2, TimeUnit.SECONDS);
         assertEquals(InteractionKind.SUDO_PASSWORD, event.descriptor().kind());
         assertEquals("complete_in_tui", event.action());
-        assertFalse(event.toString().contains("sudo -v"));
+        assertFalse(Strings.CS.contains(event.toString(), "sudo -v"));
     }
 
     @Test
@@ -235,11 +236,11 @@ class InteractionCoordinatorTest {
         SudoPasswordInteraction.Result result = coordinator.request(request);
 
         assertInstanceOf(SudoPasswordInteraction.Result.Unavailable.class, result);
-        assertFalse(request.toString().contains("secret-command"));
+        assertFalse(Strings.CS.contains(request.toString(), "secret-command"));
         try (SudoPasswordInteraction.Result.Provided provided =
                 SudoPasswordInteraction.Result.provided("secret-value".toCharArray())) {
-            assertFalse(provided.toString().contains("secret-value"));
-            assertFalse(provided.toString().contains("12"));
+            assertFalse(Strings.CS.contains(provided.toString(), "secret-value"));
+            assertFalse(Strings.CS.contains(provided.toString(), "12"));
         }
     }
 

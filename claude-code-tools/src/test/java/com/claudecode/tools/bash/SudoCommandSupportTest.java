@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 /** RED tests for the deliberately narrow phase-one sudo interaction boundary. */
 class SudoCommandSupportTest {
@@ -100,8 +101,8 @@ class SudoCommandSupportTest {
             .prepare("sudo printf safe-output", Path.of("/usr/bin/sudo"))
             .orElseThrow();
 
-        assertFalse(prepared.command().contains(new String(secret)));
-        assertFalse(prepared.toString().contains(new String(secret)));
-        assertFalse(result.toString().contains(new String(secret)));
+        assertFalse(Strings.CS.contains(prepared.command(), new String(secret)));
+        assertFalse(Strings.CS.contains(prepared.toString(), new String(secret)));
+        assertFalse(Strings.CS.contains(result.toString(), new String(secret)));
     }
 }

@@ -86,7 +86,7 @@ class PermissionsPanelTest {
         List<String> lines = renderedLines(p, 80);
 
         assertEquals(11, p.calculatePreferredSize().getRows());
-        assertEquals("─".repeat(80), lines.get(0));
+        assertEquals("─".repeat(80), lines.getFirst());
         assertEquals("  Permissions  Recently denied   Allow   Ask   Deny   Workspace",
             lines.get(1).stripTrailing());
         assertEquals("  Claude Code won't ask before using allowed tools.",

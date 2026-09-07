@@ -272,7 +272,7 @@ class MessageSelectorDialogTest {
 
         live.set(List.of(first, appended));
 
-        assertTrue(rendered(d).contains("appended while open"));
+        assertTrue(Strings.CS.contains(rendered(d), "appended while open"));
         key(d, ENTER);
         assertSame(appended, result.get().message(),
             "197 keeps the numeric cursor index when a live row is inserted before current");
@@ -305,13 +305,13 @@ class MessageSelectorDialogTest {
         d.show(live::get, fileHistory, null, NOOP_EXECUTOR, _ -> {},
             null, null, null);
 
-        assertTrue(rendered(d).contains("⚠ No code restore"));
+        assertTrue(Strings.CS.contains(rendered(d), "⚠ No code restore"));
 
         fileHistory.makeSnapshot(selected.uuid());
 
         String refreshed = rendered(d);
-        assertFalse(refreshed.contains("⚠ No code restore"));
-        assertTrue(refreshed.contains("No code changes"),
+        assertFalse(Strings.CS.contains(refreshed, "⚠ No code restore"));
+        assertTrue(Strings.CS.contains(refreshed, "No code changes"),
             "197 reruns row metadata when its reactive file-history state changes");
     }
 
@@ -341,7 +341,7 @@ class MessageSelectorDialogTest {
             "parent-session", () -> resumed.set(true));
 
         repeatKey(d, UP, 2);
-        assertTrue(rendered(d).contains("/resume parent-session (previous session)"));
+        assertTrue(Strings.CS.contains(rendered(d), "/resume parent-session (previous session)"));
         key(d, ENTER);
 
         assertTrue(resumed.get());
@@ -357,9 +357,9 @@ class MessageSelectorDialogTest {
             .toList();
         d.show(messages, NOOP_EXECUTOR, _ -> {});
 
-        assertTrue(rendered(d).contains("9 more above"));
+        assertTrue(Strings.CS.contains(rendered(d), "9 more above"));
         repeatKey(d, UP, 10);
-        assertTrue(rendered(d).contains("9 more below"));
+        assertTrue(Strings.CS.contains(rendered(d), "9 more below"));
     }
 
     @Test
@@ -382,9 +382,9 @@ class MessageSelectorDialogTest {
         d.show(List.of(first, toolResult, second), fhm, NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("Restore the code and/or conversation to the point before…"));
-        assertTrue(output.contains("changed.txt +1 -1"));
-        assertTrue(output.contains("⚠ No code restore"));
+        assertTrue(Strings.CS.contains(output, "Restore the code and/or conversation to the point before…"));
+        assertTrue(Strings.CS.contains(output, "changed.txt +1 -1"));
+        assertTrue(Strings.CS.contains(output, "⚠ No code restore"));
     }
 
     @Test
@@ -403,7 +403,7 @@ class MessageSelectorDialogTest {
 
         d.show(List.of(first, incompleteResult, second), fhm, NOOP_EXECUTOR, _ -> {});
 
-        assertFalse(rendered(d).contains("ghost.txt"));
+        assertFalse(Strings.CS.contains(rendered(d), "ghost.txt"));
         assertTrue(diffStats(List.of(first, incompleteResult, second),
             first.uuid(), second.uuid()).filesChanged().isEmpty());
     }
@@ -494,11 +494,11 @@ class MessageSelectorDialogTest {
         d.show(List.of(displayTag, bash, command, skill), NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("visible prompt"));
-        assertFalse(output.contains("hidden"));
-        assertTrue(output.contains("! git status"));
-        assertTrue(output.contains("/model opus"));
-        assertTrue(output.contains("Skill(pdf)"));
+        assertTrue(Strings.CS.contains(output, "visible prompt"));
+        assertFalse(Strings.CS.contains(output, "hidden"));
+        assertTrue(Strings.CS.contains(output, "! git status"));
+        assertTrue(Strings.CS.contains(output, "/model opus"));
+        assertTrue(Strings.CS.contains(output, "Skill(pdf)"));
     }
 
     @Test
@@ -521,8 +521,8 @@ class MessageSelectorDialogTest {
         d.show(List.of(message), NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("earlier block…"), output);
-        assertFalse(output.contains("final block"), output);
+        assertTrue(Strings.CS.contains(output, "earlier block…"), output);
+        assertFalse(Strings.CS.contains(output, "final block"), output);
     }
 
     @Test
@@ -534,8 +534,8 @@ class MessageSelectorDialogTest {
         d.show(List.of(message), NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("earlier block"), output);
-        assertFalse(output.contains("(no prompt)"), output);
+        assertTrue(Strings.CS.contains(output, "earlier block"), output);
+        assertFalse(Strings.CS.contains(output, "(no prompt)"), output);
     }
 
     @Test
@@ -556,11 +556,11 @@ class MessageSelectorDialogTest {
         d.show(List.of(realUser(prompt)), NOOP_EXECUTOR, _ -> {});
 
         String narrow = rendered(d);
-        assertFalse(narrow.contains("WIDE_TAIL"));
-        assertTrue(narrow.contains("…"), "truncated selector rows retain the 197 ellipsis");
+        assertFalse(Strings.CS.contains(narrow, "WIDE_TAIL"));
+        assertTrue(Strings.CS.contains(narrow, "…"), "truncated selector rows retain the 197 ellipsis");
         columns.set(100);
         String wide = rendered(d);
-        assertTrue(wide.contains("WIDE_TAIL"), wide);
+        assertTrue(Strings.CS.contains(wide, "WIDE_TAIL"), wide);
     }
 
     @Test
@@ -569,8 +569,8 @@ class MessageSelectorDialogTest {
         d.show(List.of(realUser("first line\nsecond line")), NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("first line…"));
-        assertFalse(output.contains("second line"));
+        assertTrue(Strings.CS.contains(output, "first line…"));
+        assertFalse(Strings.CS.contains(output, "second line"));
     }
 
     @Test
@@ -583,8 +583,8 @@ class MessageSelectorDialogTest {
         key(d, ENTER);
 
         String output = rendered(d);
-        assertTrue(output.contains("Confirm you want to restore the conversation"), output);
-        assertTrue(output.contains("before you sent this message:"), output);
+        assertTrue(Strings.CS.contains(output, "Confirm you want to restore the conversation"), output);
+        assertTrue(Strings.CS.contains(output, "before you sent this message:"), output);
     }
 
     @Test
@@ -624,8 +624,8 @@ class MessageSelectorDialogTest {
         key(d, ENTER);
 
         String output = rendered(d);
-        assertTrue(output.contains("│ " + prompt));
-        assertFalse(output.contains("\"" + prompt.substring(0, 20)));
+        assertTrue(Strings.CS.contains(output, "│ " + prompt));
+        assertFalse(Strings.CS.contains(output, "\"" + prompt.substring(0, 20)));
     }
 
     @Test
@@ -648,11 +648,11 @@ class MessageSelectorDialogTest {
         key(multilineDialog, ENTER);
 
         String output = rendered(multilineDialog);
-        assertTrue(output.contains("line one"));
-        assertTrue(output.contains("line two"));
-        assertTrue(output.contains("line three"));
-        assertTrue(output.contains("line four"));
-        assertFalse(output.contains("line five"));
+        assertTrue(Strings.CS.contains(output, "line one"));
+        assertTrue(Strings.CS.contains(output, "line two"));
+        assertTrue(Strings.CS.contains(output, "line three"));
+        assertTrue(Strings.CS.contains(output, "line four"));
+        assertFalse(Strings.CS.contains(output, "line five"));
         assertEquals(oneLineDialog.calculatePreferredSize().getRows() + 3,
             multilineDialog.calculatePreferredSize().getRows());
     }
@@ -678,7 +678,7 @@ class MessageSelectorDialogTest {
 
         assertEquals(plainDialog.calculatePreferredSize().getRows(),
             paddedDialog.calculatePreferredSize().getRows());
-        assertTrue(rendered(paddedDialog).contains("│ trimmed prompt"));
+        assertTrue(Strings.CS.contains(rendered(paddedDialog), "│ trimmed prompt"));
     }
 
     @Test
@@ -693,7 +693,7 @@ class MessageSelectorDialogTest {
         key(d, UP);
         key(d, ENTER);
 
-        assertTrue(rendered(d).contains("tail-marker"));
+        assertTrue(Strings.CS.contains(rendered(d), "tail-marker"));
     }
 
     @Test
@@ -711,11 +711,11 @@ class MessageSelectorDialogTest {
 
         key(d, UP);
         key(d, ENTER);
-        assertTrue(rendered(d).contains("1. Restore conversation"));
+        assertTrue(Strings.CS.contains(rendered(d), "1. Restore conversation"));
         key(d, DOWN);
-        assertTrue(rendered(d).contains("2. Summarize from here: add context (optional)"));
+        assertTrue(Strings.CS.contains(rendered(d), "2. Summarize from here: add context (optional)"));
         for (char c : "2fa auth".toCharArray()) key(d, new KeyStroke(c, false, false));
-        assertTrue(rendered(d).contains("2. Summarize from here: 2fa auth"));
+        assertTrue(Strings.CS.contains(rendered(d), "2. Summarize from here: 2fa auth"));
         key(d, ENTER);
 
         assertEquals("2fa auth", feedback.get());
@@ -741,8 +741,8 @@ class MessageSelectorDialogTest {
         }
 
         String output = rendered(d);
-        assertTrue(output.contains("2. Summarize from here:"), output);
-        assertTrue(output.contains("-tail"),
+        assertTrue(Strings.CS.contains(output, "2. Summarize from here:"), output);
+        assertTrue(Strings.CS.contains(output, "-tail"),
             "2.1.197 horizontally scrolls the focused inline input to keep its cursor visible\n"
                 + output);
     }
@@ -761,7 +761,7 @@ class MessageSelectorDialogTest {
         key(d, ESC);
 
         assertTrue(d.isActive());
-        assertTrue(rendered(d).contains("Restore the code and/or conversation to the point before…"));
+        assertTrue(Strings.CS.contains(rendered(d), "Restore the code and/or conversation to the point before…"));
     }
 
     @Test
@@ -931,7 +931,7 @@ class MessageSelectorDialogTest {
         d.show(List.of(), NOOP_EXECUTOR, _ -> {});
 
         assertTrue(d.isActive());
-        assertTrue(rendered(d).contains("Esc to cancel"));
+        assertTrue(Strings.CS.contains(rendered(d), "Esc to cancel"));
         key(d, ENTER);
         assertTrue(d.isActive(), "197 leaves the empty selector open when Enter has no target");
         key(d, ESC);
@@ -944,8 +944,8 @@ class MessageSelectorDialogTest {
         d.show(List.of(realUser("hi")), NOOP_EXECUTOR, _ -> {});
 
         String output = rendered(d);
-        assertTrue(output.contains("Enter to continue · Esc to cancel"));
-        assertFalse(output.contains("Esc to exit"));
+        assertTrue(Strings.CS.contains(output, "Enter to continue · Esc to cancel"));
+        assertFalse(Strings.CS.contains(output, "Esc to exit"));
     }
 
     // ── options phase: never mind / summarize + feedback ────────────────────────
@@ -1106,8 +1106,8 @@ class MessageSelectorDialogTest {
         key(d, ENTER);
 
         assertTrue(d.isActive());
-        assertTrue(rendered(d).contains("Restore conversation"));
-        assertFalse(rendered(d).contains("❯"),
+        assertTrue(Strings.CS.contains(rendered(d), "Restore conversation"));
+        assertFalse(Strings.CS.contains(rendered(d), "❯"),
             "197 disables option focus while a confirmed restore is running");
         pendingSuccess.get().run();
         assertFalse(d.isActive());
@@ -1154,10 +1154,10 @@ class MessageSelectorDialogTest {
 
         assertTrue(d.isActive());
         String output = rendered(d);
-        assertTrue(output.contains("Failed to restore the conversation:"));
-        assertFalse(output.contains("Error: Failed to restore the conversation:"));
-        assertTrue(output.contains("boom"));
-        assertTrue(output.contains("Esc to cancel"));
+        assertTrue(Strings.CS.contains(output, "Failed to restore the conversation:"));
+        assertFalse(Strings.CS.contains(output, "Error: Failed to restore the conversation:"));
+        assertTrue(Strings.CS.contains(output, "boom"));
+        assertTrue(Strings.CS.contains(output, "Esc to cancel"));
         assertEquals(5, d.calculatePreferredSize().getRows());
         key(d, ESC);
         assertFalse(d.isActive());
@@ -1398,13 +1398,14 @@ class MessageSelectorDialogTest {
         key(d, ENTER); // summarizing, executor "in flight" (hasn't called back yet)
 
         String output = rendered(d);
-        assertTrue(output.contains("Rewind"));
-        assertTrue(output.contains("Confirm you want to restore"));
-        assertTrue(output.contains("hello"));
-        assertTrue(output.contains("Summarizing…"));
+        assertTrue(Strings.CS.contains(output, "Rewind"));
+        assertTrue(Strings.CS.contains(output, "Confirm you want to restore"));
+        assertTrue(Strings.CS.contains(output, "hello"));
+        assertTrue(Strings.CS.contains(output, "Summarizing…"));
         assertTrue(SpinnerFrames.defaultAnimationFrames().stream()
-                .anyMatch(frame -> output.contains(frame + "  Summarizing…"))
-            || output.contains(SpinnerFrames.REDUCED_MOTION_DOT + "  Summarizing…"));
+                .anyMatch(frame -> Strings.CS.contains(output, frame + "  Summarizing…"))
+            || Strings.CS.contains(output,
+                SpinnerFrames.REDUCED_MOTION_DOT + "  Summarizing…"));
         key(d, ESC);
         assertTrue(d.isActive(), "dialog must stay open while the executor hasn't reported back");
 
@@ -1430,11 +1431,11 @@ class MessageSelectorDialogTest {
 
         assertTrue(d.isActive(), "failure must not close — TS has no in-place retry, only Esc");
         String output = rendered(d);
-        assertTrue(output.contains("Rewind"));
-        assertTrue(output.contains("Failed to summarize:"));
-        assertFalse(output.contains("Error: Failed to summarize:"));
-        assertTrue(output.contains("boom"));
-        assertTrue(output.contains("Esc to cancel"));
+        assertTrue(Strings.CS.contains(output, "Rewind"));
+        assertTrue(Strings.CS.contains(output, "Failed to summarize:"));
+        assertFalse(Strings.CS.contains(output, "Error: Failed to summarize:"));
+        assertTrue(Strings.CS.contains(output, "boom"));
+        assertTrue(Strings.CS.contains(output, "Esc to cancel"));
         assertEquals(5, d.calculatePreferredSize().getRows());
         key(d, ESC);
         assertFalse(d.isActive(), "Esc is the only way out once an error is shown");
@@ -1516,7 +1517,7 @@ class MessageSelectorDialogTest {
             assertEquals(0, exits.get(), "explicitly unbound defaults must stay consumed");
 
             key(d, new KeyStroke('x', false, false));
-            assertTrue(rendered(d).contains("again to exit"));
+            assertTrue(Strings.CS.contains(rendered(d), "again to exit"));
             key(d, new KeyStroke('x', false, false));
             repeatKey(d, new KeyStroke('y', false, false), 2);
 
@@ -1696,18 +1697,18 @@ class MessageSelectorDialogTest {
         key(d, UP);
         key(d, ENTER);
         String firstWindow = rendered(d);
-        assertTrue(firstWindow.contains("↓ 5. Summarize up to here"));
-        assertFalse(firstWindow.contains("6. Never mind"));
+        assertTrue(Strings.CS.contains(firstWindow, "↓ 5. Summarize up to here"));
+        assertFalse(Strings.CS.contains(firstWindow, "6. Never mind"));
 
         key(d, new KeyStroke(KeyType.PAGE_DOWN));
         String lastWindow = rendered(d);
-        assertTrue(lastWindow.contains("↑ 2. Restore conversation"));
-        assertTrue(lastWindow.contains("6. Never mind"));
+        assertTrue(Strings.CS.contains(lastWindow, "↑ 2. Restore conversation"));
+        assertTrue(Strings.CS.contains(lastWindow, "6. Never mind"));
 
         key(d, new KeyStroke(KeyType.PAGE_UP));
         String returnedWindow = rendered(d);
-        assertTrue(returnedWindow.contains("↓ 5. Summarize up to here"));
-        assertFalse(returnedWindow.contains("6. Never mind"));
+        assertTrue(Strings.CS.contains(returnedWindow, "↓ 5. Summarize up to here"));
+        assertFalse(Strings.CS.contains(returnedWindow, "6. Never mind"));
     }
 
     @Test
@@ -1723,9 +1724,9 @@ class MessageSelectorDialogTest {
         key(d, UP);
         key(d, ENTER);
         String firstPage = rendered(d);
-        assertTrue(firstPage.contains("1. Restore code and conversation"));
-        assertTrue(firstPage.contains("2. Restore conversation"));
-        assertFalse(firstPage.contains("3. Restore code"));
+        assertTrue(Strings.CS.contains(firstPage, "1. Restore code and conversation"));
+        assertTrue(Strings.CS.contains(firstPage, "2. Restore conversation"));
+        assertFalse(Strings.CS.contains(firstPage, "3. Restore code"));
 
         key(d, new KeyStroke(KeyType.PAGE_DOWN));
         key(d, ENTER);

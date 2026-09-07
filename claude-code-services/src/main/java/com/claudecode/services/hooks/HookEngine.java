@@ -31,6 +31,7 @@ import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.http.HttpCalls;
 import com.claudecode.permissions.PermissionMode;
+import com.claudecode.services.config.RuntimeSettings;
 import com.claudecode.services.http.ServiceHttpClient;
 import com.claudecode.services.model.GoalContextWindowPolicy;
 import com.claudecode.services.model.ModelOutputTokens;
@@ -457,6 +458,19 @@ public class HookEngine implements HookDispatcher {
         } catch (RuntimeException _) {
             return llmModel;
         }
+    }
+
+    /**
+     * Hook-evaluator model with the released fallback chain. 236 pins both the
+     * stop-condition and prompt-hook evaluators to the live main model (with the
+     * legacy "claude-sonnet-4-20250514" constant when none is known); the
+     * {@code hookEvaluatorModel} settings key is a Java-side override that
+     * takes precedence when non-blank.
+     */
+    private String hookEvaluatorModel(String currentModel) {
+        String override = RuntimeSettings.loadMainModelScenarioModel("hookEvaluatorModel");
+        if (override != null) return override;
+        return currentModel != null ? currentModel : "claude-sonnet-4-20250514";
     }
 
     private String currentGoalEffort() {
@@ -2101,8 +2115,7 @@ public class HookEngine implements HookDispatcher {
 
         try {
             String currentModel = currentLlmModel();
-            String model = cmd.model().orElse(currentModel != null
-                ? currentModel : "claude-sonnet-4-20250514");
+            String model = cmd.model().orElse(hookEvaluatorModel(currentModel));
             String promptText = buildPromptEvaluationPrompt(resolvedPrompt, input);
             String response = callStructuredHookLlm(
                 promptText, model, cmd.timeoutSeconds()
@@ -2139,8 +2152,7 @@ public class HookEngine implements HookDispatcher {
         String toolUseId = input.toolUseId().orElseGet(
             () -> UUID.randomUUID().toString());
         String currentModel = currentLlmModel();
-        String model = cmd.model().orElse(currentModel != null
-            ? currentModel : "claude-sonnet-4-20250514");
+        String model = cmd.model().orElse(hookEvaluatorModel(currentModel));
         List<Message> transcript = stopTranscriptSource();
         JsonNode format = stopConditionOutputFormat();
         long timeoutMillis = cmd.timeoutSeconds().orElse(30) * 1000L;
@@ -2267,12 +2279,16 @@ public class HookEngine implements HookDispatcher {
             .systemPrompt(systemPrompt)
             .messages(messages)
             .maxTokens(Math.toIntExact(ModelOutputTokens.getMaxOutputTokensForModel(model)))
+            // tier: ONE_SHOT (see promptCachingEnabled below)
             .timeoutMillis(timeoutMillis)
             .thinking(CreateMessageRequest.ThinkingConfig.disabled())
             .outputConfig(new CreateMessageRequest.OutputConfig(effort, format))
             .metadata(currentGoalMetadata())
             .tools(currentGoalTools())
             .temperature(1.0)
+            // One-shot goal-condition evaluation over a frozen transcript;
+            // the prefix is never replayed, so the cache marker is pure premium.
+            .promptCachingEnabled(false)
             .streaming(true)
             .querySource("hook_prompt"));
     }
@@ -2503,6 +2519,8 @@ public class HookEngine implements HookDispatcher {
             .timeoutMillis(timeoutMillis)
             .thinking(CreateMessageRequest.ThinkingConfig.disabled())
             .outputConfig(new CreateMessageRequest.OutputConfig(null, promptHookOutputFormat()))
+            // tier: ONE_SHOT — per-hook one-shot prompt; no stable prefix to cache.
+            .promptCachingEnabled(false)
             .querySource("hook_prompt"));
     }
 

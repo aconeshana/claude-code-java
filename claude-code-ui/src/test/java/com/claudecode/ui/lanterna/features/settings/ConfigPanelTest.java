@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Verifies {@link ConfigPanel}'s interaction logic — navigation/search/toggle
@@ -355,9 +356,9 @@ class ConfigPanelTest {
         List<String> lines = renderedLines(p, 80);
 
         assertTrue(lines.stream().anyMatch(line ->
-            line.contains("Default permission mode")
-                && line.stripTrailing().endsWith("Default")));
-        assertTrue(lines.stream().noneMatch(line -> line.contains("‹") || line.contains("›")));
+            Strings.CS.contains(line, "Default permission mode")
+                && Strings.CS.endsWith(line.stripTrailing(), "Default")));
+        assertTrue(lines.stream().noneMatch(line -> Strings.CS.contains(line, "‹") || Strings.CS.contains(line, "›")));
         assertEquals("  Enter/Space to change · / to search · Esc to close",
             lines.getLast().stripTrailing());
     }
@@ -657,12 +658,18 @@ class ConfigPanelTest {
     @Test
     void itemKeys_alignWithConfigCommand() {
         // "model" is the one ConfigPanel item with no ConfigCommand.Setting row —
-        // it's a runtime-only setting (see ConfigPanel's class Javadoc), so the
-        // guard is "superset minus exactly {model}", not full equality.
+        // it's a runtime-only setting (see ConfigPanel's class Javadoc). Symmetrically,
+        // "sideQueryModel" is a ConfigCommand row the official 197 panel inventory
+        // never had, so the panel intentionally omits it. The guard is "panel minus
+        // {model} equals command rows minus {sideQueryModel}", not full equality.
         List<String> panelKeys = new ArrayList<>(ConfigPanel.itemKeys());
         assertTrue(panelKeys.remove("model"), "ConfigPanel.itemKeys() must contain \"model\"");
-        assertEquals(ConfigCommand.settingKeys(), panelKeys,
-            "ConfigPanel.ITEMS (minus \"model\") must stay aligned with ConfigCommand.SETTINGS (same keys, same order)");
+        List<String> commandKeys = new ArrayList<>(ConfigCommand.settingKeys());
+        assertTrue(commandKeys.remove("sideQueryModel"),
+            "ConfigCommand.settingKeys() must contain \"sideQueryModel\"");
+        assertEquals(commandKeys, panelKeys,
+            "ConfigPanel.ITEMS (minus \"model\") must stay aligned with ConfigCommand.SETTINGS "
+            + "(minus \"sideQueryModel\") — same keys, same order");
     }
 
     private static List<String> renderedLines(ConfigPanel panel, int columns) {

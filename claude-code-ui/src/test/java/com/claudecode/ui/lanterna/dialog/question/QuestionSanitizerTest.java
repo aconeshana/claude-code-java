@@ -11,6 +11,7 @@ import com.claudecode.core.text.FormatUtils;
 import com.claudecode.tools.questions.QuestionPresenter;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The {@code w2g} projection. Every expectation is the behaviour of the 2.1.236 bundle function
@@ -104,7 +105,7 @@ class QuestionSanitizerTest {
             .getFirst()
             .options();
 
-        assertEquals("\"a\\u200bb\"", options.get(0).displayLabel());
+        assertEquals("\"a\\u200bb\"", options.getFirst().displayLabel());
         assertEquals("\"a\\u2060b\"", options.get(1).displayLabel(),
             "the escaped form spells out the code unit that actually differs");
     }
@@ -118,7 +119,7 @@ class QuestionSanitizerTest {
             .getFirst()
             .options();
 
-        assertEquals(options.get(0).displayLabel() + " (#2)", options.get(1).displayLabel());
+        assertEquals(options.getFirst().displayLabel() + " (#2)", options.get(1).displayLabel());
     }
 
     @Test
@@ -141,7 +142,7 @@ class QuestionSanitizerTest {
 
         String clamped = QuestionSanitizer.sanitizeHeader("中".repeat(40));
         assertTrue(FormatUtils.displayWidth(clamped) <= DisplaySanitizer.HEADER_WIDTH_LIMIT, clamped);
-        assertTrue(clamped.endsWith("…"), clamped);
+        assertTrue(Strings.CS.endsWith(clamped, "…"), clamped);
     }
 
     // ── displayQuestion / displayDescription (pA) ───────────────────────────
@@ -160,7 +161,7 @@ class QuestionSanitizerTest {
             QuestionSanitizer.displayText("a".repeat(DisplaySanitizer.TEXT_LIMIT + 5));
 
         assertEquals(DisplaySanitizer.TEXT_LIMIT + 1, text.text().length());
-        assertTrue(text.text().endsWith("…"));
+        assertTrue(Strings.CS.endsWith(text.text(), "…"));
         assertTrue(text.needsGutter());
     }
 

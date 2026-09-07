@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Screen-level selection host: {@link SelectionAwareTextGUI#rowText} back-buffer
@@ -163,7 +164,7 @@ class SelectionAwareTextGUITest {
             routed.incrementAndGet();
             return true;
         });
-        e.gui.wirePlainTextBatch((_, text) -> text.equals("model"));
+        e.gui.wirePlainTextBatch((_, text) -> Strings.CS.equals("model", text));
 
         assertTrue(e.gui.handleInput(new PlainTextKeyStroke("model")));
         assertEquals(0, routed.get());

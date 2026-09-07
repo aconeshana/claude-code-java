@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Unit tests for {@link AgentColorPicker}.
@@ -86,11 +87,11 @@ class AgentColorPickerTest {
         assertEquals("Automatic color", p.optionLabel(0));
         assertEquals("Preview:  @my-agent ", p.previewText());
         String rendered = render(p);
-        assertTrue(rendered.contains("Create new agent"), rendered);
-        assertTrue(rendered.contains("Choose background color"), rendered);
-        assertTrue(rendered.contains("Automatic color"), rendered);
-        assertTrue(rendered.contains("Preview:  @my-agent "), rendered);
-        assertTrue(rendered.contains("Esc go back"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Create new agent"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Choose background color"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Automatic color"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Preview:  @my-agent "), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Esc go back"), rendered);
     }
 
     private static String render(AgentColorPicker picker) {

@@ -2,10 +2,12 @@ package com.claudecode.core.process;
 
 import com.claudecode.core.annotation.Explanation;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.apache.commons.lang3.Strings;
 
 /** Stable, quote-free PowerShell command encoding for Windows process boundaries. */
 @Explanation("Avoids nested-shell quoting and preserves redirected stdin for Windows status lines")
@@ -29,7 +31,7 @@ public final class PowerShellEncodedCommand {
 
     /** Returns the direct process argv only for the exact encoding produced by {@link #encode}. */
     public static Optional<List<String>> argv(String command) {
-        if (command == null || !command.startsWith(PREFIX)) return Optional.empty();
+        if (command == null || !Strings.CS.startsWith(command, PREFIX)) return Optional.empty();
         String payload = command.substring(PREFIX.length());
         if (payload.isEmpty() || payload.chars().anyMatch(Character::isWhitespace)) {
             return Optional.empty();
@@ -40,7 +42,9 @@ public final class PowerShellEncodedCommand {
         } catch (IllegalArgumentException _) {
             return Optional.empty();
         }
-        return Optional.of(List.of(EXECUTABLE, OPTIONS.get(0), OPTIONS.get(1),
-            OPTIONS.get(2), OPTIONS.get(3), payload));
+        List<String> argv = new ArrayList<>(OPTIONS);
+        argv.addFirst(EXECUTABLE);
+        argv.addLast(payload);
+        return Optional.of(List.copyOf(argv));
     }
 }

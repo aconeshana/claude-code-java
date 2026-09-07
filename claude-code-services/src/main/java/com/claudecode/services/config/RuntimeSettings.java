@@ -116,6 +116,54 @@ public final class RuntimeSettings {
         return booleanSetting("autoMemoryEnabled", true);
     }
 
+    /**
+     * Optional model override for one-shot side queries (title generation,
+     * tool-use summaries, away summary, agent summaries). Absent falls back
+     * to {@code ANTHROPIC_SMALL_FAST_MODEL} and then the default Haiku.
+     */
+    public static String loadSideQueryModel() {
+        return StringUtils.trimToNull(stringSetting("sideQueryModel"));
+    }
+
+    /**
+     * Optional per-scenario model override for one-shot side queries. A blank
+     * scenario value falls back to the global {@code sideQueryModel}, so the
+     * global key stays the single default and per-scenario keys only narrow it.
+     *
+     * <p>Known scenario keys (Java-side extensions; 236 resolves each consumer
+     * to its own model family and has no settings override):
+     * {@code sessionTitleModel}, {@code renameModel}, {@code toolSummaryModel}.
+     * FORKED_PREFIX consumers (away summary, agent summary, compact) are
+     * deliberately NOT configurable per scenario — a model differing from the
+     * main loop forfeits the prefix cache-read discount, so the fork keeps the
+     * small-fast chain unconditionally.
+     */
+    public static String loadScenarioModel(String scenarioKey) {
+        if (StringUtils.isBlank(scenarioKey)) return loadSideQueryModel();
+        String scenario = StringUtils.trimToNull(stringSetting(scenarioKey));
+        return scenario != null ? scenario : loadSideQueryModel();
+    }
+
+    /**
+     * Optional model override for the one-shot main-model scenarios (permission
+     * explainer, hook stop-condition and prompt-hook evaluators). These do not
+     * share the small-fast chain — 236 pins them to the main model — so a blank
+     * value returns {@code null} and the caller keeps its main-model default.
+     */
+    public static String loadMainModelScenarioModel(String scenarioKey) {
+        if (StringUtils.isBlank(scenarioKey)) return null;
+        return StringUtils.trimToNull(stringSetting(scenarioKey));
+    }
+
+    /**
+     * Optional model override for insights facet analysis. 236 pins insights to
+     * {@code Uk()} (ANTHROPIC_DEFAULT_OPUS_MODEL then the best Opus); a blank
+     * value returns {@code null} and the caller keeps that resolution.
+     */
+    public static String loadInsightsModel() {
+        return StringUtils.trimToNull(stringSetting("insightsModel"));
+    }
+
     /** Persists the auto-memory switch in the user settings tier. */
     public static void saveAutoMemoryEnabled(boolean enabled) {
         SettingsEditor.writeUserBoolean("autoMemoryEnabled", enabled);

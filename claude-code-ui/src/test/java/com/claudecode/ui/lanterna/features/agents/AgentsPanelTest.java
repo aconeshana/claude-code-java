@@ -210,10 +210,10 @@ class AgentsPanelTest {
 
         String rendered = rendered(p);
 
-        assertTrue(rendered.contains(" Running "), rendered);
-        assertTrue(rendered.contains(" Library "), rendered);
-        assertFalse(rendered.contains("❯ Running"), rendered);
-        assertFalse(rendered.contains("❯ Library"), rendered);
+        assertTrue(Strings.CS.contains(rendered, " Running "), rendered);
+        assertTrue(Strings.CS.contains(rendered, " Library "), rendered);
+        assertFalse(Strings.CS.contains(rendered, "❯ Running"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "❯ Library"), rendered);
     }
 
     @Test
@@ -288,7 +288,7 @@ class AgentsPanelTest {
         send(p, new KeyStroke(KeyType.ARROW_RIGHT));
 
         String screen = rendered(p);
-        assertTrue(screen.contains("Project agents (/work/.claude/agents)"), screen);
+        assertTrue(Strings.CS.contains(screen, "Project agents (/work/.claude/agents)"), screen);
     }
 
     @Test
@@ -297,9 +297,9 @@ class AgentsPanelTest {
         send(p, new KeyStroke(KeyType.ARROW_RIGHT));
 
         String screen = rendered(p);
-        assertTrue(screen.contains("Create new agent"), screen);
-        assertFalse(screen.contains("+ Create new agent"), screen);
-        assertTrue(screen.contains("Built-in (always available):"), screen);
+        assertTrue(Strings.CS.contains(screen, "Create new agent"), screen);
+        assertFalse(Strings.CS.contains(screen, "+ Create new agent"), screen);
+        assertTrue(Strings.CS.contains(screen, "Built-in (always available):"), screen);
     }
 
     @Test
@@ -312,7 +312,7 @@ class AgentsPanelTest {
         send(p, new KeyStroke(KeyType.ARROW_RIGHT));
 
         String screen = rendered(p);
-        assertTrue(screen.contains(
+        assertTrue(Strings.CS.contains(screen,
             "No agents found. Create specialized subagents that Claude can delegate to."), screen);
         assertTrue(screen.indexOf("No agents found.")
             < screen.indexOf("Built-in (always available):"), screen);
@@ -333,9 +333,9 @@ class AgentsPanelTest {
         p.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
         String screen = renderedText(image);
 
-        assertTrue(screen.contains("↓ 2 more"), screen);
-        assertFalse(screen.contains("agent-7"), screen);
-        assertFalse(screen.contains("agent-8"), screen);
+        assertTrue(Strings.CS.contains(screen, "↓ 2 more"), screen);
+        assertFalse(Strings.CS.contains(screen, "agent-7"), screen);
+        assertFalse(Strings.CS.contains(screen, "agent-8"), screen);
     }
 
     @Test
@@ -680,7 +680,7 @@ class AgentsPanelTest {
         send(p, DOWN); send(p, DOWN); send(p, ENTER);
 
         String screen = rendered(p);
-        assertTrue(screen.contains("Source: Project"), screen);
+        assertTrue(Strings.CS.contains(screen, "Source: Project"), screen);
     }
 
     // ── inactive panel ───────────────────────────────────────────────────────

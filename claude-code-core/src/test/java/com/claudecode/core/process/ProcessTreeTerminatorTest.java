@@ -1,5 +1,6 @@
 package com.claudecode.core.process;
 
+import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,8 +15,8 @@ class ProcessTreeTerminatorTest {
 
     @Test
     void terminatesDescendantsBeforeTheyCanBecomeOrphans() throws Exception {
-        Assumptions.assumeTrue(System.getProperty("os.name", "").toLowerCase().contains("mac")
-            || System.getProperty("os.name", "").toLowerCase().contains("linux"));
+        Assumptions.assumeTrue(Strings.CI.contains(System.getProperty("os.name", ""), "mac")
+            || Strings.CI.contains(System.getProperty("os.name", ""), "linux"));
         Process root = new ProcessBuilder("/bin/sh", "-c",
             "sleep 30 & child=$!; printf '%s\\n' \"$child\"; wait").start();
         ProcessHandle child = null;

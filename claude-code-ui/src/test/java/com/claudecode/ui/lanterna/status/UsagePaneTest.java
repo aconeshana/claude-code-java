@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.claudecode.ui.lanterna.features.settings.SettingsTabContainer;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Verifies {@link UsagePane}'s visibility state machine. Pixel rendering is
@@ -53,7 +54,7 @@ class UsagePaneTest {
         assertEquals("  Session", line(image, 0).stripTrailing());
         assertEquals("  Total cost:            $0.0000", line(image, 2).stripTrailing());
         assertEquals("  Total duration (API):  0s", line(image, 3).stripTrailing());
-        assertTrue(line(image, 4).startsWith("  Total duration (wall): "));
+        assertTrue(Strings.CS.startsWith(line(image, 4), "  Total duration (wall): "));
         assertEquals("  Total code changes:    0 lines added, 0 lines removed",
             line(image, 5).stripTrailing());
         assertEquals("  Usage:                 0 input, 0 output, 0 cache read, 0 cache write",

@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 class TaskToolResultAtomicityTest {
 
@@ -29,7 +30,7 @@ class TaskToolResultAtomicityTest {
         var result = tool.callWithResult(input, context());
 
         JsonNode payload = (JsonNode) result.mappedResult().toolUseResult();
-        assertTrue(result.rawResult().contains("before"));
+        assertTrue(Strings.CS.contains(result.rawResult(), "before"));
         assertEquals("before", payload.path("task").path("subject").asText());
     }
 
@@ -42,7 +43,7 @@ class TaskToolResultAtomicityTest {
         var result = tool.callWithResult(MAPPER.createObjectNode(), context());
 
         JsonNode payload = (JsonNode) result.mappedResult().toolUseResult();
-        assertTrue(result.rawResult().contains("before"));
+        assertTrue(Strings.CS.contains(result.rawResult(), "before"));
         assertEquals("before", payload.path("tasks").get(0).path("subject").asText());
     }
 

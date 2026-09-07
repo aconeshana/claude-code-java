@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 class TodoStorePathTest {
 
@@ -103,7 +104,7 @@ class TodoStorePathTest {
         String raw = Files.readString(
             tasksBase.resolve("session").resolve(created.id() + ".json"));
         JsonNode persisted = JsonUtils.parseTree(raw);
-        assertTrue(raw.contains("\n  \"id\""));
+        assertTrue(Strings.CS.contains(raw, "\n  \"id\""));
         assertEquals("pending", persisted.path("status").asText());
         assertFalse(persisted.has("activeForm"));
         assertFalse(persisted.has("owner"));

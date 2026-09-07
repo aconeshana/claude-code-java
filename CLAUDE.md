@@ -154,3 +154,4 @@ The API key and bearer token are resolved independently; neither is a fallback o
 - [Terminal UI component catalog](docs/ui-components.md)
 - [Build, test & configuration](docs/build-and-test.md)
 - [Memory system — CLAUDE.md scopes + @include + /memory](docs/memory-system.md)
+- [Prompt cache tiers — @CacheTier & scenario model keys](docs/prompt-cache-tiers.md)

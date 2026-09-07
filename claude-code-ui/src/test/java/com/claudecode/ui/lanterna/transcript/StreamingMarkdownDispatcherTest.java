@@ -298,7 +298,7 @@ class StreamingMarkdownDispatcherTest {
             "tool_streaming_done", "Bash|tool-1|{\"command\":\"sleep 20\"}"), panel);
         int linesAfterHeader = panel.snapshotLineCount();
         assertTrue(panel.displayRowsForTest(100).stream()
-                        .anyMatch(row -> row.text().contains("Bash(sleep 20)")),
+                        .anyMatch(row -> Strings.CS.contains(row.text(), "Bash(sleep 20)")),
             "tool header must render");
 
         // The second stray delta must not truncate the header away.
@@ -307,7 +307,7 @@ class StreamingMarkdownDispatcherTest {
         assertEquals(linesAfterHeader, panel.snapshotLineCount(),
             "stray whitespace delta must not shrink the panel");
         assertTrue(panel.displayRowsForTest(100).stream()
-                        .anyMatch(row -> row.text().contains("Bash(sleep 20)")),
+                        .anyMatch(row -> Strings.CS.contains(row.text(), "Bash(sleep 20)")),
             "tool header must survive stray whitespace deltas");
     }
 }

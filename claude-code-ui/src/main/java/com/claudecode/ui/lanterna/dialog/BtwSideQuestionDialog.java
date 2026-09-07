@@ -26,6 +26,7 @@ import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -495,8 +496,8 @@ public final class BtwSideQuestionDialog extends Panel implements InlineOverlay 
     }
 
     private static boolean isSyntheticResponse(String value) {
-        return value != null && (value.startsWith("(The model tried to call ")
-            || value.startsWith("(API error: "));
+        return value != null && (Strings.CS.startsWith(value, "(The model tried to call ")
+            || Strings.CS.startsWith(value, "(API error: "));
     }
 
     private static String normalizeQuestion(String value) {

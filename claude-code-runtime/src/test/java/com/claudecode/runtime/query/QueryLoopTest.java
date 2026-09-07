@@ -2597,7 +2597,7 @@ class QueryLoopTest {
         assertEquals("full model prompt", capturedRequest.get().tools().getFirst().description());
         assertFalse(capturedRequest.get().messages().stream()
             .map(message -> String.valueOf(message.content()))
-            .anyMatch(content -> content.contains("<available-deferred-tools>")));
+            .anyMatch(content -> Strings.CS.contains(content, "<available-deferred-tools>")));
     }
 
 

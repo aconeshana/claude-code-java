@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 class SessionMetricsPersistenceTest {
     @Test
@@ -44,10 +45,10 @@ class SessionMetricsPersistenceTest {
 
         List<JsonNode> rows = JsonUtils.readJsonLines(target);
         List<JsonNode> metrics = rows.stream()
-            .filter(row -> "java-session-metrics".equals(row.path("type").asText()))
+            .filter(row -> Strings.CS.equals("java-session-metrics", row.path("type").asText()))
             .toList();
         assertEquals(2, metrics.size());
-        assertEquals(0, metrics.get(0).path("seq").asLong());
+        assertEquals(0, metrics.getFirst().path("seq").asLong());
         assertEquals(1, metrics.get(1).path("seq").asLong());
         assertEquals("fork", metrics.get(1).path("sessionId").asText());
     }

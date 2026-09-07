@@ -61,13 +61,18 @@ public final class TerminalSessionTitleGenerator {
     private final BiConsumer<String, String> wireDumper;
 
     public TerminalSessionTitleGenerator(LlmClient llmClient) {
-        this(llmClient, SideQuery::resolveSmallFastModel,
+        this(llmClient, () -> SideQuery.resolveSmallFastModel(null, "sessionTitleModel"),
             (sessionId, wire) -> ApiRequestDumper.instance().dump(sessionId, wire));
     }
 
-    /** Creates a generator whose helper model is resolved against the active main model. */
+    /**
+     * Creates a generator whose helper model is resolved against the active main
+     * model. 236 {@code vO()}: with no dedicated small-fast override the title
+     * query falls back to the main model, so {@code mainModel} stays the
+     * resolution input rather than a verbatim request model.
+     */
     public TerminalSessionTitleGenerator(LlmClient llmClient, String mainModel) {
-        this(llmClient, () -> mainModel,
+        this(llmClient, () -> SideQuery.resolveSmallFastModel(mainModel, "sessionTitleModel"),
             (sessionId, wire) -> ApiRequestDumper.instance().dump(sessionId, wire));
     }
 
@@ -124,8 +129,8 @@ public final class TerminalSessionTitleGenerator {
                 long finalAttemptStartMs = startedAt;
                 while (stream.hasNext()) {
                     StreamEvent event = stream.next();
-                    if (event instanceof StreamEvent.RequestTiming timing) {
-                        finalAttemptStartMs = timing.lastAttemptStartMs();
+                    if (event instanceof StreamEvent.RequestTiming(long lastAttemptStartMs)) {
+                        finalAttemptStartMs = lastAttemptStartMs;
                     } else if (event instanceof StreamEvent.MessageStart start) {
                         if (start.message() != null && start.message().model() != null) {
                             servingModel = start.message().model();

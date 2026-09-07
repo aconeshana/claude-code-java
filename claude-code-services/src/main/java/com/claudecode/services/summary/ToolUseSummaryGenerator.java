@@ -1,5 +1,6 @@
 package com.claudecode.services.summary;
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.api.LlmClient;
 import com.claudecode.core.engine.ToolBatchSummarizer;
@@ -47,6 +48,7 @@ public class ToolUseSummaryGenerator implements ToolBatchSummarizer {
     }
 
     @Override
+    @CacheTier(CacheTier.Tier.ONE_SHOT)
     public CompletableFuture<String> summarizeAsync(List<ToolCallInfo> tools,
                                                       String lastAssistantText,
                                                       boolean isNonInteractiveSession) {
@@ -68,7 +70,7 @@ public class ToolUseSummaryGenerator implements ToolBatchSummarizer {
                     : "";
 
                 String userPrompt = contextPrefix + "Tools completed:\n\n" + toolSummaries + "\n\nLabel:";
-                String response = sideQuery.queryHaiku(SYSTEM_PROMPT, userPrompt);
+                String response = sideQuery.queryHaiku(SYSTEM_PROMPT, userPrompt, "toolSummaryModel");
                 String summary = response != null ? response.trim() : "";
                 return summary.isEmpty() ? null : summary;
             } catch (Exception e) {

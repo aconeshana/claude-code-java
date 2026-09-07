@@ -15,6 +15,7 @@ import com.claudecode.core.message.UserMessage;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Reproduces the reported symptom: an Edit tool result renders a full structured
@@ -42,9 +43,9 @@ class DiffSurvivesFollowupStreamTest {
     }
 
     private static void assertDiffPresent(List<String> rows, String label) {
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int newValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int newValue;")),
             label + ": added diff line must survive (found=" + rows + ")");
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int oldValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int oldValue;")),
             label + ": removed diff line must survive (found=" + rows + ")");
     }
 

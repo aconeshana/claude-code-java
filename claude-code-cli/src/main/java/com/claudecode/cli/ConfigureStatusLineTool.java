@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /** Model-facing, write-only boundary used exclusively by {@code /statusline}. */
 @Explanation("Prevents status-line setup agents from reading or echoing unrelated user settings")
@@ -86,7 +87,7 @@ final class ConfigureStatusLineTool extends AnnotatedTool<JsonNode, String> {
                 && (command.indexOf('\r') >= 0 || command.indexOf('\n') >= 0))) {
             return ValidationResult.invalid("command must be a single line");
         }
-        if (platform == Platform.WIN32 && command.contains("`u{")) {
+        if (platform == Platform.WIN32 && Strings.CS.contains(command, "`u{")) {
             return ValidationResult.invalid(
                 "command must use Windows PowerShell 5.1 syntax and ASCII display text");
         }

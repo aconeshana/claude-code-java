@@ -6,6 +6,7 @@ import com.claudecode.commands.impl.terminal.CopyCommand;
 import com.claudecode.commands.insights.InsightsPort;
 import com.claudecode.commands.plugins.PluginRuntimePort;
 import com.claudecode.commands.permissions.PermissionCommandPort;
+import com.claudecode.commands.recap.RecapPort;
 import com.claudecode.commands.session.SessionCommandPort;
 import com.claudecode.commands.tooling.ToolingCommandPorts;
 import com.claudecode.commands.prompt.PromptShellExecutor;
@@ -161,6 +162,7 @@ public record CommandContext(
         private Runnable statsDialogLauncher;
         private Supplier<InsightsPort> insightsPipeline;
         private SettingsManagementPort settingsManagement = SettingsManagementPort.none();
+        private RecapPort recap = RecapPort.none();
         private McpManagementPort mcpManagement = McpManagementPort.none();
         private Consumer<TagRemovalRequest> tagRemovalLauncher;
         private boolean nonInteractive;
@@ -273,6 +275,7 @@ public record CommandContext(
         public Builder statsDialogLauncher(Runnable v) { statsDialogLauncher = v; return this; }
         public Builder insightsPipeline(Supplier<InsightsPort> v) { insightsPipeline = v; return this; }
         public Builder settingsManagement(SettingsManagementPort v) { settingsManagement = v == null ? SettingsManagementPort.none() : v; return this; }
+        public Builder recap(RecapPort v) { recap = v == null ? RecapPort.none() : v; return this; }
         public Builder mcpManagement(McpManagementPort v) { mcpManagement = v == null ? McpManagementPort.none() : v; return this; }
         public Builder tagRemovalLauncher(Consumer<TagRemovalRequest> v) { tagRemovalLauncher = v; return this; }
         public Builder nonInteractive(boolean v) { nonInteractive = v; return this; }
@@ -290,8 +293,9 @@ public record CommandContext(
                 modelAllowed, resumeLauncher, sessionIdSwitcher, resetSessionCost,
                 contextDataCollector, mcpStatusSupplier, promptShellExecutor, nonInteractive);
             CommandApplicationPorts application = new CommandApplicationPorts(
-                doctor, dream, pluginRuntime, insightsPipeline, settingsManagement,
-                mcpManagement, permissionCommands, sessionCommands, toolingCommands);
+                doctor, dream, pluginRuntime, insightsPipeline, recap,
+                settingsManagement, mcpManagement, permissionCommands, sessionCommands,
+                toolingCommands);
             CommandPresentationPorts presentation = new CommandPresentationPorts(
                 btwDialogLauncher, pokemonStatusPresenter, pokemonHatchLauncher,
                 effortDialogLauncher, exportDialogLauncher, hooksDialogLauncher,

@@ -8,6 +8,7 @@ import com.claudecode.runtime.interaction.SudoPasswordInteraction;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class SudoCommandAdapterTest {
 
@@ -26,7 +27,7 @@ class SudoCommandAdapterTest {
             SudoCommandAdapter.Result.Prepared.class, result);
         assertEquals("/usr/bin/sudo -S -p '' -v", prepared.command());
         assertEquals(1, requests.get());
-        assertTrue(prepared.toString().contains("redacted"));
+        assertTrue(Strings.CS.contains(prepared.toString(), "redacted"));
         prepared.close();
     }
 
@@ -41,7 +42,7 @@ class SudoCommandAdapterTest {
 
         SudoCommandAdapter.Result.Rejected rejected = assertInstanceOf(
             SudoCommandAdapter.Result.Rejected.class, result);
-        assertTrue(rejected.message().contains("direct sudo command"));
+        assertTrue(Strings.CS.contains(rejected.message(), "direct sudo command"));
         assertEquals(0, requests.get());
     }
 

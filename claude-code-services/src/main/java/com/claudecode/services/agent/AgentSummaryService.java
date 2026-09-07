@@ -1,5 +1,6 @@
 package com.claudecode.services.agent;
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.api.LlmClient;
 import com.claudecode.core.engine.SubAgentProgressSummarizer;
@@ -20,6 +21,7 @@ import java.util.function.Supplier;
 /**
  * Periodic background summarization for coordinator-mode sub-agents.
  */
+@CacheTier(CacheTier.Tier.FORKED_PREFIX)
 public class AgentSummaryService implements SubAgentProgressSummarizer, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(AgentSummaryService.class);
@@ -83,11 +85,17 @@ public class AgentSummaryService implements SubAgentProgressSummarizer, AutoClos
                 if (transcript == null || transcript.size() < 3) return;
                 SideQuery sq = new SideQuery(llmClient);
                 String prompt = buildSummaryPrompt();
-                String text = sq.queryText(
-                    SideQuery.resolveSmallFastModel(),
-                    "",
-                    prompt + "\n\nRecent conversation:\n" + recentTypes(transcript),
-                    64);
+                // tier: FORKED_PREFIX — see the skipCacheWrite knob below
+                String text = sq.queryTextOrThrow(new SideQuery.Request()
+                    .model(SideQuery.resolveSmallFastModel())
+                    .userPrompt(prompt + "\n\nRecent conversation:\n" + recentTypes(transcript))
+                    .maxTokens(64)
+                    // 236 agent_summary runs via cacheSafeParams +
+                    // skipCacheWrite:true - the transcript prefix keeps its
+                    // markers (shared with the main loop), only the appended
+                    // summary prompt is left uncached.
+                    .skipCacheWrite(true)
+                    .querySource("agent_summary"));
                 if (StringUtils.isNotBlank(text)) {
                     onSummary.accept(safeTaskId, text.trim());
                 }

@@ -802,19 +802,19 @@ public final class SessionController implements ReplCommandUiBridge.Session {
             .messagesAfterAreOnlySynthetic(msgs, match.index());
 
         if (fileHistory == null) {
-            finishEditMessageFromActions(msgs, selected, null, true, onlySynthetic);
+            finishEditMessageFromActions(selected, null, true, onlySynthetic);
             return;
         }
 
         Thread.ofVirtual().name("rewind-message-action-check").start(() -> {
             boolean noFileChanges = !fileHistory.hasAnyChanges(selected.uuid());
             laterOnGuiThread(() -> finishEditMessageFromActions(
-                msgs, selected, fileHistory, noFileChanges, onlySynthetic));
+                selected, fileHistory, noFileChanges, onlySynthetic));
         });
     }
 
     private void finishEditMessageFromActions(
-            List<Message> msgs, UserMessage selected, FileHistoryManager fileHistory,
+            UserMessage selected, FileHistoryManager fileHistory,
             boolean noFileChanges, boolean onlySynthetic) {
         if (noFileChanges && onlySynthetic) {
             interruptForRewindIfRequired();

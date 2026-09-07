@@ -81,8 +81,8 @@ class PromptHookContractTest {
         assertEquals("not verified", assertInstanceOf(HookResult.Block.class, result).reason());
         assertEquals(50, captured.get().maxTurns());
         assertEquals("dontAsk", captured.get().permissionMode().external());
-        assertTrue(captured.get().systemPromptOverride().contains("conversation transcript"));
-        assertTrue(captured.get().jsonSchema().path("required").toString().contains("ok"));
+        assertTrue(Strings.CS.contains(captured.get().systemPromptOverride(), "conversation transcript"));
+        assertTrue(Strings.CS.contains(captured.get().jsonSchema().path("required").toString(), "ok"));
     }
 
     private static HookEngine engineWithResponse(String response) {

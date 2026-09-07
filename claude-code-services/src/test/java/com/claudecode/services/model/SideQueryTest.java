@@ -127,7 +127,7 @@ class SideQueryTest {
 
         assertEquals("msg_stream", message.id());
         assertEquals("tool_use", message.stopReason());
-        assertEquals(new TextBlock("hello"), message.content().get(0));
+        assertEquals(new TextBlock("hello"), message.content().getFirst());
         ToolUseBlock tool = (ToolUseBlock) message.content().get(1);
         assertEquals("tool-1", tool.id());
         assertEquals("Lookup", tool.name());

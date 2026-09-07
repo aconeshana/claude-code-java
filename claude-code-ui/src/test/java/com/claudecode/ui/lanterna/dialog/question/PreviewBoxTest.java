@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The {@code r$c} geometry. Every expectation is the arithmetic of the 2.1.236 bundle, not a
@@ -71,12 +72,12 @@ class PreviewBoxTest {
     void theFrameIsDrawnWithTheBundlesBoxGlyphs() {
         List<String> rows = lines(render("hi", 20, 60));
 
-        assertTrue(rows.getFirst().startsWith("┌"), rows.getFirst());
-        assertTrue(rows.getFirst().endsWith("┐"), rows.getFirst());
-        assertTrue(rows.get(1).startsWith("│ "), rows.get(1));
-        assertTrue(rows.get(1).endsWith(" │"), rows.get(1));
-        assertTrue(rows.getLast().startsWith("└"), rows.getLast());
-        assertTrue(rows.getLast().endsWith("┘"), rows.getLast());
+        assertTrue(Strings.CS.startsWith(rows.getFirst(), "┌"), rows.getFirst());
+        assertTrue(Strings.CS.endsWith(rows.getFirst(), "┐"), rows.getFirst());
+        assertTrue(Strings.CS.startsWith(rows.get(1), "│ "), rows.get(1));
+        assertTrue(Strings.CS.endsWith(rows.get(1), " │"), rows.get(1));
+        assertTrue(Strings.CS.startsWith(rows.getLast(), "└"), rows.getLast());
+        assertTrue(Strings.CS.endsWith(rows.getLast(), "┘"), rows.getLast());
     }
 
     // ── overflow ────────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ class PreviewBoxTest {
     void aPreviewWithinTheLineBudgetHasNoCutBar() {
         List<String> rows = lines(render("a\n\nb\n\nc", 20, 60));
 
-        assertFalse(rows.stream().anyMatch(row -> row.contains("✂")), rows.toString());
+        assertFalse(rows.stream().anyMatch(row -> Strings.CS.contains(row, "✂")), rows.toString());
     }
 
     @Test
@@ -96,9 +97,9 @@ class PreviewBoxTest {
         String bar = rows.get(rows.size() - 2);
 
         assertEquals(4 + 3, rows.size(), "top, four content rows, the bar, and bottom");
-        assertTrue(bar.startsWith("├"), bar);
-        assertTrue(bar.endsWith("┤"), bar);
-        assertTrue(bar.contains("─── ✂ ─── 15 lines hidden "), bar);
+        assertTrue(Strings.CS.startsWith(bar, "├"), bar);
+        assertTrue(Strings.CS.endsWith(bar, "┤"), bar);
+        assertTrue(Strings.CS.contains(bar, "─── ✂ ─── 15 lines hidden "), bar);
         assertEquals(box.width(), FormatUtils.displayWidth(bar));
     }
 
@@ -112,7 +113,7 @@ class PreviewBoxTest {
         String joined = rows.subList(1, rows.size() - 1).stream()
             .map(row -> row.substring(2, row.length() - 2).stripTrailing())
             .collect(Collectors.joining(" "));
-        assertTrue(joined.endsWith("wrap me"), joined);
+        assertTrue(Strings.CS.endsWith(joined, "wrap me"), joined);
     }
 
     // ── padding ─────────────────────────────────────────────────────────────
@@ -132,9 +133,9 @@ class PreviewBoxTest {
 
     @Test
     void anEmptyPreviewFallsBackToTheStandingNotice() {
-        assertTrue(text(render("", 20, 60).rows().get(1)).contains(PreviewBox.NO_PREVIEW));
-        assertTrue(text(render(null, 20, 60).rows().get(1)).contains(PreviewBox.NO_PREVIEW));
-        assertTrue(text(render("   \n ", 20, 60).rows().get(1)).contains(PreviewBox.NO_PREVIEW));
+        assertTrue(Strings.CS.contains(text(render("", 20, 60).rows().get(1)), PreviewBox.NO_PREVIEW));
+        assertTrue(Strings.CS.contains(text(render(null, 20, 60).rows().get(1)), PreviewBox.NO_PREVIEW));
+        assertTrue(Strings.CS.contains(text(render("   \n ", 20, 60).rows().get(1)), PreviewBox.NO_PREVIEW));
     }
 
     @Test

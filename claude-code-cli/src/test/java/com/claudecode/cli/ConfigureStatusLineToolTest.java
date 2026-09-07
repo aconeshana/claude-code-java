@@ -1,5 +1,6 @@
 package com.claudecode.cli;
 
+import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -53,7 +54,7 @@ class ConfigureStatusLineToolTest {
         ToolResult result = registry.execute("ConfigureStatusLine", input, context());
 
         assertTrue(result.isError());
-        assertTrue(text(result).contains("unexpected parameter `settings`"), text(result));
+        assertTrue(Strings.CS.contains(text(result), "unexpected parameter `settings`"), text(result));
     }
 
     @Test
@@ -70,7 +71,7 @@ class ConfigureStatusLineToolTest {
         assertEquals("powershell -NoProfile -Command safe", command.get());
         assertEquals(3, padding.get());
         assertEquals("Configured the user status line.", result);
-        assertFalse(result.contains(command.get()));
+        assertFalse(Strings.CS.contains(result, command.get()));
         assertEquals(PermissionDecision.allow(), tool.checkPermissions(input("echo safe", 0), null));
     }
 
@@ -84,11 +85,11 @@ class ConfigureStatusLineToolTest {
         tool.call(input(script, 0), context());
 
         String prefix = "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ";
-        assertTrue(persisted.get().startsWith(prefix), persisted.get());
+        assertTrue(Strings.CS.startsWith(persisted.get(), prefix), persisted.get());
         String payload = persisted.get().substring(prefix.length());
         assertEquals(script, new String(Base64.getDecoder().decode(payload),
             StandardCharsets.UTF_16LE));
-        assertFalse(persisted.get().contains(script));
+        assertFalse(Strings.CS.contains(persisted.get(), script));
     }
 
     @Test
@@ -100,7 +101,7 @@ class ConfigureStatusLineToolTest {
             input("Write-Output \"`u{25B2}\"", 0), context());
 
         assertInstanceOf(ValidationResult.Invalid.class, result);
-        assertTrue(((ValidationResult.Invalid) result).message().contains("PowerShell 5.1"));
+        assertTrue(Strings.CS.contains(((ValidationResult.Invalid) result).message(), "PowerShell 5.1"));
     }
 
     @Test

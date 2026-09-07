@@ -630,7 +630,7 @@ class InProcessTeammateTaskTest {
             TeammateMailbox.TEAM_LEAD, teammateState.id(), "urgent leader work"));
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (teammate.messages().stream()
-                .noneMatch(mail -> "urgent leader work".equals(mail.payload()))
+                .noneMatch(mail -> Strings.CS.equals("urgent leader work", mail.payload()))
                 && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
@@ -671,9 +671,9 @@ class InProcessTeammateTaskTest {
 
         assertTrue(factory.secondStarted.await(2, TimeUnit.SECONDS));
         String prompt = factory.prompts.get(1);
-        assertTrue(prompt.startsWith(
+        assertTrue(Strings.CS.startsWith(prompt,
             "<teammate-message teammate_id=\"team-lead\">\n"));
-        assertTrue(prompt.endsWith("\n</teammate-message>"));
+        assertTrue(Strings.CS.endsWith(prompt, "\n</teammate-message>"));
         String assignmentJson = prompt.substring(
             prompt.indexOf('\n') + 1, prompt.lastIndexOf("\n</teammate-message>"));
         JsonNode assignment = JsonUtils.getMapper().readTree(assignmentJson);

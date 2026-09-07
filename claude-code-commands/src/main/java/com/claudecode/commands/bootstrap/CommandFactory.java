@@ -35,6 +35,7 @@ import com.claudecode.commands.impl.config.PokemonCommand;
 import com.claudecode.commands.impl.git.PlanCommand;
 import com.claudecode.commands.impl.integration.PluginCommand;
 import com.claudecode.commands.impl.integration.ReloadPluginsCommand;
+import com.claudecode.commands.impl.session.RecapCommand;
 import com.claudecode.commands.impl.session.RenameCommand;
 import com.claudecode.commands.impl.session.ResumeCommand;
 import com.claudecode.commands.impl.session.RewindCommand;
@@ -87,6 +88,7 @@ public final class CommandFactory {
         builtIns.add(new CostCommand());
         builtIns.add(new ReloadPluginsCommand());
         builtIns.add(new RenameCommand());
+        builtIns.add(new RecapCommand());
         builtIns.add(new AdvisorCommand());
 
         // P1 commands

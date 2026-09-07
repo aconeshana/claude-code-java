@@ -1,5 +1,6 @@
 package com.claudecode.cli;
 
+import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -89,9 +90,9 @@ class CliToolchainAssemblerTest {
         String source = Files.readString(Path.of(
             "src/main/java/com/claudecode/cli/CliToolchainAssembler.java"));
 
-        assertTrue(source.contains(
+        assertTrue(Strings.CS.contains(source,
             "MCP OAuth is intentionally not mapped to Claude-account auth_success hooks"));
-        assertFalse(source.contains("\"auth_success\""),
+        assertFalse(Strings.CS.contains(source, "\"auth_success\""),
             "auth_success may only be emitted by a future Claude-account OAuth boundary");
     }
 

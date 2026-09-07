@@ -61,6 +61,21 @@ class ConfigCommandTest {
             .applySetting(context, "subagentMaxDepth", "2.0").output(), "Invalid value"));
     }
 
+    @Test void perScenarioModelKeysRoundTripThroughTheExtensionRows() {
+        FakeSettingsManagementPort settings = new FakeSettingsManagementPort();
+        CommandContext context = context(settings, null);
+
+        for (String key : List.of("sessionTitleModel", "renameModel", "toolSummaryModel",
+            "permissionExplainerModel", "hookEvaluatorModel", "insightsModel")) {
+            assertEquals(key + " = glm-4.6-flash", new ConfigCommand()
+                .applySetting(context, key, "glm-4.6-flash").output());
+            assertEquals("glm-4.6-flash", settings.values.get(key));
+            assertEquals(key + " = ", new ConfigCommand()
+                .applySetting(context, key, "").output(),
+                "an empty per-scenario value must clear the override");
+        }
+    }
+
     private static CommandContext context(FakeSettingsManagementPort settings,
                                           ConfigLiveSetters live) {
         return CommandContext.builder("m", List::of, () -> { }, _ -> { },

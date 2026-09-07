@@ -103,6 +103,7 @@ class RuntimeSettingsTest {
               "timeBasedMicrocompactEnabled": true,
               "timeBasedMicrocompactGapMinutes": 15,
               "timeBasedMicrocompactKeepRecent": 9,
+              "sideQueryModel": "  glm-flash  ",
               "language": " local language ",
               "outputStyle": "local-style",
               "effortLevel": "high",
@@ -128,6 +129,8 @@ class RuntimeSettingsTest {
         assertTrue(RuntimeSettings.loadTimeBasedMicrocompactEnabled());
         assertEquals(15, RuntimeSettings.loadTimeBasedMicrocompactGapMinutes());
         assertEquals(9, RuntimeSettings.loadTimeBasedMicrocompactKeepRecent());
+        assertEquals("glm-flash", RuntimeSettings.loadSideQueryModel(),
+            "sideQueryModel is trimmed; blank falls back to null elsewhere");
         assertEquals(" local language ", RuntimeSettings.loadLanguage());
         assertEquals("local-style", RuntimeSettings.loadOutputStyleName());
         assertEquals("high", RuntimeSettings.loadEffortLevel());
@@ -142,6 +145,41 @@ class RuntimeSettingsTest {
         assertFalse(RuntimeSettings.loadEffectiveSetting("customRuntimeValue")
             .has("callerMutation"), "callers must receive a detached effective node");
         assertNull(RuntimeSettings.loadEffectiveSetting(""));
+    }
+
+    @Test
+    void scenarioModelKeysNarrowTheGlobalSideQueryModel() throws Exception {
+        Files.writeString(localSettings,
+            "{\"sideQueryModel\":\"global-model\",\"toolSummaryModel\":\"  label-model  \","
+                + "\"renameModel\":\"\"}");
+
+        assertEquals("label-model", RuntimeSettings.loadScenarioModel("toolSummaryModel"),
+            "an explicit scenario value wins and is trimmed");
+        assertEquals("global-model", RuntimeSettings.loadScenarioModel("sessionTitleModel"),
+            "a scenario key without its own value falls back to sideQueryModel");
+        assertEquals("global-model", RuntimeSettings.loadScenarioModel("renameModel"),
+            "a blank scenario value also falls back to sideQueryModel");
+        assertEquals("global-model", RuntimeSettings.loadScenarioModel(null),
+            "a null scenario key is the plain global view");
+    }
+
+    @Test
+    void mainModelScenarioKeysOverrideWithoutTouchingTheSideQueryChain() throws Exception {
+        Files.writeString(localSettings,
+            "{\"sideQueryModel\":\"small-model\",\"permissionExplainerModel\":\"  explainer  \","
+                + "\"hookEvaluatorModel\":\"\",\"insightsModel\":\"insight-model\"}");
+
+        assertEquals("explainer", RuntimeSettings.loadMainModelScenarioModel(
+            "permissionExplainerModel"),
+            "an explicit override wins and is trimmed");
+        assertEquals("small-model", RuntimeSettings.loadSideQueryModel(),
+            "the main-model scenarios never read the small-fast chain");
+        assertEquals("small-model", RuntimeSettings.loadScenarioModel("toolSummaryModel"),
+            "the small-fast chain never reads the main-model keys");
+        assertNull(RuntimeSettings.loadMainModelScenarioModel("hookEvaluatorModel"),
+            "a blank hook-evaluator value reports no override");
+        assertNull(RuntimeSettings.loadMainModelScenarioModel(null));
+        assertEquals("insight-model", RuntimeSettings.loadInsightsModel());
     }
 
     @Test
@@ -164,6 +202,12 @@ class RuntimeSettingsTest {
         assertEquals(60, RuntimeSettings.loadTimeBasedMicrocompactGapMinutes());
         assertEquals(5, RuntimeSettings.loadTimeBasedMicrocompactKeepRecent());
         assertNull(RuntimeSettings.loadLanguage());
+        assertNull(RuntimeSettings.loadSideQueryModel());
+        assertNull(RuntimeSettings.loadScenarioModel("toolSummaryModel"),
+            "with no settings the scenario view mirrors the absent global key");
+        assertNull(RuntimeSettings.loadMainModelScenarioModel("permissionExplainerModel"),
+            "with no settings the main-model scenarios report no override");
+        assertNull(RuntimeSettings.loadInsightsModel());
         assertNull(RuntimeSettings.loadOutputStyleName());
         assertNull(RuntimeSettings.loadEffortLevel());
         assertNull(RuntimeSettings.loadAskUserQuestionPreviewFormat());

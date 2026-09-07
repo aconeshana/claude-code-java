@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The three ways an {@code AskUserQuestion} card resolves, driven end to end through the design
@@ -166,10 +167,10 @@ class AskUserQuestionOutcomeTest {
         h.key(new KeyStroke(KeyType.ENTER));
 
         var clarify = assertInstanceOf(QuestionOutcome.Clarify.class, h.outcome());
-        assertTrue(clarify.feedback().endsWith("""
+        assertTrue(Strings.CS.endsWith(clarify.feedback(), """
             - "Which approach?"
               (No answer provided)"""), clarify.feedback());
-        assertFalse(clarify.feedback().contains("User notes"));
+        assertFalse(Strings.CS.contains(clarify.feedback(), "User notes"));
     }
 
     // ── cancel ──────────────────────────────────────────────────────────────

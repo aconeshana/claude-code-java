@@ -1482,10 +1482,10 @@ class SessionControllerTest {
         String body = methodBody(source,
             "private void finishResume(PreparedSessionResume prepared,");
 
-        assertTrue(body.contains("applyPreparedSessionColor("));
-        assertFalse(body.contains("restoredSessionBadge("));
-        assertFalse(body.contains("scanMetadata("));
-        assertFalse(body.contains("reAppendSessionMetadata("));
+        assertTrue(Strings.CS.contains(body, "applyPreparedSessionColor("));
+        assertFalse(Strings.CS.contains(body, "restoredSessionBadge("));
+        assertFalse(Strings.CS.contains(body, "scanMetadata("));
+        assertFalse(Strings.CS.contains(body, "reAppendSessionMetadata("));
     }
 
     @Test

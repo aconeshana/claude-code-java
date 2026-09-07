@@ -87,7 +87,7 @@ class TerminalSessionTitleGeneratorTest {
     }
 
     @Test
-    void canonicalClaude46TitleUsesMainModelWithExplicitDisabledThinking() throws Exception {
+    void canonicalClaude46TitleFallsBackToHaikuWithExplicitDisabledThinking() throws Exception {
         CapturingClient client = new CapturingClient("{\"title\":\"Title\"}");
         TerminalSessionTitleGenerator generator = new TerminalSessionTitleGenerator(
             client, "claude-sonnet-4-6");
@@ -96,9 +96,14 @@ class TerminalSessionTitleGeneratorTest {
             .get(2, TimeUnit.SECONDS);
 
         CreateMessageRequest request = client.request.get();
-        assertEquals("claude-sonnet-4-6", request.model());
-        assertEquals(CreateMessageRequest.ThinkingConfig.disabled(), request.thinking());
-        assertEquals(1.0, request.temperature());
+        // A Claude main model is not a custom endpoint, so the helper falls back
+        // to the default Haiku helper (the per-scenario sessionTitleModel /
+        // global sideQueryModel chain is absent in this test environment).
+        // haiku-4-5 predates adaptive thinking, so no explicit disabled config
+        // or 1.0 temperature is attached for it.
+        assertEquals("claude-haiku-4-5", request.model());
+        assertNull(request.thinking());
+        assertNull(request.temperature());
         assertEquals("high", request.outputConfig().effort());
     }
 

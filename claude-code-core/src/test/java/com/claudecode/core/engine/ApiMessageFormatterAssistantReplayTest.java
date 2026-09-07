@@ -36,9 +36,9 @@ class ApiMessageFormatterAssistantReplayTest {
 
         var request = ApiMessageFormatter.toRequestMessages(List.of(assistant), false).getFirst();
         var blocks = assertInstanceOf(List.class, request.content());
-        Map<String, Object> searchUse = (Map<String, Object>) blocks.get(0);
+        Map<String, Object> searchUse = (Map<String, Object>) blocks.getFirst();
         Map<String, Object> searchWireResult = (Map<String, Object>) blocks.get(1);
-        Map<String, Object> fetchWireResult = (Map<String, Object>) blocks.get(2);
+        Map<String, Object> fetchWireResult = (Map<String, Object>) blocks.getLast();
 
         assertEquals("server_tool_use", searchUse.get("type"));
         assertEquals("web_search", searchUse.get("name"));

@@ -1,10 +1,12 @@
 package com.claudecode.services.permissions;
 
 
+import com.claudecode.core.annotation.CacheTier;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.api.CreateMessageRequest;
 import com.claudecode.core.engine.PermissionExplainerCallback;
 import com.claudecode.core.engine.PermissionExplanation;
+import com.claudecode.services.config.RuntimeSettings;
 import com.claudecode.services.model.SideQuery;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -86,19 +88,30 @@ public class PermissionExplainerService implements PermissionExplainerCallback {
     }
 
     @Override
+    @CacheTier(CacheTier.Tier.ONE_SHOT)
     public PermissionExplanation explain(String toolName, JsonNode input, String description) {
         try {
             String formattedInput = formatInput(input);
             String userPrompt = buildPrompt(toolName, description, formattedInput);
 
             JsonNode toolInput = sideQuery.queryToolForced(
-                mainLoopModel, SYSTEM_PROMPT, userPrompt, EXPLAIN_TOOL, 1024);
+                resolveModel(), SYSTEM_PROMPT, userPrompt, EXPLAIN_TOOL, 1024, false);
             return parseExplanation(toolInput);
 
         } catch (Exception e) {
             log.debug("Permission explainer failed for tool {}: {}", toolName, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 236 pins the explainer to the main model; the {@code
+     * permissionExplainerModel} settings key is a Java-side override that
+     * takes precedence when non-blank.
+     */
+    private String resolveModel() {
+        String override = RuntimeSettings.loadMainModelScenarioModel("permissionExplainerModel");
+        return override != null ? override : mainLoopModel;
     }
 
     private static String formatInput(JsonNode input) {

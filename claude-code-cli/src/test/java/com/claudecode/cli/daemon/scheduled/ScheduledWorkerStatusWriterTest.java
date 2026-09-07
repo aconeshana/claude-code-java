@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 class ScheduledWorkerStatusWriterTest {
 
@@ -27,6 +28,6 @@ class ScheduledWorkerStatusWriterTest {
         assertEquals(2, json.path("running").asInt());
         assertEquals(3, json.path("queued").asInt());
         assertEquals(900L, json.path("lastFiredAt").path("task").asLong());
-        assertTrue(Files.list(directory).noneMatch(path -> path.getFileName().toString().endsWith(".tmp")));
+        assertTrue(Files.list(directory).noneMatch(path -> Strings.CS.endsWith(path.getFileName().toString(), ".tmp")));
     }
 }

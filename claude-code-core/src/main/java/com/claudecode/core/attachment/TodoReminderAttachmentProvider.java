@@ -1,7 +1,4 @@
 package com.claudecode.core.attachment;
-import com.claudecode.core.process.SubprocessEnvironment;
-import java.util.List;
-import java.util.function.BooleanSupplier;
 
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
@@ -12,6 +9,10 @@ import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.TodoItem;
 import com.claudecode.core.message.TodoReminderAttachment;
 import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.process.SubprocessEnvironment;
+import java.util.List;
+import java.util.function.BooleanSupplier;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Nudges the model to use the TodoWrite tool when it has been a while since the last write and the
@@ -26,9 +27,8 @@ public final class TodoReminderAttachmentProvider implements AttachmentProvider 
     private final BooleanSupplier remindersEnabled;
 
     public TodoReminderAttachmentProvider() {
-        this(() -> !"off".equals(
-            SubprocessEnvironment.get(
-                "CLAUDE_CODE_TODO_REMINDER_MODE")));
+        this(() -> !Strings.CS.equals("off",
+            SubprocessEnvironment.get("CLAUDE_CODE_TODO_REMINDER_MODE")));
     }
 
     TodoReminderAttachmentProvider(BooleanSupplier remindersEnabled) {

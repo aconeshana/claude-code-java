@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Reproduces the reported regression: after a message-area refresh/replay, a
@@ -68,9 +69,9 @@ class FileChangeResultReplayFoldTest {
     }
 
     private static void assertEditUnfolded(List<String> rows) {
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int newValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int newValue;")),
             "added diff line must render unfolded: " + rows);
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int oldValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int oldValue;")),
             "removed diff line must render (context) unfolded: " + rows);
     }
 
@@ -125,9 +126,9 @@ class FileChangeResultReplayFoldTest {
             .map(MessagePanel.StyledLine::text)
             .toList();
         // update never folds and renders full content (197 isResultTruncated=false).
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int newValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int newValue;")),
             "Write-update content must render unfolded (197 renders full content): " + rows);
-        assertTrue(rows.stream().anyMatch(r -> r.contains("Updated ")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "Updated ")),
             "Write-update header must read 'Updated', not 'Wrote': " + rows);
     }
 
@@ -167,9 +168,9 @@ class FileChangeResultReplayFoldTest {
         List<String> rows = panel.displayRowsForTest(160).stream()
             .map(MessagePanel.StyledLine::text)
             .toList();
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int newValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int newValue;")),
             "agent child Edit diff must render its added line, not fold: " + rows);
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int oldValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int oldValue;")),
             "agent child Edit diff must render its removed line: " + rows);
     }
 

@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class SpinnerTeammateTreeTest {
 
@@ -29,16 +30,16 @@ class SpinnerTeammateTreeTest {
             spinner.start("Leading");
 
             String selectedTeammate = render(spinner, 140, 8);
-            assertTrue(selectedTeammate.contains("╒═ team-lead"), selectedTeammate);
-            assertTrue(selectedTeammate.contains("❯╞═ @alice:"), selectedTeammate);
-            assertTrue(selectedTeammate.contains("2 tool uses · 1.3k tokens"), selectedTeammate);
-            assertTrue(selectedTeammate.contains("shift + ↑/↓ to select"), selectedTeammate);
-            assertFalse(selectedTeammate.contains("Researching…"),
+            assertTrue(Strings.CS.contains(selectedTeammate, "╒═ team-lead"), selectedTeammate);
+            assertTrue(Strings.CS.contains(selectedTeammate, "❯╞═ @alice:"), selectedTeammate);
+            assertTrue(Strings.CS.contains(selectedTeammate, "2 tool uses · 1.3k tokens"), selectedTeammate);
+            assertTrue(Strings.CS.contains(selectedTeammate, "shift + ↑/↓ to select"), selectedTeammate);
+            assertFalse(Strings.CS.contains(selectedTeammate, "Researching…"),
                 "highlighted teammate activity belongs to the main spinner");
 
             selected.set(1);
             String hideSelected = render(spinner, 140, 8);
-            assertTrue(hideSelected.contains("❯╘═ hide · enter to collapse"), hideSelected);
+            assertTrue(Strings.CS.contains(hideSelected, "❯╘═ hide · enter to collapse"), hideSelected);
         } finally {
             spinner.stop();
         }
@@ -58,15 +59,14 @@ class SpinnerTeammateTreeTest {
             spinner.start("Leading");
 
             String foregrounded = render(spinner, 120, 8);
-            assertTrue(foregrounded.contains("Researching… (esc to interrupt alice)"),
-                foregrounded);
-            assertTrue(foregrounded.contains("Idle for 0s"), foregrounded);
+            assertTrue(Strings.CS.contains(foregrounded, "Researching… (esc to interrupt alice)"));
+            assertTrue(Strings.CS.contains(foregrounded, "Idle for 0s"), foregrounded);
 
             metrics.set(List.of(
                 teammate("task-1", "alice", true, "Researching", 320L, 1),
                 teammate("task-2", "bob", true, "Testing", 640L, 3)));
             String allIdle = render(spinner, 120, 8);
-            assertTrue(allIdle.contains("Worked for"), allIdle);
+            assertTrue(Strings.CS.contains(allIdle, "Worked for"), allIdle);
         } finally {
             spinner.stop();
         }
@@ -83,8 +83,8 @@ class SpinnerTeammateTreeTest {
         try {
             spinner.start("Leading");
             String rendered = render(spinner, 100, 8);
-            assertTrue(rendered.contains("Reading build.gradle.kts…"), rendered);
-            assertFalse(rendered.contains("Researching…"), rendered);
+            assertTrue(Strings.CS.contains(rendered, "Reading build.gradle.kts…"), rendered);
+            assertFalse(Strings.CS.contains(rendered, "Researching…"), rendered);
         } finally {
             spinner.stop();
         }

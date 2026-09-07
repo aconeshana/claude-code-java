@@ -25,6 +25,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Shared on-disk protocol for the two Java task-store facades.
@@ -359,7 +360,7 @@ final class TaskPersistence {
         int exponentMarker = Math.max(rendered.indexOf('E'), rendered.indexOf('e'));
         if (exponentMarker < 0) return rendered;
         String mantissa = rendered.substring(0, exponentMarker);
-        if (mantissa.endsWith(".0")) mantissa = mantissa.substring(0, mantissa.length() - 2);
+        if (Strings.CS.endsWith(mantissa, ".0")) mantissa = mantissa.substring(0, mantissa.length() - 2);
         int exponent = Integer.parseInt(rendered.substring(exponentMarker + 1));
         return mantissa + "e" + (exponent >= 0 ? "+" : "") + exponent;
     }

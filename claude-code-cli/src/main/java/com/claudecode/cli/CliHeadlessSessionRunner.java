@@ -280,6 +280,8 @@ final class CliHeadlessSessionRunner {
         Supplier<InsightsPort> insightsPipelineSupplier = () ->
             insightsClient == null ? null
                 : insightsAdapter(new InsightsPipeline(insightsClient, () -> {
+                    String override = RuntimeSettings.loadInsightsModel();
+                    if (override != null) return override;
                     String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
                     return StringUtils.isNotBlank(env) ? env
                         : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
@@ -345,6 +347,7 @@ final class CliHeadlessSessionRunner {
                 request.pluginRuntime()))
             .dream(CliRuntimeAdapters.newDreamPort())
             .insightsPipeline(insightsPipelineSupplier)
+            .recap(CliInteractiveSessionRunner.recapPort(request.llmClient()))
             .settingsManagement(settingsManagement)
             .mcpManagement(mcpManagement)
             .transcriptRecorder(message ->

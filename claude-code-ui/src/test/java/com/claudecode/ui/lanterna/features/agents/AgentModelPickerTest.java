@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Unit tests for {@link AgentModelPicker}.
@@ -51,7 +52,7 @@ class AgentModelPickerTest {
         p.activate("vendor/custom-model", _ -> {}, () -> {});
 
         assertEquals("vendor/custom-model", p.selectedModel());
-        assertTrue(render(p).contains("Current model (custom ID)"));
+        assertTrue(Strings.CS.contains(render(p), "Current model (custom ID)"));
     }
 
     @Test
@@ -146,13 +147,13 @@ class AgentModelPickerTest {
         p.activate(null, _ -> {}, () -> {});
 
         String rendered = render(p);
-        assertTrue(rendered.contains("Create new agent"), rendered);
-        assertTrue(rendered.contains("Select model"), rendered);
-        assertTrue(rendered.contains(
+        assertTrue(Strings.CS.contains(rendered, "Create new agent"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Select model"), rendered);
+        assertTrue(Strings.CS.contains(rendered,
             "Model determines the agent's reasoning capabilities and speed."), rendered);
-        assertTrue(rendered.contains("1. Fable"), rendered);
-        assertTrue(rendered.contains("2. Sonnet"), rendered);
-        assertTrue(rendered.contains("Esc go back"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "1. Fable"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "2. Sonnet"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Esc go back"), rendered);
     }
 
     @Test
@@ -162,10 +163,10 @@ class AgentModelPickerTest {
             false, LanternaTheme.permission());
 
         String rendered = render(p);
-        assertTrue(rendered.contains("Edit agent: reviewer"), rendered);
-        assertFalse(rendered.contains("Create new agent"), rendered);
-        assertFalse(rendered.contains("Select model"), rendered);
-        assertFalse(rendered.contains("Esc go back"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Edit agent: reviewer"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "Create new agent"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "Select model"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "Esc go back"), rendered);
     }
 
     @Test

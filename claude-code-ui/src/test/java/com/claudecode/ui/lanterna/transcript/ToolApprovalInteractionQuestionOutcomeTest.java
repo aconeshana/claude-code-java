@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Where an {@code AskUserQuestion} card's three outcomes land on the permission callback.
@@ -113,9 +114,8 @@ class ToolApprovalInteractionQuestionOutcomeTest {
         assertFalse(result.directDenial(),
             "a clarification must carry the reject-with-reason prefix, not replace it");
         assertNull(result.updatedInput());
-        assertTrue(result.feedback().startsWith("The user wants to clarify these questions."),
-            result.feedback());
-        assertTrue(result.feedback().contains("- \"Which approach?\""), result.feedback());
+        assertTrue(Strings.CS.startsWith(result.feedback(), "The user wants to clarify these questions."));
+        assertTrue(Strings.CS.contains(result.feedback(), "- \"Which approach?\""), result.feedback());
     }
 
     @Test

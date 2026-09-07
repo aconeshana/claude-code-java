@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The line budget behind the collapsed group's thinking-summary row: truncation has to agree with
@@ -32,10 +33,10 @@ class MessagePanelTruncateToLinesTest {
     void overlongTextIsClampedToTheLineBudget() {
         String truncated = MessagePanel.truncateToLines(words(60), 20, 3);
 
-        assertTrue(truncated.endsWith("…"), truncated);
+        assertTrue(Strings.CS.endsWith(truncated, "…"), truncated);
         assertTrue(MessagePanel.wordWrapAtBoundaries(truncated, 20).size() <= 3, truncated);
         // Shrinking stops as soon as the ellipsis fits, so the budget stays nearly full.
-        assertTrue(truncated.startsWith("word0 word1 word2"), truncated);
+        assertTrue(Strings.CS.startsWith(truncated, "word0 word1 word2"), truncated);
     }
 
     @Test

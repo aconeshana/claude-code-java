@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,7 +28,7 @@ class DaemonWorkerDispatcherTest {
             Output.none(), Output.to(error)).orElseThrow();
 
         assertEquals(2, exit);
-        assertTrue(error.toString(StandardCharsets.UTF_8).contains("unknown daemon worker"));
+        assertTrue(Strings.CS.contains(error.toString(StandardCharsets.UTF_8), "unknown daemon worker"));
     }
 
     @Test
@@ -39,7 +40,7 @@ class DaemonWorkerDispatcherTest {
             Output.none(), Output.to(error)).orElseThrow();
 
         assertEquals(2, exit);
-        assertTrue(error.toString(StandardCharsets.UTF_8).contains("unknown scheduled worker config field"));
+        assertTrue(Strings.CS.contains(error.toString(StandardCharsets.UTF_8), "unknown scheduled worker config field"));
     }
 
     private static final class Input {

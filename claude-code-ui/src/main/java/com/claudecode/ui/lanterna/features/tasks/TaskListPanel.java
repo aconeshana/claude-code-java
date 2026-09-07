@@ -11,6 +11,7 @@ import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.util.stream.Collectors;
 
@@ -171,19 +172,20 @@ public final class TaskListPanel extends AbstractComponent<TaskListPanel> {
 
         private static boolean supportsUnicodeTaskIcons() {
             String term = SubprocessEnvironment.get("TERM");
-            if (!Platform.IS_WINDOWS) return !"linux".equals(term);
+            if (!Platform.IS_WINDOWS) return !Strings.CS.equals("linux", term);
             if (present("WT_SESSION") || present("TERMINUS_SUBLIME")
-                    || "{cmd::Cmder}".equals(SubprocessEnvironment.get("ConEmuTask"))) {
+                    || Strings.CS.equals("{cmd::Cmder}",
+                        SubprocessEnvironment.get("ConEmuTask"))) {
                 return true;
             }
             String termProgram = SubprocessEnvironment.get("TERM_PROGRAM");
-            return "Terminus-Sublime".equals(termProgram)
-                || "vscode".equals(termProgram)
-                || "xterm-256color".equals(term)
-                || "alacritty".equals(term)
-                || "rxvt-unicode".equals(term)
-                || "rxvt-unicode-256color".equals(term)
-                || "JetBrains-JediTerm".equals(
+            return Strings.CS.equals("Terminus-Sublime", termProgram)
+                || Strings.CS.equals("vscode", termProgram)
+                || Strings.CS.equals("xterm-256color", term)
+                || Strings.CS.equals("alacritty", term)
+                || Strings.CS.equals("rxvt-unicode", term)
+                || Strings.CS.equals("rxvt-unicode-256color", term)
+                || Strings.CS.equals("JetBrains-JediTerm",
                     SubprocessEnvironment.get("TERMINAL_EMULATOR"));
         }
 

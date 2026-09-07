@@ -15,6 +15,7 @@ import com.claudecode.core.message.UserMessage;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Reproduces the reported regression: after an Edit tool result renders a full
@@ -52,9 +53,9 @@ class MultistepStreamCanTruncateDiffTest {
     }
 
     private static void assertDiffPresent(List<String> rows, String label) {
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int newValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int newValue;")),
             label + ": added diff line must survive (found=" + rows + ")");
-        assertTrue(rows.stream().anyMatch(r -> r.contains("int oldValue;")),
+        assertTrue(rows.stream().anyMatch(r -> Strings.CS.contains(r, "int oldValue;")),
             label + ": removed diff line must survive (found=" + rows + ")");
     }
 
@@ -161,7 +162,7 @@ class MultistepStreamCanTruncateDiffTest {
         dispatcher.dispatch(new SDKMessage.StreamEvent(
             "tool_result_success", "Edit|The file was updated successfully."), panel);
         List<String> beforeNewText = rowsOf(panel);
-        assertTrue(beforeNewText.stream().anyMatch(r -> r.contains("was updated successfully.")),
+        assertTrue(beforeNewText.stream().anyMatch(r -> Strings.CS.contains(r, "was updated successfully.")),
             "tool result text must render (found=" + beforeNewText + ")");
 
         // NEW content streams in after the committed result — must not roll it back.
@@ -171,7 +172,7 @@ class MultistepStreamCanTruncateDiffTest {
             "content_block_delta", " The change is minimal."), panel);
 
         List<String> after = rowsOf(panel);
-        assertTrue(after.stream().anyMatch(r -> r.contains("was updated successfully.")),
+        assertTrue(after.stream().anyMatch(r -> Strings.CS.contains(r, "was updated successfully.")),
             "committed tool result text must survive the new stream (found=" + after + ")");
     }
 }

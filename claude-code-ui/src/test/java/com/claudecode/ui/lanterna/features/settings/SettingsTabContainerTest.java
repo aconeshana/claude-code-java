@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Verifies {@link SettingsTabContainer}'s tab-switching / header-content focus handoff state
@@ -109,7 +110,7 @@ class SettingsTabContainerTest {
         List<String> lines = renderedLines(c, 80);
 
         assertEquals(20, c.calculatePreferredSize().getRows());
-        assertEquals("─".repeat(80), lines.get(0));
+        assertEquals("─".repeat(80), lines.getFirst());
         assertEquals("  Settings  Status   Config   Usage   Stats",
             lines.get(1).stripTrailing());
         assertEquals("  ╭" + "─".repeat(74) + "╮", lines.get(4).stripTrailing());
@@ -159,13 +160,13 @@ class SettingsTabContainerTest {
         List<String> lines = renderedLines(c, 80);
 
         assertEquals(20, c.calculatePreferredSize().getRows());
-        assertEquals("─".repeat(80), lines.get(0));
+        assertEquals("─".repeat(80), lines.getFirst());
         assertEquals("  Enter your preferred response and voice language:",
             lines.get(1).stripTrailing());
         assertEquals("  > Chinese", lines.get(3).stripTrailing());
         assertEquals("  Leave empty for default (English)", lines.get(5).stripTrailing());
         assertEquals("  Enter to confirm · Esc to cancel", lines.get(7).stripTrailing());
-        assertFalse(lines.stream().anyMatch(line -> line.contains("Settings  Status")));
+        assertFalse(lines.stream().anyMatch(line -> Strings.CS.contains(line, "Settings  Status")));
     }
 
     @Test
@@ -188,9 +189,9 @@ class SettingsTabContainerTest {
         c.draw(graphics);
         List<String> lines = imageLines(image, 80, size.getRows());
 
-        assertTrue(lines.stream().noneMatch(line -> line.contains("╭") || line.contains("╯")));
-        assertTrue(lines.stream().noneMatch(line -> line.contains("Language")
-            && !line.contains("preferred response")));
+        assertTrue(lines.stream().noneMatch(line -> Strings.CS.contains(line, "╭") || Strings.CS.contains(line, "╯")));
+        assertTrue(lines.stream().noneMatch(line -> Strings.CS.contains(line, "Language")
+            && !Strings.CS.contains(line, "preferred response")));
     }
 
     @Test
@@ -311,7 +312,7 @@ class SettingsTabContainerTest {
         c.draw(graphics);
 
         List<String> lines = imageLines(image, 80, size.getRows());
-        assertEquals("─".repeat(80), lines.get(0));
+        assertEquals("─".repeat(80), lines.getFirst());
         assertEquals("  Settings  Status   Config   Usage   Stats",
             lines.get(1).stripTrailing());
         assertEquals("  ╭" + "─".repeat(74) + "╮", lines.get(4).stripTrailing());

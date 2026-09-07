@@ -202,8 +202,8 @@ public final class PermissionGate {
     public static boolean supportsReleasedExternalAutoModeModel(String model) {
         if (StringUtils.isBlank(model)) return false;
         String canonical = model.toLowerCase(Locale.ROOT);
-        return canonical.contains("claude-opus-4-6")
-            || canonical.contains("claude-sonnet-4-6");
+        return Strings.CS.contains(canonical, "claude-opus-4-6")
+            || Strings.CS.contains(canonical, "claude-sonnet-4-6");
     }
 
 

@@ -1938,9 +1938,14 @@ public class LanternaMessageDispatcher {
 
             case "away_summary" ->
 
+                // 236 kyr: dim ※ gutter + "recap:" label (dim bold) + content (dim italic).
                 panel.appendMixed(List.of(
-                    new MessagePanel.Segment(Figures.REFERENCE_MARK + " ", LanternaTheme.welcomeDim()),
-                    new MessagePanel.Segment(content, LanternaTheme.welcomeDim())
+                    new MessagePanel.Segment(Figures.REFERENCE_MARK + " ",
+                        dimColor(TextColor.ANSI.DEFAULT)),
+                    new MessagePanel.Segment("recap: ",
+                        dimColor(TextColor.ANSI.DEFAULT), null, null, Set.of(SGR.BOLD)),
+                    new MessagePanel.Segment(content,
+                        dimColor(TextColor.ANSI.DEFAULT), null, null, Set.of(SGR.ITALIC))
                 ));
 
             case "scheduled_task_fire" -> {

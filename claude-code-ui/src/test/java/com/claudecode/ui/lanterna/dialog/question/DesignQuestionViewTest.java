@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The {@code d$c} card: its two-column geometry, the rows the design variant deliberately omits,
@@ -69,7 +70,7 @@ class DesignQuestionViewTest {
     void thePreviewColumnStartsAfterTheThirtyColumnOptionListAndItsFourColumnGap() {
         List<DisplayQuestion> all = questions(1);
         String optionRow = lines(context(all, 0), new QuestionState()).stream()
-            .filter(line -> line.contains("Tabs"))
+            .filter(line -> Strings.CS.contains(line, "Tabs"))
             .findFirst()
             .orElseThrow();
 
@@ -94,8 +95,8 @@ class DesignQuestionViewTest {
     void theDesignVariantShowsNoOptionDescriptions() {
         List<String> rendered = lines(context(questions(1), 0), new QuestionState());
 
-        assertTrue(rendered.stream().anyMatch(line -> line.contains("Tabs")), rendered.toString());
-        assertFalse(rendered.stream().anyMatch(line -> line.contains("keeps state")),
+        assertTrue(rendered.stream().anyMatch(line -> Strings.CS.contains(line, "Tabs")), rendered.toString());
+        assertFalse(rendered.stream().anyMatch(line -> Strings.CS.contains(line, "keeps state")),
             rendered.toString());
     }
 
@@ -111,7 +112,7 @@ class DesignQuestionViewTest {
     }
 
     private static int boxWidth(List<String> rendered) {
-        String top = rendered.stream().filter(line -> line.contains("┌")).findFirst().orElseThrow();
+        String top = rendered.stream().filter(line -> Strings.CS.contains(line, "┌")).findFirst().orElseThrow();
         return FormatUtils.displayWidth(top.substring(top.indexOf('┌')));
     }
 
@@ -121,7 +122,7 @@ class DesignQuestionViewTest {
         state.setFocus(2);   // "Modal" carries no preview
 
         assertTrue(lines(context(questions(1), 0), state).stream()
-            .anyMatch(line -> line.contains(PreviewBox.NO_PREVIEW)));
+            .anyMatch(line -> Strings.CS.contains(line, PreviewBox.NO_PREVIEW)));
     }
 
     @Test
@@ -130,7 +131,7 @@ class DesignQuestionViewTest {
         state.selectOnly(1);
 
         assertTrue(lines(context(questions(1), 0), state).stream()
-            .anyMatch(line -> line.startsWith("  2. Drawer ✔")));
+            .anyMatch(line -> Strings.CS.startsWith(line, "  2. Drawer ✔")));
     }
 
     // ── footer ──────────────────────────────────────────────────────────────
@@ -151,8 +152,9 @@ class DesignQuestionViewTest {
 
     @Test
     void severalQuestionsAddTheTabChord() {
-        assertTrue(lines(context(questions(2), 0), new QuestionState()).getLast()
-            .contains("Tab to switch questions"));
+        assertTrue(Strings.CS.contains(
+            lines(context(questions(2), 0), new QuestionState()).getLast(),
+            "Tab to switch questions"));
     }
 
     // ── keys: options ───────────────────────────────────────────────────────

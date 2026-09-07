@@ -287,8 +287,8 @@ public class SseTransport implements McpTransport {
 
     private static int effectivePort(URI uri) {
         if (uri.getPort() != -1) return uri.getPort();
-        if ("http".equalsIgnoreCase(uri.getScheme())) return 80;
-        if ("https".equalsIgnoreCase(uri.getScheme())) return 443;
+        if (Strings.CI.equals("http", uri.getScheme())) return 80;
+        if (Strings.CI.equals("https", uri.getScheme())) return 443;
         return -1;
     }
 

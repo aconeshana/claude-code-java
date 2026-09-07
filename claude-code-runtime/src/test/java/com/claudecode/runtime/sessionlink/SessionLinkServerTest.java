@@ -98,7 +98,7 @@ class SessionLinkServerTest {
                     unsupported.payload().path("interaction_kind").asText());
                 assertEquals("complete_in_tui",
                     unsupported.payload().path("action").asText());
-                assertFalse(unsupported.payload().toString().contains("launchctl"));
+                assertFalse(Strings.CS.contains(unsupported.payload().toString(), "launchctl"));
                 assertInstanceOf(SudoPasswordInteraction.Result.Cancelled.class,
                     result.get(2, TimeUnit.SECONDS));
             }

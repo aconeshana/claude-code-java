@@ -136,15 +136,15 @@ public final class ProviderTestCommandPorts {
     public static CommandContext withSessions(CommandContext context, SessionCommandPort sessions) {
         CommandApplicationPorts app = context.application();
         return new CommandContext(context.session(), new CommandApplicationPorts(
-            app.doctor(), app.dream(), app.plugins(), app.insights(), app.settings(), app.mcp(),
-            app.permissions(), sessions, app.tooling()), context.presentation());
+            app.doctor(), app.dream(), app.plugins(), app.insights(), app.recap(), app.settings(),
+            app.mcp(), app.permissions(), sessions, app.tooling()), context.presentation());
     }
 
     public static CommandContext withTooling(CommandContext context, ToolingCommandPorts tooling) {
         CommandApplicationPorts app = context.application();
         return new CommandContext(context.session(), new CommandApplicationPorts(
-            app.doctor(), app.dream(), app.plugins(), app.insights(), app.settings(), app.mcp(),
-            app.permissions(), app.sessions(), tooling), context.presentation());
+            app.doctor(), app.dream(), app.plugins(), app.insights(), app.recap(), app.settings(),
+            app.mcp(), app.permissions(), app.sessions(), tooling), context.presentation());
     }
 
     public static ToolingCommandPorts tasks(TaskRegistry registry) {

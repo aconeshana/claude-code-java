@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 class SudoPasswordInteractionTest {
 
@@ -22,7 +23,7 @@ class SudoPasswordInteractionTest {
         provided.writeTo(destination);
 
         assertEquals("local-password\n", destination.toString(StandardCharsets.UTF_8));
-        assertFalse(provided.toString().contains("local-password"));
+        assertFalse(Strings.CS.contains(provided.toString(), "local-password"));
         assertThrows(IllegalStateException.class,
             () -> provided.writeTo(new ByteArrayOutputStream()));
     }

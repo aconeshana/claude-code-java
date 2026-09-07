@@ -1317,7 +1317,7 @@ class ToolRegistryTest {
 
         assertFalse(definitions.stream().anyMatch(def -> ToolSearchTool.NAME.equals(def.name())));
         var deferredDefinition = definitions.stream()
-            .filter(def -> "DeferredTool".equals(def.name()))
+            .filter(def -> Strings.CS.equals("DeferredTool", def.name()))
             .findFirst()
             .orElseThrow();
         assertEquals("full model prompt", deferredDefinition.description());

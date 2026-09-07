@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Unit tests for {@link AgentToolsPicker}.
@@ -188,14 +189,14 @@ class AgentToolsPickerTest {
         p.activate(List.of(), TOOLS, _ -> {}, () -> {});
 
         String rendered = render(p);
-        assertTrue(rendered.contains("Create new agent"), rendered);
-        assertTrue(rendered.contains("Select tools"), rendered);
-        assertTrue(rendered.contains("[ Continue ]"), rendered);
-        assertTrue(rendered.contains("─".repeat(40)), rendered);
-        assertTrue(rendered.contains("☐ Read-only tools"), rendered);
-        assertTrue(rendered.contains("[ Show advanced options ]"), rendered);
-        assertTrue(rendered.contains("0 of 4 tools selected"), rendered);
-        assertFalse(rendered.contains("(0/1)"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Create new agent"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "Select tools"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "[ Continue ]"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "─".repeat(40)), rendered);
+        assertTrue(Strings.CS.contains(rendered, "☐ Read-only tools"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "[ Show advanced options ]"), rendered);
+        assertTrue(Strings.CS.contains(rendered, "0 of 4 tools selected"), rendered);
+        assertFalse(Strings.CS.contains(rendered, "(0/1)"), rendered);
     }
 
     private static String render(AgentToolsPicker picker) {

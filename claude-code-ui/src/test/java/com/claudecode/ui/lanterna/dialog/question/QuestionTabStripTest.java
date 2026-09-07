@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.apache.commons.lang3.Strings;
 
 /** The {@code d0t} strip: label budgets, checkbox state, and which chip wears the current colour. */
 class QuestionTabStripTest {
@@ -51,7 +52,7 @@ class QuestionTabStripTest {
             questions("Architecture", "Persistence", "Deployment", "Observability");
         List<Segment> strip = QuestionTabStrip.render(many, 0, Set.of(), false, 60);
 
-        assertTrue(text(strip).contains("…"), text(strip));
+        assertTrue(Strings.CS.contains(text(strip), "…"), text(strip));
         assertTrue(width(strip) <= 60, text(strip) + " is " + width(strip) + " wide");
     }
 
@@ -62,9 +63,9 @@ class QuestionTabStripTest {
         String first = text(QuestionTabStrip.render(many, 0, Set.of(), false, 60));
         String third = text(QuestionTabStrip.render(many, 2, Set.of(), false, 60));
 
-        assertTrue(first.contains("Architecture"), first + " — the focused tab is not truncated");
-        assertFalse(third.contains("Architecture"), third + " — an unfocused tab is");
-        assertTrue(third.contains("Deployment"), third);
+        assertTrue(Strings.CS.contains(first, "Architecture"), first + " — the focused tab is not truncated");
+        assertFalse(Strings.CS.contains(third, "Architecture"), third + " — an unfocused tab is");
+        assertTrue(Strings.CS.contains(third, "Deployment"), third);
     }
 
     @Test
@@ -74,8 +75,8 @@ class QuestionTabStripTest {
         List<Segment> strip =
             QuestionTabStrip.render(questions("Approach", "Storage"), 1, Set.of(), false, 8);
 
-        assertTrue(text(strip).contains("☐ St…"), text(strip) + " — clipped to three columns");
-        assertTrue(text(strip).contains("☐ Approach"), text(strip) + " — the bundle's own fallback");
+        assertTrue(Strings.CS.contains(text(strip), "☐ St…"), text(strip) + " — clipped to three columns");
+        assertTrue(Strings.CS.contains(text(strip), "☐ Approach"), text(strip) + " — the bundle's own fallback");
     }
 
     // ── shape ───────────────────────────────────────────────────────────────
@@ -86,8 +87,8 @@ class QuestionTabStripTest {
         List<Segment> strip =
             QuestionTabStrip.render(two, 0, Set.of(two.getFirst().key()), false, 120);
 
-        assertTrue(text(strip).contains("☒ Approach"), text(strip));
-        assertTrue(text(strip).contains("☐ Storage"), text(strip));
+        assertTrue(Strings.CS.contains(text(strip), "☒ Approach"), text(strip));
+        assertTrue(Strings.CS.contains(text(strip), "☐ Storage"), text(strip));
     }
 
     @Test

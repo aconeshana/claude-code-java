@@ -1,5 +1,6 @@
 package com.claudecode.services.model;
 
+import com.claudecode.services.config.RuntimeSettings;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -68,9 +69,20 @@ public final class SideQuery {
      * Resolves the helper model with the active main model available.
      */
     public static String resolveSmallFastModel(String mainModel) {
+        return resolveSmallFastModel(mainModel, null);
+    }
+
+    /**
+     * Resolves the helper model for one named scenario. A per-scenario settings
+     * key (see {@code RuntimeSettings.loadScenarioModel}) wins over the global
+     * {@code sideQueryModel} before the env chain applies.
+     */
+    public static String resolveSmallFastModel(String mainModel, String scenarioKey) {
         return resolveSmallFastModel(
             mainModel,
-            SubprocessEnvironment.get("ANTHROPIC_SMALL_FAST_MODEL"),
+            StringUtils.defaultIfBlank(
+                RuntimeSettings.loadScenarioModel(scenarioKey),
+                SubprocessEnvironment.get("ANTHROPIC_SMALL_FAST_MODEL")),
             SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"));
     }
 
@@ -92,15 +104,20 @@ public final class SideQuery {
     // ── Convenience presets ─────────────────────────────────────────────────
 
     /**
-     * Haiku one-shot text query — used by title generation and session ranking.
+     * Haiku one-shot text query bound to one named scenario, so the model can
+     * be narrowed per scenario through settings.
      */
-    public String queryHaiku(String systemPrompt, String userPrompt) {
-        return firstText(queryHaikuMessage(systemPrompt, userPrompt));
+    public String queryHaiku(String systemPrompt, String userPrompt, String scenarioKey) {
+        return firstText(queryHaikuMessage(systemPrompt, userPrompt, scenarioKey));
     }
 
 
     public ApiMessage queryHaikuMessage(String systemPrompt, String userPrompt) {
-        String model = resolveSmallFastModel();
+        return queryHaikuMessage(systemPrompt, userPrompt, null);
+    }
+
+    public ApiMessage queryHaikuMessage(String systemPrompt, String userPrompt, String scenarioKey) {
+        String model = resolveSmallFastModel(null, scenarioKey);
         try {
             return queryStreamingMessageOrThrow(new Request()
                 .model(model)
@@ -157,14 +174,15 @@ public final class SideQuery {
     }
 
     /**
-     * Tool-forced structured query — used by the permission explainer to get a guaranteed JSON payload
-     * back via a required tool call.
+     * Tool-forced query with an explicit prompt-caching switch for one-shot
+     * callers whose prefix is never replayed.
      */
     public JsonNode queryToolForced(String model,
                                     String systemPrompt,
                                     String userPrompt,
                                     CreateMessageRequest.ToolDefinition tool,
-                                    int maxTokens) {
+                                    int maxTokens,
+                                    boolean promptCachingEnabled) {
         if (StringUtils.isBlank(model) || tool == null) return null;
         ApiMessage response = query(new Request()
             .model(model)
@@ -172,7 +190,8 @@ public final class SideQuery {
             .userPrompt(userPrompt)
             .maxTokens(maxTokens)
             .tool(tool)
-            .forcedToolName(tool.name()));
+            .forcedToolName(tool.name())
+            .promptCachingEnabled(promptCachingEnabled));
         if (response == null || response.content() == null) return null;
         for (ContentBlock block : response.content()) {
             if (block instanceof ToolUseBlock tub && tool.name().equals(tub.name())) {
@@ -230,6 +249,7 @@ public final class SideQuery {
         if (req.stopSequences != null) b.stopSequences(req.stopSequences);
         if (req.temperature != null) b.temperature(req.temperature);
         if (!req.promptCachingEnabled) b.promptCachingEnabled(false);
+        if (req.skipCacheWrite) b.skipCacheWrite(true);
         CreateMessageRequest built = b.build();
         long startedAt = System.currentTimeMillis();
         ApiMessage response = req.timeoutMillis > 0
@@ -282,6 +302,7 @@ public final class SideQuery {
         if (req.stopSequences != null) builder.stopSequences(req.stopSequences);
         if (req.temperature != null) builder.temperature(req.temperature);
         if (!req.promptCachingEnabled) builder.promptCachingEnabled(false);
+        if (req.skipCacheWrite) builder.skipCacheWrite(true);
 
         ScheduledFuture<?> timeout = req.timeoutMillis > 0
             ? TIMEOUTS.schedule(() -> {
@@ -443,6 +464,7 @@ public final class SideQuery {
         List<String> stopSequences;
         Double temperature;
         boolean promptCachingEnabled = true;
+        boolean skipCacheWrite;
         boolean streaming;
         String querySource = "side_query";
 
@@ -485,6 +507,16 @@ public final class SideQuery {
         }
         public Request promptCachingEnabled(boolean value) {
             this.promptCachingEnabled = value; return this;
+        }
+        /**
+         * Skips the cache marker on the trailing non-system message while
+         * keeping the prefix cacheable (236 {@code skipCacheWrite}) - use when
+         * the conversation prefix can still be hit by later requests but the
+         * appended one-shot prompt cannot.
+         */
+        public Request skipCacheWrite(boolean value) {
+            this.promptCachingEnabled = true;
+            this.skipCacheWrite = value; return this;
         }
         public Request querySource(String source) {
             this.querySource = source != null ? source : "side_query";

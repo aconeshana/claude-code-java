@@ -241,7 +241,7 @@ class SlashCommandDispatcherThreadingTest {
 
         assertTrue(executed.await(1, TimeUnit.SECONDS));
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (!"plan".equals(input.getPermissionMode()) && System.nanoTime() < deadline) {
+        while (!Strings.CS.equals("plan", input.getPermissionMode()) && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
         assertEquals("plan", input.getPermissionMode());

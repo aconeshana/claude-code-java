@@ -7,6 +7,7 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.tools.ToolRegistry;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,7 +22,7 @@ class TaskCreateValidationSteerTest {
 
         String text = text(registry.execute("TaskCreate", input, context()));
 
-        assertTrue(text.endsWith("""
+        assertTrue(Strings.CS.endsWith(text, """
             TaskCreate creates ONE task per call and has no `tasks` or `todos` parameter. Call TaskCreate once per task, passing `subject` (a brief title) and `description` (what needs to be done) as top-level string parameters.</tool_use_error>"""), text);
     }
 
@@ -34,7 +35,7 @@ class TaskCreateValidationSteerTest {
 
         String text = text(registry.execute("TaskCreate", input, context()));
 
-        assertTrue(text.endsWith("""
+        assertTrue(Strings.CS.endsWith(text, """
             This call used Agent-tool parameters (`prompt`/`subagent_type`). TaskCreate adds an item to the task list and takes `subject` and `description` string parameters. To delegate work to a subagent, use the Agent tool instead.</tool_use_error>"""), text);
     }
 

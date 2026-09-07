@@ -1,5 +1,6 @@
 package com.claudecode.core.engine;
 
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -64,7 +65,7 @@ class MidConversationSystemSupportTest {
     @Test
     void publicOverloadConsultsTheConfiguredBaseUrlResolverPerModel() {
         MidConversationSystemSupport.configureBaseUrlResolver(model ->
-            "deepseek-v4-flash".equals(model)
+            Strings.CS.equals("deepseek-v4-flash", model)
                 ? "https://gateway.example.com/anthropic/api"
                 : null);
         try {
