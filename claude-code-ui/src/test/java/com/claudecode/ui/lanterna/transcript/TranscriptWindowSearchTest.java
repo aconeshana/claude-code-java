@@ -153,10 +153,13 @@ class TranscriptWindowSearchTest {
             win.setKeybindingsStore(store);
             win.handleInput(special(KeyType.ESCAPE));
             assertFalse(closed);
+            // ctrl+e is unbound above, so it must not toggle: the footer stays
+            // in the default "show all" state.
             win.handleInput(ctrl('e'));
-            assertTrue(Strings.CS.contains(win.footerText(), "collapse"));
+            assertTrue(Strings.CS.contains(win.footerText(), "show all"));
+            // 't' IS bound to transcript:toggleShowAll, so it flips the state.
             win.handleInput(chr('t'));
-            assertTrue(Strings.CS.contains(win.footerText(), "expand all"));
+            assertTrue(Strings.CS.contains(win.footerText(), "collapse"));
             win.handleInput(chr('x'));
             assertTrue(closed);
         } finally {

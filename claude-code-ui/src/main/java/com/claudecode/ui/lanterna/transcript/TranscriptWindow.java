@@ -26,6 +26,14 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
  */
 public final class TranscriptWindow extends BasicWindow {
 
+    /**
+     * 2.1.236 slices the non-virtualized transcript to the last N messages
+     * ({@code shouldTruncate = isTranscriptMode && !showAllInTranscript && !virtualScroll});
+     * Ctrl+E reveals the rest. Lanterna has no virtual scroll port, so the gate
+     * reduces to {@code !showAllInTranscript}.
+     */
+    private static final int MAX_MESSAGES_WITHOUT_VIRTUALIZATION = 30;
+
     private final MessageHistory history;
     private final Runnable onClose;
 
@@ -34,7 +42,7 @@ public final class TranscriptWindow extends BasicWindow {
     private final MessageCollapser transcriptCollapser;
     private final Label footer;
 
-    private boolean showAll = true;
+    private boolean showAllInTranscript = false;
     private final ContextKeybindingDispatcher keybindings =
         new ContextKeybindingDispatcher();
 
@@ -64,10 +72,20 @@ public final class TranscriptWindow extends BasicWindow {
         // Independent renderers — main view's dispatcher / panel are untouched.
         transcriptDispatcher = new LanternaMessageDispatcher();
         transcriptDispatcher.setTranscriptMode(true);
+        // 2.1.236 computes the transcript view's verbosity as
+        // `verbose = store.verbose || isTranscriptMode`, so ctrl+o always renders
+        // through the verbose branch — the same one click-to-expand uses
+        // (`verbose: k || isItemExpanded(msg)`). Leaving verbose false here made
+        // the verbose-only branches (ToolVisualContractRegistry.useView, file
+        // preview truncation) render differently from the clicked-open row.
+        transcriptDispatcher.setVerbose(true);
         transcriptDispatcher.showOnlyTranscriptThinkingBlock(
             findLastThinkingBlockId(history.events()));
-        transcriptCollapser = new MessageCollapser(transcriptDispatcher, false);
-        transcriptCollapser.setShowAll(true);
+        // Same verbose=true as the dispatcher: the transcript never collapses
+        // tool output into group summaries, so the collapser passes everything
+        // through. showAllInTranscript below is a different switch — it caps
+        // how many *historical* messages are rendered, not how they are folded.
+        transcriptCollapser = new MessageCollapser(transcriptDispatcher, true);
 
         transcriptPanel = new MessagePanel();
 
@@ -103,22 +121,37 @@ public final class TranscriptWindow extends BasicWindow {
         }
         return "  Showing detailed transcript · ctrl+o close · ↑↓/jk scroll · g/G top/bottom ·"
             + " ctrl+u/d half · ctrl+b/f page · / search · ctrl+e "
-            + (showAll ? "collapse" : "expand all");
+            + (showAllInTranscript ? "collapse" : "show all");
     }
 
     private void refreshFooter() {
         footer.setText(buildFooterText());
     }
 
-    /** Replay every recorded event into the transcript panel from scratch. */
+    /** Replay the recorded events into the transcript panel from scratch, capping
+     *  history to the last {@link #MAX_MESSAGES_WITHOUT_VIRTUALIZATION} unless
+     *  the user asked for all of it. */
     private void replay() {
         transcriptPanel.clear();
         transcriptCollapser.resetTurn();
         TranscriptRenderModel model = TranscriptRenderModel.from(history.events());
         transcriptDispatcher.setTranscriptRenderModel(model);
-        for (SDKMessage msg : model.events()) {
+        List<SDKMessage> events = model.events();
+        int hidden = events.size() - MAX_MESSAGES_WITHOUT_VIRTUALIZATION;
+        if (hidden > 0) {
+            transcriptPanel.appendLine(showAllInTranscript
+                    ? "  ctrl+e to hide " + hidden + " previous messages"
+                    : "  ctrl+e to show " + hidden + " previous messages",
+                LanternaTheme.welcomeDim());
+        }
+        for (SDKMessage msg : visibleEvents(events, hidden)) {
             transcriptCollapser.dispatch(msg, transcriptPanel);
         }
+    }
+
+    private List<SDKMessage> visibleEvents(List<SDKMessage> events, int hidden) {
+        if (showAllInTranscript || hidden <= 0) return events;
+        return events.subList(hidden, events.size());
     }
 
     static String findLastThinkingBlockId(List<SDKMessage> messages) {
@@ -344,8 +377,7 @@ public final class TranscriptWindow extends BasicWindow {
     }
 
     private void toggleShowAll() {
-        showAll = !showAll;
-        transcriptCollapser.setShowAll(showAll);
+        showAllInTranscript = !showAllInTranscript;
         replay();
         // Re-apply active search after a re-replay (line indices change).
         if (!activeQuery.isEmpty()) commitSearch();
