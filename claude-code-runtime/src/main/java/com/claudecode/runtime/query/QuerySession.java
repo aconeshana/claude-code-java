@@ -153,6 +153,11 @@ public interface QuerySession {
         String getAttributionMcpTool();
         void clearMcpAttribution();
         void setCurrentTurnMessageId(String messageId);
+        /**
+         * Whether the active turn currently executes only mid-turn-steerable (CANCEL)
+         * tools — the queue-steer flag driven by the tool runner. False when idle.
+         */
+        boolean hasInterruptibleToolInProgress();
     }
 
     interface Forks {

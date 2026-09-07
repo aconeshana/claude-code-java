@@ -1,6 +1,7 @@
 package com.claudecode.tools;
 
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,6 +24,7 @@ public class ToolBuilder<I, O> {
     private boolean shouldDefer = false;
     private boolean requiresUserInteraction = false;
     private Function<JsonNode, Object> autoClassifierProjection;
+    private InterruptBehavior interruptBehavior;
 
     public ToolBuilder<I, O> name(String name) {
         this.name = name;
@@ -74,13 +76,18 @@ public class ToolBuilder<I, O> {
         return this;
     }
 
+    public ToolBuilder<I, O> interruptBehavior(InterruptBehavior interruptBehavior) {
+        this.interruptBehavior = interruptBehavior;
+        return this;
+    }
+
     public Tool<I, O> build() {
         if (name == null) throw new IllegalStateException("Tool name is required");
         if (callFn == null) throw new IllegalStateException("Tool call function is required");
 
         return new BuiltTool<>(name, description, inputSchema, callFn,
                 permissionFn, concurrencySafe, readOnly, shouldDefer, requiresUserInteraction,
-                autoClassifierProjection);
+                autoClassifierProjection, interruptBehavior);
     }
 
     /**
@@ -97,13 +104,15 @@ public class ToolBuilder<I, O> {
         private final boolean shouldDefer;
         private final boolean requiresUserInteraction;
         private final Function<JsonNode, Object> autoClassifierProjection;
+        private final InterruptBehavior interruptBehavior;
 
         BuiltTool(String name, String description, JsonNode inputSchema,
                   BiFunction<I, ToolExecutionContext, O> callFn,
                   BiFunction<JsonNode, ToolPermissionContext, PermissionDecision> permissionFn,
                   boolean concurrencySafe, boolean readOnly, boolean shouldDefer,
                   boolean requiresUserInteraction,
-                  Function<JsonNode, Object> autoClassifierProjection) {
+                  Function<JsonNode, Object> autoClassifierProjection,
+                  InterruptBehavior interruptBehavior) {
             this.identity = new ToolIdentity(name);
             this.description = description;
             this.inputSchema = inputSchema;
@@ -114,6 +123,7 @@ public class ToolBuilder<I, O> {
             this.shouldDefer = shouldDefer;
             this.requiresUserInteraction = requiresUserInteraction;
             this.autoClassifierProjection = autoClassifierProjection;
+            this.interruptBehavior = interruptBehavior;
         }
 
         @Override
@@ -154,5 +164,10 @@ public class ToolBuilder<I, O> {
 
         @Override
         public boolean requiresUserInteraction() { return requiresUserInteraction; }
+
+        @Override
+        public InterruptBehavior interruptBehavior() {
+            return interruptBehavior != null ? interruptBehavior : super.interruptBehavior();
+        }
     }
 }

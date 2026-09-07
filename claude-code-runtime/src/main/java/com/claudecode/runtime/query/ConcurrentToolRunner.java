@@ -3,6 +3,7 @@ package com.claudecode.runtime.query;
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.engine.HookDispatcher;
+import com.claudecode.core.queue.InterruptBehavior;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -37,6 +38,16 @@ import java.util.function.Consumer;
 
 /**
  * Concurrent implementation of {@link ToolRunner}.
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code services/tools/StreamingToolExecutor.ts} — concurrent batch
+ *       orchestration and result ordering; {@code getAbortReason}'s
+ *       {@code reason === 'interrupt'} steer split (only CANCEL-declared tools
+ *       cancelled, BLOCK tools keep running with real results); the started/
+ *       completed transitions feeding {@code updateInterruptibleState} (via
+ *       {@link InterruptibleToolTracker}).</li>
+ * </ul>
  */
 final class ConcurrentToolRunner implements ToolRunner {
 
@@ -70,6 +81,20 @@ final class ConcurrentToolRunner implements ToolRunner {
         Consumer<SDKMessage> emit,
         String sourceAssistantUuid
     ) {
+        return run(toolUseBlocks, engine, structuredOutputMode, currentTurn, emit,
+            sourceAssistantUuid, null);
+    }
+
+    @Override
+    public RunOutcome run(
+        List<ContentBlock> toolUseBlocks,
+        DefaultQuerySession engine,
+        boolean structuredOutputMode,
+        int currentTurn,
+        Consumer<SDKMessage> emit,
+        String sourceAssistantUuid,
+        InterruptibleToolTracker tracker
+    ) {
 // Partition into ordered batches.
         List<List<ToolUseBlock>> batches = partition(toolUseBlocks, engine.getConfig().toolExecutor());
 
@@ -84,8 +109,15 @@ final class ConcurrentToolRunner implements ToolRunner {
             for (List<ToolUseBlock> batch : batches) {
                 if (batch.size() == 1) {
                     // Serial batch: run in order, append + emit immediately.
-                    ToolExecution.StepResult r = ToolExecution.step(
-                        batch.getFirst(), engine, emit, sourceAssistantUuid);
+                    ToolUseBlock solo = batch.getFirst();
+                    InterruptBehavior behavior = interruptBehaviorOf(engine, solo);
+                    if (tracker != null) tracker.onToolStarted(behavior);
+                    ToolExecution.StepResult r;
+                    try {
+                        r = ToolExecution.step(solo, engine, emit, sourceAssistantUuid);
+                    } finally {
+                        if (tracker != null) tracker.onToolFinished(behavior);
+                    }
                     if (r.error()) {
                         errorDuringExecution = true;
                         lastError = r.lastError();
@@ -112,21 +144,33 @@ final class ConcurrentToolRunner implements ToolRunner {
                     new ArrayList<>(batch.size());
                 // A genuine engine-level (user) interrupt aborts the batch and
                 // cancels every future, including the running tool — the whole
-                // turn is being torn down. A self-cascade (Bash error below) does
-                // NOT take this path: it skips the offending tool's own future so
-                // its real error survives.
+                // turn is being torn down. A mid-turn steer (reason="interrupt")
+                // only cancels CANCEL-declared futures: BLOCK tools run to
+                // completion and keep their real results, so the steer defers to
+                // them. A self-cascade (Bash error below) does NOT take this
+                // path: it skips the offending tool's own future so its real
+                // error survives.
                 engine.getAbortController().onAbort(() -> {
+                    boolean steerOnly = Strings.CS.equals("interrupt",
+                        engine.getAbortController().getReason());
                     log.warn("[ABORT] engine-level abort cascade hit a concurrent batch of {} tool(s) "
-                            + "(reason={}) — cancel(true) on every in-flight Future: {}",
-                        futures.size(), engine.getAbortController().getReason(),
+                            + "(reason={}, steerOnly={}) — cancelling in-flight Futures: {}",
+                        futures.size(), engine.getAbortController().getReason(), steerOnly,
                         batch.stream().map(b -> b.name() + ":" + b.id()).toList());
                     siblingAbort.abort(engine.getAbortController().getReason());
-                    futures.forEach(f -> f.cancel(true));
+                    for (int j = 0; j < futures.size(); j++) {
+                        if (steerOnly && interruptBehaviorOf(engine, batch.get(j)) == InterruptBehavior.BLOCK) {
+                            continue;
+                        }
+                        futures.get(j).cancel(true);
+                    }
                 });
 
                 int idx = 0;
                 for (ToolUseBlock tub : batch) {
                     final int myIdx = idx++;
+                    final InterruptBehavior behavior = interruptBehaviorOf(engine, tub);
+                    if (tracker != null) tracker.onToolStarted(behavior);
                     futures.add(pool.submit(() -> {
                         ToolExecution.ToolStep step;
                         try {
@@ -135,6 +179,8 @@ final class ConcurrentToolRunner implements ToolRunner {
                             Thread.currentThread().interrupt();
                             step = cancelledToolStep(tub,
                                 cancelMessageFor(tub, engine, siblingAbort), sourceAssistantUuid);
+                        } finally {
+                            if (tracker != null) tracker.onToolFinished(behavior);
                         }
 
                         // its own result (tengu thisToolErrored guard). siblingAbort
@@ -313,12 +359,25 @@ final class ConcurrentToolRunner implements ToolRunner {
     }
 
     /**
+     * The tool's steer classification via the executor port; classification
+     * failures degrade to BLOCK so an unsteerable turn only queues (the runner's
+     * twin of {@code StreamingToolExecutor.getToolInterruptBehavior}'s
+     * {@code catch \{ return 'block' \}}).
+     */
+    private static InterruptBehavior interruptBehaviorOf(DefaultQuerySession engine, ToolUseBlock tub) {
+        try {
+            return engine.getConfig().toolExecutor().interruptBehavior(tub.name());
+        } catch (RuntimeException _) {
+            return InterruptBehavior.BLOCK;
+        }
+    }
+
+    /**
      * Groups consecutive concurrency-safe tool-use blocks into one batch.
      */
     private static List<List<ToolUseBlock>> partition(
         List<ContentBlock> blocks, ToolExecutor executor
-    ) {
-        List<List<ToolUseBlock>> batches = new ArrayList<>();
+    ) {        List<List<ToolUseBlock>> batches = new ArrayList<>();
         List<ToolUseBlock> current = null;
         for (ContentBlock block : blocks) {
             if (!(block instanceof ToolUseBlock tub)) continue;

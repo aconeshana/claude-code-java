@@ -2,6 +2,7 @@ package com.claudecode.tools;
 
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.core.serialization.JsonUtils;
@@ -13,6 +14,14 @@ import java.util.Optional;
 
 /**
  * Abstract base class for all tools.
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code Tool.ts} — the tool interface surface shared by built-ins,
+ *       including the optional {@code interruptBehavior?(): 'cancel' | 'block'}
+ *       declaration (defaulting to {@code 'block'}) mirrored by
+ *       {@link #interruptBehavior()}.</li>
+ * </ul>
  */
 public abstract class Tool<I, O> {
 
@@ -174,6 +183,16 @@ public abstract class Tool<I, O> {
      */
     public boolean isConcurrencySafe(I input) {
         return isConcurrencySafe();
+    }
+
+    /**
+     * Whether a running use of this tool is cancelled by a mid-turn user submission.
+     * Default {@link InterruptBehavior#BLOCK}: the use runs to completion and the
+     * submission only queues; tools whose work is safe to abandon report
+     * {@link InterruptBehavior#CANCEL} so the submission can steer the turn.
+     */
+    public InterruptBehavior interruptBehavior() {
+        return InterruptBehavior.BLOCK;
     }
 
     /**

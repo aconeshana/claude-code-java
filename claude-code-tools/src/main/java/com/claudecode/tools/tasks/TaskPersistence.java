@@ -61,11 +61,6 @@ final class TaskPersistence {
         });
     }
 
-    static <T> T createSequential(Path tasksDir, Function<String, T> factory)
-            throws IOException {
-        return createSequential(tasksDir, factory, false);
-    }
-
     static <T> T createSequential(
             Path tasksDir, Function<String, T> factory, boolean pretty) throws IOException {
         return withListLock(tasksDir, () -> {

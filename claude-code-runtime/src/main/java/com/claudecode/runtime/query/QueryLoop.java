@@ -804,7 +804,8 @@ class QueryLoop implements SdkEventSequencedIterator {
                 ToolRunner.RunOutcome outcome = toolRunner.run(
                     toolUseBlocks, engine, options.hasJsonSchema(),
                     state.turnCount(), this::emitToolFrame,
-                    assistantMsg != null ? assistantMsg.uuid() : null);
+                    assistantMsg != null ? assistantMsg.uuid() : null,
+                    engine.interruptibleToolTracker());
 
                 if (engine.getAbortController().isAborted()) {
                     // Tool execution has already emitted one combined user

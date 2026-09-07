@@ -3,6 +3,7 @@ package com.claudecode.core.engine;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.engine.StreamingClient.StreamRequest.ToolDef;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.claudecode.core.message.Message;
 import java.util.List;
@@ -108,6 +109,15 @@ public interface ToolExecutor {
      */
     default boolean isConcurrencySafe(String toolName, JsonNode input) {
         return false;
+    }
+
+    /**
+     * Whether a running use of the named tool is cancelled by a mid-turn user submission.
+     * Unknown tools and executors without a catalogue default to {@link InterruptBehavior#BLOCK},
+     * so a submission only queues behind a turn that cannot be steered.
+     */
+    default InterruptBehavior interruptBehavior(String toolName) {
+        return InterruptBehavior.BLOCK;
     }
 
     /**

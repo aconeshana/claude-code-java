@@ -59,6 +59,24 @@ interface ToolRunner {
         String sourceAssistantUuid
     );
 
+    /**
+     * Runs every tool-use block with mid-turn steer tracking: the tracker's
+     * executing-tool set is driven from each tool's started/completed transitions.
+     * A {@code null} tracker disables steer tracking without changing behavior.
+     */
+    default RunOutcome run(
+        List<ContentBlock> toolUseBlocks,
+        DefaultQuerySession engine,
+        boolean structuredOutputMode,
+        int currentTurn,
+        Consumer<SDKMessage> emit,
+        String sourceAssistantUuid,
+        InterruptibleToolTracker tracker
+    ) {
+        // Trackers ride along transparently for runners that don't implement them.
+        return run(toolUseBlocks, engine, structuredOutputMode, currentTurn, emit, sourceAssistantUuid);
+    }
+
 
     static ToolRunner resolve() {
         return new ConcurrentToolRunner();

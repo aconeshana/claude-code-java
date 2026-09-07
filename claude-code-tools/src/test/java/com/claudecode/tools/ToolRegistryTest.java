@@ -14,6 +14,7 @@ import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
 import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.model.PermissionModeKind;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.engine.ToolExecutionContext.ProgressSink;
 import com.claudecode.core.engine.AbortController;
@@ -1642,5 +1643,33 @@ class ToolRegistryTest {
         assertTrue(enabledNames.contains("Grep"), "Grep in enabled tool set");
         assertFalse(enabledNames.contains("TodoWrite"),
             "dormant TodoWrite must not appear in the enabled tool definitions");
+    }
+
+    // ── Mid-turn interrupt behavior (queue steer) ──────────────────────────────
+
+    @Test
+    void interruptBehavior_defaultsToBlockForToolsAndUnknownNames() {
+        registry.register(new ToolBuilder<String, String>()
+            .name("PlainTool")
+            .call((_, _) -> "ok")
+            .build());
+        assertEquals(InterruptBehavior.BLOCK,
+            registry.interruptBehavior("PlainTool"),
+            "a tool without an override must default to BLOCK");
+        assertEquals(InterruptBehavior.BLOCK,
+            registry.interruptBehavior("NoSuchTool"),
+            "an unknown tool name must default to BLOCK");
+    }
+
+    @Test
+    void interruptBehavior_delegatesToTheToolOverride() {
+        registry.register(new ToolBuilder<String, String>()
+            .name("SteerableTool")
+            .call((_, _) -> "ok")
+            .interruptBehavior(InterruptBehavior.CANCEL)
+            .build());
+        assertEquals(InterruptBehavior.CANCEL,
+            registry.interruptBehavior("SteerableTool"),
+            "the registry must surface the tool's own CANCEL declaration");
     }
 }

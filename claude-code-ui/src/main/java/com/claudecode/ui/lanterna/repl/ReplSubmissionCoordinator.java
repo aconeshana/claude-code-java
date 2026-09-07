@@ -26,6 +26,14 @@ import com.claudecode.ui.lanterna.input.PromptHistory;
 
 /**
  * Routes submitted prompt text through history, bash, slash, queue, or a new turn.
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code utils/handlePromptSubmit.ts} — the busy-turn branch of
+ *       {@code onSubmit}: reading {@code hasInterruptibleToolInProgress} and
+ *       aborting the active turn before enqueuing (the queue-steer path in
+ *       {@code handleQuery}), plus the plain queue-only fallback.</li>
+ * </ul>
  */
 final class ReplSubmissionCoordinator {
     private final InputPanel input;
@@ -123,6 +131,14 @@ final class ReplSubmissionCoordinator {
     private void handleQuery(String value, Map<Integer, PastedContent> pasted,
                              String preExpansionValue, boolean remote) {
         if (turns.isInFlight() || longRunning) {
+            // Queue steer: when the active turn's executing tools are all
+            // steerable, the submission aborts the turn BEFORE enqueuing so the
+            // drained queue can start a fresh turn immediately — the twin of
+            // handlePromptSubmit's hasInterruptibleToolInProgress branch. A
+            // long-running slash command owns no engine turn and never steers.
+            if (turns.isInFlight() && turns.hasInterruptibleToolInProgress()) {
+                turns.interruptForQueuedSubmit();
+            }
             enqueue(value, pasted, preExpansionValue, remote ? "session-host" : null);
             return;
         }

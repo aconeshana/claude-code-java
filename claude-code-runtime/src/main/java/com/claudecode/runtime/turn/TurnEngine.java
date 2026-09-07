@@ -9,6 +9,7 @@ import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.queue.MessageQueueManager;
+import com.claudecode.core.queue.QueuePriority;
 import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionGate;
@@ -39,6 +40,17 @@ import org.slf4j.LoggerFactory;
 /**
  * Headless orchestrator for one session's turns — the front-end-agnostic core that every adapter
  * (TUI, and future WebUI / API) drives.
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code utils/handlePromptSubmit.ts} — the busy-turn queue-steer branch: reading
+ *       {@code hasInterruptibleToolInProgress} and aborting with reason {@code 'interrupt'}
+ *       before enqueuing ({@link #hasInterruptibleToolInProgress},
+ *       {@link #interruptForQueuedSubmit}); the {@code priority:'now'} queue-entry abort
+ *       effect in {@code screens/REPL.tsx} ({@link #enqueue}).</li>
+ *   <li>{@code utils/queue/queueOperations.ts} — batch drain and priority order
+ *       ({@link #takeNextBatch}, {@link #pollInputBatch}).</li>
+ * </ul>
  */
 public final class TurnEngine {
 
@@ -121,6 +133,35 @@ public final class TurnEngine {
     public boolean isInFlight() { return turnInFlight.get(); }
 
     /**
+     * Whether the active turn currently executes only mid-turn-steerable (CANCEL)
+     * tools — the condition under which a queued submission may abort the turn
+     * immediately instead of waiting for its completion (the queue-steer path).
+     * False when idle.
+     */
+    public boolean hasInterruptibleToolInProgress() {
+        try {
+            return queryEngine.execution().hasInterruptibleToolInProgress();
+        } catch (RuntimeException e) {
+            log.warn("Failed to read the mid-turn steer flag; treating as not steerable", e);
+            return false;
+        }
+    }
+
+    /**
+     * Aborts the active turn so a just-enqueued submission can steer it — the
+     * runtime twin of the submit path's {@code hasInterruptibleToolInProgress →
+     * abortController.abort('interrupt')} branch. The reason is {@code "interrupt"}
+     * (silent, no visible interruption row) and only CANCEL-declared tools are
+     * cancelled; BLOCK tools run to completion first. No-op when no turn is in
+     * flight.
+     */
+    public void interruptForQueuedSubmit() {
+        if (!turnInFlight.get()) return;
+        log.debug("[STEER] Aborting the active turn for a queued submission (reason=interrupt)");
+        queryEngine.submission().softInterrupt();
+    }
+
+    /**
      * Runs an operation immediately when idle, or after the active turn's cleanup and before queue
      * drain. The second idle check closes the race where completion occurs between the first check
      * and enqueue.
@@ -151,6 +192,11 @@ public final class TurnEngine {
             inputQueue.offer(cmd);
         }
         publishInputQueue();
+        // A NOW-priority command arriving mid-turn aborts the turn immediately —
+        // the twin of the queue effect that watches for priority==="now" entries.
+        if (cmd.priority() == QueuePriority.NOW && turnInFlight.get()) {
+            interruptForQueuedSubmit();
+        }
     }
 
     /** Install the adapter's live queue projection and immediately publish its current state. */

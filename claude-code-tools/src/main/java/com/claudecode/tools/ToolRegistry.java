@@ -21,6 +21,7 @@ import com.claudecode.core.engine.ToolSchemaGate;
 import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.message.*;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.permissions.AutoModeClassifier;
 import com.claudecode.permissions.CommandSuggestion;
 import com.claudecode.permissions.DecisionReason;
@@ -103,6 +104,10 @@ import com.claudecode.tools.output.ToolResultStorage;
  *       {@code components/permissions/BashPermissionRequest} — ordered typed
  *       permission suggestions survive tool checking into the interactive UI;
  *       path suggestions are not replaced by an invented command-prefix rule.</li>
+ *   <li>
+ *       {@code services/tools/StreamingToolExecutor.ts#getToolInterruptBehavior} —
+ *       mid-turn steer classification via the executor port: unknown tools and
+ *       classification failures degrade to BLOCK ({@link #interruptBehavior}).</li>
  * </ul>
  */
 public class ToolRegistry implements ToolExecutor {
@@ -270,6 +275,17 @@ public class ToolRegistry implements ToolExecutor {
             return isConcurrencySafeRaw(tool, input);
         } catch (Exception _) {
             return false;
+        }
+    }
+
+    @Override
+    public InterruptBehavior interruptBehavior(String toolName) {
+        Tool<?, ?> tool = resolveTool(toolName);
+        if (tool == null) return InterruptBehavior.BLOCK;
+        try {
+            return tool.interruptBehavior();
+        } catch (Exception _) {
+            return InterruptBehavior.BLOCK;
         }
     }
 

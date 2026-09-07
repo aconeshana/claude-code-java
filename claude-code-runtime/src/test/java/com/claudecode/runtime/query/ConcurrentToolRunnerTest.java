@@ -15,6 +15,7 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,6 +32,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -489,5 +493,115 @@ class ConcurrentToolRunnerTest {
             }
         }
         return null;
+    }
+
+    // ── Mid-turn steer (reason="interrupt") splitting by interrupt behavior ─────
+
+    /** Executor whose tools block until released and classify steer behavior. */
+    private static final class SteerExecutor implements ToolExecutor {
+        final Set<String> safe;
+        final Set<String> cancellable;
+        final Map<String, CountDownLatch> starts = new HashMap<>();
+        final Map<String, CountDownLatch> releases = new HashMap<>();
+        final Set<String> completed = Collections.synchronizedSet(
+            Collections.newSetFromMap(new ConcurrentHashMap<>()));
+
+        SteerExecutor(Set<String> safe, Set<String> cancellable,
+                      String... toolNames) {
+            this.safe = Set.copyOf(safe);
+            this.cancellable = Set.copyOf(cancellable);
+            for (String name : toolNames) {
+                starts.put(name, new CountDownLatch(1));
+                releases.put(name, new CountDownLatch(1));
+            }
+        }
+
+        @Override
+        public ToolResult execute(String toolName, JsonNode input, ToolExecutionContext ctx) {
+            starts.get(toolName).countDown();
+            try {
+                releases.get(toolName).await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+                return ToolResult.error("interrupted mid-tool");
+            }
+            completed.add(toolName);
+            return ToolResult.success("real-" + toolName);
+        }
+
+        @Override
+        public boolean isConcurrencySafe(String toolName, JsonNode input) {
+            return safe.contains(toolName);
+        }
+
+        @Override
+        public InterruptBehavior interruptBehavior(String toolName) {
+            return cancellable.contains(toolName)
+                ? InterruptBehavior.CANCEL
+                : InterruptBehavior.BLOCK;
+        }
+    }
+
+    @Test
+    void steerAbort_cancelsCancelToolButBlockToolRunsToCompletion() throws Exception {
+        // One CANCEL + one BLOCK tool in the same concurrent batch; a mid-turn
+        // steer aborts with reason "interrupt" while both run.
+        SteerExecutor ex = new SteerExecutor(
+            Set.of("WebFetch", "Bash"), Set.of("WebFetch"),
+            "WebFetch", "Bash");
+        DefaultQuerySession engine = newEngine(ex);
+
+        List<ContentBlock> blocks = List.of(tub("tu-1", "WebFetch"), tub("tu-2", "Bash"));
+        List<ContentBlock> batch = List.copyOf(blocks);
+        Thread runner = new Thread(() ->
+            new ConcurrentToolRunner().run(batch, engine, false, 1, _ -> {}, null));
+        runner.start();
+        assertTrue(ex.starts.get("WebFetch").await(5, TimeUnit.SECONDS));
+        assertTrue(ex.starts.get("Bash").await(5, TimeUnit.SECONDS));
+
+        // Mid-turn steer: abort with reason "interrupt".
+        engine.getAbortController().abort("interrupt");
+        // The CANCEL tool's Future.cancel interrupts its thread; release the BLOCK
+        // tool's gate so the batch join completes.
+        ex.releases.get("Bash").countDown();
+        runner.join(15_000);
+
+        ToolResultBlock cancelTrb = resultFor(engine, "tu-1");
+        ToolResultBlock blockTrb = resultFor(engine, "tu-2");
+        assertNotNull(cancelTrb);
+        assertNotNull(blockTrb);
+        assertTrue(cancelTrb.isError(), "the CANCEL tool must report the steer cancel");
+        assertTrue(Strings.CS.contains(textOf(cancelTrb), MessageConstants.REJECT_MESSAGE));
+        assertFalse(blockTrb.isError(), "the BLOCK tool must keep its real result");
+        assertEquals("real-Bash", textOf(blockTrb));
+        assertTrue(ex.completed.contains("Bash"),
+            "the BLOCK tool must have run to completion, not been cancelled");
+        assertFalse(ex.completed.contains("WebFetch"),
+            "the CANCEL tool must have been interrupted, not completed");
+    }
+
+    @Test
+    void userCancelAbort_stillCancelsEveryToolIncludingBlock() throws Exception {
+        // A plain user-cancel abort (any non-"interrupt" reason) keeps the
+        // historical behavior: every future is cancelled, even BLOCK tools.
+        SteerExecutor ex = new SteerExecutor(
+            Set.of("WebFetch", "Bash"), Set.of("WebFetch"),
+            "WebFetch", "Bash");
+        DefaultQuerySession engine = newEngine(ex);
+
+        List<ContentBlock> batch = List.of(tub("tu-1", "WebFetch"), tub("tu-2", "Bash"));
+        Thread runner = new Thread(() ->
+            new ConcurrentToolRunner().run(batch, engine, false, 1, _ -> {}, null));
+        runner.start();
+        assertTrue(ex.starts.get("WebFetch").await(5, TimeUnit.SECONDS));
+        assertTrue(ex.starts.get("Bash").await(5, TimeUnit.SECONDS));
+
+        engine.getAbortController().abort("user-cancel");
+        runner.join(15_000);
+
+        ToolResultBlock blockTrb = resultFor(engine, "tu-2");
+        assertNotNull(blockTrb);
+        assertTrue(blockTrb.isError(), "a full user-cancel must cancel BLOCK tools too");
+        assertFalse(ex.completed.contains("Bash"));
     }
 }

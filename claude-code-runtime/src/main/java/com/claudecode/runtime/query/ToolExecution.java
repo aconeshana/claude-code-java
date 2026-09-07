@@ -23,6 +23,7 @@ import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.PermissionModeKind;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
@@ -360,7 +361,8 @@ final class ToolExecution {
         // with `thisToolErrored` so the tool that triggered the cascade keeps its
         // own real error result (it is the cause, not a victim). Without this, a
         // Bash error would be swallowed and replaced by the sibling-cancel text.
-        if (siblingAbort != null && siblingAbort.isAborted() && !result.isError()) {
+        if (siblingAbort != null && siblingAbort.isAborted()
+                && !steerSparesThisTool(engine, tub) && !result.isError()) {
             String cancelText = engine.getAbortController().isAborted()
                 ? MessageConstants.CANCEL_MESSAGE
                 : MessageConstants.siblingErrorMessage(tub.name());
@@ -475,6 +477,26 @@ final class ToolExecution {
         List<Message> newMessages = mergeMessages(result.newMessages(), hookContextMessages);
         return new ToolStep(tub, resultMsg, structuredOutput, result.isError(), null,
             preventContinuation, stopReason, newMessages, result.afterResultEmitted());
+    }
+
+    /**
+     * Whether the current abort is a mid-turn steer (reason {@code "interrupt"}) that
+     * must spare this BLOCK-declared tool: a steered BLOCK tool runs to completion and
+     * keeps its real result (the runner's twin of {@code StreamingToolExecutor.getAbortReason}'s
+     * {@code reason === 'interrupt' && behavior !== 'cancel' → null} branch). Reads the
+     * engine controller's reason, not the sibling controller's — the runner propagates
+     * the steer reason into {@code siblingAbort} too.
+     */
+    private static boolean steerSparesThisTool(DefaultQuerySession engine, ToolUseBlock tub) {
+        if (!Strings.CS.equals("interrupt", engine.getAbortController().getReason())) {
+            return false;
+        }
+        try {
+            return engine.getConfig().toolExecutor().interruptBehavior(tub.name())
+                == InterruptBehavior.BLOCK;
+        } catch (RuntimeException _) {
+            return false;
+        }
     }
 
     private static HookDispatcher.HookOutcome dispatchPostToolUseFailure(

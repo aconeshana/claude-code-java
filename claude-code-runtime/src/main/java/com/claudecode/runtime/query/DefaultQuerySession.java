@@ -89,6 +89,9 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     /** Transcript loader (on-disk) for {@link #findUnresolvedToolUse}; null → in-memory only. */
     private final Function<String, List<Message>> transcriptLoader;
     private final AbortController abortController;
+    /** Mid-turn steer flag over the currently executing tools; lives for the session
+     *  so every submitted query drives the same tracker. */
+    private final InterruptibleToolTracker interruptibleToolTracker = new InterruptibleToolTracker();
     /**
      * Process shutdown and submit-interrupt suppress the synthetic human
      * interruption row even when another cancellation reason won the
@@ -1034,6 +1037,15 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         return abortController;
     }
 
+    /** Session-wide mid-turn steer flag driven by the tool runner (queue steer). */
+    InterruptibleToolTracker interruptibleToolTracker() {
+        return interruptibleToolTracker;
+    }
+
+    @Override public boolean hasInterruptibleToolInProgress() {
+        return interruptibleToolTracker.hasInterruptibleToolInProgress();
+    }
+
     @Override public Usage getTotalUsage() {
         return totalUsage;
     }
@@ -1376,7 +1388,6 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     }
 
     // ---- MessageQueueManager (MCP channel + notification injection) ----
-
     /**
      * Priority queue for injecting messages between query turns.
      */
