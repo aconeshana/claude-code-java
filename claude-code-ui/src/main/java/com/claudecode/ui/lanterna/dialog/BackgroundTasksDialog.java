@@ -105,11 +105,6 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
         this.onViewAgent = onViewAgent == null ? _ -> {} : onViewAgent;
     }
 
-    public void setOnViewWorkflow(Consumer<TaskState> onViewWorkflow) {
-        this.onViewWorkflow = onViewWorkflow == null ? (_, _) -> {}
-            : (task, _) -> onViewWorkflow.accept(task);
-    }
-
     /**
      * Supplies the workflow route plus whether Back should restore the task list.
      */
@@ -205,6 +200,7 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
         List<ListItem> agents = new ArrayList<>();
         List<ListItem> workflows = new ArrayList<>();
         List<ListItem> dreams = new ArrayList<>();
+        List<ListItem> webSessions = new ArrayList<>();
         for (TaskState t : sorted) {
             if (t.type() == TaskType.LOCAL_BASH) {
                 shells.add(new ListItem(t, t.description()));
@@ -218,9 +214,13 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
                 workflows.add(new ListItem(t, t.description()));
             }
             else if (t.type() == TaskType.DREAM) dreams.add(new ListItem(t, t.description()));
+            else if (t.type() == TaskType.WEB_SESSION) {
+                webSessions.add(new ListItem(t, t.description()));
+            }
         }
         shells.addAll(monitors);
         shells.addAll(agents);
+        shells.addAll(webSessions);
         shells.addAll(workflows);
         shells.addAll(dreams);
         this.items = shells;
@@ -331,7 +331,8 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
         if (t == KeyType.CHARACTER && key.getCharacter() != null
                 && Character.toLowerCase(key.getCharacter()) == 'f') {
             TaskState selected = items.get(selectedIndex).task();
-            if (selected.type() == TaskType.LOCAL_AGENT) {
+            if (selected.type() == TaskType.LOCAL_AGENT
+                    || selected.type() == TaskType.WEB_SESSION) {
                 onViewAgent.accept(selected);
                 close();
             }
@@ -348,7 +349,9 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
         KeyType t = key.getKeyType();
         if (t == KeyType.CHARACTER && key.getCharacter() != null
                 && Character.toLowerCase(key.getCharacter()) == 'f') {
-            registry.get(detailTaskId).filter(task -> task.type() == TaskType.LOCAL_AGENT)
+            registry.get(detailTaskId)
+                .filter(task -> task.type() == TaskType.LOCAL_AGENT
+                    || task.type() == TaskType.WEB_SESSION)
                 .ifPresent(task -> {
                     onViewAgent.accept(task);
                     close();
@@ -705,7 +708,8 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
 
         private String listFooterHint() {
             StringBuilder sb = new StringBuilder("↑/↓ select · Enter view");
-            if (!items.isEmpty() && items.get(selectedIndex).task().type() == TaskType.LOCAL_AGENT) {
+            if (!items.isEmpty() && (items.get(selectedIndex).task().type() == TaskType.LOCAL_AGENT
+                    || items.get(selectedIndex).task().type() == TaskType.WEB_SESSION)) {
                 sb.append(" · f transcript");
             }
             if (!items.isEmpty() && items.get(selectedIndex).task().status() == TaskStatus.RUNNING) {

@@ -138,6 +138,8 @@ public interface InteractiveSessionPort {
     }
     default Path sessionFile(String cwd, String sessionId) { return null; }
     default Path agentTranscriptPath(String cwd, String sessionId, String agentId) { return null; }
+    /** The live main transcript of a web-gateway headless session task, or null. */
+    default Path headlessTranscriptPath(String taskId) { return null; }
     default Path toolResultsDirectory(String cwd, String sessionId) { return null; }
     default Path workflowRunPath(String cwd, String sessionId, String runId) { return null; }
     default String readCustomTitle(String cwd, String sessionId) { return null; }

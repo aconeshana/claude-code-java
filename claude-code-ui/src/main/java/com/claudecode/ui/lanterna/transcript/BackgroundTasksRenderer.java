@@ -386,6 +386,9 @@ public final class BackgroundTasksRenderer {
 
     private static String detailFooterHint(TaskState task) {
         StringBuilder sb = new StringBuilder("→ go back · Esc/Enter/Space close");
+        if (task.type() == TaskType.LOCAL_AGENT || task.type() == TaskType.WEB_SESSION) {
+            sb.append(" · f transcript");
+        }
         if (task.status() == TaskStatus.RUNNING) sb.append(" · x stop");
         return sb.toString();
     }
@@ -400,7 +403,6 @@ public final class BackgroundTasksRenderer {
             case COMPLETED -> "*";
             case FAILED, KILLED -> "x";
             case RUNNING, PENDING, PAUSED -> "~";
-            default -> "?";
         };
     }
 
@@ -409,7 +411,6 @@ public final class BackgroundTasksRenderer {
             case COMPLETED -> LanternaTheme.toolSuccess();
             case FAILED, KILLED -> LanternaTheme.toolError();
             case RUNNING, PENDING, PAUSED -> LanternaTheme.welcomeDim();
-            default -> LanternaTheme.inputText();
         };
     }
 

@@ -1,13 +1,16 @@
 package com.claudecode.ui.lanterna.input;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.claudecode.core.message.PastedContent;
+import com.googlecode.lanterna.CursorStyle;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -45,7 +48,7 @@ class InputPanelPasteFloodTest {
 
         assertEquals(List.of(), actions.submissions,
             "an unbracketed CR paste flood must not submit any line");
-        assertTrue(panel.getText().startsWith("[Pasted text #"),
+        assertTrue(Strings.CS.startsWith(panel.getText(), "[Pasted text #"),
             "the flood folds into a chip at batch end, like bracketed paste — was: " + panel.getText());
         PastedContent folded = panel.getPastedContents().values().iterator().next();
         String expected = String.join("\n", lines);
@@ -143,7 +146,7 @@ class InputPanelPasteFloodTest {
         @Override public void messageActionsEdit() {}
         @Override public void queryChanged(String text, int cursor) {}
         @Override public void pastedContentsChanged(Map<Integer, PastedContent> contents) {}
-        @Override public void cursorStyleChanged(com.googlecode.lanterna.CursorStyle style) {}
+        @Override public void cursorStyleChanged(CursorStyle style) {}
         @Override public void focusChanged(boolean focused) {}
     }
 }

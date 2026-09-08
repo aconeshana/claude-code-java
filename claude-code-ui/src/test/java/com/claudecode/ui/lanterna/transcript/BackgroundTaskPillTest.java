@@ -74,4 +74,12 @@ class BackgroundTaskPillTest {
         assertEquals("1 background task", BackgroundTaskPill.labelFor(List.of(
             task(TaskType.IN_PROCESS_TEAMMATE))));
     }
+
+    @Test
+    void webSessions_useOwnLabel() {
+        assertEquals("1 web session", BackgroundTaskPill.labelFor(List.of(
+            task(TaskType.WEB_SESSION))));
+        assertEquals("2 web sessions", BackgroundTaskPill.labelFor(List.of(
+            task(TaskType.WEB_SESSION), task(TaskType.WEB_SESSION))));
+    }
 }

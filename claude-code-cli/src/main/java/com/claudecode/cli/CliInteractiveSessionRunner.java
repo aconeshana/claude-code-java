@@ -31,6 +31,7 @@ import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.runtime.hooks.HookConfigurationPort;
@@ -67,6 +68,7 @@ import com.claudecode.tools.skills.SkillToolProvider;
 import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.ui.lanterna.repl.LanternaProgressSink;
 import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
+import com.claudecode.ui.lanterna.repl.ProjectCatalogPort;
 import com.claudecode.ui.lanterna.dialog.TuiSudoPasswordPresenter;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplStartupReadiness;
@@ -341,6 +343,18 @@ final class CliInteractiveSessionRunner {
                 String interactiveCwd = System.getProperty("user.dir");
                 CliInteractiveRuntimeAssembler interactiveRuntime =
                     new CliInteractiveRuntimeAssembler(cmdRegistry::isBuiltInCommandName);
+                CliHeadlessGatewaySessions headlessSessions = new CliHeadlessGatewaySessions(
+                    new CliHeadlessSessionFactory(
+                        client, toolRegistry, input.querySessionFactory(),
+                        permissionGate, resolvedModel, interactiveCwd),
+                    interactiveCwd);
+                interactiveRuntime.bindHeadlessSessions(headlessSessions);
+                CliGatewayRuntime gatewayRuntime = new CliGatewayRuntime(
+                    sessionHostRuntime.registry(),
+                    gatewayCatalog(interactiveRuntime.projects()),
+                    headlessSessions,
+                    sessionHostRuntime.interactions(),
+                    headlessSessions.messagesPort(interactiveCwd));
                 DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                     permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
                 CliSettingsManagementAdapter settingsManagement =
@@ -529,6 +543,10 @@ final class CliInteractiveSessionRunner {
                             LanternaReplScreen s = screenRef.get();
                             if (s != null) s.openTagRemovalDialog(request);
                         })
+                        .gatewayLauncher(_ -> {
+                            LanternaReplScreen s = screenRef.get();
+                            if (s != null) s.startWebGateway();
+                        })
 // /tasks (alias /bashes) opens the interactive background-tasks panel.
                         .tasksDialogLauncher(() -> {
                             LanternaReplScreen s = screenRef.get();
@@ -578,7 +596,8 @@ final class CliInteractiveSessionRunner {
                     showBuiltInModelFamilies, customModelCatalog,
                     ExternalTips::getNextTip,
                     sessionHostRuntime.registry(), sessionHostRuntime.interactions(),
-                    sessionHostRuntime.collaboration(), sessionHostRuntime);
+                    sessionHostRuntime.collaboration(), sessionHostRuntime,
+                    gatewayRuntime);
                 ReplWiring wiring = interactiveRuntime.assemble(
                     applicationPorts, featureRuntime, launchState,
                     new ReplStartupReadiness(startup.inputSemanticReady(),
@@ -635,6 +654,7 @@ final class CliInteractiveSessionRunner {
                     return 0;
                 } finally {
                     sessionHostRuntime.close();
+                    gatewayRuntime.close();
                 }
             } catch (Exception e) {
                 log.error("Lanterna UI failed", e);
@@ -660,6 +680,30 @@ final class CliInteractiveSessionRunner {
             log.debug("Away summary setting degraded to its default: {}", failure.toString());
         }
         return new OptionalInteractiveSettings(idleThreshold, awaySummary);
+    }
+
+    /**
+     * Projects the TUI project panel's catalog onto the gateway-owned catalog
+     * port, so the sessions endpoint serves the same two-level project→session
+     * listing the {@code /resume} picker shows.
+     */
+    private static GatewaySessionCatalogPort gatewayCatalog(
+            ProjectCatalogPort projects) {
+        return new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+                return projects.listProjects().stream()
+                    .map(project -> new ProjectEntry(
+                        project.projectPath(), project.projectName(), project.sessionCount(),
+                        project.lastActivityMs(),
+                        project.sessions().stream()
+                            .map(session -> new SessionEntry(
+                                session.id(), session.summary(), session.messageCount(),
+                                session.lastModified(), session.gitBranch(), session.cwd(),
+                                session.customTitle(), session.firstPrompt()))
+                            .toList()))
+                    .toList();
+            }
+        };
     }
 
     private static void installOptionalInteractiveServices(

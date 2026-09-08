@@ -43,6 +43,7 @@ import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.compact.CompactWarningProvider;
 import com.claudecode.runtime.doctor.DoctorPort;
+import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.hooks.HookConfigurationPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.memory.MemoryCatalog;
@@ -454,6 +455,7 @@ public class LanternaReplScreen implements SlashHost {
     private final InteractionCoordinator interactionCoordinator;
     private final SessionCollaborationController collaborationController;
     private final CollaborationSetupPort collaborationSetup;
+    private final GatewaySupervisorPort gatewaySupervisor;
 
     private volatile String model = "";
     private boolean verbose = false;
@@ -605,6 +607,7 @@ public class LanternaReplScreen implements SlashHost {
         this.interactionCoordinator = launch.interactionCoordinator();
         this.collaborationController = launch.collaborationController();
         this.collaborationSetup = launch.collaborationSetup();
+        this.gatewaySupervisor = launch.gatewaySupervisor();
         this.initialPrompt       = launch.initialPrompt();
         this.initialSessionName  = StringUtils.trimToNull(launch.initialSessionName());
         this.restoredSession     = launch.restoredSession();
@@ -631,9 +634,9 @@ public class LanternaReplScreen implements SlashHost {
         this.verbose = verbose;
         dispatcher.setVerbose(verbose);
         collapser.setVerbose(verbose);
-// spinnerComponent is created in buildLayout during run; CLI may
+        // spinnerComponent is created in buildLayout during run; CLI may
         // call setVerbose before then. Apply eagerly if already built, otherwise
-// buildLayout will pick it up from the persisted `verbose` field.
+        // buildLayout will pick it up from the persisted `verbose` field.
         if (spinnerComponent != null) spinnerComponent.setVerbose(verbose);
     }
 
@@ -2365,9 +2368,14 @@ public class LanternaReplScreen implements SlashHost {
             gui, screen, messagePanel, spinnerComponent, inputPanel,
             messageHistory, collapser, featureRuntime.taskRegistry(), interactiveSessions);
         transcriptController.setKeybindingsStore(keybindingsStore);
-        transcriptController.setAgentTranscriptResolver(agentId ->
-            interactiveSessions.agentTranscriptPath(System.getProperty("user.dir"),
-                queryEngine.conversation().getSessionId(), agentId));
+        transcriptController.setAgentTranscriptResolver(agentId -> {
+            // Web-gateway headless sessions record their own project's main
+            // transcript; resolve those first so viewing one reads it live.
+            Path headless = interactiveSessions.headlessTranscriptPath(agentId);
+            if (headless != null) return headless;
+            return interactiveSessions.agentTranscriptPath(System.getProperty("user.dir"),
+                queryEngine.conversation().getSessionId(), agentId);
+        });
         localAgentInputRouter = new LocalAgentInputRouter(
             featureRuntime.taskRegistry(),
             (agentId, prompt, context, userInitiated) -> {
@@ -3675,8 +3683,7 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * Posts an inline system message to the transcript from any thread.
-     */
+    /** Posts an inline system message to the transcript from any thread. */
     public void postSystemMessage(String text) {
         if (StringUtils.isBlank(text)) return;
         Runnable append = () -> appendLine(text, LanternaTheme.welcomeDim());
@@ -3685,6 +3692,28 @@ public class LanternaReplScreen implements SlashHost {
         } else {
             gui.getGUIThread().invokeLater(append);
         }
+    }
+
+    /**
+     * Starts the in-process web gateway on demand ({@code /web}) and surfaces
+     * the token-embedded URL as a transcript line. The URL is the only place
+     * the token is displayed; it never goes to logs.
+     */
+    public void startWebGateway() {
+        if (gatewaySupervisor == null) {
+            postSystemMessage("Web gateway is not available in this session.");
+            return;
+        }
+        Thread.ofVirtual().name("web-gateway-start").start(() -> {
+            try {
+                GatewaySupervisorPort.Started started =
+                    gatewaySupervisor.start();
+                postSystemMessage("Web gateway: " + started.url());
+            } catch (RuntimeException failure) {
+                log.warn("[LANTERNA] Web gateway failed to start", failure);
+                postSystemMessage("Web gateway failed to start: " + failure.getMessage());
+            }
+        });
     }
 
     /** Applies a SessionStart hook title through the live terminal/session-host path. */

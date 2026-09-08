@@ -19,7 +19,7 @@ Gradle with Kotlin DSL is the only build system. See
 [docs/build-and-test.md](docs/build-and-test.md) for build, test, packaging, native-image,
 and platform-asset details.
 
-## Module Map (15 product modules)
+## Module Map (16 product modules)
 
 ```
 claude-code-core     → stable model protocols, policies, value objects
@@ -27,6 +27,7 @@ claude-code-http     → shared OkHttp transport
 claude-code-api      → provider configuration, routing, and API clients
 claude-code-permissions → allow/deny/ask system
 claude-code-runtime  → QuerySession + headless session/turn orchestration + UI application ports
+claude-code-gateway  → in-process HTTP+SSE third session endpoint (web/API entry)
 claude-code-tools    → built-in + runtime-provided tool system (some tools are platform- or feature-gated)
 claude-code-commands → slash command registry (commands, availability gates, and hidden stubs)
 claude-code-mcp      → Model Context Protocol
@@ -47,10 +48,12 @@ runtime module graph.
 ```
 app → cli
 sdk → { core, session, cli (runtime only) }
-cli → { core, http, api, permissions, runtime, session, mcp, commands, ui, tools, services, lsp }
+cli → { core, http, api, permissions, runtime, gateway, session, mcp, commands, ui, tools, services, lsp }
       # The composition root explicitly declares every module whose types it uses.
 ui → { core, commands, permissions, tools, lsp, runtime }
      # UI must not depend on services, MCP, or session implementations; use runtime/application ports.
+gateway → { core, runtime, api }
+          # Third session endpoint: HTTP+SSE transport over the same registry/hub/ledger semantics.
 services → { core, http, api, mcp, tools, permissions, session, runtime }
 commands → { core, runtime }
            # CLI leaf adapters provide session, permission, tools, configuration, and MCP capabilities.

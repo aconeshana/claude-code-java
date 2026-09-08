@@ -89,6 +89,7 @@ __pycache__/
 # Local-only CLAUDE override (machine-specific paths, never committed)
 CLAUDE.local.md
 CODEBUDDY.md
+docs.local/
 
 # Archived one-time problem-solving / audit / acceptance / review records.
 # Renamed with the archive- prefix; kept on disk for history but no longer

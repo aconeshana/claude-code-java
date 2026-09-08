@@ -23,6 +23,8 @@ import org.apache.commons.lang3.StringUtils;
 public final class CliInteractiveSessionAdapter implements InteractiveSessionPort {
     private final StatsAggregator stats;
     private final Predicate<String> builtInCommand;
+    /** The gateway's live headless sessions, when the interactive run owns one. */
+    private volatile CliHeadlessGatewaySessions headlessSessions;
 
     public CliInteractiveSessionAdapter() {
         this(new StatsAggregator(), _ -> false);
@@ -35,6 +37,11 @@ public final class CliInteractiveSessionAdapter implements InteractiveSessionPor
     public CliInteractiveSessionAdapter(StatsAggregator stats, Predicate<String> builtInCommand) {
         this.stats = stats;
         this.builtInCommand = builtInCommand == null ? _ -> false : builtInCommand;
+    }
+
+    /** Binds the gateway's headless sessions for {@code headlessTranscriptPath}. */
+    void bindHeadlessSessions(CliHeadlessGatewaySessions headlessSessions) {
+        this.headlessSessions = headlessSessions;
     }
 
     @Override
@@ -117,6 +124,10 @@ public final class CliInteractiveSessionAdapter implements InteractiveSessionPor
 
     @Override public Path agentTranscriptPath(String cwd, String sessionId, String agentId) {
         return new SessionManager(cwd).getAgentTranscriptPath(sessionId, agentId);
+    }
+
+    @Override public Path headlessTranscriptPath(String taskId) {
+        return headlessSessions != null ? headlessSessions.transcriptPathForTask(taskId) : null;
     }
 
     @Override public Path toolResultsDirectory(String cwd, String sessionId) {

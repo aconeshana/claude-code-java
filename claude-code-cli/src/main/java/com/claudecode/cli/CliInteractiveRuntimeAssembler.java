@@ -16,6 +16,7 @@ import com.claudecode.runtime.plugins.PluginMarketplacePort;
 import com.claudecode.runtime.session.ConversationResetPort;
 import com.claudecode.runtime.session.SessionLifecycle;
 import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
+import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.shutdown.ShutdownPort;
@@ -69,6 +70,11 @@ final class CliInteractiveRuntimeAssembler {
         this.projects = new CliProjectCatalogAdapter(builtInCommand);
     }
 
+    /** Binds the gateway's headless sessions onto the session adapter. */
+    void bindHeadlessSessions(CliHeadlessGatewaySessions headlessSessions) {
+        ((CliInteractiveSessionAdapter) sessions).bindHeadlessSessions(headlessSessions);
+    }
+
     ToolingCommandPorts toolingCommands() { return toolingCommands; }
     InteractiveSessionPort sessions() { return sessions; }
     ProjectCatalogPort projects() { return projects; }
@@ -107,12 +113,13 @@ final class CliInteractiveRuntimeAssembler {
             Supplier<String> tipSupplier, SessionHostRegistry sessionHostRegistry,
             InteractionCoordinator interactionCoordinator,
             SessionCollaborationController collaborationController,
-            CollaborationSetupPort collaborationSetup) {
+            CollaborationSetupPort collaborationSetup,
+            GatewaySupervisorPort gatewaySupervisor) {
         return new ReplLaunchState(keybindings, allowDangerouslySkipPermissions, initialPrompt,
             initialSessionName, restoredSession, sessionTitleGenerator,
             showBuiltInModelFamilies, customModels,
             tipSupplier, sessionHostRegistry, interactionCoordinator, collaborationController,
-            collaborationSetup);
+            collaborationSetup, gatewaySupervisor);
     }
 
     ReplWiring assemble(ReplApplicationPorts application, ReplFeatureRuntime features,

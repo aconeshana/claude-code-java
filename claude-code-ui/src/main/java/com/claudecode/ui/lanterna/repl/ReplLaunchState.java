@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.repl;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
@@ -30,5 +31,7 @@ public record ReplLaunchState(
     @Explanation("Per-session semantic IM collaboration selection")
     SessionCollaborationController collaborationController,
     @Explanation("Interactive collaboration onboarding")
-    CollaborationSetupPort collaborationSetup
+    CollaborationSetupPort collaborationSetup,
+    @Explanation("On-demand web gateway start for the third endpoint")
+    GatewaySupervisorPort gatewaySupervisor
 ) {}

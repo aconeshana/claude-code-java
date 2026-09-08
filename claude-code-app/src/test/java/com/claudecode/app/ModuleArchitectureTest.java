@@ -50,6 +50,8 @@ class ModuleArchitectureTest {
         Map.entry("claude-code-lsp", Set.of("claude-code-core")),
         Map.entry("claude-code-mcp", Set.of("claude-code-core", "claude-code-http")),
         Map.entry("claude-code-runtime", Set.of("claude-code-core", "claude-code-permissions")),
+        Map.entry("claude-code-gateway", Set.of(
+            "claude-code-core", "claude-code-runtime", "claude-code-api")),
         Map.entry("claude-code-tools", Set.of(
             "claude-code-core", "claude-code-http", "claude-code-permissions",
             "claude-code-session", "claude-code-lsp", "claude-code-mcp",
@@ -66,7 +68,8 @@ class ModuleArchitectureTest {
             "claude-code-runtime")),
         Map.entry("claude-code-cli", Set.of(
             "claude-code-core", "claude-code-http", "claude-code-api",
-            "claude-code-permissions", "claude-code-runtime", "claude-code-session",
+            "claude-code-permissions", "claude-code-runtime", "claude-code-gateway",
+            "claude-code-session",
             "claude-code-mcp", "claude-code-commands", "claude-code-ui",
             "claude-code-tools", "claude-code-services", "claude-code-lsp")),
         Map.entry("claude-code-sdk", Set.of("claude-code-core", "claude-code-session", "claude-code-cli")),
@@ -79,6 +82,7 @@ class ModuleArchitectureTest {
         Map.entry("claude-code-api", Set.of("com.claudecode.api")),
         Map.entry("claude-code-permissions", Set.of("com.claudecode.permissions")),
         Map.entry("claude-code-runtime", Set.of("com.claudecode.runtime")),
+        Map.entry("claude-code-gateway", Set.of("com.claudecode.gateway")),
         Map.entry("claude-code-tools", Set.of("com.claudecode.tools")),
         Map.entry("claude-code-commands", Set.of("com.claudecode.commands")),
         Map.entry("claude-code-mcp", Set.of("com.claudecode.mcp")),

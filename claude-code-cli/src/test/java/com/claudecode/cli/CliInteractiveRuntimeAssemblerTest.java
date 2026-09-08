@@ -17,7 +17,7 @@ class CliInteractiveRuntimeAssemblerTest {
             null, null, null, null, null, null, null, null, null);
         var features = assembler.features(null, null, List::of, _ -> {}, null);
         var launch = assembler.launch(null, false, null, "Named session", false, null, false, null,
-            null, null, null, null, null);
+            null, null, null, null, null, null);
         var wiring = assembler.assemble(application, features, launch);
 
         assertSame(assembler.sessions(), wiring.application().sessions());

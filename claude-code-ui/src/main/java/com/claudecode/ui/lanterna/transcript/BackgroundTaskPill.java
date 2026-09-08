@@ -47,6 +47,9 @@ public final class BackgroundTaskPill {
             if (first == TaskType.MONITOR_MCP || first == TaskType.MONITOR_WS) {
                 return n == 1 ? "1 monitor" : n + " monitors";
             }
+            if (first == TaskType.WEB_SESSION) {
+                return n == 1 ? "1 web session" : n + " web sessions";
+            }
             if (first == TaskType.DREAM) return "dreaming";
 
             // remote-agent) have no Java subsystem yet — fall through to the

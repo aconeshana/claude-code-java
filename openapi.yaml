@@ -1,0 +1,466 @@
+openapi: 3.0.3
+info:
+  title: claude-code-java Gateway Web API
+  version: 1.0.0-draft
+  description: |
+    The in-process HTTP+SSE gateway serving web clients of the same instance
+    (TUI keeps its own session; the gateway routes parallel headless sessions
+    and mirrors every followed session).
+
+    This contract is the authoritative alignment standard for the gateway's
+    web rendering API, keeping official Claude Code stream-json wire naming
+    first priority. Human-readable spec: docs.local/gateway-api.md (local-only,
+    not committed).
+
+    Alignment strategy (two steps): this document is the standard first; code
+    implementation then aligns to it.
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Loopback gateway launched by the /web command (token required)
+    variables:
+      port:
+        default: '0'
+security:
+  - bearerToken: []
+  - queryToken: []
+paths:
+  /v1/messages:
+    post:
+      summary: Anthropic Messages protocol face (streaming SSE)
+      description: |
+        Submits one turn. The session is routed by metadata.session_id:
+        absent → the active session (409 when none); a headless session id;
+        or the active TUI session's own id. Responses follow the Anthropic
+        streaming wire format (message_start / content_block_* / message_stop).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model:
+                  type: string
+                stream:
+                  type: boolean
+                  default: true
+                metadata:
+                  type: object
+                  properties:
+                    session_id:
+                      type: string
+                      description: Session routing key (headless id, active TUI id, or absent)
+                    user_id:
+                      type: string
+                      description: Idempotency key; a repeated value does not resubmit
+                messages:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProtocolMessage'
+      responses:
+        '200':
+          description: SSE stream of the turn (Anthropic streaming events)
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+        '409': { $ref: '#/components/responses/NoActiveSession' }
+        '429': { $ref: '#/components/responses/SessionBusy' }
+  /v1/chat/completions:
+    post:
+      summary: OpenAI Chat Completions protocol face (streaming SSE)
+      description: Same routing and turn semantics as /v1/messages over the OpenAI wire format.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model: { type: string }
+                stream: { type: boolean, default: true }
+                metadata:
+                  type: object
+                  properties:
+                    session_id: { type: string }
+                    user_id: { type: string }
+                messages:
+                  type: array
+                  items: { $ref: '#/components/schemas/ProtocolMessage' }
+      responses:
+        '200': { description: SSE stream of the turn (OpenAI wire events) }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+        '409': { $ref: '#/components/responses/NoActiveSession' }
+        '429': { $ref: '#/components/responses/SessionBusy' }
+  /v1/responses:
+    post:
+      summary: OpenAI Responses protocol face (streaming SSE)
+      description: Same routing and turn semantics as /v1/messages over the Responses wire format.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model: { type: string }
+                stream: { type: boolean, default: true }
+                metadata:
+                  type: object
+                  properties:
+                    session_id: { type: string }
+                    user_id: { type: string }
+                input: { $ref: '#/components/schemas/ProtocolMessage' }
+      responses:
+        '200': { description: SSE stream of the turn (Responses wire events) }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+        '409': { $ref: '#/components/responses/NoActiveSession' }
+        '429': { $ref: '#/components/responses/SessionBusy' }
+  /api/sessions:
+    get:
+      summary: Full two-level session catalog (aligned with the TUI /resume picker)
+      description: |
+        Every project and every session on disk, not only open ones. Rows carry
+        active:true for the current TUI session and headless_open:true for
+        sessions routable right now without an open round-trip.
+      responses:
+        '200':
+          description: Two-level project→session listing (flat fallback when no catalog is wired)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SessionCatalog'
+                  - $ref: '#/components/schemas/FlatSessionList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/sessions/open:
+    post:
+      summary: Open (or resume) one parallel headless session
+      description: |
+        Mints a session when session_id is absent; reuses an open one; resumes
+        message-level from the on-disk transcript when the id exists on disk.
+        project_path defaults to the process project (cross-project support).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                  maxLength: 256
+                project_path:
+                  type: string
+                  description: Defaults to the process project; any existing directory for a cross-project session
+      responses:
+        '200':
+          description: The opened session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenedSession' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/SessionBusy' }
+  /api/sessions/close:
+    post:
+      summary: Close one headless session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '200':
+          description: Closure result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  closed: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/messages:
+    get:
+      summary: Message snapshot for one session
+      description: |
+        Snapshot-first: the authoritative current message list. A reconnecting
+        client pulls this once and then follows SSE increments — snapshot
+        replay over HTTP. The assistant-message shape uses content[] with
+        typed tool_call entries; a tool_use block pairs with its later
+        tool_result block by tool use id into the entry's status/result/ready
+        fields (pending when the result has not arrived). Open headless
+        sessions serve live in-memory messages; other known session ids
+        serve their on-disk transcript.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Message snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/events:
+    get:
+      summary: SSE mirror stream of every followed session
+      description: |
+        Server-sent events for the active TUI session plus every open headless
+        session. Every frame's data JSON carries session_id. Reconnect with
+        Last-Event-ID to replay the bounded ring; ?session_id= narrows to one
+        conversation view.
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Only frames whose session_id matches
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+          description: Replay every journaled frame after this id
+        - name: token
+          in: query
+          required: false
+          schema: { type: string }
+          description: Alternative to the Authorization header
+      responses:
+        '200':
+          description: text/event-stream of mirror frames (event catalog in the local spec)
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/permissions/respond:
+    post:
+      summary: Answer one pending permission ask or user question
+      description: |
+        A tool waiting at ASK blocks inside the shared interaction
+        coordinator; the TUI dialog and a web client are two observers of the
+        same ask — first answer wins. The request_id comes from the matching
+        permission.asked frame. For AskUserQuestion asks, the chosen answers
+        go back through updated_input (the rewritten tool input); feedback
+        carries an optional deny reason or allow instruction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, session_id, allowed]
+              properties:
+                request_id:
+                  type: string
+                  description: The id from the matching permission.asked frame
+                session_id: { type: string }
+                allowed:
+                  type: boolean
+                  description: true = execute, false = cancel
+                feedback:
+                  type: string
+                  description: Optional deny reason or allow instruction
+                updated_input:
+                  type: object
+                  description: AskUserQuestion answers as the rewritten tool input
+                skip:
+                  type: boolean
+                  description: Skip this tool call (denies with a skip-marked message)
+      responses:
+        '200':
+          description: The ask was answered by this request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  responded: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: The ask was already answered by another observer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: The launch token printed by the /web command
+    queryToken:
+      type: apiKey
+      in: query
+      name: token
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type: { type: string }
+            message: { type: string }
+    ProtocolMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  type: { type: string, enum: [text] }
+                  text: { type: string }
+    SessionCatalog:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              project_path: { type: string }
+              project_name: { type: string }
+              session_count: { type: integer }
+              sessions:
+                type: array
+                items: { $ref: '#/components/schemas/SessionRow' }
+    FlatSessionList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items: { $ref: '#/components/schemas/SessionRow' }
+    SessionRow:
+      type: object
+      properties:
+        id: { type: string }
+        summary: { type: string }
+        message_count: { type: integer }
+        modified_at: { type: string, format: date-time }
+        git_branch: { type: string }
+        cwd: { type: string }
+        custom_title: { type: string }
+        first_prompt: { type: string }
+        active:
+          type: boolean
+          description: True for the current TUI session
+        headless_open:
+          type: boolean
+          description: True when routable right now via metadata.session_id without an open round-trip
+    OpenedSession:
+      type: object
+      properties:
+        session_id: { type: string }
+        project_path: { type: string }
+        resumed:
+          type: boolean
+          description: True when the session was restored from the on-disk transcript
+        headless:
+          type: boolean
+          description: Always true for gateway-opened sessions
+    MessageSnapshot:
+      type: object
+      description: The authoritative current message list of one session (snapshot-first)
+      properties:
+        session_id: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/AssistantMessageSnapshot' }
+    AssistantMessageSnapshot:
+      type: object
+      description: Assistant-message snapshot shape
+      properties:
+        id: { type: string }
+        request_id: { type: string }
+        conversation_id: { type: string }
+        complete: { type: boolean }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/MessageContentBlock' }
+    MessageContentBlock:
+      oneOf:
+        - type: object
+          properties:
+            type: { type: string, enum: [text] }
+            text: { type: string }
+        - type: object
+          properties:
+            type: { type: string, enum: [thinking] }
+            thinking: { type: string }
+        - type: object
+          description: Tool call content entry
+          properties:
+            type: { type: string, enum: [tool_call] }
+            tool:
+              type: object
+              properties:
+                tool_use_id: { type: string }
+                name: { type: string }
+                args: { type: object, additionalProperties: true }
+                status:
+                  type: string
+                  enum: [pending, stream_executing, executed, failed, cancelled, skipped]
+                result: { $ref: '#/components/schemas/ToolResult' }
+                ready: { type: boolean }
+    ToolResult:
+      type: object
+      description: Typed per tool family
+      properties:
+        type:
+          type: string
+          description: 'e.g. execute_command_tool_result, read_file_tool_result, task_tool_result'
+        data:
+          type: string
+          description: 'Tool-family specific payload (stdout, file content, diff)'
+        message: { type: string }
+        errorMessage: { type: string }
+        errorCode: { type: string }
+        transcript_path:
+          type: string
+          description: Sidechain transcript of a completed sub-agent tool (Agent/Task family only)
+  responses:
+    InvalidRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing launch token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnknownSession:
+      description: No session matches the id
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoActiveSession:
+      description: No metadata.session_id and no active session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    SessionBusy:
+      description: A turn is already in flight on this session, or the headless limit is reached
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
