@@ -51,6 +51,30 @@ class UserAgentNotificationRenderingTest {
     }
 
     @Test
+    void legacyUnderscoreNotificationFromPersistedSessionsAlsoRendersCompact() {
+        // Sessions written before the hyphen-format alignment carry the
+        // self-invented <task_notification> spelling; replaying them (resume /
+        // ctrl+t) must not leak raw XML into the transcript.
+        StubPanel panel = new StubPanel();
+        String legacy = """
+            <task_notification>
+            <task_id>bwmmyxfoe</task_id>
+            <output_file>/private/tmp/claude-501/proj/sess/tasks/bwmmyxfoe.output</output_file>
+            <status>completed</status>
+            <summary>Background command "./gradlew test" completed (exit code 0)</summary>
+            </task_notification>""";
+
+        new LanternaMessageDispatcher().dispatch(
+            new SDKMessage.User(MessageFactory.createUserMessage(legacy)), panel);
+
+        assertEquals(List.of("", "⏺ Background command \"./gradlew test\" completed (exit code 0)"),
+            panel.textLines());
+        assertEquals(LanternaTheme.toolSuccess(), panel.lines.get(1).getFirst().color());
+        assertFalse(Strings.CS.contains(panel.allText(), "task_id"));
+        assertFalse(Strings.CS.contains(panel.allText(), "output_file"));
+    }
+
+    @Test
     void notificationWithoutSummaryStaysModelOnly() {
         StubPanel panel = new StubPanel();
 

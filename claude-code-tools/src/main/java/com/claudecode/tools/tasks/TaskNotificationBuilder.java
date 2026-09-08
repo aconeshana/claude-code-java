@@ -5,28 +5,48 @@ import com.claudecode.tools.workflows.WorkflowRun;
 import java.util.Locale;
 
 
+/**
+ * Builds the model-facing {@code <task-notification>} XML delivered when a background task
+ * reaches a terminal state. TS coverage:
+ * <ul>
+ *   <li>tasks/LocalShellTask/LocalShellTask.tsx — {@code enqueueShellNotification}: bash/monitor
+ *       completion shapes and summary wording, plus the stall ("waiting for interactive input")
+ *       notification</li>
+ *   <li>tasks/LocalAgentTask/LocalAgentTask.tsx — agent completion notification: optional
+ *       {@code <result>}/{@code <usage>}/{@code <note>} sections; AGENT_NOTE is verbatim</li>
+ *   <li>workflow/remote-task completion shapes (Workflow notifications, RemoteAgentTask)</li>
+ * </ul>
+ * Tag spellings follow the shipped 2.1.197/2.1.236 binaries (hyphenated
+ * {@code task-notification}/{@code task-id}/{@code tool-use-id}/{@code task-type}/
+ * {@code output-file}); an earlier port's underscore variants matched neither the official
+ * renderer nor its queue drain parser. Two weflow details do NOT match the 197 binary and are
+ * intentionally not ported: the {@code feature('MONITOR_TOOL') ? 'next' : 'later'} priority
+ * expression, and the {@code <total_tokens>} usage tag (197 parses {@code <subagent_tokens>}).
+ * The {@code <worktree>} section appears in neither binary; it is kept for model usefulness
+ * with the weflow ({@code worktreePath}) spelling.
+ */
 public final class TaskNotificationBuilder {
 
     private static final String AGENT_NOTE = "A task-notification fires each time this agent stops "
         + "with no live background children of its own. The user can send it another message and "
         + "resume it, so the same task-id may notify more than once.";
 
-    private static final String TASK_NOTIFICATION_TAG = "task_notification";
-    private static final String TASK_ID_TAG = "task_id";
-    private static final String TASK_TYPE_TAG = "task_type";
-    private static final String OUTPUT_FILE_TAG = "output_file";
+    private static final String TASK_NOTIFICATION_TAG = "task-notification";
+    private static final String TASK_ID_TAG = "task-id";
+    private static final String TASK_TYPE_TAG = "task-type";
+    private static final String OUTPUT_FILE_TAG = "output-file";
     private static final String STATUS_TAG = "status";
     private static final String SUMMARY_TAG = "summary";
-    private static final String TOOL_USE_ID_TAG = "tool_use_id";
+    private static final String TOOL_USE_ID_TAG = "tool-use-id";
     private static final String RESULT_TAG = "result";
     private static final String WORKTREE_TAG = "worktree";
-    private static final String WORKTREE_PATH_TAG = "worktree_path";
+    private static final String WORKTREE_PATH_TAG = "worktreePath";
 
     private static final String BACKGROUND_BASH_SUMMARY_PREFIX = "Background command ";
 
     private TaskNotificationBuilder() {}
 
-    /** Builds the {@code <task_notification>} XML for a terminal task. */
+    /** Builds the {@code <task-notification>} XML for a terminal task. */
     public static String build(TaskState task) {
         boolean monitor = task.type() == TaskType.MONITOR_MCP
             || task.type() == TaskType.MONITOR_WS
@@ -57,9 +77,7 @@ public final class TaskNotificationBuilder {
           .append(escape(id)).append("</").append(TOOL_USE_ID_TAG).append('>'));
 
         switch (task.type()) {
-            case LOCAL_BASH -> buildBash(task, sb);
-            case MONITOR_MCP -> buildBash(task, sb);
-            case MONITOR_WS -> buildBash(task, sb);
+            case LOCAL_BASH, MONITOR_WS, MONITOR_MCP -> buildBash(task, sb);
             case REMOTE_AGENT -> buildRemote(task, sb);
             case LOCAL_WORKFLOW -> throw new IllegalStateException("handled above");
             default -> buildFramework(task, sb);
@@ -71,17 +89,22 @@ public final class TaskNotificationBuilder {
 
     private static String buildMonitor(TaskState task) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<task-notification>\n")
-          .append("<task-id>").append(escape(task.id())).append("</task-id>");
-        task.toolUseId().ifPresent(id -> sb.append("\n<tool-use-id>")
-          .append(escape(id)).append("</tool-use-id>"));
-        sb.append("\n<output-file>")
+        sb.append('<').append(TASK_NOTIFICATION_TAG).append('>').append('\n')
+          .append('<').append(TASK_ID_TAG).append('>').append(escape(task.id()))
+          .append("</").append(TASK_ID_TAG).append('>');
+        task.toolUseId().ifPresent(id -> sb.append('\n')
+          .append('<').append(TOOL_USE_ID_TAG).append('>')
+          .append(escape(id)).append("</").append(TOOL_USE_ID_TAG).append('>'));
+        sb.append('\n').append('<').append(OUTPUT_FILE_TAG).append('>')
           .append(escape(TaskOutputPaths.outputPath(task.id()).toString()))
-          .append("</output-file>")
-          .append("\n<status>").append(task.status().name().toLowerCase(Locale.ROOT))
-          .append("</status>")
-          .append("\n<summary>").append(escape(monitorSummary(task)))
-          .append("</summary>\n</task-notification>");
+          .append("</").append(OUTPUT_FILE_TAG).append('>')
+          .append('\n').append('<').append(STATUS_TAG).append('>')
+          .append(task.status().name().toLowerCase(Locale.ROOT))
+          .append("</").append(STATUS_TAG).append('>')
+          .append('\n').append('<').append(SUMMARY_TAG).append('>')
+          .append(escape(monitorSummary(task)))
+          .append("</").append(SUMMARY_TAG).append('>')
+          .append('\n').append("</").append(TASK_NOTIFICATION_TAG).append('>');
         return sb.toString();
     }
 
@@ -101,20 +124,25 @@ public final class TaskNotificationBuilder {
 
     private static String buildAgent(TaskState task) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<task-notification>\n")
-          .append("<task-id>").append(escape(task.id())).append("</task-id>");
-        task.toolUseId().ifPresent(id -> sb.append("\n<tool-use-id>")
-          .append(escape(id)).append("</tool-use-id>"));
-        sb.append("\n<output-file>")
+        sb.append('<').append(TASK_NOTIFICATION_TAG).append('>').append('\n')
+          .append('<').append(TASK_ID_TAG).append('>').append(escape(task.id()))
+          .append("</").append(TASK_ID_TAG).append('>');
+        task.toolUseId().ifPresent(id -> sb.append('\n')
+          .append('<').append(TOOL_USE_ID_TAG).append('>')
+          .append(escape(id)).append("</").append(TOOL_USE_ID_TAG).append('>'));
+        sb.append('\n').append('<').append(OUTPUT_FILE_TAG).append('>')
           .append(escape(TaskOutputPaths.outputPath(task.id()).toString()))
-          .append("</output-file>")
-          .append("\n<status>").append(task.status().name().toLowerCase(Locale.ROOT))
-          .append("</status>")
-          .append("\n<summary>").append(escape(agentSummary(task)))
-          .append("</summary>")
+          .append("</").append(OUTPUT_FILE_TAG).append('>')
+          .append('\n').append('<').append(STATUS_TAG).append('>')
+          .append(task.status().name().toLowerCase(Locale.ROOT))
+          .append("</").append(STATUS_TAG).append('>')
+          .append('\n').append('<').append(SUMMARY_TAG).append('>')
+          .append(escape(agentSummary(task)))
+          .append("</").append(SUMMARY_TAG).append('>')
           .append("\n<note>").append(AGENT_NOTE).append("</note>");
-        task.finalMessage().ifPresent(msg -> sb.append("\n<result>")
-          .append(escape(msg)).append("</result>"));
+        task.finalMessage().ifPresent(msg -> sb.append('\n')
+          .append('<').append(RESULT_TAG).append('>')
+          .append(escape(msg)).append("</").append(RESULT_TAG).append('>'));
         task.usage().ifPresent(u -> sb.append("\n<usage><subagent_tokens>")
           .append(u.totalTokens()).append("</subagent_tokens><tool_uses>")
           .append(u.toolUses()).append("</tool_uses><duration_ms>")
@@ -124,7 +152,7 @@ public final class TaskNotificationBuilder {
           .append('<').append(WORKTREE_PATH_TAG).append('>').append(escape(wp))
           .append("</").append(WORKTREE_PATH_TAG).append('>')
           .append("</").append(WORKTREE_TAG).append('>'));
-        sb.append("\n</task-notification>");
+        sb.append('\n').append("</").append(TASK_NOTIFICATION_TAG).append('>');
         return sb.toString();
     }
 
@@ -152,20 +180,24 @@ public final class TaskNotificationBuilder {
 
     private static String buildWorkflow(TaskState task, WorkflowRun workflowRun) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<task-notification>\n")
-          .append("<task-id>").append(escape(task.id())).append("</task-id>");
-        task.toolUseId().ifPresent(id -> sb.append("\n<tool-use-id>")
-          .append(escape(id)).append("</tool-use-id>"));
-        sb.append("\n<output-file>")
+        sb.append('<').append(TASK_NOTIFICATION_TAG).append('>').append('\n')
+          .append('<').append(TASK_ID_TAG).append('>').append(escape(task.id()))
+          .append("</").append(TASK_ID_TAG).append('>');
+        task.toolUseId().ifPresent(id -> sb.append('\n')
+          .append('<').append(TOOL_USE_ID_TAG).append('>')
+          .append(escape(id)).append("</").append(TOOL_USE_ID_TAG).append('>'));
+        sb.append('\n').append('<').append(OUTPUT_FILE_TAG).append('>')
           .append(escape(TaskOutputPaths.outputPath(task.id()).toString()))
-          .append("</output-file>")
-          .append("\n<status>")
+          .append("</").append(OUTPUT_FILE_TAG).append('>')
+          .append('\n').append('<').append(STATUS_TAG).append('>')
           .append(task.status().name().toLowerCase(Locale.ROOT))
-          .append("</status>")
-          .append("\n<summary>").append(escape(workflowSummary(task)))
-          .append("</summary>");
-        task.finalMessage().ifPresent(result -> sb.append("\n<result>")
-          .append(escape(result)).append("</result>"));
+          .append("</").append(STATUS_TAG).append('>')
+          .append('\n').append('<').append(SUMMARY_TAG).append('>')
+          .append(escape(workflowSummary(task)))
+          .append("</").append(SUMMARY_TAG).append('>');
+        task.finalMessage().ifPresent(result -> sb.append('\n')
+          .append('<').append(RESULT_TAG).append('>')
+          .append(escape(result)).append("</").append(RESULT_TAG).append('>'));
         if (workflowRun != null && !workflowRun.failures().isEmpty()) {
             sb.append("\n<failures>")
               .append(escape(String.join("\n", workflowRun.failures())))
@@ -177,7 +209,8 @@ public final class TaskNotificationBuilder {
           .append("<subagent_tokens>").append(u.totalTokens()).append("</subagent_tokens>")
           .append("<tool_uses>").append(u.toolUses()).append("</tool_uses>")
           .append("<duration_ms>").append(u.durationMs()).append("</duration_ms></usage>"));
-        return sb.append("\n</task-notification>").toString();
+        return sb.append('\n').append("</").append(TASK_NOTIFICATION_TAG).append('>')
+            .toString();
     }
 
 

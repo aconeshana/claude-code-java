@@ -244,8 +244,11 @@ public final class ResumeStateRestorer {
                 . Task ids in this notification beginning with "__orphan_summary" are \
                 internal scan markers, not tasks.</summary>
                 </task-notification>""");
+        // NEXT like every other task-notification (197/236 binaries use a fixed
+        // "next" for terminal notifications); no official counterpart exists for
+        // this aggregate orphan summary, so it follows the same rule.
         engine.conversation().getMessageQueue().enqueuePendingNotification(
-            new QueuedCommand(xml.toString(), null, "task-notification", QueuePriority.LATER,
+            new QueuedCommand(xml.toString(), null, "task-notification", QueuePriority.NEXT,
                 true, null, false, false, null, null, null, null, null));
     }
 

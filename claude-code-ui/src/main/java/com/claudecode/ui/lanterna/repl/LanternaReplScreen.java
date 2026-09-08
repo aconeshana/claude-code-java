@@ -2514,7 +2514,7 @@ public class LanternaReplScreen implements SlashHost {
         mcpController = new MCPController(gui, mcpDialog, inputPanel, transcriptSink,
             mcpManagement);
 // Bridge background-task (bash / subagent) terminal transitions into the session message
-// queue as <task_notification> messages.
+// queue as <task-notification> messages.
 
         // enqueue*Notification — see TaskNotificationBridge / TaskNotificationBuilder.
         new TaskNotificationBridge(queryEngine.conversation().getMessageQueue()).register();

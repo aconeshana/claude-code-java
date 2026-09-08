@@ -37,8 +37,8 @@ class TaskNotificationBuilderTest {
         assertTrue(Strings.CS.contains(xml, "<result>did the thing</result>"), xml);
         assertTrue(Strings.CS.contains(xml, "<usage><subagent_tokens>1234</subagent_tokens>"
             + "<tool_uses>7</tool_uses><duration_ms>5000</duration_ms></usage>"), xml);
-        assertTrue(Strings.CS.contains(xml, "<worktree><worktree_path>/repo/.claude/worktrees/wt"
-            + "</worktree_path></worktree>"), xml);
+        assertTrue(Strings.CS.contains(xml, "<worktree><worktreePath>/repo/.claude/worktrees/wt"
+            + "</worktreePath></worktree>"), xml);
         // element order: output-file → status → summary → note → result → usage → worktree
         int out = xml.indexOf("<output-file>");
         int st = xml.indexOf("<status>");
@@ -72,7 +72,13 @@ class TaskNotificationBuilderTest {
         String xml = TaskNotificationBuilder.build(task);
 
         assertFalse(Strings.CS.contains(xml, "<task_type>"), "bash omits task_type (LocalShellTask.tsx)");
+        assertTrue(Strings.CS.startsWith(xml, "<task-notification>\n<task-id>t-LOCAL_BASH</task-id>"),
+            "bash uses the official hyphen tag shape (197/236 binaries) — was: " + xml);
+        assertTrue(Strings.CS.contains(xml, "\n<output-file>"), xml);
+        assertTrue(Strings.CS.contains(xml, "\n<status>completed</status>"), xml);
         assertTrue(Strings.CS.contains(xml, "<summary>Background command \"build\" completed (exit code 0)</summary>"), xml);
+        assertTrue(Strings.CS.endsWith(xml, "\n</task-notification>"), xml);
+        assertFalse(Strings.CS.contains(xml, "task_notification"), "no legacy underscore tags");
     }
 
     @Test
@@ -83,6 +89,8 @@ class TaskNotificationBuilderTest {
         String xml = TaskNotificationBuilder.build(task);
 
         assertTrue(Strings.CS.contains(xml, "<summary>Background command \"build\" failed (with exit code 2)</summary>"), xml);
+        assertFalse(Strings.CS.contains(xml, "task_notification"), xml);
+        assertFalse(Strings.CS.contains(xml, "output_file"), xml);
     }
 
     @Test
@@ -91,7 +99,8 @@ class TaskNotificationBuilderTest {
 
         String xml = TaskNotificationBuilder.build(task);
 
-        assertTrue(Strings.CS.contains(xml, "<task_type>remote_agent</task_type>"), xml);
+        assertTrue(Strings.CS.contains(xml, "<task-type>remote_agent</task-type>"), xml);
+        assertFalse(Strings.CS.contains(xml, "<task_type>"), xml);
         assertTrue(Strings.CS.contains(xml, "<summary>Remote task \"scan\" completed successfully</summary>"), xml);
     }
 

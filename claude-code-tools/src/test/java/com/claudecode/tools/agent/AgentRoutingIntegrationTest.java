@@ -73,7 +73,7 @@ class AgentRoutingIntegrationTest {
         registry.store().updateStatus(task.id(), TaskStatus.RUNNING);
         registry.store().updateStatus(task.id(), TaskStatus.COMPLETED); // fires completion
 
-        // The bridge must have enqueued a LATER task-notification tagged with the
+        // The bridge must have enqueued a NEXT task-notification tagged with the
         // sub-agent id (so only that agent's loop drains it).
         assertEquals(1, queue.size(), "bridge enqueued exactly one notification");
         QueuedCommand notification = queue.peek(_ -> true);
@@ -81,7 +81,7 @@ class AgentRoutingIntegrationTest {
         assertEquals("sub-1", notification.agentId());
         assertNotNull(notification.priority(), "notification carries a priority");
 
-        // The sub-agent engine drains its own LATER notification; the coordinator
+        // The sub-agent engine drains its own notification; the coordinator
         // (agentId == null) does NOT pull it into the main session.
         DefaultQuerySession subEngine = new TestEngine("sub-1", queue);
         DefaultQuerySession mainEngine = new TestEngine(null, queue);
@@ -93,7 +93,7 @@ class AgentRoutingIntegrationTest {
         subEngine.conversation().drainQueuedCommands(subEmit);
 
         assertEquals(1, subEmitted.size(), "sub-agent loop delivered its completion notification");
-        assertTrue(Strings.CS.contains(subEmitted.getFirst(), "sub-1") || Strings.CS.contains(subEmitted.getFirst(), "task_notification"),
+        assertTrue(Strings.CS.contains(subEmitted.getFirst(), "sub-1") || Strings.CS.contains(subEmitted.getFirst(), "task-notification"),
             "delivered payload is the task notification XML: " + subEmitted.getFirst());
         assertEquals(0, queue.size(), "notification consumed by the sub-agent loop");
 

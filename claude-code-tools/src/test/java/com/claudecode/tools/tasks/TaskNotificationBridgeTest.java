@@ -31,15 +31,17 @@ class TaskNotificationBridgeTest {
         assertEquals(1, queue.size(), "one terminal transition → one notification");
         QueuedCommand cmd = queue.peek();
         assertEquals("task-notification", cmd.mode());
-        assertEquals(QueuePriority.LATER, cmd.priority(),
-            "Background notification must sit at LATER priority");
+        assertEquals(QueuePriority.NEXT, cmd.priority(),
+            "197/236 binaries enqueue the bash completion notification at fixed 'next'"
+                + " priority (weflow's feature('MONITOR_TOOL') ? 'next' : 'later' does not"
+                + " match either shipped binary)");
         String text = cmd.text();
-        assertTrue(Strings.CS.contains(text, "<task_notification>"), text);
-        assertTrue(Strings.CS.contains(text, "<task_id>" + task.id() + "</task_id>"), text);
+        assertTrue(Strings.CS.contains(text, "<task-notification>"), text);
+        assertTrue(Strings.CS.contains(text, "<task-id>" + task.id() + "</task-id>"), text);
         assertFalse(Strings.CS.contains(text, "<task_type>"),
             "bash completion omits task_type (LocalShellTask.tsx shape)");
         assertTrue(Strings.CS.contains(text, "<status>completed</status>"), text);
-        assertTrue(Strings.CS.contains(text, "<output_file>"), text);
+        assertTrue(Strings.CS.contains(text, "<output-file>"), text);
         assertTrue(Strings.CS.contains(text, "Background command \"build the thing\" completed"), text);
     }
 

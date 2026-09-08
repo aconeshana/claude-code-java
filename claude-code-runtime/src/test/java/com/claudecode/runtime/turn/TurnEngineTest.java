@@ -717,7 +717,7 @@ class TurnEngineTest {
     @Test
     void idleWakeup_drainsACommandEnqueuedWhileTheReplSitsIdle() {
         // The reported gap: a background agent finishing AFTER the dispatching turn
-        // ended enqueues its <task_notification> into an idle session. Without the
+        // ended enqueues its <task-notification> into an idle session. Without the
         // queue subscription nothing consumes it until the user types.
         var qe = new FakeQueryEngine(List.of());
         var drained = new ArrayList<QueuedCommand>();

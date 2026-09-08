@@ -210,7 +210,7 @@ class LocalShellTaskTest {
             "stall notification must be NEXT so it surfaces promptly");
         assertEquals("task-notification", cmd.mode());
         String text = cmd.text();
-        assertTrue(Strings.CS.contains(text, "<task_notification>"), text);
+        assertTrue(Strings.CS.contains(text, "<task-notification>"), text);
         assertTrue(Strings.CS.contains(text, "<summary>Background command \"rm -rf out\" "
             + "appears to be waiting for interactive input</summary>"), text);
         assertFalse(Strings.CS.contains(text, "<status>"),
