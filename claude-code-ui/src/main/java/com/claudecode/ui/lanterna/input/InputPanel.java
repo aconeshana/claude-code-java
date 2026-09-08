@@ -765,6 +765,13 @@ public class InputPanel extends Panel {
             if (deferredPasteSubmit.get() && key.getKeyType() != KeyType.ENTER) {
                 deferredPasteSubmit.set(false);
             }
+            if (guiInputBatchDepth > 0
+                    && key.getKeyType() == KeyType.CHARACTER
+                    && key.getCharacter() != null
+                    && !Character.isISOControl(key.getCharacter())
+                    && !key.isCtrlDown() && !key.isAltDown()) {
+                plainInputCharsThisBatch++;
+            }
             if (guiInputBatchDepth > 0) {
                 if (canBufferPlainCharacter(key)) {
                     flushBufferedBackspaces(false);
@@ -952,6 +959,14 @@ public class InputPanel extends Panel {
         private int bufferedBackspaces;
         private int bufferedBackspaceCaret;
         private DraftUndoBuffer.Snapshot bufferedBackspaceStart;
+        /**
+         * Printable characters seen during the current GUI input batch (one PTY
+         * drain). Human keystrokes arrive one drain at a time, so a plain ENTER
+         * sharing a drain with buffered text is an unbracketed-paste newline
+         * (tmux {@code paste-buffer}, CRLF clipboards), never a submit — the
+         * twin of Ink receiving the whole flood as one stdin chunk.
+         */
+        private int plainInputCharsThisBatch;
 
         private boolean canBufferPlainCharacter(KeyStroke key) {
             if (key.getKeyType() != KeyType.CHARACTER
@@ -983,6 +998,7 @@ public class InputPanel extends Panel {
             }
             if (bufferedPlainInput.isEmpty()) bufferedInputStart = captureDraftSnapshot();
             bufferedPlainInput.append(text);
+            plainInputCharsThisBatch += text.length();
             return true;
         }
 
@@ -1004,6 +1020,25 @@ public class InputPanel extends Panel {
             }
             if (publishImmediately) deliverQueryChangeImmediately();
             else fireQueryChange();
+        }
+
+        /**
+         * Folds an unbracketed-paste flood accumulated during one GUI input batch
+         * into a {@code [Pasted text #N +X lines]} chip — the same end state the
+         * bracketed path produces. Runs at batch end (see {@link #endGuiInputBatch});
+         * no-op below the paste threshold or when chips already occupy the box.
+         */
+        private void foldUnbracketedPasteFloodIntoChip() {
+            if (!pastedContent.isEmpty()) return;
+            String text = getText();
+            if (!PromptPasteTextPolicy.looksLikeUnbracketedPaste(text)) return;
+            String stripped = PromptPasteTextPolicy.normalize(text);
+            int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
+            int pasteId = pastedContent.nextId();
+            pastedContent.put(PastedContent.text(pasteId, stripped));
+            setText("");
+            insertChipAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
+            firePastedContentsChange();
         }
 
         private boolean canBufferPlainBackspace(KeyStroke key) {
@@ -1531,6 +1566,15 @@ public class InputPanel extends Panel {
             if (pendingPastes.get() > 0) {
                 deferredPasteSubmit.set(true);
                 return Result.HANDLED;
+            }
+            if (guiInputBatchDepth > 0 && plainInputCharsThisBatch > 0) {
+                // Unbracketed paste flood: this ENTER shares one PTY drain with
+                // pasted text (tmux paste-buffer turns \n into \r; CRLF
+                // clipboards send raw \r), so it is a paste newline, not a
+                // submit. Split the line like Shift/Alt+Enter; the batch end
+                // folds the accumulated text into a chip when it clears the
+                // paste threshold (same end state as bracketed paste).
+                return super.handleKeyStroke(new KeyStroke(KeyType.ENTER));
             }
 
             String text = getText();
@@ -2373,6 +2417,7 @@ public class InputPanel extends Panel {
 
     /** Starts one terminal-read input batch; called only by the GUI host. */
     public void beginGuiInputBatch() {
+        if (guiInputBatchDepth == 0) ((PromptTextBox) textBox).plainInputCharsThisBatch = 0;
         guiInputBatchDepth++;
     }
 
@@ -2422,8 +2467,13 @@ public class InputPanel extends Panel {
             // immediate echo for a whole `/config` terminal write. File
             // discovery remains asynchronous inside SuggestionController.
             boolean replaceVisibleSuggestions = suggestionPanel.isVisible();
-            ((PromptTextBox) textBox).flushBufferedPlainInput(replaceVisibleSuggestions);
-            ((PromptTextBox) textBox).flushBufferedBackspaces(replaceVisibleSuggestions);
+            PromptTextBox prompt = (PromptTextBox) textBox;
+            prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
+            prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
+            if (prompt.plainInputCharsThisBatch > 0) {
+                prompt.plainInputCharsThisBatch = 0;
+                prompt.foldUnbracketedPasteFloodIntoChip();
+            }
         }
         guiInputBatchDepth--;
     }
