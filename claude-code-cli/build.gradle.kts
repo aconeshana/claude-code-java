@@ -6,6 +6,7 @@ dependencies {
     implementation(project(":claude-code-api"))
     implementation(project(":claude-code-permissions"))
     implementation(project(":claude-code-runtime"))
+    implementation(project(":claude-code-gateway"))
     implementation(project(":claude-code-session"))
     implementation(project(":claude-code-mcp"))
     implementation(project(":claude-code-commands"))
