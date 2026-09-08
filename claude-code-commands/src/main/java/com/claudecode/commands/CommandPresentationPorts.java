@@ -41,5 +41,6 @@ public record CommandPresentationPorts(
     Runnable tasksDialogLauncher,
     Runnable workflowsDialogLauncher,
     Runnable statsDialogLauncher,
-    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher
+    Consumer<CommandContext.TagRemovalRequest> tagRemovalLauncher,
+    Consumer<String> gatewayLauncher
 ) { }

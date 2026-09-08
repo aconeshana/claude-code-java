@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.Strings;
@@ -19,6 +20,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Typed human-interaction coordinator shared by local and remote presenters.
+ *
+ * <p>The local endpoint holds one presenter (the single TUI); the remote
+ * endpoint is a broadcast list — the IM link and the web gateway both
+ * register remote presenters, and every pending ask reaches all of them.
+ * The first response from any observer wins, per each feature's response
+ * policy.
  */
 @Explanation("Coordinates typed local and remote human interactions, including sudo input")
 public final class InteractionCoordinator
@@ -30,8 +37,12 @@ public final class InteractionCoordinator
         InteractionRequest<Q, R> request, CompletableFuture<R> result) {}
 
     private final Supplier<String> sessionId;
-    private final ConcurrentHashMap<RegistrationKey, InteractionPresenter<?, ?>> presenters =
+    /** Local presenters: one per kind (the single TUI owns this endpoint). */
+    private final ConcurrentHashMap<InteractionKind, InteractionPresenter<?, ?>> localPresenters =
         new ConcurrentHashMap<>();
+    /** Remote presenters: a broadcast list (IM link, web gateway, …). */
+    private final ConcurrentHashMap<InteractionKind,
+        List<InteractionPresenter<?, ?>>> remotePresenters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Pending<?, ?>> pending = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -51,11 +62,21 @@ public final class InteractionCoordinator
         if (declared == null || declared != presenter.support()) {
             throw new IllegalArgumentException("presenter support does not match capability matrix");
         }
-        RegistrationKey key = new RegistrationKey(feature.kind(), presenter.endpoint());
-        if (presenters.putIfAbsent(key, presenter) != null) {
-            throw new IllegalStateException("interaction presenter is already registered: " + key);
+        if (presenter.endpoint() == InteractionEndpoint.LOCAL) {
+            InteractionPresenter<?, ?> previous =
+                localPresenters.putIfAbsent(feature.kind(), presenter);
+            if (previous != null) {
+                throw new IllegalStateException(
+                    "interaction presenter is already registered: " + feature.kind());
+            }
+            return () -> localPresenters.remove(feature.kind(), presenter);
         }
-        return () -> presenters.remove(key, presenter);
+        // The remote endpoint broadcasts: multiple remote observers (IM link,
+        // web gateway) coexist; each sees every pending ask.
+        List<InteractionPresenter<?, ?>> observers =
+            remotePresenters.computeIfAbsent(feature.kind(), _ -> new CopyOnWriteArrayList<>());
+        if (!observers.contains(presenter)) observers.add(presenter);
+        return () -> observers.remove(presenter);
     }
 
     @Override public PermissionAskCallback.Result ask(PermissionAskContext context) {
@@ -94,29 +115,29 @@ public final class InteractionCoordinator
                 ? List.of(InteractionEndpoint.REMOTE, InteractionEndpoint.LOCAL)
                 : List.of(InteractionEndpoint.LOCAL, InteractionEndpoint.REMOTE);
         for (InteractionEndpoint endpoint : presentationOrder) {
-            InteractionPresenter<Q, R> presenter = presenter(feature, endpoint);
-            if (presenter == null) continue;
-            try {
-                if (!presenter.available(descriptor.sessionId())) continue;
-                presenter.present(request);
-                if (presenter.support() == InteractionSupport.SUPPORTED
-                        && (feature.responsePolicy() != InteractionResponsePolicy.LOCAL_ONLY
-                            || endpoint == InteractionEndpoint.LOCAL)) {
-                    responders++;
-                }
-            } catch (InteractionNotImplementedException unsupported) {
-                log.warn("Interaction endpoint is unimplemented: requestId={}, sessionId={}, kind={}, endpoint={}",
-                    descriptor.id(), descriptor.sessionId(), descriptor.kind(), endpoint);
+            for (InteractionPresenter<Q, R> presenter : presenters(feature, endpoint)) {
                 try {
-                    presenter.unsupported(new InteractionUnsupported(
-                        descriptor, endpoint, unsupported.action()));
-                } catch (RuntimeException notificationFailure) {
-                    logSecretSafeFailure("Interaction unsupported notification failed",
-                        descriptor, endpoint, notificationFailure);
+                    if (!presenter.available(descriptor.sessionId())) continue;
+                    presenter.present(request);
+                    if (presenter.support() == InteractionSupport.SUPPORTED
+                            && (feature.responsePolicy() != InteractionResponsePolicy.LOCAL_ONLY
+                                || endpoint == InteractionEndpoint.LOCAL)) {
+                        responders++;
+                    }
+                } catch (InteractionNotImplementedException unsupported) {
+                    log.warn("Interaction endpoint is unimplemented: requestId={}, sessionId={}, kind={}, endpoint={}",
+                        descriptor.id(), descriptor.sessionId(), descriptor.kind(), endpoint);
+                    try {
+                        presenter.unsupported(new InteractionUnsupported(
+                            descriptor, endpoint, unsupported.action()));
+                    } catch (RuntimeException notificationFailure) {
+                        logSecretSafeFailure("Interaction unsupported notification failed",
+                            descriptor, endpoint, notificationFailure);
+                    }
+                } catch (RuntimeException failure) {
+                    logSecretSafeFailure("Interaction presenter failed",
+                        descriptor, endpoint, failure);
                 }
-            } catch (RuntimeException failure) {
-                logSecretSafeFailure("Interaction presenter failed",
-                    descriptor, endpoint, failure);
             }
             if (!pending.containsKey(descriptor.id())) break;
         }
@@ -182,14 +203,15 @@ public final class InteractionCoordinator
         for (InteractionEndpoint endpoint : List.of(
                 InteractionEndpoint.LOCAL, InteractionEndpoint.REMOTE)) {
             if (feature.responsePolicy() == InteractionResponsePolicy.LOCAL_ONLY
-                    && endpoint != InteractionEndpoint.LOCAL) continue;
-            InteractionPresenter<Q, R> presenter = presenter(feature, endpoint);
-            if (presenter == null || presenter.support() != InteractionSupport.SUPPORTED) continue;
-            try {
-                presenter.resolved(resolution);
-            } catch (RuntimeException failure) {
-                logSecretSafeFailure("Interaction resolution presenter failed",
-                    entry.request().descriptor(), endpoint, failure);
+                && endpoint != InteractionEndpoint.LOCAL) continue;
+            for (InteractionPresenter<Q, R> presenter : presenters(feature, endpoint)) {
+                if (presenter.support() != InteractionSupport.SUPPORTED) continue;
+                try {
+                    presenter.resolved(resolution);
+                } catch (RuntimeException failure) {
+                    logSecretSafeFailure("Interaction resolution presenter failed",
+                        entry.request().descriptor(), endpoint, failure);
+                }
             }
         }
         entry.result().complete(result);
@@ -204,11 +226,17 @@ public final class InteractionCoordinator
             InteractionEndpoint.HOST);
     }
 
+    /** The presenters bound to one feature and endpoint; empty when none. */
     @SuppressWarnings("unchecked")
-    private <Q, R> InteractionPresenter<Q, R> presenter(
+    private <Q, R> List<InteractionPresenter<Q, R>> presenters(
             InteractionFeature<Q, R> feature, InteractionEndpoint endpoint) {
-        return (InteractionPresenter<Q, R>) presenters.get(
-            new RegistrationKey(feature.kind(), endpoint));
+        if (endpoint == InteractionEndpoint.LOCAL) {
+            InteractionPresenter<?, ?> presenter = localPresenters.get(feature.kind());
+            return presenter == null ? List.of() : List.of((InteractionPresenter<Q, R>) presenter);
+        }
+        List<InteractionPresenter<?, ?>> observers = remotePresenters.get(feature.kind());
+        return observers == null ? List.of()
+            : observers.stream().map(p -> (InteractionPresenter<Q, R>) p).toList();
     }
 
     private static void requireCanonicalFeature(InteractionFeature<?, ?> feature) {
@@ -237,6 +265,7 @@ public final class InteractionCoordinator
         for (Map.Entry<String, Pending<?, ?>> item : List.copyOf(pending.entrySet())) {
             if (pending.remove(item.getKey(), item.getValue())) cancel(item.getValue());
         }
-        presenters.clear();
+        localPresenters.clear();
+        remotePresenters.clear();
     }
 }

@@ -117,6 +117,26 @@ class TaskRegistryTest {
     }
 
     @Test
+    void killWebSession_runsRegisteredCloseAction() {
+        TaskRegistry registry = newRegistry();
+        TaskState task = registry.store().create(TaskType.WEB_SESSION, "web session /work");
+        AtomicBoolean closed = new AtomicBoolean();
+        registry.registerWebSession(task.id(), () -> closed.set(true));
+
+        assertTrue(registry.killTask(task.id()));
+        assertTrue(closed.get());
+        // Killing again without re-registration is a no-op.
+        assertFalse(registry.killTask(task.id()));
+    }
+
+    @Test
+    void killWebSession_unregisteredTask_returnsFalse() {
+        TaskRegistry registry = newRegistry();
+        TaskState task = registry.store().create(TaskType.WEB_SESSION, "web session /work");
+        assertFalse(registry.killTask(task.id()));
+    }
+
+    @Test
     void foregroundAgent_isHiddenUntilBackgroundedInPlace() {
         TaskRegistry registry = newRegistry();
         TaskState task = registry.store().create(TaskType.LOCAL_AGENT, "inspect repository");

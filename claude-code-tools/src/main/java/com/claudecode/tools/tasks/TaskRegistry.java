@@ -45,6 +45,8 @@ public final class TaskRegistry {
     private final Map<String, AutoDreamHandle> dreamHandles = new ConcurrentHashMap<>();
     private final Map<String, WorkflowTask> workflowHandles = new ConcurrentHashMap<>();
     private final Map<String, MonitorTaskHandle> monitorHandles = new ConcurrentHashMap<>();
+    /** Web-gateway headless-session close actions keyed by task id. */
+    private final Map<String, Runnable> webSessionCloseActions = new ConcurrentHashMap<>();
     private final Map<String, Long> terminalEvictionDeadlines = new ConcurrentHashMap<>();
     private final Set<String> notificationClaims = ConcurrentHashMap.newKeySet();
     private final Object notificationBindingLock = new Object();
@@ -578,6 +580,20 @@ public final class TaskRegistry {
     }
 
     /**
+     * Registers a web-gateway headless session's task id with the action that
+     * closes it. {@code killTask} dispatches here so the tasks dialog's kill
+     * stops the underlying session.
+     */
+    public void registerWebSession(String taskId, Runnable closeAction) {
+        webSessionCloseActions.put(taskId, closeAction);
+    }
+
+    /** Removes a web session's registration (its own close path). */
+    public void unregisterWebSession(String taskId) {
+        webSessionCloseActions.remove(taskId);
+    }
+
+    /**
      * Delivers a scheduled prompt to the live teammate identified by its agent id.
      */
     public boolean injectUserMessageToActiveTeammate(String agentId, String message) {
@@ -794,7 +810,22 @@ public final class TaskRegistry {
             case LOCAL_WORKFLOW     -> killWorkflow(taskId);
             case MONITOR_MCP, MONITOR_WS -> killMonitor(taskId);
             case DREAM              -> killDream(taskId);
+            case WEB_SESSION        -> killWebSession(taskId);
             default                 -> false;
         };
+    }
+
+    /**
+     * Closes a web-gateway headless session through its registered close
+     * action. The action owns removing both its own registry entry and the
+     * task's terminal transition.
+     */
+    private boolean killWebSession(String taskId) {
+        Runnable closeAction = webSessionCloseActions.remove(taskId);
+        if (closeAction == null) {
+            return false;
+        }
+        closeAction.run();
+        return true;
     }
 }

@@ -11,7 +11,8 @@ public enum TaskType {
     LOCAL_WORKFLOW("w"),
     MONITOR_MCP("m"),
     MONITOR_WS("s"),
-    DREAM("d");
+    DREAM("d"),
+    WEB_SESSION("g");
 
     private final String prefix;
 

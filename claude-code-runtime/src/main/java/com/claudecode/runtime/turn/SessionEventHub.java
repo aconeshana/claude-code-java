@@ -35,13 +35,27 @@ public final class SessionEventHub implements SessionSink {
      * prevents callbacks that have not already entered an in-flight snapshot.
      */
     public AutoCloseable subscribe(SessionSink observer) {
+        return subscribe(observer, true);
+    }
+
+    /**
+     * Adds one observer, optionally skipping the recorded replay prefix.
+     *
+     * <p>Turn-scoped consumers — a gateway request that must observe exactly
+     * one in-flight turn — subscribe with {@code replay=false}: the recorded
+     * prefix belongs to a previous turn and would otherwise seed the stream
+     * with stale events before the submitted turn starts.
+     */
+    public AutoCloseable subscribe(SessionSink observer, boolean replay) {
         Objects.requireNonNull(observer, "observer");
         if (observer == primary) {
             throw new IllegalArgumentException("primary sink cannot subscribe to itself");
         }
         synchronized (lock) {
             if (observers.contains(observer)) return () -> unsubscribe(observer);
-            for (Consumer<SessionSink> callback : replay) notifyObserver(observer, callback);
+            if (replay) {
+                for (Consumer<SessionSink> callback : this.replay) notifyObserver(observer, callback);
+            }
             observers.add(observer);
         }
         return () -> unsubscribe(observer);
@@ -109,7 +123,10 @@ public final class SessionEventHub implements SessionSink {
     }
 
     private void publish(Consumer<SessionSink> callback) {
-        for (SessionSink observer : observers) {
+        // Iterate a snapshot: an observer may unsubscribe itself from inside
+        // its own callback (a turn-scoped gateway stream closes on turn
+        // completion), which would otherwise mutate the live list mid-iterate.
+        for (SessionSink observer : List.copyOf(observers)) {
             notifyObserver(observer, callback);
         }
     }

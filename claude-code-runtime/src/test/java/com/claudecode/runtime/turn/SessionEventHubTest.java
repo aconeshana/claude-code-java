@@ -1,5 +1,6 @@
 package com.claudecode.runtime.turn;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -7,6 +8,7 @@ import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SystemMessage;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 class SessionEventHubTest {
@@ -124,6 +126,45 @@ class SessionEventHubTest {
 
         assertEquals(List.of(
             "primary:start", "primary:message", "primary:start", "late:start"), calls);
+    }
+
+    @Test
+    void subscribeWithoutReplaySkipsRecordedPrefix() {
+        List<String> calls = new ArrayList<>();
+        SessionEventHub hub = new SessionEventHub(
+            new RecordingSink("primary", calls), _ -> calls.add("failure"));
+        hub.onTurnStart(UserInput.of("old", "old", null, "default"));
+        hub.onMessage(new SDKMessage.System(
+            new SystemMessage("m1", "status", "info", "old")));
+        hub.onTurnComplete(new TurnOutcome(
+            false, false, 12L, null, null, null, "default"));
+
+        AutoCloseable subscription = hub.subscribe(new RecordingSink("scoped", calls), false);
+        assertTrue(calls.stream().noneMatch(call -> Strings.CS.startsWith(call, "scoped:")));
+
+        hub.onIdle();
+        assertEquals(List.of("scoped:idle"), calls.stream()
+            .filter(call -> Strings.CS.startsWith(call, "scoped:")).toList());
+        assertDoesNotThrow(subscription::close);
+    }
+
+    @Test
+    void subscribeWithoutReplayStillReceivesLiveEventsInOrder() {
+        List<String> calls = new ArrayList<>();
+        SessionEventHub hub = new SessionEventHub(
+            new RecordingSink("primary", calls), _ -> {});
+        AutoCloseable subscription = hub.subscribe(new RecordingSink("scoped", calls), false);
+
+        hub.onTurnStart(UserInput.of("live", "live", null, "default"));
+        hub.onMessage(new SDKMessage.System(
+            new SystemMessage("m1", "status", "info", "live")));
+        hub.onTurnComplete(new TurnOutcome(
+            false, false, 1L, null, null, null, "default"));
+
+        assertEquals(List.of(
+            "scoped:start", "scoped:message", "scoped:complete"), calls.stream()
+            .filter(call -> Strings.CS.startsWith(call, "scoped:")).toList());
+        assertDoesNotThrow(subscription::close);
     }
 
     private static class RecordingSink implements SessionSink {

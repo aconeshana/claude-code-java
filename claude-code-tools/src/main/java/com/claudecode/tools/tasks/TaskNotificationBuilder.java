@@ -330,6 +330,7 @@ public final class TaskNotificationBuilder {
             case MONITOR_MCP -> "monitor_mcp";
             case MONITOR_WS -> "monitor_ws";
             case DREAM -> "dream";
+            case WEB_SESSION -> "web_session";
         };
     }
 

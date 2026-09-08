@@ -165,6 +165,7 @@ public record CommandContext(
         private RecapPort recap = RecapPort.none();
         private McpManagementPort mcpManagement = McpManagementPort.none();
         private Consumer<TagRemovalRequest> tagRemovalLauncher;
+        private Consumer<String> gatewayLauncher;
         private boolean nonInteractive;
 
         private Builder(String model, Supplier<List<Message>> messagesSupplier,
@@ -278,6 +279,7 @@ public record CommandContext(
         public Builder recap(RecapPort v) { recap = v == null ? RecapPort.none() : v; return this; }
         public Builder mcpManagement(McpManagementPort v) { mcpManagement = v == null ? McpManagementPort.none() : v; return this; }
         public Builder tagRemovalLauncher(Consumer<TagRemovalRequest> v) { tagRemovalLauncher = v; return this; }
+        public Builder gatewayLauncher(Consumer<String> v) { gatewayLauncher = v; return this; }
         public Builder nonInteractive(boolean v) { nonInteractive = v; return this; }
 
         public CommandContext build() {
@@ -308,7 +310,7 @@ public record CommandContext(
                 copyPickerLauncher, copyApplyFromDialog, diffDialogLauncher,
                 helpDialogLauncher, skillsDialogLauncher, pluginDialogLauncher,
                 tasksDialogLauncher, workflowsDialogLauncher, statsDialogLauncher,
-                tagRemovalLauncher);
+                tagRemovalLauncher, gatewayLauncher);
             return new CommandContext(session, application, presentation);
         }
     }

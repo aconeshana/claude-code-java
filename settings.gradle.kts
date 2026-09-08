@@ -40,6 +40,7 @@ include(
     "claude-code-api",
     "claude-code-permissions",
     "claude-code-runtime",
+    "claude-code-gateway",
     "claude-code-tools",
     "claude-code-commands",
     "claude-code-mcp",
