@@ -46,10 +46,16 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code utils/handlePromptSubmit.ts} — the busy-turn queue-steer branch: reading
  *       {@code hasInterruptibleToolInProgress} and aborting with reason {@code 'interrupt'}
  *       before enqueuing ({@link #hasInterruptibleToolInProgress},
- *       {@link #interruptForQueuedSubmit}); the {@code priority:'now'} queue-entry abort
- *       effect in {@code screens/REPL.tsx} ({@link #enqueue}).</li>
- *   <li>{@code utils/queue/queueOperations.ts} — batch drain and priority order
- *       ({@link #takeNextBatch}, {@link #pollInputBatch}).</li>
+ *       {@link #interruptForQueuedSubmit}).</li>
+ *   <li>{@code utils/messageQueueManager.ts} — the single unified command queue: every
+ *       source (user input, task notifications, SDK) lands in the same session queue, so
+ *       the mid-turn drain in {@code query.ts} sees user prompts as queued-command
+ *       attachments and the between-turn {@code utils/queueProcessor.ts} drain orders
+ *       strictly by priority ({@link #enqueue}, {@link #takeNextBatch},
+ *       {@link #popAllEditable}).</li>
+ *   <li>{@code screens/REPL.tsx} — the queue effect that aborts the in-flight turn
+ *       whenever a {@code priority:'now'} entry is present in the queue (the
+ *       subscription registered by this engine, see {@link #enqueue}).</li>
  * </ul>
  */
 public final class TurnEngine {
@@ -86,7 +92,6 @@ public final class TurnEngine {
      * the one the outer drain is still about to dispatch.
      */
     private final AtomicBoolean draining = new AtomicBoolean(false);
-    private final ConcurrentLinkedQueue<QueuedCommand> inputQueue = new ConcurrentLinkedQueue<>();
     /** Operations such as message-action rewind that must run after the active stream has fully
      *  unwound, but before a queued prompt starts the next turn. */
     private final ConcurrentLinkedQueue<Supplier<? extends CompletionStage<?>>> idleOperations =
@@ -125,6 +130,24 @@ public final class TurnEngine {
         this.clearTurnScopedHooks = clearTurnScopedHooks;
         this.inputEmptyForRestore = inputEmptyForRestore;
         this.viewingAgentTask = viewingAgentTask;
+        // The REPL.tsx queue effect: any queue mutation re-publishes the prompt-area
+        // projection, and a 'now'-priority entry aborts the in-flight turn — whenever
+        // it is observed, not only at its own enqueue instant.
+        queue().addListener(() -> {
+            publishInputQueue();
+            if (!turnInFlight.get()) return;
+            for (QueuedCommand queued : queue().snapshot()) {
+                if (queued.priority() == QueuePriority.NOW) {
+                    interruptForQueuedSubmit();
+                    return;
+                }
+            }
+        });
+    }
+
+    /** The session's single unified command queue (user input, notifications, SDK). */
+    private MessageQueueManager queue() {
+        return queryEngine.conversation().getMessageQueue();
     }
 
     // ── Input port ────────────────────────────────────────────────────────────
@@ -185,18 +208,17 @@ public final class TurnEngine {
         if (idleReleaseDepth.get() == 0) startIdleOperationsIfIdle();
     }
 
-    /** Add a command to the in-flight queue and publish the new live snapshot. */
+    /**
+     * Add a command to the session's unified command queue — the same queue the
+     * mid-turn drain ({@code QueryHelpers.drainQueuedCommands}) reads, so a prompt
+     * submitted while a turn runs becomes visible to the model as a queued-command
+     * attachment in the current turn, exactly like the TS {@code enqueue}. The
+     * queue subscription registered in the constructor republishes the preview and
+     * applies the {@code priority:'now'} abort effect.
+     */
     public void enqueue(QueuedCommand cmd) {
         if (cmd == null) return;
-        synchronized (this) {
-            inputQueue.offer(cmd);
-        }
-        publishInputQueue();
-        // A NOW-priority command arriving mid-turn aborts the turn immediately —
-        // the twin of the queue effect that watches for priority==="now" entries.
-        if (cmd.priority() == QueuePriority.NOW && turnInFlight.get()) {
-            interruptForQueuedSubmit();
-        }
+        queue().enqueue(cmd);
     }
 
     /** Install the adapter's live queue projection and immediately publish its current state. */
@@ -205,29 +227,19 @@ public final class TurnEngine {
         publishInputQueue();
     }
 
-    /** Immutable FIFO snapshot for adapters and diagnostics. */
-    public synchronized List<QueuedCommand> queuedCommandsSnapshot() {
-        return List.copyOf(inputQueue);
+    /** Immutable snapshot of the session queue, in insertion order — for adapters and diagnostics. */
+    public List<QueuedCommand> queuedCommandsSnapshot() {
+        return queue().snapshot();
     }
 
     /**
      * Pull every human-editable command back into one prompt draft. Meta commands
-     * and task notifications remain in FIFO order for automatic processing.
+     * and task notifications remain queued for automatic processing.
      */
     public QueuedInputDraft popAllEditable(String currentInput, int currentCursorOffset) {
         String draft = currentInput == null ? "" : currentInput;
-        List<QueuedCommand> editable = new ArrayList<>();
-        List<QueuedCommand> retained = new ArrayList<>();
-
-        synchronized (this) {
-            for (QueuedCommand command : inputQueue) {
-                if (isQueuedCommandEditable(command)) editable.add(command);
-                else retained.add(command);
-            }
-            if (editable.isEmpty()) return null;
-            inputQueue.clear();
-            inputQueue.addAll(retained);
-        }
+        List<QueuedCommand> editable = queue().dequeueAllMatching(TurnEngine::isQueuedCommandEditable);
+        if (editable.isEmpty()) return null;
 
         List<String> queuedTexts = editable.stream().map(QueuedCommand::text).toList();
         List<String> nonEmptyParts = new ArrayList<>(queuedTexts.size() + 1);
@@ -245,24 +257,22 @@ public final class TurnEngine {
             });
         }
 
-        publishInputQueue();
         return new QueuedInputDraft(text, cursorOffset, images);
     }
 
     /** Count queued commands matching {@code p} — for the adapter's task-notification overflow logic. */
-    public synchronized long countQueued(Predicate<QueuedCommand> p) {
-        return inputQueue.stream().filter(p).count();
+    public long countQueued(Predicate<QueuedCommand> p) {
+        return queue().snapshot().stream().filter(p).count();
     }
 
     /**
      * Drain the next batch of queued commands if no turn is in flight — the same
-     * MCP-queue-first-then-input-queue tail {@link #completeTurn} runs at turn
-     * end, exposed for non-turn busy periods (a background long-running slash
-     * command like {@code /compact}) whose completion must also kick the queue.
-     * Each drained batch re-submits and drains the next at its own completion, so
-     * one poll here is enough. See {@link #takeNextBatch} for the batching rule.
-     * Must be called on the UI thread (the drain callback re-enters
-     * {@code executeQueuedCommand}).
+     * queue tail {@link #completeTurn} runs at turn end, exposed for non-turn busy
+     * periods (a background long-running slash command like {@code /compact}) whose
+     * completion must also kick the queue. Each drained batch re-submits and drains
+     * the next at its own completion, so one poll here is enough. See
+     * {@link #takeNextBatch} for the batching rule. Must be called on the UI thread
+     * (the drain callback re-enters {@code executeQueuedCommand}).
      */
     public void drainIfIdle() {
         if (turnInFlight.get()) return;
@@ -281,7 +291,7 @@ public final class TurnEngine {
      */
     public void bindIdleQueueWakeup(BooleanSupplier externallyBusy) {
         BooleanSupplier busy = externallyBusy != null ? externallyBusy : () -> false;
-        queryEngine.conversation().getMessageQueue().addListener(() -> {
+        queue().addListener(() -> {
             if (turnInFlight.get()) return;
             try {
                 onUi.accept(() -> {
@@ -400,7 +410,7 @@ public final class TurnEngine {
         boolean finalTailAllowsRestore = finalMessageTailAllowsAutoRestore();
         boolean shouldRestore = isUserCancel
             && finalTailAllowsRestore
-            && inputQueue.isEmpty() // no queued commands (getCommandQueueLength === 0)
+            && !queue().hasCommands() // no queued commands (getCommandQueueLength === 0)
             && inputEmptyForRestore.getAsBoolean()
             && !viewingAgentTask.getAsBoolean();
 
@@ -568,46 +578,22 @@ public final class TurnEngine {
     }
 
     /**
-     * Take the next batch of main-thread commands to run as one turn.
+     * Take the next batch of main-thread commands to run as one turn. The single
+     * unified queue is peeked by priority ({@code NOW > NEXT > LATER}), so a queued
+     * user prompt always runs before a waiting task notification — the
+     * {@code utils/queueProcessor.ts} rule.
      */
     private List<QueuedCommand> takeNextBatch() {
-        MessageQueueManager queue = queryEngine.conversation().getMessageQueue();
+        MessageQueueManager queue = queue();
         QueuedCommand next = queue.peek(TurnEngine::isMainThread);
-        if (next != null) {
-            if (isIndividuallyProcessed(next)) {
-                QueuedCommand one = queue.dequeue(TurnEngine::isMainThread);
-                if (one != null) return List.of(one);
-            } else {
-                String targetMode = next.mode();
-                List<QueuedCommand> batch = queue.dequeueAllMatching(cmd -> isMainThread(cmd)
-                    && !isSlashText(cmd) && Strings.CS.equals(targetMode, cmd.mode()));
-                if (!batch.isEmpty()) return batch;
-            }
+        if (next == null) return List.of();
+        if (isIndividuallyProcessed(next)) {
+            QueuedCommand one = queue.dequeue(TurnEngine::isMainThread);
+            return one != null ? List.of(one) : List.of();
         }
-        return pollInputBatch();
-    }
-
-    /** Same batching rule as {@link #takeNextBatch()}, over the engine's own FIFO input queue. */
-    private List<QueuedCommand> pollInputBatch() {
-        List<QueuedCommand> batch = new ArrayList<>();
-        synchronized (this) {
-            QueuedCommand head = inputQueue.peek();
-            if (head == null) return List.of();
-            if (isIndividuallyProcessed(head)) {
-                batch.add(inputQueue.poll());
-            } else {
-                String targetMode = head.mode();
-                Iterator<QueuedCommand> it = inputQueue.iterator();
-                while (it.hasNext()) {
-                    QueuedCommand cmd = it.next();
-                    if (isSlashText(cmd) || !Strings.CS.equals(targetMode, cmd.mode())) continue;
-                    batch.add(cmd);
-                    it.remove();
-                }
-            }
-        }
-        if (!batch.isEmpty()) publishInputQueue();
-        return List.copyOf(batch);
+        String targetMode = next.mode();
+        return queue.dequeueAllMatching(cmd -> isMainThread(cmd)
+            && !isSlashText(cmd) && Strings.CS.equals(targetMode, cmd.mode()));
     }
 
     private static boolean isMainThread(QueuedCommand cmd) { return cmd.agentId() == null; }
@@ -637,7 +623,7 @@ public final class TurnEngine {
 
     private void publishInputQueue() {
         try {
-            inputQueueListener.accept(queuedCommandsSnapshot());
+            inputQueueListener.accept(queue().snapshot());
         } catch (RuntimeException e) {
             log.warn("Input queue listener failed", e);
         }

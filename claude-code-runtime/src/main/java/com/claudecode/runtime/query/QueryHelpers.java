@@ -287,7 +287,12 @@ final class QueryHelpers {
     }
 
     /**
-     * Drains queued commands between tool batches, routing by agent id.
+     * Drains queued commands between tool batches, routing by agent id. Interactive
+     * UI submissions land in this same session queue ({@code TurnEngine.enqueue}),
+     * so a prompt typed while a turn runs is injected here as a queued-command
+     * attachment in the CURRENT turn — the {@code query.ts}
+     * {@code getCommandsByMaxPriority('next')} mid-turn snapshot — instead of
+     * waiting to become its own turn.
      */
     public static void drainQueuedCommands(DefaultQuerySession engine, Consumer<SDKMessage> emit) {
         var queue = engine.getMessageQueue();

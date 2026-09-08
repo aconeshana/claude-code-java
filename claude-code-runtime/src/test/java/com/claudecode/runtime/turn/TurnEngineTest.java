@@ -13,6 +13,7 @@ import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.AttachmentRenderer;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.SDKMessage;
@@ -893,9 +894,10 @@ class TurnEngineTest {
     }
 
     @Test
-    void batchDrain_appliesToTheAdapterInputQueueToo() {
-        // The UI-side inputQueue (TurnEngine.enqueue) follows the same rule so a burst of
-        // prompts typed while a turn ran becomes one turn.
+    void batchDrain_appliesToAdapterEnqueuedCommandsToo() {
+        // Commands enqueued through the adapter (TurnEngine.enqueue) land in the
+        // same unified session queue, so a burst of prompts typed while a turn ran
+        // becomes one turn.
         var qe = new FakeQueryEngine(List.of());
         var batches = new ArrayList<List<QueuedCommand>>();
         var engine = batchingEngine(qe, batches);
@@ -907,6 +909,66 @@ class TurnEngineTest {
         assertEquals(List.of(List.of("one", "two")),
             batches.stream().map(b -> b.stream().map(QueuedCommand::text).toList()).toList());
         assertEquals(0, engine.countQueued(_ -> true));
+    }
+
+    @Test
+    void drain_prefersANextPromptOverAWaitingLaterNotification() {
+        // The queueProcessor rule on the unified queue: peek by priority, so a
+        // queued user prompt (NEXT) always runs before a task notification
+        // (LATER) — never the other way around.
+        var qe = new FakeQueryEngine(List.of());
+        var batches = new ArrayList<List<QueuedCommand>>();
+        var engine = batchingEngine(qe, batches);
+        qe.getMessageQueue().enqueuePendingNotification(QueuedCommand.notification("agent done"));
+        engine.enqueue(QueuedCommand.prompt("user prompt"));
+
+        engine.drainIfIdle();
+
+        assertEquals(List.of(List.of("user prompt")),
+            batches.stream().map(b -> b.stream().map(QueuedCommand::text).toList()).toList());
+        assertEquals(1, qe.getMessageQueue().size(),
+            "the LATER notification waits for the next drain edge");
+    }
+
+    @Test
+    void adapterEnqueuedPrompt_isVisibleToTheMidTurnDrain() {
+        // The whole point of the unified queue: a prompt submitted through the
+        // adapter while a turn runs is read by the query loop's per-tool-batch
+        // drain and injected into the CURRENT turn as a queued-command
+        // attachment (query.ts getCommandsByMaxPriority('next')).
+        var qe = new FakeQueryEngine(List.of());
+        var engine = engine(qe, new RecordingSink(), new RecordingOps(),
+            new ArrayList<>(), new ArrayList<>());
+        engine.enqueue(QueuedCommand.prompt("typed while busy"));
+
+        List<String> emitted = new ArrayList<>();
+        QueryHelpers.drainQueuedCommands(qe, m -> {
+            if (m instanceof SDKMessage.User u) emitted.add(u.message().message().text());
+        });
+
+        assertEquals(List.of(AttachmentRenderer.wrapQueuedCommandText(
+            "typed while busy", "prompt", null)), emitted);
+        assertEquals(0, qe.getMessageQueue().size(), "the mid-turn drain consumed the prompt");
+    }
+
+    @Test
+    void nowPriorityEntry_abortsTheInFlightTurnWhereverItWasEnqueued() {
+        // The REPL.tsx queue effect watches the queue, not the enqueue call: a
+        // NOW command lands in the session queue directly (e.g. a remote client)
+        // and still aborts the running turn.
+        var qe = new FakeQueryEngine(List.of());
+        var drained = new ArrayList<QueuedCommand>();
+        var engine = engine(qe, new RecordingSink(), new RecordingOps(), drained, new ArrayList<>());
+        qe.duringSubmit = () -> qe.getMessageQueue().enqueue(
+            new QueuedCommand("urgent", null, "prompt", QueuePriority.NOW,
+                false, null, false, false, null, null, null));
+
+        engine.submit(input("hi"));
+
+        assertTrue(qe.isSoftInterruptRequested(),
+            "the queue subscription aborts the turn on observing a NOW entry");
+        assertEquals(List.of("urgent"), drained.stream().map(QueuedCommand::text).toList(),
+            "and the urgent command is drained as the next turn");
     }
 
     @Test
