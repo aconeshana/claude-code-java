@@ -1,0 +1,239 @@
+package com.claudecode.gateway;
+
+import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.message.AssistantContent;
+import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ThinkingBlock;
+import com.claudecode.core.message.ToolResultBlock;
+import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
+import com.sun.net.httpserver.HttpExchange;
+
+/**
+ * {@code GET /api/sessions/{sessionId}/messages}: the authoritative message
+ * snapshot of one session.
+ *
+ * <p>Snapshot-first: a reconnecting web client pulls this once and then
+ * follows SSE increments — the HTTP equivalent of the alignment model's
+ * message-snapshot replay. Each assistant message projects its content[]
+ * with typed {@code tool_call} entries: a tool_use block and the matching
+ * later tool_result block pair up by tool use id into the entry's
+ * status/result/ready fields, the same pairing the TUI dispatcher performs
+ * when rendering a turn.
+ */
+@Explanation("Snapshot replay endpoint of the alignment model over HTTP")
+final class GatewayMessagesSnapshotHandler {
+
+    /** Bounded excerpt per tool result, matching the mirror frame projection. */
+    private static final int MAX_RESULT_CHARS = 20_000;
+    private static final String TRUNCATION_MARKER = "\n…[truncated]";
+
+    private final GatewayHeadlessSessions headless;
+    private final GatewaySessionMessagesPort messages;
+
+    GatewayMessagesSnapshotHandler(
+            GatewayHeadlessSessions headless, GatewaySessionMessagesPort messages) {
+        this.headless = Objects.requireNonNull(headless, "headless");
+        this.messages = messages == null ? new GatewaySessionMessagesPort() {} : messages;
+    }
+
+    /** Handles one snapshot exchange; {@code sessionId} from the URL path. */
+    void handle(HttpExchange exchange, String sessionId) throws IOException {
+        List<Message> rows;
+        String openHeadlessId = headless.isOpen(sessionId) ? sessionId : null;
+        try {
+            rows = messages.messages(sessionId, openHeadlessId).orElse(null);
+        } catch (RuntimeException _) {
+            rows = null;
+        }
+        if (rows == null) {
+            respondJson(exchange, 404, errorBody("not_found",
+                "unknown session: " + sessionId));
+            return;
+        }
+        respondJson(exchange, 200, snapshot(sessionId, rows));
+    }
+
+    /** Projects the message list into the snapshot shape. */
+    private static ObjectNode snapshot(String sessionId, List<Message> rows) {
+        // Tool results pair with their tool_use entries by id; collect them
+        // in one pass so each assistant message can look them up.
+        Map<String, ToolResultBlock> resultsByUseId = new HashMap<>();
+        for (Message row : rows) {
+            if (!(row instanceof UserMessage user) || user.message() == null) continue;
+            List<ContentBlock> blocks = user.message().blocks();
+            if (blocks == null) continue;
+            for (ContentBlock block : blocks) {
+                if (block instanceof ToolResultBlock result && result.toolUseId() != null) {
+                    resultsByUseId.put(result.toolUseId(), result);
+                }
+            }
+        }
+
+        ObjectNode body = JsonUtils.getMapper().createObjectNode();
+        body.put("session_id", sessionId);
+        ArrayNode messagesNode = body.putArray("messages");
+        for (Message row : rows) {
+            if (row instanceof AssistantMessage assistant) {
+                messagesNode.add(assistantEntry(assistant, resultsByUseId));
+            } else if (row instanceof UserMessage user) {
+                ObjectNode entry = userEntry(user);
+                if (entry != null) messagesNode.add(entry);
+            }
+            // system/progress/attachment rows are display bookkeeping; the
+            // snapshot serves the conversation, not the render log.
+        }
+        return body;
+    }
+
+    /** One assistant message with its typed content[] entries. */
+    private static ObjectNode assistantEntry(
+            AssistantMessage message, Map<String, ToolResultBlock> resultsByUseId) {
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        if (message.uuid() != null) entry.put("id", message.uuid());
+        if (message.requestId() != null) entry.put("request_id", message.requestId());
+        entry.put("complete", true);
+        ArrayNode content = entry.putArray("content");
+        AssistantContent envelope = message.message();
+        if (envelope == null || envelope.content() == null) return entry;
+        for (ContentBlock block : envelope.content()) {
+            switch (block) {
+                case TextBlock text -> content.add(objectOf(
+                    "type", "text", "text", text.text()));
+                case ThinkingBlock thinking -> content.add(objectOf(
+                    "type", "thinking", "thinking", thinking.thinking()));
+                case ToolUseBlock tool -> content.add(toolCallEntry(tool, resultsByUseId));
+                default -> { /* Rich blocks stay in the local renderer. */ }
+            }
+        }
+        return entry;
+    }
+
+    /** One user message's textual content, when it carries any. */
+    private static ObjectNode userEntry(UserMessage message) {
+        MessageContent content = message.message();
+        if (content == null) return null;
+        String text = content.text();
+        if (text == null && content.blocks() != null) {
+            StringBuilder body = new StringBuilder();
+            for (ContentBlock block : content.blocks()) {
+                if (block instanceof TextBlock textBlock) body.append(textBlock.text());
+            }
+            text = body.isEmpty() ? null : body.toString();
+        }
+        if (StringUtils.isBlank(text)) return null;
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        if (message.uuid() != null) entry.put("id", message.uuid());
+        entry.put("role", "user");
+        entry.put("complete", true);
+        entry.put("text", text);
+        return entry;
+    }
+
+    /**
+     * One typed tool_call entry: the tool_use block paired with its later
+     * tool_result block. Without the result the call is still pending.
+     */
+    private static ObjectNode toolCallEntry(
+            ToolUseBlock tool, Map<String, ToolResultBlock> resultsByUseId) {
+        ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        node.put("type", "tool_call");
+        ObjectNode call = node.putObject("tool");
+        call.put("tool_use_id", tool.id());
+        call.put("name", tool.name());
+        if (tool.input() != null) call.set("args", tool.input());
+        ToolResultBlock result = tool.id() == null ? null : resultsByUseId.get(tool.id());
+        if (result == null) {
+            call.put("status", "pending");
+            call.put("ready", false);
+            return node;
+        }
+        call.put("status", result.isError() ? "failed" : "executed");
+        call.put("ready", true);
+        call.set("result", projectResult(tool.name(), result));
+        return node;
+    }
+
+    /** The result projection shared with the mirror frame shape. */
+    private static ObjectNode projectResult(String toolName, ToolResultBlock result) {
+        ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        node.put("type", resultType(toolName));
+        String text = resultText(result);
+        if (text == null) {
+            node.putNull("data");
+        } else if (text.length() > MAX_RESULT_CHARS) {
+            node.put("data", text.substring(0, MAX_RESULT_CHARS) + TRUNCATION_MARKER);
+        } else {
+            node.put("data", text);
+        }
+        if (result.isError()) {
+            node.put("errorMessage", text);
+            node.put("errorCode", "tool_error");
+        }
+        return node;
+    }
+
+    /** Concatenates the result's textual content blocks, or null when none. */
+    private static String resultText(ToolResultBlock result) {
+        if (result.content() == null || result.content().isEmpty()) return null;
+        StringBuilder body = new StringBuilder();
+        for (ContentBlock block : result.content()) {
+            if (block instanceof TextBlock text) body.append(text.text());
+        }
+        return body.isEmpty() ? null : body.toString();
+    }
+
+    /** The typed result discriminator for the tool family, when known. */
+    private static String resultType(String toolName) {
+        if (toolName == null) return "tool_result";
+        return switch (toolName) {
+            case "Bash" -> "execute_command_tool_result";
+            case "Read" -> "read_file_tool_result";
+            case "Write" -> "write_to_file_tool_result";
+            case "Edit", "NotebookEdit" -> "replace_in_file_tool_result";
+            case "Task", "Agent" -> "task_tool_result";
+            default -> "tool_result";
+        };
+    }
+
+    private static ObjectNode objectOf(String... pairs) {
+        ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            node.put(pairs[i], pairs[i + 1]);
+        }
+        return node;
+    }
+
+    private static ObjectNode errorBody(String type, String message) {
+        ObjectNode body = JsonUtils.getMapper().createObjectNode();
+        ObjectNode error = body.putObject("error");
+        error.put("type", type);
+        error.put("message", message);
+        return body;
+    }
+
+    private static void respondJson(HttpExchange exchange, int status, ObjectNode body)
+            throws IOException {
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (OutputStream output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
+    }
+}
