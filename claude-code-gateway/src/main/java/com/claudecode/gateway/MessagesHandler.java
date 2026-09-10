@@ -4,6 +4,7 @@ import com.claudecode.api.StreamEvent;
 import com.claudecode.api.StreamEventSseCodec;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +13,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -55,6 +57,60 @@ public final class MessagesHandler implements ProtocolTurnRunner.TurnProjection 
     public ProtocolTurnRunner.PerTurnProjection newTurn(JsonNode request) {
         String model = request.path("model").asText("");
         return new AnthropicProjection(model);
+    }
+
+    @Override
+    public SubmissionAttachments extractAttachments(JsonNode request) {
+        JsonNode messages = request.path("messages");
+        if (!messages.isArray()) return SubmissionAttachments.NONE;
+        JsonNode lastUser = null;
+        for (JsonNode message : messages) {
+            if (Strings.CS.equals("user", message.path("role").asText())) lastUser = message;
+        }
+        JsonNode content = lastUser == null ? null : lastUser.path("content");
+        if (content == null || !content.isArray()) return SubmissionAttachments.NONE;
+        List<SessionHostSubmission.Attachment> images = new ArrayList<>();
+        List<SessionHostSubmission.Attachment> files = new ArrayList<>();
+        for (JsonNode block : (ArrayNode) content) {
+            String type = block.path("type").asText();
+            JsonNode source = block.path("source");
+            if (Strings.CS.equals("image", type)) {
+                images.add(base64Attachment(source, null));
+            } else if (Strings.CS.equals("document", type)) {
+                String name = block.path("title").isTextual()
+                    ? block.path("title").asText() : null;
+                files.add(base64Attachment(source, name));
+            }
+        }
+        if (images.isEmpty() && files.isEmpty()) return SubmissionAttachments.NONE;
+        return new SubmissionAttachments(images, files);
+    }
+
+    /**
+     * Decodes one base64 source block into an attachment. Only
+     * {@code type:"base64"} sources carry inline data; anything else is a
+     * protocol-shape error rather than something to silently drop.
+     */
+    private static SessionHostSubmission.Attachment base64Attachment(
+            JsonNode source, String fileName) {
+        if (!Strings.CS.equals("base64", source.path("type").asText())) {
+            throw new IllegalArgumentException(
+                "attachment source must be a base64 block, got type: "
+                    + source.path("type").asText(""));
+        }
+        String data = source.path("data").asText(null);
+        if (StringUtils.isEmpty(data)) {
+            throw new IllegalArgumentException("attachment source has no data");
+        }
+        byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(data);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(
+                "attachment data is not valid base64", failure);
+        }
+        String mediaType = source.path("media_type").asText(null);
+        return new SessionHostSubmission.Attachment(mediaType, fileName, decoded);
     }
 
     @Override

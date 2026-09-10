@@ -1,11 +1,9 @@
-package com.claudecode.ui.lanterna.repl;
+package com.claudecode.runtime.sessionhost;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 
 import java.io.IOException;
 import java.nio.file.Files;

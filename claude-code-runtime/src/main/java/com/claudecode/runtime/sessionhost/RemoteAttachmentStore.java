@@ -1,7 +1,6 @@
-package com.claudecode.ui.lanterna.repl;
+package com.claudecode.runtime.sessionhost;
 
 import com.claudecode.core.annotation.Explanation;
-import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
@@ -22,7 +21,7 @@ import org.apache.commons.lang3.Strings;
  * symbolic links.
  */
 @Explanation("Secure attachment ingress for remote Session Host turns")
-final class RemoteAttachmentStore {
+public final class RemoteAttachmentStore {
 
     private static final FileAttribute<?> DIRECTORY_MODE =
         PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"));
@@ -31,7 +30,7 @@ final class RemoteAttachmentStore {
 
     private RemoteAttachmentStore() {}
 
-    static Path persist(
+    public static Path persist(
             String workingDirectory,
             String sessionId,
             String messageId,

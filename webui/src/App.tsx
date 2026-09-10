@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { submitTurn } from './api/client'
 import { subscribeMirror, type MirrorConnection } from './api/events'
 import { captureTokenFromUrl, currentToken } from './api/token'
+import type { UserContentBlock } from './api/types'
 import { useApprovals } from './store/approvals'
 import { useConversations } from './store/conversations'
 import { useSessions } from './store/sessions'
@@ -49,8 +50,8 @@ export function App() {
   const asks = useApprovals((state) => state.asks)
   const visibleAsk = asks.find((ask) => ask.session_id === selectedId) ?? asks[0]
 
-  const onSubmit = useCallback((text: string) => {
-    void submitTurn(selectedId, text).catch((failure: unknown) => {
+  const onSubmit = useCallback((content: string | readonly UserContentBlock[]) => {
+    void submitTurn(selectedId, content).catch((failure: unknown) => {
       console.error('turn submission failed', failure)
     })
   }, [selectedId])

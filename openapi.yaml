@@ -328,8 +328,20 @@ components:
               items:
                 type: object
                 properties:
-                  type: { type: string, enum: [text] }
+                  type: { type: string, enum: [text, image, document] }
                   text: { type: string }
+                  title:
+                    type: string
+                    description: Document display name; becomes the persisted file name
+                  source:
+                    type: object
+                    required: [type, media_type, data]
+                    properties:
+                      type: { type: string, enum: [base64] }
+                      media_type: { type: string }
+                      data:
+                        type: string
+                        description: base64 payload; images become inline picture blocks, documents are persisted under the project and referenced by path
     SessionCatalog:
       type: object
       properties:

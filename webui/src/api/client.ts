@@ -1,4 +1,4 @@
-import { ApiError, type CatalogProject, type CloseSessionResponse, type FlatSessionCatalog, type MessagesSnapshot, type OpenSessionResponse, type RespondRequest, type SessionCatalog } from './types'
+import { ApiError, type CatalogProject, type CloseSessionResponse, type FlatSessionCatalog, type MessagesSnapshot, type OpenSessionResponse, type RespondRequest, type SessionCatalog, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -111,8 +111,15 @@ export function respondPermission(request: RespondRequest): Promise<unknown> {
  * Submits one turn through the Anthropic Messages protocol face. The SSE
  * response body is drained (rendering flows through /api/events), and only
  * terminal protocol errors surface here.
+ *
+ * `content` accepts either plain text or a block array: image/document
+ * blocks ride the request as inline base64 attachments the session owner
+ * turns into pasted chips and persisted files.
  */
-export async function submitTurn(sessionId: string | null, text: string): Promise<void> {
+export async function submitTurn(
+  sessionId: string | null,
+  content: string | readonly UserContentBlock[],
+): Promise<void> {
   const response = await fetch('/v1/messages', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -122,7 +129,7 @@ export async function submitTurn(sessionId: string | null, text: string): Promis
       // Absent session_id targets the active TUI session; an explicit id
       // (TUI session or open headless) routes to that conversation.
       ...(sessionId == null ? {} : { metadata: { session_id: sessionId } }),
-      messages: [{ role: 'user', content: text }],
+      messages: [{ role: 'user', content }],
     }),
   })
   if (!response.ok || response.body == null) {

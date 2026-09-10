@@ -29,7 +29,6 @@ import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.model.PermissionModeKind;
-import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.pokemon.PokemonEvolution;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -52,6 +51,8 @@ import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
 import com.claudecode.runtime.plugins.PluginMarketplacePort;
 import com.claudecode.runtime.session.ConversationResetPort;
 import com.claudecode.runtime.session.SessionLifecycle;
+import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
+import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
 import com.claudecode.runtime.sessionhost.SessionHostEffortController;
@@ -207,7 +208,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -3370,26 +3370,14 @@ public class LanternaReplScreen implements SlashHost {
                 if (!queryEngine.conversation().getSessionId().equals(expectedSessionId)) {
                     throw new IllegalStateException("session is no longer active");
                 }
-                Map<Integer, PastedContent> pasted = new LinkedHashMap<>();
-                StringBuilder prompt = new StringBuilder(submission.prompt());
-                int imageId = 1;
-                for (SessionHostSubmission.Attachment image : submission.images()) {
-                    String mediaType = StringUtils.isBlank(image.mimeType())
-                        ? "image/png" : image.mimeType();
-                    pasted.put(imageId, PastedContent.image(imageId,
-                        Base64.getEncoder().encodeToString(image.data()),
-                        mediaType, null, null));
-                    if (!prompt.isEmpty()) prompt.append(' ');
-                    prompt.append(PastedRefParser.formatImageRef(imageId));
-                    imageId++;
-                }
-                for (SessionHostSubmission.Attachment file : submission.attachments()) {
-                    Path filePath = persistRemoteAttachment(expectedSessionId,
-                        submission.messageId(), file);
-                    if (!prompt.isEmpty()) prompt.append('\n');
-                    prompt.append("Attached file: ").append(filePath);
-                }
-                submissionCoordinator.handleRemoteQuery(prompt.toString(), pasted);
+                // Shared assembly with the headless path: image chips as
+                // [Image #N] refs, file attachments persisted then referenced
+                // as Attached file: lines.
+                RemoteSubmissionPrompt assembled = RemoteSubmissionPrompt.assemble(
+                    submission, file -> persistRemoteAttachment(
+                        expectedSessionId, submission.messageId(), file).toString());
+                submissionCoordinator.handleRemoteQuery(
+                    assembled.prompt(), assembled.pasted());
                 result.complete(null);
             } catch (RuntimeException failure) {
                 result.completeExceptionally(failure);

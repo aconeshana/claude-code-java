@@ -19,6 +19,7 @@ import com.claudecode.runtime.turn.UserInput;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -50,6 +51,16 @@ class MessagesHandlerInteropTest {
 
     private static final String TOKEN = "b".repeat(48);
     private static final MediaType JSON = MediaType.get("application/json");
+
+    /** A 1×1 transparent PNG. */
+    private static final byte[] SAMPLE_PNG_BYTES = Base64.getDecoder()
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+            + "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+    private static final String SAMPLE_PNG_BASE64 = Base64.getEncoder()
+        .encodeToString(SAMPLE_PNG_BYTES);
+    private static final byte[] SAMPLE_PDF_BYTES = "%PDF-1.4 fake".getBytes();
+    private static final String SAMPLE_PDF_BASE64 = Base64.getEncoder()
+        .encodeToString(SAMPLE_PDF_BYTES);
 
     private final String sessionId = UUID.randomUUID().toString();
     private final RecordingPrimarySink primary = new RecordingPrimarySink();
@@ -255,6 +266,69 @@ class MessagesHandlerInteropTest {
                 .post(RequestBody.create("not json", JSON))
                 .build()).execute()) {
             assertThat(badJson.code()).isEqualTo(400);
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void imageAndDocumentBlocksReachTheSubmissionAsAttachments() throws Exception {
+        startServer();
+        List<SessionHostSubmission> submissions = new CopyOnWriteArrayList<>();
+        installSession(submission -> {
+            submissions.add(submission);
+            hub.onTurnStart(UserInput.of(submission.prompt(), submission.prompt(),
+                null, "default"));
+            hub.onTurnComplete(new TurnOutcome(
+                false, false, false, false, false, 1L, null, null, null, null));
+            return CompletableFuture.completedFuture(null);
+        });
+
+        String body = "{\"model\":\"m\",\"max_tokens\":1,\"stream\":true,"
+            + "\"messages\":[{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"text\",\"text\":\"what is in these\"},"
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\","
+            + "\"media_type\":\"image/png\",\"data\":\"" + SAMPLE_PNG_BASE64 + "\"}},"
+            + "{\"type\":\"document\",\"title\":\"report.pdf\",\"source\":{"
+            + "\"type\":\"base64\",\"media_type\":\"application/pdf\",\"data\":\""
+            + SAMPLE_PDF_BASE64 + "\"}}"
+            + "]}]}";
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = postMessages(body, events);
+        pollUntil(events, "message_stop");
+        source.cancel();
+
+        assertThat(submissions).hasSize(1);
+        SessionHostSubmission submission = submissions.getFirst();
+        assertThat(submission.prompt()).isEqualTo("what is in these");
+        assertThat(submission.images()).hasSize(1);
+        assertThat(submission.images().getFirst().mimeType()).isEqualTo("image/png");
+        assertThat(submission.images().getFirst().data()).isEqualTo(SAMPLE_PNG_BYTES);
+        assertThat(submission.attachments()).hasSize(1);
+        assertThat(submission.attachments().getFirst().fileName()).isEqualTo("report.pdf");
+        assertThat(submission.attachments().getFirst().mimeType()).isEqualTo("application/pdf");
+        assertThat(submission.attachments().getFirst().data()).isEqualTo(SAMPLE_PDF_BYTES);
+    }
+
+    @Test
+    @Timeout(20)
+    void nonBase64AttachmentSourcesAreRejectedWith400() throws Exception {
+        startServer();
+        installSession(_ -> CompletableFuture.completedFuture(null));
+
+        String body = "{\"model\":\"m\",\"max_tokens\":1,\"stream\":true,"
+            + "\"messages\":[{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"text\",\"text\":\"look\"},"
+            + "{\"type\":\"image\",\"source\":{\"type\":\"url\","
+            + "\"url\":\"https://example.com/pic.png\"}}"
+            + "]}]}";
+        try (Response rejected = client.newCall(new Request.Builder()
+                .url(url("/v1/messages"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .post(RequestBody.create(body, JSON))
+                .build()).execute()) {
+            assertThat(rejected.code()).isEqualTo(400);
+            assertThat(rejected.body().string())
+                .contains("attachment source must be a base64 block");
         }
     }
 

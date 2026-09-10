@@ -536,7 +536,7 @@ public final class GatewayServer implements AutoCloseable {
 
     /** {@code SessionInfo}'s catalog-backed fields (summary, customTitle, ...) are nullable. */
     private static boolean hasText(String value) {
-        return value != null && !value.isEmpty();
+        return StringUtils.isNotEmpty(value);
     }
 
     private static String errorBody(String code, String message) {

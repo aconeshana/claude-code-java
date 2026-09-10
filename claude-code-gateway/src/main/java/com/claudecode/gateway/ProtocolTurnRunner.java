@@ -56,6 +56,15 @@ final class ProtocolTurnRunner {
         /** The prompt extracted from the protocol request, or null when invalid. */
         String extractPrompt(JsonNode request);
 
+        /**
+         * Attachments extracted from the protocol request, or an empty list
+         * when the request carries none. Split into images (inline base64
+         * picture blocks) and files (persisted to disk by the session owner).
+         */
+        default SubmissionAttachments extractAttachments(JsonNode request) {
+            return SubmissionAttachments.NONE;
+        }
+
         /** The idempotency key from the request, or null for a fresh one. */
         default String extractIdempotencyKey(JsonNode request) { return null; }
 
@@ -123,6 +132,13 @@ final class ProtocolTurnRunner {
                 "request must carry a user message with text content");
             return;
         }
+        SubmissionAttachments attachments;
+        try {
+            attachments = projection.extractAttachments(request);
+        } catch (IllegalArgumentException failure) {
+            responder.respondJsonError(400, failure.getMessage());
+            return;
+        }
         String idempotencyKey = projection.extractIdempotencyKey(request);
         String messageId = idempotencyKey == null
             ? "gw-" + UUID.randomUUID() : idempotencyKey;
@@ -153,7 +169,7 @@ final class ProtocolTurnRunner {
             for (SseFrame frame : perTurn.openingFrames()) {
                 connection.offer(SseFrameWriter.event(frame.event(), null, frame.data()));
             }
-            submitPrompt(session, prompt, messageId);
+            submitPrompt(session, prompt, attachments, messageId);
         } catch (RuntimeException failure) {
             inFlight.release(targetId);
             turnScope.close();
@@ -163,10 +179,11 @@ final class ProtocolTurnRunner {
         }
     }
 
-    private void submitPrompt(SessionHostSession session, String prompt, String messageId) {
+    private void submitPrompt(SessionHostSession session, String prompt,
+            SubmissionAttachments attachments, String messageId) {
         String sessionId = session.info().id();
         SessionHostSubmission submission = new SessionHostSubmission(
-            prompt, messageId, List.of(), List.of());
+            prompt, messageId, attachments.images(), attachments.files());
         ledger.submit(sessionId, messageId,
             () -> session.submit(submission))
             .whenComplete((_, failure) -> {

@@ -202,6 +202,24 @@ export interface PermissionAsk {
 // POST /api/sessions/open|close, POST /v1/messages
 // ---------------------------------------------------------------------------
 
+/**
+ * One content block of a submitted user message. Text and inline-base64
+ * images and documents follow the Anthropic Messages block shapes the
+ * gateway's MessagesHandler extracts; the prompt text stays a text block so
+ * the wire carries one canonical shape regardless of attachment mix.
+ */
+export type UserContentBlock =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image'; readonly source: Base64Source }
+  | { readonly type: 'document'; readonly title?: string; readonly source: Base64Source }
+
+/** An Anthropic base64 source block: inline data with a media type. */
+export interface Base64Source {
+  readonly type: 'base64'
+  readonly media_type: string
+  readonly data: string
+}
+
 export interface OpenSessionResponse {
   readonly session_id: string
   readonly project_path: string

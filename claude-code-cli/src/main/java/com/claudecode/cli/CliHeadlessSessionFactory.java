@@ -12,8 +12,10 @@ import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.runtime.query.QuerySessionSpec;
+import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.turn.SessionEventHub;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
@@ -26,6 +28,8 @@ import com.claudecode.session.SessionManager;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
+import org.apache.commons.lang3.StringUtils;
+
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.nio.file.Path;
@@ -107,9 +111,20 @@ final class CliHeadlessSessionFactory {
 
         SessionHostInfo info = new SessionHostInfo(
             sessionId, projectPath, "", 0, Instant.now(), "");
+        HeadlessTurnDriver driver = new HeadlessTurnDriver(engine, events,
+            file -> RemoteAttachmentStore.persist(projectPath, sessionId,
+                submissionMessageId(file), file).toString());
         SessionHostSession host = new SessionHostSession(
-            info, events, new HeadlessTurnDriver(engine, events)::submit);
+            info, events, driver::submit);
         return new Assembled(host, engine, abort, projectPath);
+    }
+
+    /** One stable directory segment per distinct file name within a turn. */
+    private static String submissionMessageId(
+            SessionHostSubmission.Attachment file) {
+        String name = StringUtils.isBlank(file.fileName())
+            ? "remote" : file.fileName();
+        return name;
     }
 
     /** The permission gate for a headless session in {@code projectPath}. */

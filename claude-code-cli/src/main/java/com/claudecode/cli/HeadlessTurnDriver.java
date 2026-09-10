@@ -4,6 +4,7 @@ import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.turn.SessionEventHub;
 import com.claudecode.runtime.turn.TurnOutcome;
@@ -22,29 +23,41 @@ import java.util.concurrent.CompletionStage;
  * then drained on a virtual thread — an undrained iterator would stall the
  * turn — re-emitting every message through the session hub so protocol
  * projections and future mirrors observe the whole turn.
+ *
+ * <p>Inline images and file attachments ride the submission as
+ * {@link RemoteSubmissionPrompt} chips and {@code Attached file:} lines —
+ * the same assembly the TUI's remote path uses — so the engine treats a
+ * web-composed turn exactly like a TUI turn with pasted pictures.
  */
 final class HeadlessTurnDriver {
 
     private final QuerySession engine;
     private final SessionEventHub events;
+    private final RemoteSubmissionPrompt.FilePersister persister;
 
-    HeadlessTurnDriver(QuerySession engine, SessionEventHub events) {
+    HeadlessTurnDriver(QuerySession engine, SessionEventHub events,
+            RemoteSubmissionPrompt.FilePersister persister) {
         this.engine = engine;
         this.events = events;
+        this.persister = persister;
     }
 
     /** Runs one turn; the returned stage completes when the turn ends. */
     CompletionStage<Void> submit(SessionHostSubmission submission) {
-        String prompt = submission.prompt();
+        RemoteSubmissionPrompt assembled =
+            RemoteSubmissionPrompt.assemble(submission, persister);
+        String prompt = assembled.prompt();
         CompletableFuture<Void> done = new CompletableFuture<>();
         // Synchronous on the caller thread: the gateway's turn-scoped
         // subscription must observe onTurnStart before any message.
-        events.onTurnStart(UserInput.of(prompt, prompt, null, "default"));
+        events.onTurnStart(UserInput.of(prompt, prompt,
+            assembled.pasted().isEmpty() ? null : assembled.pasted(), "default"));
         Thread.ofVirtual().name("headless-turn", 0).start(() -> {
             boolean userCancel = false;
             try {
                 Iterator<SDKMessage> messages = engine.submission()
-                    .submitMessage(prompt, SubmitOptions.of("user"));
+                    .submitMessage(prompt, SubmitOptions.withPastedContents(
+                        "user", assembled.pasted()));
                 while (messages.hasNext()) {
                     SDKMessage message = messages.next();
                     if (message instanceof SDKMessage.Error(Exception error)) {
