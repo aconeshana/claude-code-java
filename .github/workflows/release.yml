@@ -90,6 +90,21 @@ jobs:
           echo "RELEASE_VERSION=${RAW#v}" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=${RAW}" >> "$GITHUB_ENV"
 
+      # buildWebui (see claude-code-app/build.gradle.kts) skips silently when
+      # pnpm is absent, packaging a webui-less binary instead of failing —
+      # install node/pnpm here so release binaries always carry the real UI.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: webui/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: webui/pnpm-lock.yaml
+
       - name: Build native binary
         run: |
           ./gradlew :claude-code-app:nativeReleaseCompile \
@@ -148,6 +163,18 @@ jobs:
           fi
           echo "RELEASE_VERSION=${RAW#v}" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=${RAW}" >> "$GITHUB_ENV"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: webui/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: webui/pnpm-lock.yaml
 
       - name: Build fat JAR
         run: |

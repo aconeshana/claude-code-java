@@ -131,10 +131,42 @@ val vendorCcConnect = distributionTarget.ccConnectTarget?.let { ccConnectTarget 
     }
 }
 
+// The webui React frontend (see webui/). Built by pnpm into webui/dist and
+// served by the gateway at /webui/**. The Gradle task only shells out to
+// pnpm when it is available; a machine without node/pnpm produces a JAR
+// without the bundle, and the gateway serves its "not packaged" landing page.
+val webuiDir = rootProject.layout.projectDirectory.dir("webui")
+val buildWebui = tasks.register<Exec>("buildWebui") {
+    group = "webui"
+    description = "Installs and builds the webui React frontend into webui/dist."
+    workingDir = webuiDir.asFile
+    // One shell invocation so the working directory stays put between steps.
+    commandLine("sh", "-c", "pnpm install --silent && pnpm build")
+    // Rebuild only when the sources change; node_modules and dist are both
+    // gitignored outputs of this task.
+    inputs.files(fileTree(webuiDir) {
+        include("package.json", "pnpm-lock.yaml", "index.html", "vite.config.ts",
+            "tsconfig.json", "UPSTREAM.md")
+        include("src/**")
+        include("vendor/**")
+    })
+    outputs.dir(webuiDir.dir("dist/webui"))
+    // Skip (rather than fail) where pnpm is absent — the JAR then packages
+    // without the bundle and the gateway explains that at runtime.
+    onlyIf {
+        val probe = ProcessBuilder("sh", "-c", "command -v pnpm >/dev/null 2>&1").start()
+        probe.waitFor() == 0
+    }
+}
+
 sourceSets.main {
     resources.exclude("native/README.md")
     resources.srcDir(vendorRipgrep)
     vendorCcConnect?.let { resources.srcDir(it) }
+    // The vite build emits dist/webui/** (the classpath prefix the gateway's
+    // static routes expect). srcDir wires the buildWebui dependency implicitly;
+    // when the task is skipped (no pnpm) the directory is simply empty.
+    resources.srcDir(webuiDir.dir("dist"))
 }
 
 dependencies {

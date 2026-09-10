@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
@@ -396,6 +397,59 @@ class GatewayServerInteropTest {
 
     private String url(String path) {
         return "http://127.0.0.1:" + server.port() + path;
+    }
+
+    @Test
+    @Timeout(20)
+    void staticRoutesServeWebuiIndexAndAssetsWithoutToken() throws Exception {
+        startServer();
+
+        // The landing page and bundled assets are unauthenticated by design:
+        // the shell carries no secrets and the token reaches the API calls
+        // through the landing URL's query parameter.
+        try (Response index = client.newCall(new Request.Builder()
+                .url(url("/")).build()).execute()) {
+            assertThat(index.code()).isEqualTo(200);
+            assertThat(index.header("Content-Type")).isEqualTo("text/html; charset=utf-8");
+            assertThat(index.body().string()).contains("webui-index");
+        }
+        try (Response aliased = client.newCall(new Request.Builder()
+                .url(url("/webui/")).build()).execute()) {
+            assertThat(aliased.code()).isEqualTo(200);
+            assertThat(aliased.body().string()).contains("webui-index");
+        }
+        try (Response asset = client.newCall(new Request.Builder()
+                .url(url("/webui/assets/app.css")).build()).execute()) {
+            assertThat(asset.code()).isEqualTo(200);
+            assertThat(asset.header("Content-Type")).isEqualTo("text/css; charset=utf-8");
+            assertThat(asset.body().string()).contains("--dsw-alias-label-primary");
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void staticRoutesRejectTraversalAndUnknownAssets() throws Exception {
+        startServer();
+
+        try (Response traversal = client.newCall(new Request.Builder()
+                .url(url("/webui/../../etc/passwd")).build()).execute()) {
+            // OkHttp normalizes dot segments before sending (/etc/passwd),
+            // which is not a static route, so the request reaches the API
+            // fallback unauthenticated: 401, never a file read. A raw
+            // traversal attempt that survived normalization would land on
+            // the static handler's 400.
+            assertThat(traversal.code()).isEqualTo(401);
+        }
+        try (Response missing = client.newCall(new Request.Builder()
+                .url(url("/webui/assets/nope.css")).build()).execute()) {
+            assertThat(missing.code()).isEqualTo(404);
+        }
+        // Non-GET verbs never hit the static handler.
+        try (Response post = client.newCall(new Request.Builder()
+                .url(url("/webui/index.html"))
+                .post(RequestBody.create(new byte[0], null)).build()).execute()) {
+            assertThat(post.code()).isEqualTo(401);
+        }
     }
 
     private void startServer() throws IOException {

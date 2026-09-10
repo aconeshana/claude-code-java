@@ -90,6 +90,35 @@ GitHub to obtain these bundled assets.
 `-Os` and writes to `claude-code-app/build/native/nativeReleaseCompile/`. Both
 variants use the same application classpath and generated platform resources.
 
+### Web UI (`webui/`)
+
+`webui/` is a standalone React + Vite frontend for the in-process gateway
+(`claude-code-gateway`), served at `/` and `/webui/**` once a session runs
+`/web`. It lives at the repository top level, outside the Gradle module graph
+declared in `settings.gradle.kts`.
+
+Local development runs against a live gateway with Vite's dev server and proxy:
+
+~~~bash
+cd webui
+pnpm install
+GATEWAY_PORT=<port from the /web command output> pnpm dev
+pnpm test     # vitest: store reducers, token handling, approval flow
+~~~
+
+The `claude-code-app:buildWebui` Gradle task runs `pnpm install && pnpm build`
+and wires `webui/dist` as a resource source directory for the `claude-code-app`
+JAR, so `shadowJar` and both native-image tasks package the compiled frontend
+automatically. The task probes for `pnpm` on the `PATH` and skips silently when
+absent — the resulting JAR or binary then falls back to a plain notice page at
+`/` instead of failing the build. CI (`.github/workflows/release.yml`) installs
+`pnpm`/Node via `pnpm/action-setup` and `actions/setup-node` before the build
+steps so release artifacts always carry the real UI.
+
+Native-image resource inclusion for `webui/**` is declared as a single glob in
+`claude-code-app/src/main/resources/META-INF/native-image/com.claudecode/claude-code-app/reachability-metadata.json`,
+following the same pattern used for the bundled ripgrep binaries.
+
 ## Run tests
 
 ~~~bash

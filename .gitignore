@@ -95,3 +95,8 @@ docs.local/
 # Renamed with the archive- prefix; kept on disk for history but no longer
 # tracked or maintained. New one-off docs get this prefix and are ignored.
 docs/archive-*.md
+
+# WebUI build outputs and dependencies (built via `pnpm build`, never committed)
+webui/node_modules/
+webui/dist/
+webui/*.tsbuildinfo

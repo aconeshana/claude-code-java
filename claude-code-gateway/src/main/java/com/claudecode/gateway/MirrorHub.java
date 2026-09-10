@@ -238,8 +238,14 @@ public final class MirrorHub {
             case SDKMessage.User user -> publishToolResults(sessionId, user);
             case SDKMessage.Progress progress -> publishProgress(sessionId, progress);
             case SDKMessage.System system -> {
+                String subtype = system.message().subtype();
+                String content = system.message().content();
+                if (content == null || Strings.CS.equalsAny(subtype,
+                        "system_init", "api_metrics", "thinking", "model_refusal_no_fallback")) {
+                    break;
+                }
                 ObjectNode payload = object();
-                payload.put("content", system.message().content());
+                payload.put("content", content);
                 payload.put("synthetic", true);
                 publish(sessionId, "output.text", payload);
             }

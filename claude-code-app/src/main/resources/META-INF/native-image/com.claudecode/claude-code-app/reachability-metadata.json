@@ -3548,6 +3548,9 @@
       "glob": "vendor/ripgrep/arm64-darwin/rg"
     },
     {
+      "glob": "webui/**"
+    },
+    {
       "module": "java.base",
       "glob": "jdk/internal/icu/impl/data/icudt76b/nfc.nrm"
     },

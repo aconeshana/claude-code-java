@@ -215,6 +215,13 @@ public final class GatewayServer implements AutoCloseable {
         String method = exchange.getRequestMethod();
         boolean get = Strings.CS.equals("GET", method);
         boolean post = Strings.CS.equals("POST", method);
+        // Static webui serving takes the GET paths the API never claims: the
+        // landing page and the bundle's /webui/** assets. Every API route
+        // below matches before this fallback runs, so the static handler sees
+        // only unmatched GETs.
+        if (get && GatewayStaticFiles.serveIfStatic(exchange)) {
+            return;
+        }
         // Long-lived SSE exchanges and the async sessions listing keep their
         // exchange open past this handler's return; every other exchange is
         // closed here.
@@ -359,7 +366,12 @@ public final class GatewayServer implements AutoCloseable {
         // on transcript reads. This handler owns the exchange lifecycle here —
         // the route dispatcher no longer closes it on return.
         Thread.ofVirtual().name("gateway-sessions-list").start(() -> {
-            try (exchange) {
+            // A plain try/finally, not try-with-resources: a fallback error
+            // response must still reach the wire from the catch block below,
+            // and try-with-resources closes the exchange in its own finally
+            // before that catch runs — closing the socket out from under the
+            // 500 write and producing an empty reply instead of an error body.
+            try {
                 respondJson(exchange, 200, sessionsBody().toString());
             } catch (IOException _) {
                 // The client disconnected mid-listing; nothing to recover.
@@ -370,6 +382,8 @@ public final class GatewayServer implements AutoCloseable {
                 } catch (IOException _) {
                     // Client already gone.
                 }
+            } finally {
+                exchange.close();
             }
         });
     }
@@ -394,16 +408,16 @@ public final class GatewayServer implements AutoCloseable {
                 for (GatewaySessionCatalogPort.SessionEntry entry : project.sessions()) {
                     ObjectNode sessionNode = JsonUtils.getMapper().createObjectNode();
                     sessionNode.put("id", entry.id());
-                    if (!entry.summary().isEmpty()) sessionNode.put("summary", entry.summary());
+                    if (hasText(entry.summary())) sessionNode.put("summary", entry.summary());
                     sessionNode.put("message_count", entry.messageCount());
                     sessionNode.put("modified_at", Instant.ofEpochMilli(
                         entry.lastModifiedMs()).toString());
-                    if (!entry.gitBranch().isEmpty()) sessionNode.put("git_branch", entry.gitBranch());
-                    if (!entry.cwd().isEmpty()) sessionNode.put("cwd", entry.cwd());
-                    if (!entry.customTitle().isEmpty()) {
+                    if (hasText(entry.gitBranch())) sessionNode.put("git_branch", entry.gitBranch());
+                    if (hasText(entry.cwd())) sessionNode.put("cwd", entry.cwd());
+                    if (hasText(entry.customTitle())) {
                         sessionNode.put("custom_title", entry.customTitle());
                     }
-                    if (!entry.firstPrompt().isEmpty()) {
+                    if (hasText(entry.firstPrompt())) {
                         sessionNode.put("first_prompt", entry.firstPrompt());
                     }
                     if (registry.isCurrent(entry.id())) sessionNode.put("active", true);
@@ -518,6 +532,11 @@ public final class GatewayServer implements AutoCloseable {
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(bytes);
         }
+    }
+
+    /** {@code SessionInfo}'s catalog-backed fields (summary, customTitle, ...) are nullable. */
+    private static boolean hasText(String value) {
+        return value != null && !value.isEmpty();
     }
 
     private static String errorBody(String code, String message) {
