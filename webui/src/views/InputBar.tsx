@@ -1,4 +1,19 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { LexicalComposer } from '@lexical/react/LexicalComposer'
+import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
+import { ContentEditable } from '@lexical/react/LexicalContentEditable'
+import { ClearEditorPlugin } from '@lexical/react/LexicalClearEditorPlugin'
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
+import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import {
+  $getRoot,
+  CLEAR_EDITOR_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
+  KEY_ENTER_COMMAND,
+  type EditorState,
+  type LexicalEditor,
+} from 'lexical'
 import { IconPlusOutline16, IconSendOutline16 } from '@primitives'
 import type { UserContentBlock } from '../api/types'
 import {
@@ -12,18 +27,17 @@ import {
 import { AttachmentStrip } from './AttachmentStrip'
 import css from '@chat-styles/InputBar.module.css'
 
-const MAX_INPUT_HEIGHT_PX = 200
-
 /**
  * Composer over the vendored dsh InputBar card (22px radius, input-major
- * fill, soft elevation). v1 uses a plain textarea — no Lexical editor —
- * submitting on Enter (Shift+Enter for a newline). The send control reuses
- * the vendored .primary circle (34px, info-fill blue, white glyph) rather
- * than the generic ui-primitives Button, matching figma 34:10465.
+ * fill, soft elevation), built on Lexical plain-text editing: paragraphs are
+ * <p> blocks exactly as the vendored .input CSS expects, Enter submits,
+ * Shift+Enter breaks a line, and IME composition is protected on the keydown
+ * edge. The send control reuses the vendored .primary circle (34px,
+ * info-fill blue, white glyph) matching figma 34:10465.
  *
  * Attachments: the vendored .add circle (figma + control) opens a file
- * picker; image pastes onto the textarea and drops onto the card land in
- * the same pending strip. On submit the text and attachments become one
+ * picker; image pastes onto the composer and drops onto the card land in the
+ * same pending strip. On submit the draft text and attachments become one
  * Anthropic content-block array (text + image/document base64 blocks).
  */
 export function InputBar({ disabled, placeholder, onSubmit }: {
@@ -31,21 +45,11 @@ export function InputBar({ disabled, placeholder, onSubmit }: {
   placeholder: string
   onSubmit: (content: string | readonly UserContentBlock[]) => void
 }) {
-  const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<readonly DraftAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [draftText, setDraftText] = useState('')
+  const editorRef = useRef<LexicalEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useLayoutEffect(() => {
-    // Plain <textarea> doesn't auto-grow; ConversationRoot's ResizeObserver
-    // republishes --dsh-composer-height off this element's box, so the
-    // back-to-bottom button's offset depends on this height tracking content.
-    const el = textareaRef.current
-    if (el == null) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT_PX)}px`
-  }, [draft])
 
   const addFiles = (files: readonly File[]): void => {
     if (files.length === 0) return
@@ -75,16 +79,24 @@ export function InputBar({ disabled, placeholder, onSubmit }: {
     setAttachments((current) => current.filter((a) => a.id !== id))
   }
 
-  const submit = (): void => {
-    if (disabled || !hasSubmittableContent(draft, attachments)) return
-    const text = draft.trim()
+  const submit = useCallback((): void => {
+    if (disabled || !hasSubmittableContent(draftText, attachments)) return
+    const text = draftText.trim()
     const content = attachments.length === 0
       ? text
       : buildContentBlocks(text, attachments)
-    setDraft('')
+    setDraftText('')
     setAttachments([])
     onSubmit(content)
-  }
+    editorRef.current?.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined)
+  }, [disabled, draftText, attachments, onSubmit])
+
+  const onChange = useCallback((state: EditorState, editor: LexicalEditor) => {
+    editorRef.current = editor
+    state.read(() => {
+      setDraftText($getRoot().getTextContent())
+    })
+  }, [])
 
   return (
     <div className={css.root}>
@@ -104,44 +116,37 @@ export function InputBar({ disabled, placeholder, onSubmit }: {
           <div className={css.notice} role="alert">{attachmentError}</div>
         )}
         <AttachmentStrip attachments={attachments} onRemove={removeAttachment} />
-        <div className={css.scroll}>
-          <textarea
-            ref={textareaRef}
-            className={css.input}
-            style={{
-              // The vendored .input styles the Lexical contenteditable; a
-              // textarea needs the same box metrics spelled out.
-              width: '100%',
-              boxSizing: 'border-box',
-              minHeight: 28,
-              maxHeight: MAX_INPUT_HEIGHT_PX,
-              resize: 'none',
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontFamily: 'inherit',
-              whiteSpace: 'pre-wrap',
-            }}
-            rows={1}
-            value={draft}
-            placeholder={placeholder}
-            disabled={disabled}
-            onChange={(event) => { setDraft(event.target.value) }}
-            onPaste={(event) => {
-              const files = filesFromTransfer(event.clipboardData)
-              if (files.length === 0) return
-              // Image pastes never insert the file name as text.
-              event.preventDefault()
-              addFiles(files)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault()
-                submit()
+        <LexicalComposer
+          initialConfig={{
+            namespace: 'ccj-composer',
+            onError(error) { throw error },
+          }}
+        >
+          <div className={css.grow}>
+            <PlainTextPlugin
+              contentEditable={
+                <ContentEditable
+                  className={css.input}
+                  style={{
+                    // The vendored .input styles the Lexical contenteditable;
+                    // this keeps the textarea-era box metrics contract with
+                    // ConversationRoot's ResizeObserver.
+                    boxSizing: 'border-box',
+                    minHeight: 28,
+                  }}
+                  ariaLabel="消息输入框"
+                />
               }
-            }}
-          />
-        </div>
+              placeholder={<span className={css.placeholder}>{placeholder}</span>}
+              ErrorBoundary={ComposerErrorBoundary}
+            />
+            <HistoryPlugin />
+            <ClearEditorPlugin />
+            <OnChangePlugin ignoreSelectionChange onChange={onChange} />
+            <SubmitKeyPlugin disabled={disabled} onSubmit={submit} />
+            <PasteFilesPlugin onFiles={addFiles} />
+          </div>
+        </LexicalComposer>
         <div className={css.row}>
           <div className={css.tools}>
             <button
@@ -163,7 +168,7 @@ export function InputBar({ disabled, placeholder, onSubmit }: {
             <button
               type="button"
               className={css.primary}
-              disabled={disabled || !hasSubmittableContent(draft, attachments)}
+              disabled={disabled || !hasSubmittableContent(draftText, attachments)}
               onClick={submit}
               aria-label="发送"
             >
@@ -185,6 +190,64 @@ export function InputBar({ disabled, placeholder, onSubmit }: {
       </div>
     </div>
   )
+}
+
+/** Lexical render crash surface: reraise so onError's contract holds. */
+function ComposerErrorBoundary({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
+}
+
+/**
+ * Enter submits (Shift+Enter inserts a newline via the default handler);
+ * IME composition never submits. The keydown confirming an IME candidate is
+ * also an Enter — submitting then would eat the candidate, so composing
+ * events pass through untouched.
+ */
+function SubmitKeyPlugin({ disabled, onSubmit }: {
+  disabled: boolean
+  onSubmit: () => void
+}) {
+  const [editor] = useLexicalComposerContext()
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event: KeyboardEvent | null) => {
+        if (event == null || disabled) return false
+        if (event.isComposing || event.keyCode === 229) return false
+        if (event.shiftKey) return false
+        event.preventDefault()
+        onSubmit()
+        return true
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    )
+  }, [editor, disabled, onSubmit])
+  return null
+}
+
+/**
+ * Intercepts file pastes (screenshots, dragged file copies) before the
+ * plain-text plugin can insert anything; text pastes flow through untouched.
+ */
+function PasteFilesPlugin({ onFiles }: { onFiles: (files: readonly File[]) => void }) {
+  const [editor] = useLexicalComposerContext()
+  useEffect(() => {
+    return editor.registerRootListener((root, previous) => {
+      const handlePaste = (event: ClipboardEvent): void => {
+        const files = filesFromTransfer(event.clipboardData)
+        if (files.length === 0) return
+        // Image pastes never insert the file name as text.
+        event.preventDefault()
+        onFiles(files)
+      }
+      previous?.removeEventListener('paste', handlePaste)
+      root?.addEventListener('paste', handlePaste)
+      return () => {
+        root?.removeEventListener('paste', handlePaste)
+      }
+    })
+  }, [editor, onFiles])
+  return null
 }
 
 /** Revokes preview URLs for drafts that never made it into the strip. */
