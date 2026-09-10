@@ -26,6 +26,7 @@ import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.metrics.SessionMetricsEvent;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
+import com.claudecode.core.model.ModelNames;
 import com.claudecode.runtime.metrics.SessionMetricsTracker;
 import com.claudecode.core.prompt.SystemPromptConfig;
 import com.claudecode.core.prompt.SystemPromptConstants;
@@ -776,20 +777,24 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         forkMessages.add(new UserMessage(
             UUID.randomUUID().toString(), MessageContent.ofText(compactPrompt)));
         String claudeMdContext = QueryHelpers.buildClaudeMdUserContext(this);
+        // config.model() may still hold a bare alias (e.g. "sonnet") set by
+        // /model — the main query loop resolves this via
+        // QueryHelpers.resolveRuntimeModel, but this fork bypasses that path.
+        String resolvedModel = ModelNames.parseUserSpecifiedModel(config.model());
         List<StreamingClient.StreamRequest.RequestMessage> requestMessages =
             QueryHelpers.buildRequestMessages(
-                this, forkMessages, claudeMdContext, config.model(), List.of());
+                this, forkMessages, claudeMdContext, resolvedModel, List.of());
         ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(
-            this, config.model());
-        List<StreamingClient.StreamRequest.ToolDef> toolDefs = ToolSearchGate.isEnabled(config.model())
+            this, resolvedModel);
+        List<StreamingClient.StreamRequest.ToolDef> toolDefs = ToolSearchGate.isEnabled(resolvedModel)
             ? config.toolExecutor().getToolDefinitions(
                 ToolSearchGate.extractDiscoveredToolNames(forkMessages), toolPromptContext)
             : config.toolExecutor().getToolDefinitions(toolPromptContext);
         String effortValue = getEffortOverride() != null
             ? getEffortOverride() : config.effortValue();
-        String resolvedEffort = EffortHelpers.resolveAppliedEffort(config.model(), effortValue);
+        String resolvedEffort = EffortHelpers.resolveAppliedEffort(resolvedModel, effortValue);
         return new StreamingClient.StreamRequest(
-            config.model(), config.maxTokens(), fetchSystemPromptParts(), requestMessages,
+            resolvedModel, config.maxTokens(), fetchSystemPromptParts(), requestMessages,
             true, toolDefs, null, resolvedEffort, config.fallbackModel(), null, null,
             null, null, config.isThinkingEnabled(), getSessionId(), config.agentId(),
             true, "compact", getAbortController());
