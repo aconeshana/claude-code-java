@@ -13,7 +13,6 @@ import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
-import com.claudecode.core.message.AttachmentRenderer;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.SDKMessage;
@@ -946,8 +945,10 @@ class TurnEngineTest {
             if (m instanceof SDKMessage.User u) emitted.add(u.message().message().text());
         });
 
-        assertEquals(List.of(AttachmentRenderer.wrapQueuedCommandText(
-            "typed while busy", "prompt", null)), emitted);
+        // Prompt-mode drains emit the raw text to the UI/transcript; only the
+        // engine-internal API history gets the wrapped preamble — see
+        // feedback-echo-vs-api-content-two-streams.md.
+        assertEquals(List.of("typed while busy"), emitted);
         assertEquals(0, qe.getMessageQueue().size(), "the mid-turn drain consumed the prompt");
     }
 

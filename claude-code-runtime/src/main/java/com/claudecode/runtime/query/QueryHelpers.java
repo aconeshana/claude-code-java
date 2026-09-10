@@ -328,16 +328,33 @@ final class QueryHelpers {
             // preamble. The attachment-service 'queued_commands' provider is
             // intentionally NOT registered (QueryLoop already drains the same
             // queue here) to avoid double-emitting.
+            //
+            // Two distinct messages, mirroring query.ts's split between the raw
+            // 'attachment' stored in history/transcript and wrapCommandText's
+            // wire-only wrapping applied at request-serialization time: the API
+            // gets the wrapped text so the model reacts to it immediately, but the
+            // UI/transcript must show only what the user actually typed — see
+            // feedback-echo-vs-api-content-two-streams.md.
+            Instant now = Instant.now();
             String wrapped = AttachmentRenderer.wrapQueuedCommandText(cmd.text(), cmd.mode(), cmd.originKind());
-            UserMessage msg = new UserMessage(
+            UserMessage apiMsg = new UserMessage(
                 UUID.randomUUID().toString(),
                 MessageContent.ofText(wrapped),
                 cmd.isMeta(),
-                false, null, MessageOrigin.USER, null, Instant.now(), null, null,
+                false, null, MessageOrigin.USER, null, now, null, null,
                 engine.getSessionId(), null);
-            engine.getMutableMessages().add(msg);
-            emit.accept(new SDKMessage.User(msg));
-            recordTranscript(engine, msg);
+            engine.getMutableMessages().add(apiMsg);
+
+            UserMessage displayMsg = Strings.CS.equals("prompt", cmd.mode())
+                ? new UserMessage(
+                    UUID.randomUUID().toString(),
+                    MessageContent.ofText(cmd.text()),
+                    cmd.isMeta(),
+                    false, null, MessageOrigin.USER, null, now, null, null,
+                    engine.getSessionId(), null)
+                : apiMsg;
+            emit.accept(new SDKMessage.User(displayMsg));
+            recordTranscript(engine, displayMsg);
         }
     }
 

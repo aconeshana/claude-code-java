@@ -87,8 +87,10 @@ class QueryHelpersAgentRoutingTest {
         // the sub-2 notification on the shared queue for that sub-agent's loop.
         List<String> mainEmitted = new ArrayList<>();
         QueryHelpers.drainQueuedCommands(main, collecting(mainEmitted));
-        assertEquals(List.of(AttachmentRenderer.wrapQueuedCommandText(
-            "hello from main", "prompt", null)), mainEmitted);
+        // Prompt-mode drains emit the raw text to the UI/transcript; only the
+        // engine-internal API history gets the wrapped preamble — see
+        // feedback-echo-vs-api-content-two-streams.md.
+        assertEquals(List.of("hello from main"), mainEmitted);
         assertEquals(1, queue.size());
         assertTrue(queue.peek(c -> Strings.CS.equals("sub-2", c.agentId())) != null,
             "sub-2's notification is left for the sub-2 engine");
@@ -108,8 +110,8 @@ class QueryHelpersAgentRoutingTest {
 
         // Coordinator took only its own NEXT prompt; the sub-1 LATER notification
         // was NOT pulled into the main session (would otherwise corrupt routing).
-        assertEquals(List.of(AttachmentRenderer.wrapQueuedCommandText(
-            "hello from main", "prompt", null)), emitted);
+        // Prompt-mode drains emit the raw text, not the API-only wrapped preamble.
+        assertEquals(List.of("hello from main"), emitted);
         List<QueuedCommand> remaining = queue.dequeueAllMatching(_ -> true);
         assertEquals(1, remaining.size());
         assertEquals("sub-1", remaining.getFirst().agentId());
