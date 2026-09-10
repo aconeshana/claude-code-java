@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/webui/favicon.svg" />
+    <title>Claude Code</title>
+  </head>
+  <body>
+    <script>
+      // Theme bootstrap (vendored logic from dsh ui-theme boot-theme.ts):
+      // resolve the stored preference before first paint so the shell never
+      // flashes the wrong theme. Runs inline, before the module bundle.
+      ;(() => {
+        let preference = 'system'
+        let fontSize = 14
+        try {
+          const raw = localStorage.getItem('webui-theme')
+          if (raw != null) {
+            const parsed = JSON.parse(raw)
+            if (parsed != null && typeof parsed === 'object') {
+              if (parsed.preference === 'light' || parsed.preference === 'dark'
+                || parsed.preference === 'system') preference = parsed.preference
+              if (Number.isInteger(parsed.fontSize)
+                && parsed.fontSize >= 12 && parsed.fontSize <= 17) fontSize = parsed.fontSize
+            }
+          }
+        } catch { /* corrupt storage keeps the defaults */ }
+        const systemDark = preference === 'system'
+          && typeof matchMedia !== 'undefined'
+          && matchMedia('(prefers-color-scheme: dark)').matches
+        const dark = preference === 'dark' || systemDark
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        document.body.toggleAttribute('data-ds-dark-theme', dark)
+        document.body.style.setProperty('--dsh-content-font-size', `${fontSize}px`)
+        document.body.style.setProperty('--dsh-content-font-delta', `${fontSize - 14}px`)
+      })()
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+/*
+ * Height-chain reset for the app shell. The vendored dsh component CSS
+ * (AppFrame/SidebarRoot/ConversationRoot .root rules) all use `height: 100%`
+ * and expects an ancestor with a real height — the upstream app supplies
+ * that via its own global reset, which was not part of the vendored file
+ * set. Without it, the frame collapses to its content height and the
+ * viewport below shows bare body background.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
