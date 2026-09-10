@@ -58,8 +58,8 @@ agent sdk、以非交互式方式启动。
 
 升级buddy为pokemon系统，**38 种宝可梦等你来抽**。
 
-<!-- 媒体位 4：宝可梦孵化 / 进化演示 -->
-<video src="docs/acceptance-assets/pokemon-hatch-evolve.mp4" controls style="max-width: 100%;"></video>
+<!-- 媒体位 4：宝可梦孵化 / 进化演示（GitHub 只渲染附件通道的 video；仓库相对路径的 <video> 会被 sanitizer 剥掉） -->
+<video src="https://github.com/user-attachments/assets/10bcc7b6-8a26-48af-a406-6b5e87df5a12" controls style="max-width: 100%;"></video>
 
 ### 5. 项目菜单与跨项目 resume
 
