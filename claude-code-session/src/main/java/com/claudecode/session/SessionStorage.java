@@ -781,8 +781,7 @@ public class SessionStorage {
             trySetPosix(parent, DIR_PERMS);
         }
         boolean isNew = !Files.exists(sessionFile);
-        Files.writeString(sessionFile, json + "\n", StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        TranscriptAppender.append(sessionFile, json + "\n");
         try {
             appendListener.accept(sessionFile, node.deepCopy());
         } catch (RuntimeException e) {

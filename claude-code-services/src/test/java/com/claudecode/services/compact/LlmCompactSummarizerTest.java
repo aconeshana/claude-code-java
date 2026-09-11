@@ -407,4 +407,92 @@ class LlmCompactSummarizerTest {
         assertNull(result.text());
         assertEquals(Usage.EMPTY, result.usage());
     }
+
+    /**
+     * The compact prompt threatens that tool calls "will be REJECTED and will waste your only
+     * turn". The original makes that true with a deny-all {@code canUseTool}; this port never runs
+     * an execution loop on the fork, so the threat holds by construction — but the wasted turn used
+     * to arrive as an empty summary and be reported to the user as a network interruption.
+     */
+    @Test
+    void aTurnSpentOnToolCallsFailsWithTheRealReasonInsteadOfLookingLikeAnEmptyResponse() {
+        StreamingClient toolCalling = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                return List.<StreamingEvent>of(
+                    new StreamingEvent.MessageStartEvent(
+                        "msg-compact", request.model(), List.of(), Usage.EMPTY),
+                    new StreamingEvent.ContentBlockStartEvent(0, "tool_use", "tu-1", "Read"),
+                    new StreamingEvent.ContentBlockStopEvent(0),
+                    new StreamingEvent.MessageDeltaEvent("tool_use", Usage.EMPTY),
+                    new StreamingEvent.MessageStopEvent()
+                ).iterator();
+            }
+
+            @Override
+            public String getModel() {
+                return "fake";
+            }
+        };
+        QuerySessionSpec config = QuerySessionSpec.builder()
+            .llmClient(toolCalling)
+            .model("claude-opus-5")
+            .systemPrompt("sys")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .tools(List.of("Read"))
+            .sessionIdentity(SessionIdentity.of("session-tooluse"))
+            .build();
+        DefaultQuerySession engine = new DefaultQuerySession(config);
+        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(toolCalling, () -> engine);
+
+        CompactException failure = assertThrows(CompactException.class, () ->
+            summarizer.summarizeWithUsage(
+                List.of(new UserMessage("u1", MessageContent.ofText("hello"))), "COMPACT PROMPT"));
+
+        assertTrue(Strings.CS.contains(failure.getMessage(), "calling tools"), failure.getMessage());
+        assertTrue(Strings.CS.contains(failure.getMessage(), "Read"),
+            "the offending tool must be named so the failure is diagnosable: " + failure.getMessage());
+    }
+
+    /** Text alongside a tool call is still a usable summary — only a text-free turn is a failure. */
+    @Test
+    void textIsStillAcceptedWhenTheModelAlsoRequestedATool() {
+        StreamingClient mixed = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                return List.<StreamingEvent>of(
+                    new StreamingEvent.MessageStartEvent(
+                        "msg-compact", request.model(), List.of(), Usage.EMPTY),
+                    new StreamingEvent.ContentBlockStartEvent(0, "text", null, null),
+                    new StreamingEvent.ContentBlockDeltaEvent(0, "text_delta", "<summary>x</summary>"),
+                    new StreamingEvent.ContentBlockStopEvent(0),
+                    new StreamingEvent.ContentBlockStartEvent(1, "tool_use", "tu-1", "Read"),
+                    new StreamingEvent.ContentBlockStopEvent(1),
+                    new StreamingEvent.MessageStopEvent()
+                ).iterator();
+            }
+
+            @Override
+            public String getModel() {
+                return "fake";
+            }
+        };
+        QuerySessionSpec config = QuerySessionSpec.builder()
+            .llmClient(mixed)
+            .model("claude-opus-5")
+            .systemPrompt("sys")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .tools(List.of("Read"))
+            .sessionIdentity(SessionIdentity.of("session-mixed"))
+            .build();
+        DefaultQuerySession engine = new DefaultQuerySession(config);
+        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(mixed, () -> engine);
+
+        CompactSummarizer.SummaryResult result = summarizer.summarizeWithUsage(
+            List.of(new UserMessage("u1", MessageContent.ofText("hello"))), "COMPACT PROMPT");
+
+        assertEquals("<summary>x</summary>", result.text());
+    }
 }

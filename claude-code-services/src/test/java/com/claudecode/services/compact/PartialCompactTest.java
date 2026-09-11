@@ -16,7 +16,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactFromDirection() {
-        CompactSummarizer summarizer = (_, _) -> "Summary of compacted messages";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary of compacted messages");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
 
@@ -35,7 +35,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactUpToDirection() {
-        CompactSummarizer summarizer = (_, _) -> "Summary of compacted messages";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary of compacted messages");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
 
@@ -53,7 +53,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactFromPreservesEarlierBoundaryAndSummary() {
-        CompactSummarizer summarizer = (_, _) -> "Summary of compacted messages";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary of compacted messages");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
         SystemMessage oldBoundary = new SystemMessage(
@@ -75,7 +75,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactUpToRemovesStaleBoundaryAndSummaryFromKeptTail() {
-        CompactSummarizer summarizer = (_, _) -> "Summary of compacted messages";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary of compacted messages");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
         UserMessage compacted = new UserMessage("compacted", MessageContent.ofText("old"));
@@ -98,7 +98,7 @@ class PartialCompactTest {
         AtomicReference<List<String>> summarized = new AtomicReference<>();
         CompactSummarizer summarizer = (messages, _) -> {
             summarized.set(messages.stream().map(Message::uuid).toList());
-            return "Summary";
+            return SummaryFixtures.asModelSummary("Summary");
         };
         CompactService service = new CompactService(
             TokenEstimator.getInstance(), summarizer, true);
@@ -115,7 +115,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactWritesThe197BoundaryMetadataAndLogicalParent() {
-        CompactSummarizer summarizer = (_, _) -> "Summary";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary");
         CompactService service = new CompactService(
             TokenEstimator.getInstance(), summarizer, true);
         List<Message> messages = createTestMessages(6);
@@ -144,7 +144,7 @@ class PartialCompactTest {
     @Test
     void partialCompactBoundaryRetainsPreCompactDiscoveredTools() {
         CompactService service = new CompactService(
-            TokenEstimator.getInstance(), (_, _) -> "Summary", true);
+            TokenEstimator.getInstance(), (_, _) -> SummaryFixtures.asModelSummary("Summary"), true);
         UserMessage discovery = new UserMessage(
             "discovery", MessageContent.ofToolResult(
                 "search", List.of(new ToolReferenceBlock("mcp__wire__lookup")), false));
@@ -159,7 +159,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactSummaryCarriesThe197UiMetadata() {
-        CompactSummarizer summarizer = (_, _) -> "Summary";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary");
         CompactService service = new CompactService(
             TokenEstimator.getInstance(), summarizer, true);
         List<Message> messages = createTestMessages(6);
@@ -188,7 +188,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactAnnotatesBoundaryWithPreservedSegment() {
-        CompactSummarizer summarizer = (_, _) -> "Summary of compacted messages";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("Summary of compacted messages");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
         List<Message> messages = createTestMessages(6);
@@ -252,7 +252,7 @@ class PartialCompactTest {
     @Test
     void partialCompactUpToFirstMessageUsesThe197NothingToSummarizeError() {
         CompactService service = new CompactService(
-            TokenEstimator.getInstance(), (_, _) -> "Summary", true);
+            TokenEstimator.getInstance(), (_, _) -> SummaryFixtures.asModelSummary("Summary"), true);
 
         CompactException failure = assertThrows(CompactException.class, () ->
             service.partialCompactConversation(createTestMessages(3), 0, "up_to", null));
@@ -291,7 +291,7 @@ class PartialCompactTest {
     @Test
     void successfulPartialCompactResetsPostCompactionState() {
         CompactService service = new CompactService(
-            TokenEstimator.getInstance(), (_, _) -> "Summary", true);
+            TokenEstimator.getInstance(), (_, _) -> SummaryFixtures.asModelSummary("Summary"), true);
         ThinkingClearLatch.trip();
         service.suppressCompactWarning();
 
@@ -366,7 +366,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactAndAssemble_fromDirection_appendsSummaryAfterKept() {
-        CompactSummarizer summarizer = (_, _) -> "SUMMARY";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("SUMMARY");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
 
@@ -386,7 +386,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactAndAssemble_upToDirection_prependsSummaryBeforeKept() {
-        CompactSummarizer summarizer = (_, _) -> "SUMMARY";
+        CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("SUMMARY");
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), summarizer, true);
 

@@ -55,7 +55,7 @@ class ReactiveAutoCompactTest {
                 if (summarized.size() == 1) {
                     throw new ApiException(MEDIA_API_ERROR, 400);
                 }
-                return new SummaryResult("media retry summary", Usage.EMPTY);
+                return new SummaryResult(SummaryFixtures.asModelSummary("media retry summary"), Usage.EMPTY);
             }
         };
         CompactService service = new CompactService(TokenEstimator.getInstance(), summarizer, true);
@@ -63,7 +63,7 @@ class ReactiveAutoCompactTest {
         MessageCompactor.CompactionResult result = service.compactConversation(
             reactiveMessagesWithOldImage(), true, null, "claude-sonnet-4-6");
 
-        assertEquals("media retry summary", result.rawSummary());
+        assertEquals(SummaryFixtures.asModelSummary("media retry summary"), result.rawSummary());
         assertEquals(2, summarized.size());
         assertTrue(hasImage(summarized.getFirst()),
             "released 2.1.197 sends the original media on the first reactive attempt");
@@ -86,7 +86,7 @@ class ReactiveAutoCompactTest {
                 if (summarized.size() <= 2) {
                     throw new ApiException(MEDIA_API_ERROR, 400);
                 }
-                return new SummaryResult("generic media retry summary", Usage.EMPTY);
+                return new SummaryResult(SummaryFixtures.asModelSummary("generic media retry summary"), Usage.EMPTY);
             }
         };
         CompactService service = new CompactService(TokenEstimator.getInstance(), summarizer, true);
@@ -94,7 +94,7 @@ class ReactiveAutoCompactTest {
         MessageCompactor.CompactionResult result = service.compactConversation(
             reactiveMessagesWithOldImage(), true, null, "claude-sonnet-4-6");
 
-        assertEquals("generic media retry summary", result.rawSummary());
+        assertEquals(SummaryFixtures.asModelSummary("generic media retry summary"), result.rawSummary());
         assertEquals(3, summarized.size());
         assertTrue(hasImage(summarized.getFirst()));
         assertTrue(hasText(summarized.get(1), RELEASED_IMAGE_PLACEHOLDER));
@@ -138,7 +138,7 @@ class ReactiveAutoCompactTest {
             public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
                 summarized.add(List.copyOf(messages));
                 if (summarized.size() == 1) throw new ApiException(MEDIA_API_ERROR, 400);
-                return new SummaryResult("latest carrier summary", Usage.EMPTY);
+                return new SummaryResult(SummaryFixtures.asModelSummary("latest carrier summary"), Usage.EMPTY);
             }
         };
         CompactService service = new CompactService(TokenEstimator.getInstance(), summarizer, true);
@@ -179,7 +179,7 @@ class ReactiveAutoCompactTest {
                 attempts[0]++;
                 return attempts[0] <= 4
                     ? CompactService.PROMPT_TOO_LONG_MARKER + ": deterministic"
-                    : "summary after four reactive retries";
+                    : SummaryFixtures.asModelSummary("summary after four reactive retries");
             }
         };
         CompactService service = new CompactService(TokenEstimator.getInstance(), summarizer, true);
@@ -194,7 +194,7 @@ class ReactiveAutoCompactTest {
         MessageCompactor.CompactionResult result = service.compactConversation(
             messages, true, null, "claude-sonnet-4-6");
 
-        assertEquals("summary after four reactive retries", result.rawSummary());
+        assertEquals(SummaryFixtures.asModelSummary("summary after four reactive retries"), result.rawSummary());
         assertEquals(5, attempts[0],
             "released reactive compact is bounded by API-round groups, not the traditional 3-retry cap");
     }
@@ -227,13 +227,13 @@ class ReactiveAutoCompactTest {
             @Override
             public String summarize(List<Message> messages, String compactPrompt) {
                 summarized.add(List.copyOf(messages));
-                return "reactive summary";
+                return SummaryFixtures.asModelSummary("reactive summary");
             }
 
             @Override
             public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
                 summarized.add(List.copyOf(messages));
-                return new SummaryResult("reactive summary", new Usage(500, 20, 0, 0));
+                return new SummaryResult(SummaryFixtures.asModelSummary("reactive summary"), new Usage(500, 20, 0, 0));
             }
         };
         CompactService service = new CompactService(TokenEstimator.getInstance(), summarizer, true);

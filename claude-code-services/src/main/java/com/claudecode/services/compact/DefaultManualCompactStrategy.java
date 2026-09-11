@@ -107,6 +107,12 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
                 "Compaction interrupted · This may be due to network issues — please try again.");
         }
 
+        if (!CompactService.containsSummarySection(summary)) {
+            throw new CompactException(
+                "Compaction failed · the model answered without a summary section — "
+                    + "the conversation is unchanged, please try again.");
+        }
+
         // Create compact_boundary marker
         String compactType = isAutoCompact ? "auto" : "manual";
         SystemMessage boundaryMarker = CompactService.createCompactBoundaryMarker(

@@ -319,7 +319,7 @@ class CompactServiceTest {
 
         @Test
         void compactSummaryIncludesReplayableTranscriptPath() {
-            CompactSummarizer noOp = (_, _) -> "summary body";
+            CompactSummarizer noOp = (_, _) -> SummaryFixtures.asModelSummary("summary body");
             CompactService svc = new CompactService(TokenEstimator.getInstance(), noOp, true);
             svc.setSessionIdentity(SessionIdentity.of("session-197"));
 
@@ -429,7 +429,7 @@ class CompactServiceTest {
                 if (callCount[0] == 1) {
                     return CompactService.PROMPT_TOO_LONG_MARKER;
                 }
-                return "Summary of conversation";
+                return SummaryFixtures.asModelSummary("Summary of conversation");
             };
 
             CompactService svc = new CompactService(TokenEstimator.getInstance(), retrySummarizer, true);
@@ -522,7 +522,7 @@ class CompactServiceTest {
 
         @Test
         void summaryMessage_wrapsInSessionContinuationTemplate() {
-            CompactSummarizer summarizer = (_, _) -> "the raw summary";
+            CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("the raw summary");
             CompactService svc = new CompactService(TokenEstimator.getInstance(), summarizer, true);
             UserMessage u1 = simpleUserMessage("u1", "Hello");
 
@@ -548,7 +548,7 @@ class CompactServiceTest {
 
         @Test
         void rawSummary_surfacesUnwrappedTextForHookPayload() {
-            CompactSummarizer summarizer = (_, _) -> "the raw summary";
+            CompactSummarizer summarizer = (_, _) -> SummaryFixtures.asModelSummary("the raw summary");
             CompactService svc = new CompactService(TokenEstimator.getInstance(), summarizer, true);
             UserMessage u1 = simpleUserMessage("u1", "Hello");
 
@@ -556,7 +556,8 @@ class CompactServiceTest {
 
 
             // executePostCompactHooks as compact_summary.
-            assertEquals("the raw summary", result.summaryText());
+            assertEquals(SummaryFixtures.asModelSummary("the raw summary"), result.summaryText(),
+                "the hook payload carries the model response verbatim, markup included");
         }
 
         @Test
@@ -568,7 +569,7 @@ class CompactServiceTest {
                 @Override
                 public String summarize(List<Message> msgs, String prompt) {
                     seen.add(List.copyOf(msgs));
-                    return "second summary";
+                    return SummaryFixtures.asModelSummary("second summary");
                 }
             };
             CompactService svc = new CompactService(TokenEstimator.getInstance(), capturing, true);
@@ -612,12 +613,12 @@ class CompactServiceTest {
             CompactSummarizer summarizer = new CompactSummarizer() {
                 @Override
                 public String summarize(List<Message> messages, String compactPrompt) {
-                    return "summary text";
+                    return SummaryFixtures.asModelSummary("summary text");
                 }
 
                 @Override
                 public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
-                    return new SummaryResult("summary text", usage);
+                    return new SummaryResult(SummaryFixtures.asModelSummary("summary text"), usage);
                 }
             };
             CompactService svc = new CompactService(TokenEstimator.getInstance(), summarizer, true);
@@ -811,7 +812,8 @@ class CompactServiceTest {
         void summarizeHandlesEmptyList() {
             NoOpCompactSummarizer noOp = new NoOpCompactSummarizer();
             String summary = noOp.summarize(List.of(), "prompt");
-            assertEquals("", summary);
+            assertEquals(SummaryFixtures.asModelSummary(""), summary,
+                "even an empty join is shaped like a model summary so validation accepts it");
         }
     }
 

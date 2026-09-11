@@ -1,6 +1,7 @@
 package com.claudecode.services.compact;
 
 import com.claudecode.core.annotation.CacheTier;
+import com.claudecode.core.annotation.Explanation;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -19,6 +20,7 @@ import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.serialization.JsonUtils;
@@ -33,6 +35,14 @@ import java.util.function.Supplier;
 /**
  * {@link CompactSummarizer} backed by a real model call.
  */
+@Explanation("""
+    The original runs compaction as a real forked query (maxTurns:1) and therefore has to install \
+    a deny-all canUseTool that answers every call with "Tool use is not allowed during \
+    compaction". This port consumes the fork as a plain text stream with no execution loop, so \
+    tool calls cannot run at all and the deny-all has nothing to intercept. What the original \
+    gets for free and this port had to add explicitly is the diagnosis: a turn spent on tool \
+    calls used to surface as an empty summary, which the caller then reported as a network \
+    interruption.""")
 public final class LlmCompactSummarizer implements CompactSummarizer {
 
 
@@ -172,6 +182,7 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
         StringBuilder text = new StringBuilder();
         Usage usage = Usage.EMPTY;
         boolean sawContentBlock = false;
+        List<String> requestedTools = new ArrayList<>();
         while (stream.hasNext()) {
             StreamingClient.StreamingEvent event = stream.next();
             switch (event) {
@@ -186,12 +197,18 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
                         for (ContentBlock block : start.content()) {
                             if (block instanceof TextBlock(String text1) && text1 != null) {
                                 text.append(text1);
+                            } else if (block instanceof ToolUseBlock toolUse) {
+                                requestedTools.add(toolUse.name());
                             }
                         }
                     }
                 }
-                case StreamingClient.StreamingEvent.ContentBlockStartEvent _ ->
+                case StreamingClient.StreamingEvent.ContentBlockStartEvent start -> {
                     sawContentBlock = true;
+                    if (Strings.CS.endsWith(start.type(), "tool_use")) {
+                        requestedTools.add(StringUtils.defaultIfBlank(start.name(), start.type()));
+                    }
+                }
                 case StreamingClient.StreamingEvent.ContentBlockDeltaEvent delta -> {
                     if (Strings.CS.equals("text_delta", delta.deltaType()) && delta.deltaText() != null) {
                         text.append(delta.deltaText());
@@ -211,6 +228,11 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
         if (!sawContentBlock) {
             throw new CompactException(
                 "no assistant message in summarization response", usage);
+        }
+        if (text.isEmpty() && !requestedTools.isEmpty()) {
+            throw new CompactException(
+                "summarization turn was spent calling tools instead of writing a summary: "
+                    + String.join(", ", requestedTools), usage);
         }
         return new SummaryResult(text.isEmpty() ? null : text.toString(), usage);
     }

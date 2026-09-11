@@ -958,6 +958,31 @@ public class CompactService implements MessageCompactor {
         return sb.toString();
     }
 
+    private static final Pattern SUMMARY_SECTION = Pattern.compile("(?s)<summary>.*?</summary>");
+
+    private static final Pattern SUMMARY_HEADER = Pattern.compile("(?m)^\\s*Summary:");
+
+    /**
+     * Reports whether the model actually produced the summary section the compact prompt asks for.
+     *
+     * <p>A well-formed response carries a {@code <summary>} block; a response that has already been
+     * run through {@link #formatCompactSummary} carries the rewritten {@code Summary:} header
+     * instead. Anything else — most importantly a refusal, which is non-blank, free of API-error
+     * markers, and therefore invisible to every other check — is not a summary.
+     */
+    @Explanation("""
+        The original only rejects empty or API-error responses, so a refusal is persisted as \
+        isCompactSummary and silently replaces the conversation. Session ccc8a914 lost four days \
+        of history that way: after two genuine prompt injections, the model classified the \
+        compaction prompt itself as a third one and answered with a 1467-character refusal. \
+        Replaying the check over that session's 56 stored summaries rejects exactly two — the \
+        refusal and one summary cut off mid-sentence with no closing tag, whose raw <summary> tag \
+        the formatter had already leaked into the next context for the same reason.""")
+    static boolean containsSummarySection(String summary) {
+        if (StringUtils.isBlank(summary)) return false;
+        return SUMMARY_SECTION.matcher(summary).find() || SUMMARY_HEADER.matcher(summary).find();
+    }
+
     /**
      * Strips the {@code <analysis>} drafting scratchpad and replaces the {@code <summary>} XML tags
      * with a readable {@code Summary:} header.

@@ -7,8 +7,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -311,16 +309,9 @@ public final class SessionOperationsService {
             new SessionOperationException(dir == null
                 ? "Session " + sessionId + " not found in any project directory"
                 : "Session " + sessionId + " not found in project directory for " + dir));
-        byte[] bytes = (entry.toString() + "\n").getBytes(StandardCharsets.UTF_8);
-        try (FileChannel channel = FileChannel.open(target.file(), StandardOpenOption.WRITE,
-                StandardOpenOption.APPEND)) {
-            if (channel.size() <= 0) throw new SessionOperationException("Session " + sessionId + " not found");
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) {
-// write advances buffer.position; the loop condition is the
-                // authoritative partial-write check.
-                //noinspection ResultOfMethodCallIgnored
-                channel.write(buffer);
+        try {
+            if (!TranscriptAppender.appendToExisting(target.file(), entry.toString() + "\n")) {
+                throw new SessionOperationException("Session " + sessionId + " not found");
             }
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);

@@ -49,6 +49,13 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CompactCommandTest {
 
+    /**
+     * What a real summarizer returns: the compact prompt asks for a {@code <summary>} block, and
+     * compaction rejects a response without one so a refusal can never replace the conversation.
+     */
+    private static final String MODEL_SUMMARY =
+        "<summary>\nSummary of the conversation.\n</summary>";
+
     private static final class AbortAwareStreamingClient implements StreamingClient {
         boolean called;
 
@@ -61,7 +68,7 @@ class CompactCommandTest {
                     "compact-message", request.model(), List.of(), Usage.EMPTY),
                 new StreamingEvent.ContentBlockStartEvent(0, "text", null, null),
                 new StreamingEvent.ContentBlockDeltaEvent(
-                    0, "text_delta", "Summary of the conversation."),
+                    0, "text_delta", MODEL_SUMMARY),
                 new StreamingEvent.ContentBlockStopEvent(0),
                 new StreamingEvent.MessageDeltaEvent("end_turn", Usage.EMPTY),
                 new StreamingEvent.MessageStopEvent()
@@ -83,7 +90,7 @@ class CompactCommandTest {
         public String summarize(List<Message> messages, String compactPrompt) {
             lastMessages = List.copyOf(messages);
             lastPrompt = compactPrompt;
-            return "Summary of the conversation.";
+            return MODEL_SUMMARY;
         }
     }
 
@@ -96,7 +103,7 @@ class CompactCommandTest {
         @Override
         public CompactSummarizer.SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
             lastPrompt = compactPrompt;
-            return new CompactSummarizer.SummaryResult("Summary of the conversation.", usage);
+            return new CompactSummarizer.SummaryResult(MODEL_SUMMARY, usage);
         }
     }
 
@@ -476,7 +483,8 @@ class CompactCommandTest {
             ctx(compactService, hooks, someMessages(), _ -> {}), "");
 
         assertTrue(hooks.postCalled);
-        assertEquals("Summary of the conversation.", hooks.postCompactSummary);
+        assertEquals(MODEL_SUMMARY, hooks.postCompactSummary,
+            "the hook payload carries the model response verbatim, markup included");
     }
 
     @Test

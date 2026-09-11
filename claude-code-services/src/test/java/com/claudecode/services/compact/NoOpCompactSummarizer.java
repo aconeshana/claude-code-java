@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * A no-op summarizer that concatenates message text content for testing purposes.
- * Does not call any LLM — simply joins text from all messages.
+ * Does not call any LLM — simply joins text from all messages and wraps the result in the
+ * {@code <summary>} block a real model response carries.
  */
 public class NoOpCompactSummarizer implements CompactSummarizer {
 
@@ -22,7 +23,7 @@ public class NoOpCompactSummarizer implements CompactSummarizer {
                 sb.append(text);
             }
         }
-        return sb.toString();
+        return SummaryFixtures.asModelSummary(sb.toString());
     }
 
     private String extractText(Message msg) {
