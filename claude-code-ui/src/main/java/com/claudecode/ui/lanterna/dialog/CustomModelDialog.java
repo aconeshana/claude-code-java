@@ -50,6 +50,8 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
     private StringBuilder apiKey = new StringBuilder();
     private StringBuilder contextWindow = new StringBuilder();
     private StringBuilder headers = new StringBuilder();
+    /** Tri-state image support: null = assume multimodal (unconfigured). */
+    private Boolean multimodal;
     private String errorMessage;
     private Consumer<CustomModelConfig> onResult;
 
@@ -68,10 +70,42 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
         this.apiKey = new StringBuilder();
         this.contextWindow = new StringBuilder();
         this.headers = new StringBuilder();
+        this.multimodal = null;
         this.errorMessage = null;
         this.onResult = onResult;
         this.active = true;
         invalidate();
+    }
+
+    /** Reopens the form on an existing configuration (edit path). */
+    public synchronized void show(CustomModelConfig existing, Consumer<CustomModelConfig> onResult) {
+        show(onResult);
+        if (existing == null) return;
+        this.modelName = new StringBuilder(existing.modelName());
+        this.baseUrl = new StringBuilder(existing.baseUrl() == null ? "" : existing.baseUrl());
+        this.apiKey = new StringBuilder(existing.apiKey() == null ? "" : existing.apiKey());
+        this.contextWindow = new StringBuilder(
+            existing.contextWindow() == null ? "" : existing.contextWindow().toString());
+        this.headers = new StringBuilder(formatHeaders(existing.headers()));
+        this.multimodal = existing.multimodal();
+        ModelApiProtocol protocol = existing.protocol();
+        for (int i = 0; i < PROTOCOLS.length; i++) {
+            if (PROTOCOLS[i] == protocol) {
+                this.protocolIndex = i;
+                break;
+            }
+        }
+    }
+
+    /** Renders stored headers back into the editable {@code Name: Value; …} form. */
+    private static String formatHeaders(Map<String, String> stored) {
+        if (stored == null || stored.isEmpty()) return "";
+        StringBuilder rendered = new StringBuilder();
+        for (Map.Entry<String, String> entry : stored.entrySet()) {
+            if (!rendered.isEmpty()) rendered.append("; ");
+            rendered.append(entry.getKey()).append(": ").append(entry.getValue());
+        }
+        return rendered.toString();
     }
 
     @Override public boolean isActive() { return active; }
@@ -94,16 +128,25 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
             deliver.set(false);
             return;
         }
+        // Field 6: multimodal toggle — ←/→/space cycles yes → no → (unset).
+        if (field == 6 && (type == KeyType.ARROW_LEFT || type == KeyType.ARROW_RIGHT
+                || (type == KeyType.CHARACTER && Character.valueOf(' ').equals(key.getCharacter())))) {
+            multimodal = cycleMultimodal(type == KeyType.ARROW_RIGHT);
+            errorMessage = null;
+            invalidate();
+            deliver.set(false);
+            return;
+        }
         if (type == KeyType.ARROW_UP || type == KeyType.ARROW_DOWN) {
             int delta = type == KeyType.ARROW_UP ? -1 : 1;
-            field = InlineOverlay.cycleIndex(field, delta, 6);
+            field = InlineOverlay.cycleIndex(field, delta, FIELD_COUNT);
             errorMessage = null;
             invalidate();
             deliver.set(false);
             return;
         }
         if (type == KeyType.ENTER) {
-            if (field < 5) {
+            if (field < FIELD_COUNT - 1) {
                 field++;
                 errorMessage = null;
                 invalidate();
@@ -132,11 +175,25 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
         return errorMessage;
     }
 
+    private static final int FIELD_COUNT = 7;
+
+    /** Cycle order: (unset: assume multimodal) → yes → no → (unset). ← reverses. */
+    private Boolean cycleMultimodal(boolean forward) {
+        int current = multimodal == null ? 0 : Boolean.TRUE.equals(multimodal) ? 1 : 2;
+        int next = Math.floorMod(current + (forward ? 1 : -1), 3);
+        return switch (next) {
+            case 1 -> Boolean.TRUE;
+            case 2 -> Boolean.FALSE;
+            default -> null;
+        };
+    }
+
     private void submit() {
         try {
             CustomModelConfig config = new CustomModelConfig(
                 modelName.toString(), PROTOCOLS[protocolIndex], baseUrl.toString(),
-                apiKey.toString(), parseHeaders(headers.toString()), parseContextWindow(contextWindow.toString()));
+                apiKey.toString(), parseHeaders(headers.toString()),
+                parseContextWindow(contextWindow.toString()), multimodal);
             resolve(config);
         } catch (IllegalArgumentException e) {
             errorMessage = e.getMessage() != null ? e.getMessage() : "Invalid model configuration";
@@ -184,7 +241,7 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
 
     @Override
     public synchronized TerminalSize calculatePreferredSize() {
-        return active ? new TerminalSize(MIN_WIDTH, 13) : new TerminalSize(0, 0);
+        return active ? new TerminalSize(MIN_WIDTH, 14) : new TerminalSize(0, 0);
     }
 
     @Override public Interactable nextFocus(Interactable fromThis) {
@@ -203,7 +260,7 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
 
     private final class FormRenderer implements ComponentRenderer<FormArea> {
         @Override public TerminalSize getPreferredSize(FormArea component) {
-            return active ? new TerminalSize(MIN_WIDTH, 13) : new TerminalSize(0, 0);
+            return active ? new TerminalSize(MIN_WIDTH, 14) : new TerminalSize(0, 0);
         }
 
         @Override public void drawComponent(TextGUIGraphics g, FormArea component) {
@@ -222,14 +279,20 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
             drawField(g, 6, 3, "API key", apiKey.isEmpty() ? "(optional)" : "•".repeat(apiKey.length()));
             drawField(g, 7, 4, "Context window", contextWindow.isEmpty() ? "(optional; model default)" : contextWindow.toString());
             drawField(g, 8, 5, "Headers", headers.isEmpty() ? "(optional; Name: Value; …)" : headers.toString());
+            drawField(g, 9, 6, "Multimodal (images)", "← " + multimodalLabel() + " →");
             if (errorMessage != null) {
                 g.setForegroundColor(LanternaTheme.toolError());
-                g.putString(LEFT_PAD, 10, InlineOverlay.clip(errorMessage, width - LEFT_PAD));
+                g.putString(LEFT_PAD, 11, InlineOverlay.clip(errorMessage, width - LEFT_PAD));
             }
             g.setForegroundColor(LanternaTheme.welcomeDim());
             g.enableModifiers(SGR.ITALIC);
-            g.putString(LEFT_PAD, 12, "↑ ↓ fields · Enter next/save · ← → protocol · Esc cancel");
+            g.putString(LEFT_PAD, 13, "↑ ↓ fields · Enter next/save · ← → protocol/multimodal · Esc cancel");
             g.disableModifiers(SGR.ITALIC);
+        }
+
+        private String multimodalLabel() {
+            if (multimodal == null) return "yes (default)";
+            return multimodal ? "yes" : "no (text-only; images route to the image model)";
         }
 
         private void drawField(TextGUIGraphics g, int row, int index, String label, String value) {

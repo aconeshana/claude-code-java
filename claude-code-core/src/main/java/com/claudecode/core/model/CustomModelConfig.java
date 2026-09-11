@@ -21,7 +21,14 @@ public record CustomModelConfig(
         @JsonProperty("baseUrl") String baseUrl,
         @JsonProperty("apiKey") String apiKey,
         @JsonProperty("headers") Map<String, String> headers,
-        @JsonProperty("contextWindow") Long contextWindow
+        @JsonProperty("contextWindow") Long contextWindow,
+        /**
+         * Whether the endpoint accepts image content blocks. {@code null} means
+         * "assume multimodal" so existing model.json entries keep their behavior;
+         * {@code false} marks a text-only endpoint whose image content is
+         * routed to the configured image model instead.
+         */
+        @JsonProperty("multimodal") Boolean multimodal
 ) {
     public static final long DEFAULT_CONTEXT_WINDOW = ModelContextWindows.DEFAULT_CONTEXT_WINDOW;
     private static final long MIN_CONTEXT_WINDOW = 40_000L;
@@ -37,11 +44,31 @@ public record CustomModelConfig(
         if (contextWindow != null && contextWindow < MIN_CONTEXT_WINDOW) {
             throw new IllegalArgumentException("Context window must be at least " + MIN_CONTEXT_WINDOW);
         }
+        multimodal = normalizeMultimodal(multimodal);
+    }
+
+    /** Pre-multimodal-field constructor — defaults the flag to "assume multimodal". */
+    public CustomModelConfig(String modelName, ModelApiProtocol protocol, String baseUrl,
+                             String apiKey, Map<String, String> headers, Long contextWindow) {
+        this(modelName, protocol, baseUrl, apiKey, headers, contextWindow, null);
     }
 
     public CustomModelConfig(String modelName, ModelApiProtocol protocol, String baseUrl,
                              String apiKey, Map<String, String> headers) {
-        this(modelName, protocol, baseUrl, apiKey, headers, null);
+        this(modelName, protocol, baseUrl, apiKey, headers, null, null);
+    }
+
+    /** {@code true} unless explicitly configured text-only. */
+    public boolean acceptsImages() {
+        return multimodal == null || multimodal;
+    }
+
+    public boolean isTextOnly() {
+        return Boolean.FALSE.equals(multimodal);
+    }
+
+    private static Boolean normalizeMultimodal(Boolean value) {
+        return value;
     }
 
     public long effectiveContextWindow() {
@@ -98,6 +125,6 @@ public record CustomModelConfig(
     public String toString() {
         return "CustomModelConfig[modelName=" + modelName + ", protocol=" + protocol
             + ", baseUrl=" + baseUrl + ", apiKey=<redacted>, headers=" + headers.keySet()
-            + ", contextWindow=" + contextWindow + "]";
+            + ", contextWindow=" + contextWindow + ", multimodal=" + multimodal + "]";
     }
 }

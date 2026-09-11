@@ -23,9 +23,23 @@ servers:
 security:
   - bearerToken: []
   - queryToken: []
+tags:
+  - name: Protocol
+    description: The three streaming turn-submission wire formats (Anthropic/OpenAI-compatible)
+  - name: Sessions
+    description: Session catalog, headless open/close, message snapshots, and the SSE mirror stream
+  - name: Permissions
+    description: Answering pending permission asks and user questions
+  - name: Settings
+    description: Effective settings snapshot and per-tier settings mutations
+  - name: Schedule
+    description: Cron-style scheduled task management
+  - name: Models
+    description: The custom model catalogue shared with the /model command
 paths:
   /v1/messages:
     post:
+      tags: [Protocol]
       summary: Anthropic Messages protocol face (streaming SSE)
       description: |
         Submits one turn. The session is routed by metadata.session_id:
@@ -68,6 +82,7 @@ paths:
         '429': { $ref: '#/components/responses/SessionBusy' }
   /v1/chat/completions:
     post:
+      tags: [Protocol]
       summary: OpenAI Chat Completions protocol face (streaming SSE)
       description: Same routing and turn semantics as /v1/messages over the OpenAI wire format.
       requestBody:
@@ -97,6 +112,7 @@ paths:
         '429': { $ref: '#/components/responses/SessionBusy' }
   /v1/responses:
     post:
+      tags: [Protocol]
       summary: OpenAI Responses protocol face (streaming SSE)
       description: Same routing and turn semantics as /v1/messages over the Responses wire format.
       requestBody:
@@ -124,6 +140,7 @@ paths:
         '429': { $ref: '#/components/responses/SessionBusy' }
   /api/sessions:
     get:
+      tags: [Sessions]
       summary: Full two-level session catalog (aligned with the TUI /resume picker)
       description: |
         Every project and every session on disk, not only open ones. Rows carry
@@ -141,6 +158,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
   /api/sessions/open:
     post:
+      tags: [Sessions]
       summary: Open (or resume) one parallel headless session
       description: |
         Mints a session when session_id is absent; reuses an open one; resumes
@@ -170,6 +188,7 @@ paths:
         '429': { $ref: '#/components/responses/SessionBusy' }
   /api/sessions/close:
     post:
+      tags: [Sessions]
       summary: Close one headless session
       requestBody:
         required: true
@@ -194,6 +213,7 @@ paths:
         '404': { $ref: '#/components/responses/UnknownSession' }
   /api/sessions/{sessionId}/messages:
     get:
+      tags: [Sessions]
       summary: Message snapshot for one session
       description: |
         Snapshot-first: the authoritative current message list. A reconnecting
@@ -219,6 +239,7 @@ paths:
         '404': { $ref: '#/components/responses/UnknownSession' }
   /api/events:
     get:
+      tags: [Sessions]
       summary: SSE mirror stream of every followed session
       description: |
         Server-sent events for the active TUI session plus every open headless
@@ -247,6 +268,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
   /api/permissions/respond:
     post:
+      tags: [Permissions]
       summary: Answer one pending permission ask or user question
       description: |
         A tool waiting at ASK blocks inside the shared interaction
@@ -295,6 +317,220 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Effective settings snapshot with per-tier source attribution
+      description: |
+        Merges every settings tier (user -> project -> local -> flag -> policy,
+        later tiers overriding earlier) into one effective object, alongside
+        the raw per-tier settings for whichever tiers are actually present on
+        disk right now.
+      responses:
+        '200':
+          description: The effective snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SettingsSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Settings]
+      summary: Apply one settings mutation, dispatched by the op field
+      description: |
+        Every successful mutation responds with the refreshed effective
+        snapshot (same shape as GET), so the web client never has to
+        re-fetch. tier is one of user|project|local; behavior is one of
+        allow|deny|ask.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/UserValueOp'
+                - $ref: '#/components/schemas/PermissionModeOp'
+                - $ref: '#/components/schemas/PermissionRulesOp'
+                - $ref: '#/components/schemas/DirectoriesOp'
+      responses:
+        '200':
+          description: The refreshed effective snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SettingsSnapshot' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/schedule:
+    get:
+      tags: [Schedule]
+      summary: List every scheduled (cron) task known to this process
+      responses:
+        '200':
+          description: The task list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Schedule]
+      summary: Create one scheduled task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleCreateRequest' }
+      responses:
+        '200':
+          description: The generated task id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/schedule/{id}:
+    delete:
+      tags: [Schedule]
+      summary: Remove one scheduled task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/models:
+    get:
+      tags: [Models]
+      summary: List the custom model catalogue (shared with the /model command)
+      responses:
+        '200':
+          description: The model list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Models]
+      summary: Save (add or update) one custom model entry
+      description: |
+        api_key is a tri-state field: absent keeps the existing key, null
+        clears it, a string sets it. api_key is never echoed back by GET.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModelSaveRequest' }
+      responses:
+        '200':
+          description: The refreshed model list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelList' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/commands:
+    get:
+      tags: [Commands]
+      summary: List the composer menu catalogue (slash commands and skills)
+      description: |
+        One row per non-hidden interactive command; skills appear here too
+        because they register as commands. Feeds the webui composer's "+"
+        menu, mirroring dsh's host command catalog listing.
+      responses:
+        '200':
+          description: The command list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/context:
+    get:
+      tags: [Sessions]
+      summary: One session's model selection and context usage
+      description: |
+        Feeds the webui composer's model seat and context meter (mirroring
+        dsh's remote session model/context surface). The selection half
+        lists the same /model catalogue the TUI serves (built-in families,
+        custom models, allowlist-filtered); the context half reuses the
+        claude-hud status-line token accounting — the finalized usage
+        anchor's input-token sum over the model-resolved context window —
+        so the meter and the status line show one number.
+
+        The addressed session follows the protocol turn runner's routing:
+        an open headless session id, the active TUI session's own id, or
+        blank for the active TUI session. Any other known id serves its
+        on-disk transcript as a read-only target (usage measured, no live
+        selection — both halves render null without one).
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active TUI session
+      responses:
+        '200':
+          description: Selection plus usage; each half is null without a live target
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionContext' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Sessions]
+      summary: Change one session's model or reasoning effort
+      description: |
+        One selection per request. Both go through the addressed session's
+        live controllers — the same control path the TUI /model picker and
+        Session Link endpoints drive for the TUI session, or the open
+        headless session's own engine — so a web selection and a TUI
+        selection of the same session stay in lockstep while sibling
+        sessions keep their own choices. A running turn keeps the model it
+        started with; the new choice applies to the next prompt assembly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionContextSelectRequest' }
+      responses:
+        '200':
+          description: The refreshed selection plus usage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionContext' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/models/{name}:
+    delete:
+      tags: [Models]
+      summary: Remove one custom model entry
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerToken:
@@ -450,6 +686,263 @@ components:
         transcript_path:
           type: string
           description: Sidechain transcript of a completed sub-agent tool (Agent/Task family only)
+        locations:
+          type: array
+          items: { type: string }
+          nullable: true
+          description: File path(s) produced by a Write/Edit/NotebookEdit tool call
+    SettingsSnapshot:
+      type: object
+      description: Merged effective settings plus per-tier source attribution
+      properties:
+        effective:
+          type: object
+          additionalProperties: true
+          description: |
+            The merged settings object (user -> project -> local -> flag ->
+            policy, later tiers override earlier). Keys are loosely typed
+            camelCase scalars (e.g. alwaysThinkingEnabled) plus a nested
+            permissions object; see docs.local/gateway-api.md for the full
+            key catalogue.
+          properties:
+            permissions:
+              type: object
+              properties:
+                defaultMode: { type: string, nullable: true }
+                disableBypassPermissionsMode: { type: string, nullable: true }
+                allow: { type: array, items: { type: string } }
+                deny: { type: array, items: { type: string } }
+                ask: { type: array, items: { type: string } }
+                additionalDirectories: { type: array, items: { type: string } }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/SettingsSource' }
+    SettingsSource:
+      type: object
+      required: [source, settings]
+      properties:
+        source:
+          type: string
+          enum: [userSettings, projectSettings, localSettings, flagSettings, policySettings]
+        settings:
+          type: object
+          additionalProperties: true
+          description: The raw (pre-merge) settings object for this tier
+    SettingsTier:
+      type: string
+      enum: [user, project, local]
+    UserValueOp:
+      type: object
+      required: [op, key]
+      properties:
+        op: { type: string, enum: [userValue] }
+        key: { type: string }
+        value:
+          description: Any JSON value; absent or null removes the key
+    PermissionModeOp:
+      type: object
+      required: [op, tier]
+      properties:
+        op: { type: string, enum: [permissionMode] }
+        mode:
+          type: string
+          nullable: true
+          description: null removes the tier's permissions.defaultMode override
+        tier: { $ref: '#/components/schemas/SettingsTier' }
+    PermissionRulesOp:
+      type: object
+      required: [op, behavior, tier]
+      properties:
+        op: { type: string, enum: [permissionRules] }
+        behavior: { type: string, enum: [allow, deny, ask] }
+        rules:
+          type: array
+          items: { type: string }
+          default: []
+          description: Replaces this behavior's whole rule array for the tier
+        tier: { $ref: '#/components/schemas/SettingsTier' }
+    DirectoriesOp:
+      type: object
+      required: [op, tier]
+      properties:
+        op: { type: string, enum: [addDirectories, removeDirectories] }
+        directories:
+          type: array
+          items: { type: string }
+          default: []
+        tier: { $ref: '#/components/schemas/SettingsTier' }
+    ScheduleList:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/ScheduleTask' }
+    ScheduleTask:
+      type: object
+      required: [id, cron, prompt, recurring, durable, created_at]
+      properties:
+        id: { type: string }
+        cron: { type: string }
+        prompt: { type: string }
+        recurring: { type: boolean }
+        durable: { type: boolean }
+        created_at: { type: integer, format: int64 }
+        last_fired_at: { type: integer, format: int64, nullable: true }
+        kind: { type: string, nullable: true }
+        agent_id: { type: string, nullable: true }
+        created_by_session_id: { type: string, nullable: true }
+    ScheduleCreateRequest:
+      type: object
+      required: [cron, prompt]
+      properties:
+        cron: { type: string, description: Standard 5-field cron expression }
+        prompt: { type: string }
+        recurring: { type: boolean, default: false }
+        durable: { type: boolean, default: false }
+    ModelList:
+      type: object
+      properties:
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/ModelEntry' }
+    CommandList:
+      type: object
+      properties:
+        commands:
+          type: array
+          items: { $ref: '#/components/schemas/CommandEntry' }
+    SessionContext:
+      type: object
+      properties:
+        selection:
+          allOf: [ { $ref: '#/components/schemas/ModelSelection' } ]
+          nullable: true
+        context:
+          allOf: [ { $ref: '#/components/schemas/ContextUsage' } ]
+          nullable: true
+    ModelSelection:
+      type: object
+      required: [current, models]
+      properties:
+        current: { type: string }
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/ModelChoice' }
+        effort:
+          type: object
+          description: Present only when the model advertises reasoning effort levels
+          required: [current, effective, choices]
+          properties:
+            current: { type: string }
+            effective: { type: string }
+            choices:
+              type: array
+              items: { type: string }
+    ModelChoice:
+      type: object
+      required: [name, label, default]
+      properties:
+        name: { type: string }
+        label: { type: string }
+        description: { type: string }
+        default:
+          type: boolean
+          description: Marks the "default" row that resets the session to the launch model
+    ContextUsage:
+      type: object
+      required: [model, context_window]
+      properties:
+        model: { type: string }
+        context_window:
+          type: integer
+          description: The model-resolved window size (200k default, 1M for [1m]/opus-5, 372k for GPT 5.6)
+        used_tokens:
+          type: integer
+          description: Present once a finalized API usage anchor exists; input-token sum per claude-hud accounting
+        used_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: used_tokens * 100 / context_window, clamped
+        breakdown:
+          type: object
+          description: |
+            The heuristic composition split (dsh's contextBreakdown): token
+            counts from the TUI /context analyzer's category accounting.
+            Present only while an analyzer is wired; the meter then renders
+            the single-reading form.
+          required: [system_tokens, tools_tokens, message_tokens]
+          properties:
+            system_tokens:
+              type: integer
+              description: System prompt + memory files + custom agents + skills
+            tools_tokens:
+              type: integer
+              description: Built-in + MCP tool definitions
+            message_tokens:
+              type: integer
+              description: Conversation messages
+    SessionContextSelectRequest:
+      type: object
+      properties:
+        session_id:
+          type: string
+          description: The session to address; absent means the active TUI session
+        model:
+          type: string
+          description: The model name to apply (a ModelChoice name)
+        effort:
+          type: string
+          description: The effort level to apply ("auto" clears the override)
+      description: Exactly one of model or effort must be present
+    CommandEntry:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        argument_hint: { type: string }
+        kind:
+          type: string
+          enum: [command, skill]
+          description: skill rows are skill files projected into the command registry
+    ModelEntry:
+      type: object
+      required: [model_name, protocol, base_url, has_api_key]
+      properties:
+        model_name: { type: string }
+        protocol: { type: string, enum: [anthropic, chat, responses] }
+        base_url: { type: string }
+        has_api_key:
+          type: boolean
+          description: True when a key is configured; the key itself is never echoed
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        context_window: { type: integer, nullable: true }
+        multimodal:
+          type: boolean
+          nullable: true
+          description: Null = unconfigured (assume multimodal); false marks a text-only endpoint whose image content routes to the configured image model
+    ModelSaveRequest:
+      type: object
+      required: [model_name, protocol, base_url]
+      properties:
+        model_name: { type: string }
+        protocol: { type: string, enum: [anthropic, chat, responses] }
+        base_url: { type: string }
+        api_key:
+          type: string
+          nullable: true
+          description: Absent keeps the existing key, null clears it, a string sets it
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        context_window: { type: integer, nullable: true }
+        multimodal:
+          type: boolean
+          nullable: true
+          description: Absent keeps the existing flag, false marks the endpoint text-only
   responses:
     InvalidRequest:
       description: Malformed request
@@ -473,6 +966,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     SessionBusy:
       description: A turn is already in flight on this session, or the headless limit is reached
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No resource matches the id
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

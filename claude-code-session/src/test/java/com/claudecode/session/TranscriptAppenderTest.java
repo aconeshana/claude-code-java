@@ -1,5 +1,6 @@
 package com.claudecode.session;
 
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -65,8 +66,8 @@ class TranscriptAppenderTest {
         List<String> lines = Files.readAllLines(transcript, StandardCharsets.UTF_8);
         assertEquals(writers * recordsPerWriter, lines.size(), "record count");
         for (String line : lines) {
-            assertTrue(line.startsWith("{\"id\":"), () -> "spliced line: " + preview(line));
-            assertTrue(line.endsWith("\"}"), () -> "truncated line: " + preview(line));
+            assertTrue(Strings.CS.startsWith(line, "{\"id\":"), () -> "spliced line: " + preview(line));
+            assertTrue(Strings.CS.endsWith(line, "\"}"), () -> "truncated line: " + preview(line));
             assertEquals(1, countOccurrences(line, "\"id\":"), () -> "spliced line: " + preview(line));
         }
     }

@@ -142,6 +142,14 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
             .anyMatch(entry -> Strings.CS.equals(entry.taskId(), taskId));
     }
 
+    /** The open headless session's live engine rows, or empty when none is open under that id. */
+    Optional<List<Message>> liveMessages(String sessionId) {
+        Entry entry = sessionId == null ? null : sessions.get(sessionId);
+        return entry == null
+            ? Optional.empty()
+            : Optional.of(entry.assembled().engine().conversation().getMessages());
+    }
+
     /**
      * The snapshot adapter for the gateway's messages endpoint: an open
      * headless session serves its live in-memory conversation (engine

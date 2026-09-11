@@ -273,6 +273,20 @@ public final class RuntimeSettings {
         return stringSetting("askUserQuestion.previewFormat");
     }
 
+    /**
+     * Returns the configured image-processing model name, or {@code null}.
+     * Text-only custom endpoints route their image content to this model first
+     * (set from the {@code /model} picker's {@code i} shortcut).
+     */
+    public static String loadImageModelName() {
+        return stringSetting("imageModel");
+    }
+
+    /** Persists the image-processing model in the user settings tier. */
+    public static void saveImageModelName(String modelName) {
+        SettingsEditor.writeUserString("imageModel", modelName);
+    }
+
     /** Persists the extended-thinking switch in the user settings tier. */
     public static void saveAlwaysThinkingEnabled(boolean enabled) {
         SettingsEditor.writeUserBoolean("alwaysThinkingEnabled", enabled);

@@ -78,6 +78,9 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         }
     }
 
+    /** Result of the {@code i} shortcut: the selected model becomes the image model. */
+    public record ImageModelResult(String imageModel) {}
+
     /** Immutable picker data assembled away from the GUI thread. */
     public record PreparedModelPicker(
         String modelPreference,
@@ -85,7 +88,8 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         String priorPersistedEffort,
         String defaultModel,
         List<ModelOption> options,
-        Set<String> customModelNames
+        Set<String> customModelNames,
+        String imageModel
     ) {
         public PreparedModelPicker {
             options = List.copyOf(options);
@@ -130,6 +134,12 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
     private Predicate<String> modelAllowed = _ -> true;
     private Supplier<List<CustomModelConfig>> customModelsSupplier;
     private Function<String, CompletionStage<Void>> customModelDeleteHandler;
+    /** Receives the {@code i} shortcut's image-model selection; null disables the shortcut. */
+    private Consumer<ImageModelResult> onImageModelResult;
+    /** Configured image-processing model, marked on its row while the picker is open. */
+    private String imageModel;
+    /** Receives the {@code e} shortcut's edit request for the selected custom model. */
+    private Consumer<String> onEditCustomModel;
     private boolean builtInFamiliesVisible = true;
     private ViewMode viewMode = ViewMode.LIST;
     private String pendingDeleteModel;
@@ -203,6 +213,24 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
     public void setCustomModelDeleteHandler(
             Function<String, CompletionStage<Void>> handler) {
         this.customModelDeleteHandler = handler;
+    }
+
+    /**
+     * Wires the {@code i} shortcut: the selected model becomes the
+     * image-processing model that reads images for text-only endpoints.
+     */
+    @Explanation("Image-model shortcut for text-only custom endpoints")
+    public void setImageModelHandler(Consumer<ImageModelResult> handler) {
+        this.onImageModelResult = handler;
+    }
+
+    /**
+     * Wires the {@code e} shortcut: the selected custom model reopens the
+     * editor form prefilled with its stored configuration.
+     */
+    @Explanation("Edit shortcut for existing custom model entries")
+    public void setEditCustomModelHandler(Consumer<String> handler) {
+        this.onEditCustomModel = handler;
     }
 
     /** Attach the live merged user/default keybinding resolver. */
@@ -310,7 +338,26 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
             .findFirst()
             .orElse(modelPreference);
         return new PreparedModelPicker(preparedModelPreference, currentEffort,
-            priorPersistedEffort, preparedDefaultModel, preparedOptions, preparedCustomNames);
+            priorPersistedEffort, preparedDefaultModel, preparedOptions, preparedCustomNames,
+            loadImageModelSetting());
+    }
+
+    /** Reads the configured image model away from this UI class's settings seams. */
+    private String loadImageModelSetting() {
+        if (imageModelSettingReader == null) return null;
+        try {
+            return imageModelSettingReader.get();
+        } catch (RuntimeException _) {
+            return null;
+        }
+    }
+
+    /** Live image-model settings reader; installed by the composition layer. */
+    private Supplier<String> imageModelSettingReader;
+
+    /** Installs the live image-model settings reader used by {@link #prepare}. */
+    public void setImageModelSettingReader(Supplier<String> reader) {
+        this.imageModelSettingReader = reader;
     }
 
     private static ModelOption prepareEffortMetadata(
@@ -344,6 +391,7 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         this.hasToggledEffort = false;
         this.priorPersistedEffort = prepared.priorPersistedEffort();
         this.customModelNames = prepared.customModelNames();
+        this.imageModel = prepared.imageModel();
         this.viewMode = ViewMode.LIST;
         this.pendingDeleteModel = null;
         this.pendingDeleteIndex = -1;
@@ -397,6 +445,22 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
                 && Character.toLowerCase(key.getCharacter()) == 'x'
                 && !key.isCtrlDown() && !key.isAltDown()) {
             beginDeleteSelected();
+            deliver.set(false);
+            return;
+        }
+
+        if (t == KeyType.CHARACTER && key.getCharacter() != null
+                && Character.toLowerCase(key.getCharacter()) == 'i'
+                && !key.isCtrlDown() && !key.isAltDown()) {
+            setImageModelSelected();
+            deliver.set(false);
+            return;
+        }
+
+        if (t == KeyType.CHARACTER && key.getCharacter() != null
+                && Character.toLowerCase(key.getCharacter()) == 'e'
+                && !key.isCtrlDown() && !key.isAltDown()) {
+            editSelectedCustomModel();
             deliver.set(false);
             return;
         }
@@ -633,6 +697,38 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
                 priorPersistedEffort, hasToggledEffort);
         }
         resolve(new ModelPickResult(opt.value(), resolvedEffort));
+    }
+
+    /**
+     * Marks the selected model as the image-processing model — the endpoint
+     * that reads image content for models configured {@code multimodal: false}.
+     * The picker stays open so the marker is visible immediately.
+     */
+    private synchronized void setImageModelSelected() {
+        if (viewMode != ViewMode.LIST || onImageModelResult == null
+                || options == null || options.isEmpty()) return;
+        ModelOption selected = options.get(selectedIdx);
+        String modelName = selected.value();
+        if (modelName == null || ADD_CUSTOM_MODEL_VALUE.equals(modelName)) return;
+        String next = Objects.equals(modelName, imageModel) ? null : modelName;
+        imageModel = next;
+        resetRenderedFrame();
+        Consumer<ImageModelResult> handler = onImageModelResult;
+        if (handler != null) handler.accept(new ImageModelResult(next));
+    }
+
+    /**
+     * Reopens the editor form on the selected custom model. The picker closes —
+     * the editor's own callback reopens the flow after save or cancel.
+     */
+    private synchronized void editSelectedCustomModel() {
+        if (viewMode != ViewMode.LIST || onEditCustomModel == null
+                || options == null || options.isEmpty()) return;
+        ModelOption selected = options.get(selectedIdx);
+        String modelName = selected.value();
+        if (modelName == null || !customModelNames.contains(modelName)) return;
+        hide();
+        onEditCustomModel.accept(modelName);
     }
 
     private synchronized void beginDeleteSelected() {
@@ -894,9 +990,16 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
                 InlineOverlay.clip(SUBTITLE, cols - LEFT_PAD));
             int footerRow = OPTIONS_START + opts.size() + 3;
             g.enableModifiers(SGR.ITALIC);
-            String footer = customModelDeleteHandler != null
-                ? "x delete custom · Enter confirm · Esc cancel"
-                : "Enter confirm · Esc cancel";
+            String footer = "Enter confirm · Esc cancel";
+            if (onImageModelResult != null) {
+                footer = "i set image model · " + footer;
+            }
+            if (onEditCustomModel != null) {
+                footer = "e edit custom · " + footer;
+            }
+            if (customModelDeleteHandler != null) {
+                footer = "x delete custom · " + footer;
+            }
             g.putString(LEFT_PAD, footerRow, InlineOverlay.clip(footer, cols - LEFT_PAD));
             g.disableModifiers(SGR.ITALIC);
         }
@@ -938,16 +1041,22 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
                                 List<ModelOption> opts, int index) {
             int row = OPTIONS_START + index;
             ModelOption option = opts.get(index);
+            boolean isImageModel = option.value() != null
+                && option.value().equals(imageModel);
             String numberedLabel = (index + 1) + ". " + option.label()
-                + (index == originalIdx ? " ✓" : "");
+                + (index == originalIdx ? " ✓" : "")
+                + (isImageModel ? " ◐" : "");
             drawPointer(g, index, index == selectedIdx);
-            g.setForegroundColor(LanternaTheme.inputText());
+            g.setForegroundColor(isImageModel
+                ? LanternaTheme.suggestion() : LanternaTheme.inputText());
             g.putString(LEFT_PAD + 2, row, numberedLabel);
             g.setForegroundColor(LanternaTheme.ghostText());
             int descX = LEFT_PAD + 2 + numberedLabel.length() + 2;
             if (descX < cols - 4) {
+                String description = isImageModel && option.description() != null
+                    ? "image model · " + option.description() : option.description();
                 g.putString(descX, row,
-                    InlineOverlay.clip(option.description(), cols - descX));
+                    InlineOverlay.clip(description, cols - descX));
             }
         }
 

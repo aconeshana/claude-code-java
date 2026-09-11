@@ -218,7 +218,8 @@ final class CliToolchainAssembler {
                 fallbackClient = new CredentialGuardedLlmClient(
                     fallbackClient, modelAvailability.showBuiltInModelFamilies());
             }
-            llmClient = CustomModelRoutingClient.standard(fallbackClient, customModelCatalog::find);
+            llmClient = CustomModelRoutingClient.standard(
+                fallbackClient, customModelCatalog::find, RuntimeSettings::loadImageModelName);
             client = new LlmClientAdapter(llmClient);
 
             if (resolvedApiProvider == ApiConfig.ApiProvider.ANTHROPIC

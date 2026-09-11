@@ -1,11 +1,14 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.model.CustomModelCatalog;
+import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.state.CwdState;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.ToolPermissionContext;
@@ -13,7 +16,12 @@ import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
+import com.claudecode.runtime.sessionhost.SessionHostEffortController;
+import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
+import com.claudecode.runtime.sessionhost.SessionHostModelController;
+import com.claudecode.runtime.sessionhost.SessionHostModelOptions;
+import com.claudecode.runtime.sessionhost.SessionHostModelState;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.turn.SessionEventHub;
@@ -29,11 +37,13 @@ import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +70,7 @@ final class CliHeadlessSessionFactory {
     private final PermissionGate sharedGate;
     private final String resolvedModel;
     private final String mainCwd;
+    private final CustomModelCatalog customModels;
 
     CliHeadlessSessionFactory(
             StreamingClient client,
@@ -67,13 +78,15 @@ final class CliHeadlessSessionFactory {
             QuerySessionFactory querySessionFactory,
             PermissionGate sharedGate,
             String resolvedModel,
-            String mainCwd) {
+            String mainCwd,
+            CustomModelCatalog customModels) {
         this.client = client;
         this.toolRegistry = toolRegistry;
         this.querySessionFactory = querySessionFactory;
         this.sharedGate = sharedGate;
         this.resolvedModel = resolvedModel;
         this.mainCwd = mainCwd;
+        this.customModels = customModels;
     }
 
     /** One assembled headless session: the host record plus its engine. */
@@ -115,8 +128,70 @@ final class CliHeadlessSessionFactory {
             file -> RemoteAttachmentStore.persist(projectPath, sessionId,
                 submissionMessageId(file), file).toString());
         SessionHostSession host = new SessionHostSession(
-            info, events, driver::submit);
+            info, events, driver::submit,
+            new SessionHostModelController() {
+                @Override public SessionHostModelState get() {
+                    return modelState(engine);
+                }
+
+                @Override public SessionHostModelState set(String selected) {
+                    SessionHostModelState available = modelState(engine);
+                    if (available.models().stream().noneMatch(
+                            option -> Strings.CS.equals(selected, option.name()))) {
+                        throw new IllegalArgumentException(
+                            "model is not available for this session");
+                    }
+                    // Null keeps the Default row while requests use the concrete
+                    // default — the same preference semantics as the TUI picker.
+                    String preference = Strings.CS.equals("default", selected)
+                        ? null : selected;
+                    engine.configuration().setModel(preference);
+                    return modelState(engine);
+                }
+            },
+            new SessionHostEffortController() {
+                @Override public SessionHostEffortState get() {
+                    return effortState(engine);
+                }
+
+                @Override public SessionHostEffortState set(String selected) {
+                    SessionHostEffortState available = effortState(engine);
+                    if (!available.efforts().contains(selected)) {
+                        throw new IllegalArgumentException(
+                            "effort is not available for this session");
+                    }
+                    String configured = Strings.CS.equals("auto", selected)
+                        ? null : selected;
+                    engine.configuration().getConfig().setEffortValue(configured);
+                    return effortState(engine);
+                }
+            });
         return new Assembled(host, engine, abort, projectPath);
+    }
+
+    /** The model catalogue over the engine's live preference — the same projection the TUI /model picker serves. */
+    private SessionHostModelState modelState(QuerySession engine) {
+        String current = engine.configuration().getConfig().modelPreference();
+        List<CustomModelConfig> custom =
+            customModels != null ? customModels.list() : List.of();
+        return new SessionHostModelState(current == null ? "default" : current,
+            SessionHostModelOptions.build(current,
+                engine.configuration().getConfig()::isModelAllowed, custom));
+    }
+
+    /** The engine's effort levels — the same resolution the TUI picker serves. */
+    private SessionHostEffortState effortState(QuerySession engine) {
+        String model = engine.configuration().getConfig().model();
+        if (!EffortHelpers.modelSupportsEffort(model)) {
+            return new SessionHostEffortState("auto", "", List.of());
+        }
+        String configured = engine.configuration().getConfig().effortValue();
+        String current = StringUtils.isBlank(configured) ? "auto" : configured;
+        String effective = EffortHelpers.getDisplayedEffortLevel(model, configured);
+        List<String> choices = new ArrayList<>();
+        choices.add("auto");
+        choices.addAll(EffortHelpers.supportedEffortLevels(model));
+        return new SessionHostEffortState(current, effective, choices);
     }
 
     /** One stable directory segment per distinct file name within a turn. */

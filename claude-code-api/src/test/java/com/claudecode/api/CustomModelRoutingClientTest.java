@@ -3,6 +3,7 @@ package com.claudecode.api;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
 import mockwebserver3.MockResponse;
@@ -19,7 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Per-model protocol routing contract. */
 class CustomModelRoutingClientTest {
@@ -266,6 +269,316 @@ class CustomModelRoutingClientTest {
         };
         return "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Invalid "
             + parameter + " value\"}}";
+    }
+
+    @Test
+    void textOnlyEndpointRoutesImagesToTheImageModel() {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        var imageModel = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        List<CreateMessageRequest> captionRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            name -> Strings.CS.equals("glm-alias", name) ? Optional.of(textOnly)
+                : Strings.CS.equals("vision-custom", name) ? Optional.of(imageModel)
+                : Optional.empty(),
+            config -> Strings.CS.equals("vision-custom", config.modelName())
+                ? new RecordingClient("vision-custom") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        captionRequests.add(request);
+                        return ApiMessage.stub(request.model(), "a red square");
+                    }
+                }
+                : new RecordingClient("glm-alias") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        mainRequest.set(request);
+                        return ApiMessage.stub(request.model(), "ok");
+                    }
+                },
+            () -> "vision-custom");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        Object textBlock = Map.of("type", "text", "text", "what is this?");
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock, textBlock))))
+            .stream(false)
+            .build());
+
+        assertEquals(1, captionRequests.size());
+        assertEquals("vision-custom", captionRequests.getFirst().model());
+        List<?> captionContent = (List<?>) captionRequests.getFirst().messages().getFirst().content();
+        assertEquals("image", ((Map<?, ?>) captionContent.getFirst()).get("type"));
+
+        List<?> routed = (List<?>) mainRequest.get().messages().getFirst().content();
+        assertEquals("text", ((Map<?, ?>) routed.getFirst()).get("type"));
+        String caption = (String) ((Map<?, ?>) routed.getFirst()).get("text");
+        assertTrue(Strings.CS.contains(caption, "a red square"), "caption replaces the image block");
+        assertTrue(Strings.CS.startsWith(caption, ImageContentRouter.CAPTIONED_IMAGE_PREFIX));
+        assertEquals("text", ((Map<?, ?>) routed.get(1)).get("type"));
+    }
+
+    @Test
+    void textOnlyEndpointWithoutImageModelSendsImagesThroughUnchanged() {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            _ -> Optional.of(textOnly),
+            _ -> new RecordingClient("glm-alias") {
+                @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                    mainRequest.set(request);
+                    return ApiMessage.stub(request.model(), "ok");
+                }
+            },
+            () -> null);
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock))))
+            .stream(false)
+            .build());
+
+        assertSame(imageBlock, ((List<?>) mainRequest.get().messages().getFirst().content()).getFirst(),
+            "without an image model the original block is forwarded untouched");
+    }
+
+    @Test
+    void multimodalEndpointNeverCaptionsImages() {
+        var multimodal = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);
+        List<CreateMessageRequest> allRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            _ -> Optional.of(multimodal),
+            _ -> new RecordingClient("vision-custom") {
+                @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                    allRequests.add(request);
+                    return ApiMessage.stub(request.model(), "ok");
+                }
+            },
+            () -> "vision-custom");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("vision-custom")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock))))
+            .stream(false)
+            .build());
+
+        assertEquals(1, allRequests.size(), "a multimodal endpoint sends one request, no captioning");
+    }
+
+    @Test
+    void unconfiguredMultimodalFlagDefaultsToAcceptingImages() {
+        var legacy = new CustomModelConfig("legacy-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, null);
+        assertFalse(legacy.isTextOnly());
+        assertTrue(legacy.acceptsImages());
+
+        List<CreateMessageRequest> allRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            _ -> Optional.of(legacy),
+            _ -> new RecordingClient("legacy-alias") {
+                @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                    allRequests.add(request);
+                    return ApiMessage.stub(request.model(), "ok");
+                }
+            },
+            () -> "vision-custom");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("legacy-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock))))
+            .stream(false)
+            .build());
+
+        assertEquals(1, allRequests.size(),
+            "a pre-multimodal model.json entry keeps receiving images");
+    }
+
+    @Test
+    void captionFailureLeavesTheOriginalImageBlockInPlace() {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            _ -> Optional.of(textOnly),
+            _ -> new RecordingClient("glm-alias") {
+                @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                    mainRequest.set(request);
+                    return ApiMessage.stub(request.model(), "ok");
+                }
+            },
+            () -> "unresolvable-vision");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock))))
+            .stream(false)
+            .build());
+
+        assertSame(imageBlock, ((List<?>) mainRequest.get().messages().getFirst().content()).getFirst(),
+            "an unresolvable image model degrades to forwarding the image");
+    }
+
+    @Test
+    void toolResultNestedImagesAreCaptionedToo() {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        var imageModel = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        List<CreateMessageRequest> captionRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            name -> Strings.CS.equals("glm-alias", name) ? Optional.of(textOnly)
+                : Strings.CS.equals("vision-custom", name) ? Optional.of(imageModel)
+                : Optional.empty(),
+            config -> Strings.CS.equals("vision-custom", config.modelName())
+                ? new RecordingClient("vision-custom") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        captionRequests.add(request);
+                        return ApiMessage.stub(request.model(), "a chart");
+                    }
+                }
+                : new RecordingClient("glm-alias") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        mainRequest.set(request);
+                        return ApiMessage.stub(request.model(), "ok");
+                    }
+                },
+            () -> "vision-custom");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        Object toolResult = Map.of("type", "tool_result", "tool_use_id", "t-1",
+            "content", List.of(imageBlock));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(toolResult))))
+            .stream(false)
+            .build());
+
+        assertEquals(1, captionRequests.size(), "the nested image reaches the image model");
+        List<?> routed = (List<?>) mainRequest.get().messages().getFirst().content();
+        Map<?, ?> routedToolResult = (Map<?, ?>) routed.getFirst();
+        assertEquals("tool_result", routedToolResult.get("type"));
+        List<?> inner = (List<?>) routedToolResult.get("content");
+        assertEquals("text", ((Map<?, ?>) inner.getFirst()).get("type"),
+            "the nested image is replaced by its caption");
+        String caption = (String) ((Map<?, ?>) inner.getFirst()).get("text");
+        assertTrue(Strings.CS.contains(caption, "a chart"));
+    }
+
+    @Test
+    void jsonNodeImageBlocksAreCaptioned() throws Exception {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        var imageModel = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        List<CreateMessageRequest> captionRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            name -> Strings.CS.equals("glm-alias", name) ? Optional.of(textOnly)
+                : Strings.CS.equals("vision-custom", name) ? Optional.of(imageModel)
+                : Optional.empty(),
+            config -> Strings.CS.equals("vision-custom", config.modelName())
+                ? new RecordingClient("vision-custom") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        captionRequests.add(request);
+                        return ApiMessage.stub(request.model(), "json-described");
+                    }
+                }
+                : new RecordingClient("glm-alias") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        mainRequest.set(request);
+                        return ApiMessage.stub(request.model(), "ok");
+                    }
+                },
+            () -> "vision-custom");
+
+        ObjectMapper mapper = new ObjectMapper();
+        Object jsonContent = mapper.readTree("""
+            [{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGk="}}]
+            """);
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", jsonContent)))
+            .stream(false)
+            .build());
+
+        assertEquals(1, captionRequests.size(), "the JsonNode image reaches the image model");
+        assertEquals("image",
+            ((Map<?, ?>) ((List<?>) captionRequests.getFirst().messages()
+                .getFirst().content()).getFirst()).get("type"));
+        List<?> routed = (List<?>) mainRequest.get().messages().getFirst().content();
+        assertEquals("text", ((Map<?, ?>) routed.getFirst()).get("type"),
+            "the JsonNode image is replaced by its caption");
+        String caption = (String) ((Map<?, ?>) routed.getFirst()).get("text");
+        assertTrue(Strings.CS.contains(caption, "json-described"));
+    }
+
+    @Test
+    void builtInImageModelFallsBackToTheFirstPartyClient() {
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        AtomicReference<CreateMessageRequest> mainRequest = new AtomicReference<>();
+        List<CreateMessageRequest> captionRequests = new ArrayList<>();
+        RecordingClient fallbackClient = new RecordingClient("fallback") {
+            @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                captionRequests.add(request);
+                return ApiMessage.stub(request.model(), "fallback describes it");
+            }
+        };
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            fallbackClient,
+            name -> Strings.CS.equals("glm-alias", name) ? Optional.of(textOnly)
+                : Optional.empty(),
+            _ -> new RecordingClient("glm-alias") {
+                @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                    mainRequest.set(request);
+                    return ApiMessage.stub(request.model(), "ok");
+                }
+            },
+            () -> "sonnet");
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock))))
+            .stream(false)
+            .build());
+
+        assertEquals(1, captionRequests.size(),
+            "a built-in image model name captions through the first-party fallback client");
+        assertEquals("sonnet", captionRequests.getFirst().model());
+        String caption = (String) ((Map<?, ?>) ((List<?>) mainRequest.get().messages()
+            .getFirst().content()).getFirst()).get("text");
+        assertTrue(Strings.CS.contains(caption, "fallback describes it"));
     }
 
     private static String successResponse(ModelApiProtocol protocol) {

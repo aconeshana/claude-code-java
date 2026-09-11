@@ -533,6 +533,126 @@ class ModelPickerDialogTest {
     }
 
     @Test
+    void imageModelShortcutMarksSelectedModelAndStaysOpen() {
+        List<ModelPickerDialog.ImageModelResult> picks = new ArrayList<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setCustomModelsSupplier(() -> List.of(customModel("vision-custom")));
+        d.setImageModelHandler(picks::add);
+        show(d, "vision-custom", null, _ -> {});
+
+        d.handleKey(new KeyStroke('i', false, false), new AtomicBoolean(true));
+
+        assertEquals(1, picks.size());
+        assertEquals("vision-custom", picks.getFirst().imageModel());
+        assertTrue(d.isActive(), "i keeps the picker open");
+
+        // Pressing i again on the same row toggles the image model off.
+        d.handleKey(new KeyStroke('i', false, false), new AtomicBoolean(true));
+        assertEquals(2, picks.size());
+        assertNull(picks.get(1).imageModel(), "second i on the same model clears the setting");
+    }
+
+    @Test
+    void editShortcutClosesThePickerAndHandsOffTheCustomModel() {
+        List<String> editRequests = new ArrayList<>();
+        AtomicReference<ModelPickResult> result = new AtomicReference<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setCustomModelsSupplier(() -> List.of(customModel("editable-custom")));
+        d.setEditCustomModelHandler(editRequests::add);
+        show(d, "editable-custom", null, result::set);
+
+        d.handleKey(new KeyStroke('e', false, false), new AtomicBoolean(true));
+
+        assertEquals(List.of("editable-custom"), editRequests);
+        assertFalse(d.isActive(), "e closes the picker so the editor takes over");
+        assertNull(result.get(), "e must not also confirm a model pick");
+    }
+
+    @Test
+    void editShortcutIgnoresBuiltInAndAddCustomRows() {
+        List<String> editRequests = new ArrayList<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setCustomModelsSupplier(() -> List.of(customModel("row-custom")));
+        d.setEditCustomModelHandler(editRequests::add);
+        show(d, "sonnet", null, _ -> {}); // focus: built-in sonnet row
+
+        d.handleKey(new KeyStroke('e', false, false), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // haiku
+        d.handleKey(new KeyStroke('e', false, false), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // row-custom
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // Add custom model…
+        d.handleKey(new KeyStroke('e', false, false), new AtomicBoolean(true));
+
+        assertTrue(editRequests.isEmpty(), "e on non-custom rows must not fire");
+        assertTrue(d.isActive(), "e without a target keeps the picker open");
+    }
+
+    @Test
+    void imageModelShortcutWithoutHandlerIsIgnored() {
+        AtomicReference<ModelPickResult> result = new AtomicReference<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        show(d, "sonnet", null, result::set);
+
+        d.handleKey(new KeyStroke('i', false, false), new AtomicBoolean(true));
+
+        assertTrue(d.isActive(), "i without a handler must not close the picker");
+        d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
+        assertEquals("sonnet", result.get().model());
+    }
+
+    @Test
+    void imageModelShortcutIgnoresDefaultAndAddCustomRows() {
+        List<ModelPickerDialog.ImageModelResult> picks = new ArrayList<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setCustomModelsSupplier(() -> List.of(customModel("rows-custom")));
+        d.setImageModelHandler(picks::add);
+        show(d, null, null, _ -> {}); // focus: Default (recommended)
+
+        d.handleKey(new KeyStroke('i', false, false), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // fable
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // opus
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // sonnet
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // haiku
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // rows-custom
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // Add custom model…
+        d.handleKey(new KeyStroke('i', false, false), new AtomicBoolean(true));
+
+        assertTrue(picks.isEmpty(), "i on Default and Add-custom rows must not fire");
+    }
+
+    @Test
+    void imageModelMarkerRendersOnTheConfiguredRow() {
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setCustomModelsSupplier(() -> List.of(customModel("marked-custom")));
+        d.setImageModelHandler(_ -> {});
+        d.setImageModelSettingReader(() -> "marked-custom");
+        show(d, "marked-custom", null, _ -> {});
+        TerminalSize size = d.calculatePreferredSize();
+        d.setSize(size);
+        BasicTextImage image = new BasicTextImage(size);
+        TextGUIGraphics graphics = TextGUIGraphicsBridge.wrap(null, image.newTextGraphics());
+        d.draw(graphics);
+
+        String rendered = String.join("\n", imageRows(image));
+        int markerRow = -1;
+        for (int row = 0; row < image.getSize().getRows(); row++) {
+            String line = imageRows(image).get(row);
+            if (Strings.CS.contains(line, "marked-custom")) markerRow = row;
+        }
+        assertTrue(markerRow >= 0 && Strings.CS.contains(imageRows(image).get(markerRow), "◐"),
+            "the configured image model row carries the ◐ marker");
+        assertTrue(Strings.CS.contains(rendered, "image model ·"),
+            "the image model row's description is prefixed");
+
+        // Without a configured image model the marker is absent.
+        d.setImageModelSettingReader(() -> null);
+        show(d, "marked-custom", null, _ -> {});
+        d.draw(graphics);
+        String unmarked = String.join("\n", imageRows(image));
+        assertFalse(Strings.CS.contains(unmarked, "marked-custom ◐"));
+    }
+
+    @Test
     void failedDeleteStaysInConfirmationAndDoesNotExposeTheFailureMessage() {
         AtomicInteger attempts = new AtomicInteger();
         ModelPickerDialog d = new ModelPickerDialog();

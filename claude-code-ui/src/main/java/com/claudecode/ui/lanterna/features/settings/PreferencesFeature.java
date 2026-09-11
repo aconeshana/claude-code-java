@@ -174,6 +174,12 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
         if (this.modelDialog != null && customModels != null) {
             this.modelDialog.setCustomModelsSupplier(customModels::list);
             this.modelDialog.setCustomModelDeleteHandler(this::deleteCustomModel);
+            this.modelDialog.setEditCustomModelHandler(this::editCustomModel);
+        }
+        if (this.modelDialog != null) {
+            this.modelDialog.setImageModelSettingReader(
+                () -> UiSettings.readUserStringFromSettings("imageModel"));
+            this.modelDialog.setImageModelHandler(this::saveImageModel);
         }
         if (this.modelDialog != null && gui != null) {
             this.modelDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
@@ -432,6 +438,42 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
         });
     }
 
+    /** Reopens the editor prefilled with the named model's stored configuration. */
+    private void editCustomModel(String modelName) {
+        if (gui == null || customModelDialog == null || customModels == null) return;
+        Runnable edit = () -> {
+            CustomModelConfig existing;
+            try {
+                existing = customModels.list().stream()
+                    .filter(model -> Strings.CS.equals(modelName, model.modelName()))
+                    .findFirst().orElse(null);
+            } catch (RuntimeException e) {
+                Runnable render = () -> sink.line(
+                    "  Could not load custom model: " + safeMessage(e),
+                    LanternaTheme.toolError());
+                runOnGuiThread(render);
+                return;
+            }
+            if (existing == null) {
+                runOnGuiThread(() -> sink.line(
+                    "  Custom model not found: " + modelName, LanternaTheme.toolError()));
+                return;
+            }
+            gui.getGUIThread().invokeLater(() -> {
+                suppressInput(true);
+                customModelDialog.show(existing, result -> {
+                    suppressInput(false);
+                    if (result == null) {
+                        sink.line("  Custom model edit cancelled", LanternaTheme.welcomeDim());
+                    } else {
+                        handleCustomModelResult(result);
+                    }
+                });
+            });
+        };
+        Thread.ofVirtual().name("custom-model-edit").start(edit);
+    }
+
     void handleCustomModelResult(CustomModelConfig model) {
         if (model == null || customModels == null) return;
         Runnable save = () -> {
@@ -481,6 +523,20 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
             }
         });
         return completion;
+    }
+
+    /**
+     * Persists the {@code /model} picker's image-model selection (the {@code i}
+     * shortcut). The write runs on the settings worker; the file write never
+     * blocks Lanterna's GUI thread.
+     */
+    private void saveImageModel(ModelPickerDialog.ImageModelResult result) {
+        String modelName = result != null ? result.imageModel() : null;
+        if (StringUtils.isBlank(modelName)) {
+            UiSettings.writeUserSettingAsync("imageModel", null);
+            return;
+        }
+        UiSettings.writeUserSettingAsync("imageModel", modelName);
     }
 
     private static String safeMessage(RuntimeException error) {

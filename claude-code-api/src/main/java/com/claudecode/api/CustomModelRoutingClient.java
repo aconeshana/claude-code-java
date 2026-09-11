@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.Locale;
 
 /**
@@ -27,6 +28,7 @@ public final class CustomModelRoutingClient implements LlmClient {
     private final LlmClient fallback;
     private final Function<String, Optional<CustomModelConfig>> resolver;
     private final Function<CustomModelConfig, LlmClient> clientFactory;
+    private final Supplier<String> imageModelName;
     private final ConcurrentHashMap<CustomModelConfig, LlmClient> clients = new ConcurrentHashMap<>();
     private final Set<CustomModelConfig> effortUnsupported = ConcurrentHashMap.newKeySet();
 
@@ -34,15 +36,42 @@ public final class CustomModelRoutingClient implements LlmClient {
             LlmClient fallback,
             Function<String, Optional<CustomModelConfig>> resolver,
             Function<CustomModelConfig, LlmClient> clientFactory) {
+        this(fallback, resolver, clientFactory, () -> null);
+    }
+
+    /**
+     * @param imageModelName live supplier of the configured image-processing model
+     *        name; text-only endpoints route their image content there first
+     */
+    public CustomModelRoutingClient(
+            LlmClient fallback,
+            Function<String, Optional<CustomModelConfig>> resolver,
+            Function<CustomModelConfig, LlmClient> clientFactory,
+            Supplier<String> imageModelName) {
         this.fallback = fallback;
         this.resolver = resolver;
         this.clientFactory = clientFactory;
+        this.imageModelName = imageModelName != null ? imageModelName : () -> null;
     }
 
     public static CustomModelRoutingClient standard(
             LlmClient fallback,
             Function<String, Optional<CustomModelConfig>> resolver) {
-        return new CustomModelRoutingClient(fallback, resolver, CustomModelRoutingClient::createClient);
+        return new CustomModelRoutingClient(
+            fallback, resolver, CustomModelRoutingClient::createClient, () -> null);
+    }
+
+    /**
+     * {@link #standard} with a live image-model supplier — the composition root
+     * reads the {@code imageModel} user setting so a /model picker change takes
+     * effect on the next request without rebuilding the client.
+     */
+    public static CustomModelRoutingClient standard(
+            LlmClient fallback,
+            Function<String, Optional<CustomModelConfig>> resolver,
+            Supplier<String> imageModelName) {
+        return new CustomModelRoutingClient(
+            fallback, resolver, CustomModelRoutingClient::createClient, imageModelName);
     }
 
     private static LlmClient createClient(CustomModelConfig model) {
@@ -72,7 +101,7 @@ public final class CustomModelRoutingClient implements LlmClient {
     @Override
     public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request, Runnable onRequestSubmitted) {
         Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route.config(), request);
+        CreateMessageRequest effective = effectiveRequest(route, request);
         try {
             return route.client().createMessageStream(effective, onRequestSubmitted);
         } catch (ApiException failure) {
@@ -84,7 +113,7 @@ public final class CustomModelRoutingClient implements LlmClient {
     @Override
     public ApiMessage createMessage(CreateMessageRequest request) {
         Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route.config(), request);
+        CreateMessageRequest effective = effectiveRequest(route, request);
         try {
             return route.client().createMessage(effective);
         } catch (ApiException failure) {
@@ -96,13 +125,82 @@ public final class CustomModelRoutingClient implements LlmClient {
     @Override
     public ApiMessage createMessage(CreateMessageRequest request, long timeoutMillis) {
         Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route.config(), request);
+        CreateMessageRequest effective = effectiveRequest(route, request);
         try {
             return route.client().createMessage(effective, timeoutMillis);
         } catch (ApiException failure) {
             if (!learnUnsupportedEffort(route.config(), effective, failure)) throw failure;
             return route.client().createMessage(withoutEffort(effective), timeoutMillis);
         }
+    }
+
+    /** Image routing first, then the learned effort stripping. */
+    private CreateMessageRequest effectiveRequest(Route route, CreateMessageRequest request) {
+        CreateMessageRequest imaged = routeImagesFor(route, request);
+        if (route.config() != null && effortUnsupported.contains(route.config())) {
+            return withoutEffort(imaged);
+        }
+        return imaged;
+    }
+
+    /**
+     * Rewrites image blocks to caption text when the routed endpoint is
+     * text-only and an image model is configured; otherwise returns the
+     * request unchanged.
+     */
+    private CreateMessageRequest routeImagesFor(Route route, CreateMessageRequest request) {
+        if (route.config() == null || !route.config().isTextOnly()) return request;
+        String imageModel;
+        try {
+            imageModel = imageModelName.get();
+        } catch (RuntimeException _) {
+            return request;
+        }
+        if (StringUtils.isBlank(imageModel)) return request;
+        List<CreateMessageRequest.RequestMessage> rewritten = ImageContentRouter.routeImages(
+            request.messages(), false, resolveImageEndpoint(imageModel), imageModel);
+        if (rewritten == request.messages()) return request;
+        return CreateMessageRequest.builder()
+            .model(request.model())
+            .maxTokens(request.maxTokens())
+            .systemPrompt(request.systemPrompt())
+            .messages(rewritten)
+            .tools(request.tools())
+            .metadata(request.metadata())
+            .stopSequences(request.stopSequences())
+            .stream(request.stream())
+            .temperature(request.temperature())
+            .topP(request.topP())
+            .topK(request.topK())
+            .thinking(request.thinking())
+            .effort(request.effort())
+            .toolChoice(request.toolChoice())
+            .outputConfig(request.outputConfig())
+            .speed(request.speed())
+            .contextManagement(request.contextManagement())
+            .skipCacheWrite(request.skipCacheWrite())
+            .promptCachingEnabled(request.promptCachingEnabled())
+            .promptCacheTtl(request.promptCacheTtl())
+            .querySource(request.querySource())
+            .cancellationRegistrar(request.cancellationRegistrar())
+            .subagent(request.subagent())
+            .build();
+    }
+
+    /**
+     * Resolves the image endpoint for the configured image-model name. A custom
+     * catalog entry wins; a built-in first-party model name (the picker's
+     * sonnet/opus/... rows) has no custom entry, so it falls back to the
+     * first-party client — the official endpoint is image-capable.
+     */
+    private ImageContentRouter.ImageEndpoint resolveImageEndpoint(String imageModel) {
+        Optional<CustomModelConfig> custom = resolveCustomModel(imageModel);
+        if (custom.isEmpty()) {
+            return new ImageContentRouter.ImageEndpoint(fallback, true);
+        }
+        CustomModelConfig config = custom.get();
+        return new ImageContentRouter.ImageEndpoint(
+            clients.computeIfAbsent(config, clientFactory), config.acceptsImages());
     }
 
     @Override
@@ -136,12 +234,6 @@ public final class CustomModelRoutingClient implements LlmClient {
         if (exact.isPresent()) return exact;
         String normalized = ModelNames.normalizeModelStringForApi(model);
         return Strings.CS.equals(model, normalized) ? Optional.empty() : resolver.apply(normalized);
-    }
-
-    private CreateMessageRequest effectiveRequest(
-            CustomModelConfig config, CreateMessageRequest request) {
-        return config != null && effortUnsupported.contains(config)
-            ? withoutEffort(request) : request;
     }
 
     private boolean learnUnsupportedEffort(
@@ -197,9 +289,11 @@ public final class CustomModelRoutingClient implements LlmClient {
             .thinking(request.thinking())
             .toolChoice(request.toolChoice())
             .outputConfig(retainedOutput)
+            .speed(request.speed())
             .contextManagement(request.contextManagement())
             .skipCacheWrite(request.skipCacheWrite())
             .promptCachingEnabled(request.promptCachingEnabled())
+            .promptCacheTtl(request.promptCacheTtl())
             .querySource(request.querySource())
             .cancellationRegistrar(request.cancellationRegistrar())
             .subagent(request.subagent())

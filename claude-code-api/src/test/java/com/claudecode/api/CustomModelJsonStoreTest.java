@@ -56,6 +56,38 @@ class CustomModelJsonStoreTest {
     }
 
     @Test
+    void multimodalFlagRoundTripsAndLegacyEntriesDefaultToMultimodal() throws Exception {
+        Path file = tempDir.resolve("model.json");
+        CustomModelJsonStore store = new CustomModelJsonStore(file);
+        store.save(new CustomModelConfig("text-only", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE));
+        store.save(new CustomModelConfig("vision", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE));
+
+        assertEquals(Boolean.FALSE, store.find("text-only").orElseThrow().multimodal());
+        assertTrue(store.find("text-only").orElseThrow().isTextOnly());
+        assertFalse(store.find("text-only").orElseThrow().acceptsImages());
+        assertEquals(Boolean.TRUE, store.find("vision").orElseThrow().multimodal());
+        assertTrue(store.find("vision").orElseThrow().acceptsImages());
+
+        String persisted = Files.readString(file);
+        assertTrue(Strings.CS.contains(persisted, "\"multimodal\" : false"));
+        assertTrue(Strings.CS.contains(persisted, "\"multimodal\" : true"));
+
+        // A pre-multimodal model.json entry stays multimodal (flag null).
+        Path legacyFile = tempDir.resolve("legacy-model.json");
+        Files.writeString(legacyFile, """
+            {"version":1,"models":[{"modelName":"legacy","protocol":"anthropic",
+            "baseUrl":"https://example.test/v1","apiKey":null,"headers":{}}]}
+            """);
+        CustomModelConfig legacy = new CustomModelJsonStore(legacyFile)
+            .find("legacy").orElseThrow();
+        assertNull(legacy.multimodal());
+        assertTrue(legacy.acceptsImages());
+        assertFalse(legacy.isTextOnly());
+    }
+
+    @Test
     void legacyGpt56WithoutContextWindowUses372kBuiltInDefault() throws Exception {
         Path file = tempDir.resolve("model.json");
         Files.writeString(file, """

@@ -1,6 +1,7 @@
 package com.claudecode.services.compact;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
@@ -46,7 +47,7 @@ class CompactSummaryValidationTest {
     @Test
     void acceptsAnAlreadyFormattedSummaryHeader() {
         String formatted = CompactService.formatCompactSummary(WELL_FORMED);
-        assertTrue(formatted.contains("Summary:"), "precondition: formatting rewrites the tags");
+        assertTrue(Strings.CS.contains(formatted, "Summary:"), "precondition: formatting rewrites the tags");
         assertTrue(CompactService.containsSummarySection(formatted));
     }
 
@@ -81,7 +82,7 @@ class CompactSummaryValidationTest {
             1. Primary Request: port the settings panel.
             2. Files: GatewaySettingsHandler dispatches via switch to `applyUserValue`/""";
         assertFalse(CompactService.containsSummarySection(truncated));
-        assertTrue(CompactService.formatCompactSummary(truncated).contains("<summary>"),
+        assertTrue(Strings.CS.contains(CompactService.formatCompactSummary(truncated), "<summary>"),
             "precondition: the formatter leaves the unclosed tag in place");
     }
 
@@ -95,7 +96,7 @@ class CompactSummaryValidationTest {
         CompactException failure = assertThrows(CompactException.class, () ->
             strategy.compact(history, (_, _) -> REFUSAL, false, null, null, "claude-opus-5"));
 
-        assertTrue(failure.getMessage().contains("summary section"), failure.getMessage());
+        assertTrue(Strings.CS.contains(failure.getMessage(), "summary section"), failure.getMessage());
     }
 
     @Test
