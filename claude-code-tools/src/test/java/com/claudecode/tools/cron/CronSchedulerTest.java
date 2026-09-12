@@ -390,7 +390,7 @@ class CronSchedulerTest {
     void releasedCreatorOwnershipDefersToLiveCreatorThenAllowsLockTakeover() {
         CronStore.CronJob ownedByOtherSession = new CronStore.CronJob(
             "abc12345", "1 8 * * *", "owned", false, true, now.get(), null,
-            false, null, null, "session-a", 123L, "proc-token");
+            false, null, null, "session-a", 123L, "proc-token", null);
         BiPredicate<Long, String> creatorAlive = (_, _) -> true;
 
         assertFalse(CronScheduler.shouldProcess(

@@ -45,9 +45,8 @@ public final class CronStore {
 
 
     public static synchronized String add(String cron, String prompt, boolean recurring, boolean durable) {
-        return add(cron, prompt, recurring, durable, null);
+        return add(cron, prompt, recurring, durable, (String) null);
     }
-
     /**
      * Teammate-aware form of {@code addCronTask}. The owner is runtime-only and
      * is deliberately omitted for durable jobs, matching the compatibility disk schema.
@@ -55,6 +54,38 @@ public final class CronStore {
     public static synchronized String add(String cron, String prompt, boolean recurring,
                                    boolean durable, String agentId) {
         return add(cron, prompt, recurring, durable, agentId, null);
+    }
+
+    /**
+     * Application-facing model-carrying form: {@code model} is the optional
+     * per-task model override the gateway schedule port threads through.
+     */
+    public static synchronized String addWithModel(String cron, String prompt,
+                                   boolean recurring, boolean durable, String model) {
+        return add(cron, prompt, recurring, durable, null,
+            Instant.now().toEpochMilli(), null,
+            UUID.randomUUID().toString().replace("-", "").substring(0, 8),
+            null, false, null, null, null, model);
+    }
+
+    /**
+     * Shared add-gate validation for the Cron tools and the gateway schedule
+     * port: 5-field syntax, a fire time within the next year, and capacity
+     * below {@link #MAX_JOBS}. Returns {@code null} when the job may be added;
+     * otherwise the user-facing rejection message.
+     */
+    public static String validateNewJob(String cron) {
+        if (!CronUtils.isValid(cron)) {
+            return "Invalid cron expression '" + cron + "'. Expected 5 fields: M H DoM Mon DoW.";
+        }
+        if (CronUtils.nextRunMs(cron) == null) {
+            return "Cron expression '" + cron
+                + "' does not match any calendar date in the next year.";
+        }
+        if (JOBS.size() >= MAX_JOBS) {
+            return "Too many scheduled jobs (max " + MAX_JOBS + "). Cancel one first.";
+        }
+        return null;
     }
 
 /**
@@ -98,12 +129,25 @@ public final class CronStore {
                                    String kind, String id, Long lastFiredAt,
                                    boolean permanent, String createdBySessionId,
                                    Long createdByPid, String createdByProcStart) {
+        return add(cron, prompt, recurring, durable, agentId, createdAt, kind, id,
+            lastFiredAt, permanent, createdBySessionId, createdByPid, createdByProcStart,
+            null);
+    }
+
+    /** Canonical full form; {@code model} is the optional per-task model override. */
+    static synchronized String add(String cron, String prompt, boolean recurring,
+                                   boolean durable, String agentId, long createdAt,
+                                   String kind, String id, Long lastFiredAt,
+                                   boolean permanent, String createdBySessionId,
+                                   Long createdByPid, String createdByProcStart,
+                                   String model) {
         CronJob job = new CronJob(id, cron, prompt, recurring, durable,
             createdAt, lastFiredAt, permanent, durable ? null : agentId,
             durable ? null : kind,
             durable ? createdBySessionId : null,
             durable ? createdByPid : null,
-            durable ? createdByProcStart : null);
+            durable ? createdByProcStart : null,
+            StringUtils.defaultIfBlank(model, null));
         JOBS.add(job);
         scheduledTasksEnabled = true;
         if (durable) persist();
@@ -184,10 +228,13 @@ public final class CronStore {
                     ? node.path("createdByPid").asLong() : null;
                 String createdByProcStart = node.path("createdByProcStart").isTextual()
                     ? node.path("createdByProcStart").asText() : null;
+                String model = node.path("model").isTextual()
+                    && StringUtils.isNotBlank(node.path("model").asText())
+                    ? node.path("model").asText() : null;
                 if (!id.isEmpty() && !cron.isEmpty() && CronUtils.isValid(cron)) {
                     JOBS.add(new CronJob(id, cron, prompt, recur, true, createdAt,
                         lastFiredAt, permanent, null, null, createdBySessionId,
-                        createdByPid, createdByProcStart));
+                        createdByPid, createdByProcStart, model));
                 }
             }
         } catch (IOException _) {}
@@ -259,6 +306,7 @@ public final class CronStore {
                 if (j.createdByProcStart() != null) {
                     n.put("createdByProcStart", j.createdByProcStart());
                 }
+                if (StringUtils.isNotBlank(j.model())) n.put("model", j.model());
                 arr.add(n);
             }
             Path temp = Files.createTempFile(path.getParent(), ".scheduled_tasks-", ".tmp");
@@ -306,24 +354,24 @@ public final class CronStore {
                    boolean durable, long createdAt, Long lastFiredAt,
                    boolean permanent, String agentId, String kind,
                    String createdBySessionId, Long createdByPid,
-                   String createdByProcStart) {
+                   String createdByProcStart, String model) {
         public CronJob(String id, String cron, String prompt, boolean recurring,
                        boolean durable, long createdAt, Long lastFiredAt,
                        boolean permanent, String agentId, String kind) {
             this(id, cron, prompt, recurring, durable, createdAt, lastFiredAt,
-                permanent, agentId, kind, null, null, null);
+                permanent, agentId, kind, null, null, null, null);
         }
 
         CronJob withLastFiredAt(long firedAt) {
             return new CronJob(id, cron, prompt, recurring, durable, createdAt,
                 firedAt, permanent, agentId, kind, createdBySessionId,
-                createdByPid, createdByProcStart);
+                createdByPid, createdByProcStart, model);
         }
 
         CronJob withCreatorProcess(long pid, String procStart) {
             return new CronJob(id, cron, prompt, recurring, durable, createdAt,
                 lastFiredAt, permanent, agentId, kind, createdBySessionId,
-                pid, procStart);
+                pid, procStart, model);
         }
     }
 }

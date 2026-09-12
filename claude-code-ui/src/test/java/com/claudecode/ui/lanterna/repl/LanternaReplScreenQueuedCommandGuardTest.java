@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -57,6 +58,18 @@ class LanternaReplScreenQueuedCommandGuardTest {
 
         assertTrue(scheduled.suppressInitialAttachments());
         assertTrue(scheduled.isMeta());
+        assertNull(scheduled.modelOverride());
+    }
+
+    @Test
+    void perTaskModelOverrideIsRetainedAtTheTurnBoundary() {
+        QueuedCommand cmd = QueuedCommand.modelScheduled(
+            "resolved prompt", "raw prompt", "cron", null, "opus");
+        UserInput ordinary = UserInput.builder("resolved prompt", "resolved prompt").build();
+
+        UserInput scheduled = QueuedCommandMapper.applyQueuedCommandProvenance(ordinary, cmd);
+
+        assertEquals("opus", scheduled.modelOverride());
     }
 
     @Test

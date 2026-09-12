@@ -42,7 +42,9 @@ public record QueuedCommand(
          */
         String taskId,
         /** True for model-scheduled cron/loop prompts; suppresses the ordinary attachment pass. */
-        boolean modelScheduledOrigin
+        boolean modelScheduledOrigin,
+        /** Per-task model override for model-scheduled prompts; null keeps the session model. */
+        String modelOverride
 ) {
     public QueuedCommand {
         if (text == null) throw new IllegalArgumentException("text must not be null");
@@ -82,6 +84,15 @@ public record QueuedCommand(
         return new QueuedCommand(text, null, "prompt", QueuePriority.LATER,
             true, null, true, false, preExpansionValue, workload, agentId,
             null, null, true);
+    }
+
+    /** Model-scheduled cron prompt with a per-task model override; null keeps the session model. */
+    public static QueuedCommand modelScheduled(String text, String preExpansionValue,
+                                               String workload, String agentId,
+                                               String modelOverride) {
+        return new QueuedCommand(text, null, "prompt", QueuePriority.LATER,
+            true, null, true, false, preExpansionValue, workload, agentId,
+            null, null, true, modelOverride);
     }
 
     /** Orphaned SDK permission response to replay; processed next as a hidden meta command. */
@@ -130,5 +141,16 @@ public record QueuedCommand(
             OrphanedPermission orphanedPermission, String taskId) {
         this(text, pastedContents, mode, priority, isMeta, originKind, skipSlashCommands,
                 bridgeOrigin, preExpansionValue, workload, agentId, orphanedPermission, taskId, false);
+    }
+
+    /** Backward-compatible canonical shape from before modelOverride. */
+    public QueuedCommand(String text, Map<Integer, PastedContent> pastedContents, String mode,
+            QueuePriority priority, boolean isMeta, String originKind, boolean skipSlashCommands,
+            boolean bridgeOrigin, String preExpansionValue, String workload, String agentId,
+            OrphanedPermission orphanedPermission, String taskId,
+            boolean modelScheduledOrigin) {
+        this(text, pastedContents, mode, priority, isMeta, originKind, skipSlashCommands,
+                bridgeOrigin, preExpansionValue, workload, agentId, orphanedPermission,
+                taskId, modelScheduledOrigin, null);
     }
 }

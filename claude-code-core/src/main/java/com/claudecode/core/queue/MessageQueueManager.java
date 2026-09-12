@@ -62,7 +62,7 @@ public final class MessageQueueManager {
         queue.add(new QueuedCommand(cmd.text(), cmd.pastedContents(), cmd.mode(), effective,
             cmd.isMeta(), cmd.originKind(), cmd.skipSlashCommands(), cmd.bridgeOrigin(),
             cmd.preExpansionValue(), cmd.workload(), cmd.agentId(), cmd.orphanedPermission(),
-            cmd.taskId(), cmd.modelScheduledOrigin()));
+            cmd.taskId(), cmd.modelScheduledOrigin(), cmd.modelOverride()));
         notifyListeners();
     }
 
@@ -74,7 +74,8 @@ public final class MessageQueueManager {
         queue.add(new QueuedCommand(cmd.text(), null, cmd.mode(), effective,
             cmd.isMeta(), cmd.originKind(), cmd.skipSlashCommands(),
             cmd.bridgeOrigin(), cmd.preExpansionValue(), cmd.workload(), cmd.agentId(),
-            cmd.orphanedPermission(), cmd.taskId(), cmd.modelScheduledOrigin()));
+            cmd.orphanedPermission(), cmd.taskId(), cmd.modelScheduledOrigin(),
+            cmd.modelOverride()));
         notifyListeners();
     }
 

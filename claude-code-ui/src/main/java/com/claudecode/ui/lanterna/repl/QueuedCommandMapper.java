@@ -26,6 +26,9 @@ final class QueuedCommandMapper {
         UserInput.Builder builder = input.toBuilder()
             .meta(cmd.isMeta())
             .suppressInitialAttachments(cmd.modelScheduledOrigin());
+        if (cmd.modelOverride() != null) {
+            builder.modelOverride(cmd.modelOverride());
+        }
         if (Strings.CS.equals("session-host", cmd.originKind())) {
             builder.inputOrigin("remote");
         }

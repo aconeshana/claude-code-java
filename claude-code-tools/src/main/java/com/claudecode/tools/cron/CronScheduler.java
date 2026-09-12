@@ -182,7 +182,7 @@ public final class CronScheduler {
             ? jobs -> {
                 String notification = buildMissedTaskNotification(jobs);
                 this.onFire.accept(new FiredTask(
-                    "__missed__", notification, notification, "cron", false, null));
+                    "__missed__", notification, notification, "cron", false, null, null));
             }
             : onMissed;
         this.filter = filter == null ? _ -> true : filter;
@@ -318,7 +318,7 @@ public final class CronScheduler {
             if (Strings.CS.equals("loop", job.kind())) loopWakeupManager.markLoopTaskFired(job.prompt());
             onFire.accept(new FiredTask(job.id(), job.prompt(),
                 promptResolver.resolve(job.prompt()), job.kind(),
-                job.recurring(), job.agentId()));
+                job.recurring(), job.agentId(), job.model()));
 
             boolean aged = job.recurring() && !job.permanent()
                 && jitterConfig.recurringMaxAgeMs() > 0
@@ -559,5 +559,5 @@ public final class CronScheduler {
 
     /** Scheduler callback payload; raw sentinel and resolved prompt stay distinct. */
     public record FiredTask(String id, String prompt, String resolvedPrompt, String kind,
-                            boolean recurring, String agentId) { }
+                            boolean recurring, String agentId, String model) { }
 }

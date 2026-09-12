@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CronStoreTest {
@@ -41,6 +42,31 @@ class CronStoreTest {
             {"tasks":[{"id":"abc12345"}]}
             """);
         assertTrue(CronStore.hasDurableTasksSync());
+    }
+
+    @Test
+    void validateNewJobAcceptsAFireableExpression() {
+        assertNull(CronStore.validateNewJob("*/5 * * * *"));
+    }
+
+    @Test
+    void validateNewJobRejectsMalformedAndNeverFiringExpressions() {
+        assertEquals("Invalid cron expression 'not a cron'. Expected 5 fields: M H DoM Mon DoW.",
+            CronStore.validateNewJob("not a cron"));
+        // Feb 30 never occurs; with dow unconstrained no calendar date matches.
+        assertEquals("Cron expression '0 0 30 2 *' "
+                + "does not match any calendar date in the next year.",
+            CronStore.validateNewJob("0 0 30 2 *"));
+    }
+
+    @Test
+    void validateNewJobRejectsAtCapacityMatchingTheCronToolGate() {
+        for (int i = 0; i < CronStore.MAX_JOBS; i++) {
+            CronStore.add("*/5 * * * *", "job " + i, true, false);
+        }
+
+        assertEquals("Too many scheduled jobs (max " + CronStore.MAX_JOBS
+            + "). Cancel one first.", CronStore.validateNewJob("0 9 * * *"));
     }
 
     @Test
@@ -124,6 +150,28 @@ class CronStoreTest {
         assertEquals(ProcessHandle.current().pid(), restored.createdByPid());
         assertEquals(persisted.path("createdByProcStart").asText(),
             restored.createdByProcStart());
+    }
+
+    @Test
+    void durableRoundTripPreservesThePerTaskModelOverride(@TempDir Path projectRoot)
+        throws Exception {
+        CronStore.configureProjectRootForTest(projectRoot);
+
+        CronStore.addWithModel("5 * * * *", "report with opus", true, true, "opus");
+
+        var persisted = JsonUtils.getMapper().readTree(CronStore.durablePath().toFile())
+            .path("tasks").get(0);
+        assertEquals("opus", persisted.path("model").asText());
+
+        CronStore.loadDurable();
+        assertEquals("opus", CronStore.list().getFirst().model());
+
+        // A task without an override stays absent on the wire, not null-spelled.
+        CronStore.add("7 * * * *", "session model", true, true);
+        var rows = JsonUtils.getMapper().readTree(CronStore.durablePath().toFile())
+            .path("tasks");
+        assertFalse(rows.get(1).has("model"));
+        assertNull(CronStore.list().get(1).model());
     }
 
     @Test

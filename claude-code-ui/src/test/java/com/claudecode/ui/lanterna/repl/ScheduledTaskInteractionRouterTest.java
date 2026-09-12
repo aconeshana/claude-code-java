@@ -56,6 +56,6 @@ class ScheduledTaskInteractionRouterTest {
 
     private static CronScheduler.FiredTask task(String agentId) {
         return new CronScheduler.FiredTask(
-            "cron-1", "raw prompt", "resolved prompt", null, false, agentId);
+            "cron-1", "raw prompt", "resolved prompt", null, false, agentId, null);
     }
 }

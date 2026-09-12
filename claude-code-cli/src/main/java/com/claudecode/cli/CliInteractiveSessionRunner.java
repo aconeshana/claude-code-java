@@ -27,6 +27,7 @@ import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.model.CustomModelCatalog;
@@ -722,16 +723,26 @@ final class CliInteractiveSessionRunner {
             ProjectCatalogPort projects) {
         return new GatewaySessionCatalogPort() {
             @Override public List<ProjectEntry> listProjects() {
+                return listProjects(Integer.MAX_VALUE);
+            }
+            @Override public List<ProjectEntry> listProjects(int perProjectLimit) {
+                int limit = perProjectLimit <= 0 ? Integer.MAX_VALUE : perProjectLimit;
                 return projects.listProjects().stream()
                     .map(project -> new ProjectEntry(
                         project.projectPath(), project.projectName(), project.sessionCount(),
                         project.lastActivityMs(),
-                        project.sessions().stream()
-                            .map(session -> new SessionEntry(
-                                session.id(), session.summary(), session.messageCount(),
-                                session.lastModified(), session.gitBranch(), session.cwd(),
-                                session.customTitle(), session.firstPrompt()))
-                            .toList()))
+                        limit >= project.sessions().size()
+                            ? sessionEntries(project.sessions())
+                            : sessionEntries(project.sessions().subList(0, limit))))
+                    .toList();
+            }
+            private static List<SessionEntry> sessionEntries(
+                    List<ProjectCatalogPort.ProjectSessionEntry> sessions) {
+                return sessions.stream()
+                    .map(session -> new SessionEntry(
+                        session.id(), session.summary(), session.messageCount(),
+                        session.lastModified(), session.gitBranch(), session.cwd(),
+                        session.customTitle(), session.firstPrompt()))
                     .toList();
             }
         };
@@ -773,7 +784,9 @@ final class CliInteractiveSessionRunner {
 
     /**
      * Bridges the gateway schedule port onto {@code CronStore}'s static,
-     * process-wide job list; no cwd is needed.
+     * process-wide job list, sharing the CronCreate tool's add gate
+     * (expression syntax / next-run / capacity) with the webui add form;
+     * no cwd is needed.
      */
     private static GatewaySchedulePort gatewaySchedule() {
         return new GatewaySchedulePort() {
@@ -782,12 +795,16 @@ final class CliInteractiveSessionRunner {
                     .map(job -> new ScheduleEntry(
                         job.id(), job.cron(), job.prompt(), job.recurring(),
                         job.durable(), job.createdAt(), job.lastFiredAt(),
-                        job.kind(), job.agentId(), job.createdBySessionId()))
+                        job.kind(), job.agentId(), job.createdBySessionId(),
+                        job.model()))
                     .toList();
             }
+            @Override public String validateAdd(String cron) {
+                return CronStore.validateNewJob(cron);
+            }
             @Override public String add(String cron, String prompt,
-                    boolean recurring, boolean durable) {
-                return CronStore.add(cron, prompt, recurring, durable);
+                    boolean recurring, boolean durable, String model) {
+                return CronStore.addWithModel(cron, prompt, recurring, durable, model);
             }
             @Override public boolean remove(String id) {
                 return CronStore.removeById(id);
@@ -886,10 +903,28 @@ final class CliInteractiveSessionRunner {
                 return headless != null ? headless.find(sessionId) : Optional.empty();
             }
 
+            /**
+             * Resolves a live session with model control: an open headless
+             * id is that session; a blank id is the active TUI session; and
+             * the active TUI session's own id (the registry's published
+             * {@link SessionHostInfo#id()}, which is the engine's session
+             * id) also resolves to it. The webui addresses its conversation
+             * by that id once the sidebar selection lands, so omitting it
+             * would blank the model seat a moment after it first renders.
+             */
+            private Optional<SessionHostSession> liveSession(String sessionId) {
+                Optional<SessionHostSession> found = headless(sessionId);
+                if (found.isPresent()) return found;
+                Optional<SessionHostSession> activeSession = active();
+                if (activeSession.isEmpty()) return Optional.empty();
+                if (StringUtils.isBlank(sessionId)) return activeSession;
+                return activeSession.filter(
+                    session -> Strings.CS.equals(session.info().id(), sessionId));
+            }
+
             @Override public Optional<ModelSelection> selection(String sessionId) {
-                Optional<SessionHostSession> session = headless(sessionId)
-                    .or(() -> StringUtils.isBlank(sessionId) ? active() : Optional.empty());
-                return session.map(found -> project(found.models().get(), null));
+                return liveSession(sessionId)
+                    .map(found -> project(found.models().get(), null));
             }
 
             @Override public Optional<ContextBreakdown> breakdown(String sessionId) {
@@ -937,6 +972,46 @@ final class CliInteractiveSessionRunner {
                 }
             }
 
+            @Override public Optional<SessionMetricsSnapshot> metrics(String sessionId) {
+                // Same live-engine resolution as messages: the blank id is
+                // the TUI engine, an open headless id is that session's
+                // engine, and the TUI engine's own id resolves to it. The
+                // fold is projected verbatim — the gateway filters
+                // INCOMPLETE coverage, and transcript-only ids have no live
+                // fold (their metrics were restored when the session was
+                // opened, not re-derived here).
+                return metricsEngine(sessionId)
+                    .map(e -> e.execution().getSessionMetrics());
+            }
+
+            /**
+             * The live engine that owns the durable fold for
+             * {@code sessionId}, or empty for a transcript-only target.
+             */
+            private Optional<QuerySession> metricsEngine(String sessionId) {
+                if (StringUtils.isBlank(sessionId)) {
+                    return Optional.ofNullable(engine);
+                }
+                Optional<QuerySession> open = headlessEngine(sessionId);
+                if (open.isPresent()) return open;
+                if (engine != null && Strings.CS.equals(
+                        engine.conversation().getSessionId(), sessionId)) {
+                    return Optional.of(engine);
+                }
+                return Optional.empty();
+            }
+
+            /** The open headless session's live engine, or empty when none is open under that id. */
+            private Optional<QuerySession> headlessEngine(String sessionId) {
+                // Same concrete-cast seam as headlessMessages: the gateway
+                // port speaks SessionHostSession only; the live engine rides
+                // the CLI supervisor when the concrete type is wired.
+                if (headless instanceof CliHeadlessGatewaySessions concrete) {
+                    return concrete.liveEngine(sessionId);
+                }
+                return Optional.empty();
+            }
+
             /** The open headless session's live engine rows, or empty when none is open under that id. */
             private Optional<List<Message>> headlessMessages(String sessionId) {
                 // The gateway port speaks SessionHostSession only; the live
@@ -949,8 +1024,7 @@ final class CliInteractiveSessionRunner {
             }
 
             @Override public SelectionResult selectModel(String sessionId, String model) {
-                Optional<SessionHostSession> session = headless(sessionId)
-                    .or(() -> StringUtils.isBlank(sessionId) ? active() : Optional.empty());
+                Optional<SessionHostSession> session = liveSession(sessionId);
                 if (session.isEmpty()) {
                     return SelectionResult.rejected(
                         StringUtils.isBlank(sessionId)
@@ -966,8 +1040,7 @@ final class CliInteractiveSessionRunner {
                 }
             }
             @Override public SelectionResult selectEffort(String sessionId, String effort) {
-                Optional<SessionHostSession> session = headless(sessionId)
-                    .or(() -> StringUtils.isBlank(sessionId) ? active() : Optional.empty());
+                Optional<SessionHostSession> session = liveSession(sessionId);
                 if (session.isEmpty()) {
                     return SelectionResult.rejected(
                         StringUtils.isBlank(sessionId)

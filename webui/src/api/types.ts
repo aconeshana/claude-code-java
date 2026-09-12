@@ -74,6 +74,7 @@ export interface ToolResult {
   readonly errorMessage?: string
   readonly errorCode?: string
   readonly transcript_path?: string
+  readonly locations?: readonly string[]
 }
 
 export type SnapshotContent =
@@ -81,17 +82,33 @@ export type SnapshotContent =
   | { readonly type: 'thinking'; readonly thinking: string }
   | { readonly type: 'tool_call'; readonly tool: ToolCallTool }
 
+/** One assistant step's provider-reported token buckets (snapshot turn_usage / frame turn_usage). */
+export interface TurnUsage {
+  readonly uncached_input_tokens: number
+  readonly output_tokens: number
+  readonly cache_write_tokens: number
+  readonly cache_read_tokens: number
+  readonly total_tokens: number
+}
+
 export interface SnapshotAssistantMessage {
   readonly id: string
   readonly role: 'assistant'
   readonly complete: boolean
   readonly content: readonly SnapshotContent[]
+  /** Durable transcript timestamp, epoch ms — the turn-tail clock label. */
+  readonly time?: number
+  /** 1-based turn number; absent for rows before the first human prompt. */
+  readonly turn?: number
+  readonly turn_usage?: TurnUsage
 }
 
 export interface SnapshotUserMessage {
   readonly id: string
   readonly role: 'user'
   readonly complete: boolean
+  /** Durable transcript timestamp, epoch ms — the user row's leading clock. */
+  readonly time?: number
   readonly text: string
 }
 
@@ -112,6 +129,8 @@ export type MirrorFrame =
       readonly display_text: string
       readonly permission_mode: string
       readonly origin: string
+      /** The user row's leading clock label, epoch ms. */
+      readonly time?: number
     } }
   | { readonly event: 'output.text'; readonly id: number; readonly data: {
       readonly session_id: string
@@ -166,6 +185,11 @@ export type MirrorFrame =
       readonly done: boolean
       readonly elapsed_ms: number
       readonly user_cancel: boolean
+      /** The turn-tail's trailing clock label, epoch ms. */
+      readonly time?: number
+      /** 1-based turn number; present when the durable fold served the delta. */
+      readonly turn?: number
+      readonly turn_usage?: TurnUsage
     } }
 
 // ---------------------------------------------------------------------------
@@ -251,3 +275,161 @@ export class ApiError extends Error {
     this.code = code
   }
 }
+
+// ---------------------------------------------------------------------------
+// GET/POST /api/settings — settings snapshot + mutation ops
+// ---------------------------------------------------------------------------
+
+/** One contributing tier row of the merged settings snapshot. */
+export interface SettingsSource {
+  readonly source: string
+  readonly settings: Readonly<Record<string, unknown>>
+}
+
+/**
+ * The effective settings snapshot (SettingsSnapshots.withSources shape):
+ * the merged tree plus one row per contributing tier. POST mutations answer
+ * with the same refreshed shape, so one type serves both.
+ */
+export interface SettingsSnapshot {
+  readonly effective: Readonly<Record<string, unknown>>
+  readonly sources: readonly SettingsSource[]
+}
+
+/** The editable settings tiers the write ops address. */
+export type SettingsTier = 'user' | 'project' | 'local'
+
+/** The editable permission behavior arrays. */
+export type PermissionBehaviorKind = 'allow' | 'deny' | 'ask'
+
+// ---------------------------------------------------------------------------
+// GET/POST /api/schedule, DELETE /api/schedule/{id} — scheduled tasks
+// ---------------------------------------------------------------------------
+
+export interface ScheduleTask {
+  readonly id: string
+  readonly cron: string
+  readonly prompt: string
+  readonly recurring: boolean
+  readonly durable: boolean
+  readonly created_at: number
+  readonly last_fired_at?: number
+  readonly kind?: string
+  readonly agent_id?: string
+  readonly created_by_session_id?: string
+  /** Per-task model override; absent keeps the session model at fire time. */
+  readonly model?: string
+}
+
+export interface ScheduleListing {
+  readonly tasks: readonly ScheduleTask[]
+}
+
+// ---------------------------------------------------------------------------
+// GET/POST /api/models, DELETE /api/models/{name} — custom model catalogue
+// ---------------------------------------------------------------------------
+
+export type ModelProtocol = 'anthropic' | 'chat' | 'responses'
+
+export interface CustomModelEntry {
+  readonly model_name: string
+  readonly protocol: ModelProtocol
+  readonly base_url: string
+  readonly has_api_key: boolean
+  readonly headers: Readonly<Record<string, string>>
+  readonly context_window?: number
+  /** Null = unconfigured (assume multimodal); false marks a text-only endpoint. */
+  readonly multimodal?: boolean | null
+}
+
+export interface ModelsListing {
+  readonly models: readonly CustomModelEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/commands — composer "+" menu catalogue (slash commands + skills)
+// ---------------------------------------------------------------------------
+
+export type CommandKind = 'command' | 'skill'
+
+export interface ComposerCommandEntry {
+  readonly name: string
+  readonly description?: string
+  readonly argument_hint?: string
+  readonly kind: CommandKind
+}
+
+export interface CommandsListing {
+  readonly commands: readonly ComposerCommandEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// GET/POST /api/session/context — active session model seat + context meter
+// ---------------------------------------------------------------------------
+
+export interface SessionModelChoice {
+  readonly name: string
+  readonly label: string
+  readonly description?: string
+  readonly default: boolean
+}
+
+export interface SessionEffortState {
+  readonly current: string
+  readonly effective: string
+  readonly choices: readonly string[]
+}
+
+export interface SessionModelSelection {
+  readonly current: string
+  readonly models: readonly SessionModelChoice[]
+  readonly effort?: SessionEffortState
+}
+
+export interface SessionContextBreakdown {
+  readonly system_tokens: number
+  readonly tools_tokens: number
+  readonly message_tokens: number
+}
+
+export interface SessionContextUsage {
+  readonly model: string
+  readonly context_window: number
+  readonly used_tokens?: number
+  readonly used_percentage?: number
+  readonly breakdown?: SessionContextBreakdown
+}
+
+/**
+ * The gateway's durable whole-session metrics fold, raw integers only —
+ * display formulas live client-side (vendor/dsh-stats-pills). Null when the
+ * session's coverage is incomplete or unavailable; a complete all-zero fold
+ * is a legal (fresh) session.
+ */
+export interface SessionMetrics {
+  readonly turns: number
+  readonly steps: number
+  readonly llm_ms: number
+  readonly tool_ms: number
+  readonly ttft_ms: number
+  readonly ttft_steps: number
+  readonly decode_ms: number
+  readonly decode_tokens: number
+  readonly uncached_input_tokens: number
+  readonly output_tokens: number
+  readonly cache_write_tokens: number
+  readonly cache_read_tokens: number
+}
+
+export interface SessionContext {
+  readonly selection: SessionModelSelection | null
+  readonly context: SessionContextUsage | null
+  readonly metrics: SessionMetrics | null
+}
+
+export interface SessionContextSelectResponse {
+  readonly selection: SessionModelSelection
+  readonly context: SessionContextUsage | null
+  readonly metrics: SessionMetrics | null
+}
+

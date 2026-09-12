@@ -145,7 +145,15 @@ paths:
       description: |
         Every project and every session on disk, not only open ones. Rows carry
         active:true for the current TUI session and headless_open:true for
-        sessions routable right now without an open round-trip.
+        sessions routable right now without an open round-trip. Each project's
+        sessions are paged to its most recent per_project rows (session_count
+        keeps the total); grow the page with a larger per_project.
+      parameters:
+        - name: per_project
+          in: query
+          required: false
+          schema: { type: string }
+          description: Rows per project (1..1000); "all" serves every row. Defaults to 5.
       responses:
         '200':
           description: Two-level project→session listing (flat fallback when no catalog is wired)
@@ -458,15 +466,18 @@ paths:
   /api/session/context:
     get:
       tags: [Sessions]
-      summary: One session's model selection and context usage
+      summary: One session's model selection, context usage, and session metrics
       description: |
-        Feeds the webui composer's model seat and context meter (mirroring
-        dsh's remote session model/context surface). The selection half
-        lists the same /model catalogue the TUI serves (built-in families,
-        custom models, allowlist-filtered); the context half reuses the
-        claude-hud status-line token accounting — the finalized usage
-        anchor's input-token sum over the model-resolved context window —
-        so the meter and the status line show one number.
+        Feeds the webui composer's model seat, context meter, and stats
+        pills (mirroring dsh's remote session model/context surface). The
+        selection half lists the same /model catalogue the TUI serves
+        (built-in families, custom models, allowlist-filtered); the context
+        half reuses the claude-hud status-line token accounting — the
+        finalized usage anchor's input-token sum over the model-resolved
+        context window — so the meter and the status line show one number.
+        The metrics half projects the engine's durable whole-session fold
+        (the same SessionMetricsTracker fold the TUI status line renders);
+        raw integers cross the wire and the client owns display formatting.
 
         The addressed session follows the protocol turn runner's routing:
         an open headless session id, the active TUI session's own id, or
@@ -481,7 +492,7 @@ paths:
           description: The session to address; absent means the active TUI session
       responses:
         '200':
-          description: Selection plus usage; each half is null without a live target
+          description: Selection, usage, and metrics; each half is null without a live target
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionContext' }
@@ -497,6 +508,9 @@ paths:
         selection of the same session stay in lockstep while sibling
         sessions keep their own choices. A running turn keeps the model it
         started with; the new choice applies to the next prompt assembly.
+        The refreshed answer carries the session's metrics alongside the
+        selection and usage, so a selection change never blanks the
+        stats pills.
       requestBody:
         required: true
         content:
@@ -504,7 +518,7 @@ paths:
             schema: { $ref: '#/components/schemas/SessionContextSelectRequest' }
       responses:
         '200':
-          description: The refreshed selection plus usage
+          description: The refreshed selection, usage, and metrics
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionContext' }
@@ -588,7 +602,7 @@ components:
             properties:
               project_path: { type: string }
               project_name: { type: string }
-              session_count: { type: integer }
+              session_count: { type: integer, description: Total sessions in the project (sessions may be a paged subset) }
               sessions:
                 type: array
                 items: { $ref: '#/components/schemas/SessionRow' }
@@ -633,6 +647,7 @@ components:
         session_id: { type: string }
         messages:
           type: array
+          description: User text rows and assistant content[] rows, transcript order; both kinds stamp `time` (epoch ms) for their clock labels
           items: { $ref: '#/components/schemas/AssistantMessageSnapshot' }
     AssistantMessageSnapshot:
       type: object
@@ -642,9 +657,49 @@ components:
         request_id: { type: string }
         conversation_id: { type: string }
         complete: { type: boolean }
+        time:
+          type: integer
+          description: Durable transcript timestamp as epoch ms — the turn-tail clock label fact; absent on synthetic rows
+        turn:
+          type: integer
+          description: |
+            1-based turn number this assistant row answers (a human prompt
+            opens a turn). Absent on rows predating the turn annotation.
+        turn_usage:
+          allOf: [ { $ref: '#/components/schemas/TurnUsage' } ]
+          description: This row's provider-reported token buckets; absent when the row carries no usage
         content:
           type: array
           items: { $ref: '#/components/schemas/MessageContentBlock' }
+    TurnUsage:
+      type: object
+      description: |
+        Per-turn provider token buckets, raw integers. On the snapshot path
+        the row's own usage buckets; on the live turn.completed frame the
+        durable-fold delta between the turn's start baseline and the fold
+        after endTurn (so every step of the turn is counted exactly once).
+        Display formatting is client-side.
+      required:
+        - uncached_input_tokens
+        - output_tokens
+        - cache_write_tokens
+        - cache_read_tokens
+        - total_tokens
+      properties:
+        uncached_input_tokens:
+          type: integer
+          description: Provider input tokens (the uncached bucket)
+        output_tokens:
+          type: integer
+        cache_write_tokens:
+          type: integer
+          description: Cache-creation input tokens
+        cache_read_tokens:
+          type: integer
+          description: Cache-read input tokens
+        total_tokens:
+          type: integer
+          description: Billed input buckets (uncached + cache write + cache read) plus output
     MessageContentBlock:
       oneOf:
         - type: object
@@ -791,6 +846,10 @@ components:
         kind: { type: string, nullable: true }
         agent_id: { type: string, nullable: true }
         created_by_session_id: { type: string, nullable: true }
+        model:
+          type: string
+          nullable: true
+          description: Per-task model override applied at fire time; absent keeps the session model
     ScheduleCreateRequest:
       type: object
       required: [cron, prompt]
@@ -799,6 +858,10 @@ components:
         prompt: { type: string }
         recurring: { type: boolean, default: false }
         durable: { type: boolean, default: false }
+        model:
+          type: string
+          nullable: true
+          description: Optional per-task model override; absent keeps the session model at fire time
     ModelList:
       type: object
       properties:
@@ -820,6 +883,68 @@ components:
         context:
           allOf: [ { $ref: '#/components/schemas/ContextUsage' } ]
           nullable: true
+        metrics:
+          allOf: [ { $ref: '#/components/schemas/SessionMetrics' } ]
+          nullable: true
+          description: |
+            The addressed session's durable whole-session HUD fold. Null
+            when the session has no live engine or its persisted event
+            coverage is incomplete — a partial fold is never served as a
+            session total (docs/hud-metrics-specification.md §6).
+    SessionMetrics:
+      type: object
+      description: |
+        The durable whole-log metrics fold (docs/hud-metrics-specification.md).
+        Counts fold from the persisted event log; paging, compaction, and
+        the visible window cannot change them. Raw integers — display
+        formatting (compact tokens, percent, tok/s, durations) is
+        client-side.
+      required:
+        - turns
+        - steps
+        - llm_ms
+        - tool_ms
+        - ttft_ms
+        - ttft_steps
+        - decode_ms
+        - decode_tokens
+        - uncached_input_tokens
+        - output_tokens
+        - cache_write_tokens
+        - cache_read_tokens
+      properties:
+        turns:
+          type: integer
+          description: Distinct turn numbers with at least one closed step
+        steps:
+          type: integer
+          description: Steps counted on step/end (completed, failed, cancelled, max-token steps all count)
+        llm_ms:
+          type: integer
+          description: Summed step/start → assistant/message wall time over steps that assembled an assistant message
+        tool_ms:
+          type: integer
+          description: Summed matched tool/call → tool/result durations; parallel durations sum and may exceed wall time
+        ttft_ms:
+          type: integer
+          description: Summed step/start → first token over ttft_steps
+        ttft_steps:
+          type: integer
+          description: Steps carrying a recorded TTFT; TTFT avg = ttft_ms / ttft_steps
+        decode_ms:
+          type: integer
+          description: Summed first token → assistant/message over steps that also sample output tokens
+        decode_tokens:
+          type: integer
+          description: Summed output tokens over the same sampled steps; tok/s = decode_tokens / (decode_ms / 1000)
+        uncached_input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cache_write_tokens:
+          type: integer
+        cache_read_tokens:
+          type: integer
     ModelSelection:
       type: object
       required: [current, models]

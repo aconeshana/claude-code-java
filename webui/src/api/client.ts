@@ -1,4 +1,4 @@
-import { ApiError, type CatalogProject, type CloseSessionResponse, type FlatSessionCatalog, type MessagesSnapshot, type OpenSessionResponse, type RespondRequest, type SessionCatalog, type UserContentBlock } from './types'
+import { ApiError, type CatalogProject, type CloseSessionResponse, type CommandsListing, type FlatSessionCatalog, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SettingsSnapshot, type SettingsTier, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -46,9 +46,14 @@ async function requestJson<T>(method: string, path: string, body?: unknown): Pro
  * registry (GatewayServer.sessionsBody). The web client only ever works with
  * the tree shape, so the flat fallback is normalized into a single synthetic
  * project grouped by working directory.
+ *
+ * `perPage` pages each project to its most recent `perPage` sessions
+ * (?per_project=; session_count keeps the total) — the sidebar grows the
+ * page on demand instead of one unbounded listing.
  */
-export async function fetchCatalog(): Promise<SessionCatalog> {
-  const raw = await requestJson<SessionCatalog | FlatSessionCatalog>('GET', '/api/sessions')
+export async function fetchCatalog(perPage?: number): Promise<SessionCatalog> {
+  const query = perPage != null ? `?per_project=${perPage}` : ''
+  const raw = await requestJson<SessionCatalog | FlatSessionCatalog>('GET', `/api/sessions${query}`)
   if ('projects' in raw) return raw
   return { projects: groupFlatSessions(raw.sessions) }
 }
@@ -105,6 +110,153 @@ export function closeHeadlessSession(sessionId: string): Promise<CloseSessionRes
 
 export function respondPermission(request: RespondRequest): Promise<unknown> {
   return requestJson('POST', '/api/permissions/respond', request)
+}
+
+/**
+ * GET /api/settings: the effective settings snapshot with per-tier source
+ * attribution. Every POST op answers with the same refreshed shape.
+ */
+export function fetchSettingsSnapshot(): Promise<SettingsSnapshot> {
+  return requestJson('GET', '/api/settings')
+}
+
+/**
+ * Writes or removes (value == null) one top-level user-tier setting.
+ */
+export function writeUserSettingValue(key: string, value: string | boolean | null): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', { op: 'userValue', key, value })
+}
+
+/**
+ * Writes or removes (mode == null) permissions.defaultMode for one tier.
+ */
+export function writePermissionMode(mode: string | null, tier: SettingsTier): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', { op: 'permissionMode', mode, tier })
+}
+
+/**
+ * Replaces one permission behavior's rule array for one tier.
+ */
+export function replacePermissionRules(behavior: PermissionBehaviorKind, rules: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', { op: 'permissionRules', behavior, rules, tier })
+}
+
+/**
+ * Appends unseen directories to permissions.additionalDirectories for one tier.
+ */
+export function addAdditionalDirectories(directories: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', { op: 'addDirectories', directories, tier })
+}
+
+/**
+ * Removes directories from permissions.additionalDirectories for one tier.
+ */
+export function removeAdditionalDirectories(directories: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', { op: 'removeDirectories', directories, tier })
+}
+
+/**
+ * GET /api/schedule: every scheduled task known to the process.
+ */
+export function fetchScheduleTasks(): Promise<ScheduleListing> {
+  return requestJson('GET', '/api/schedule')
+}
+
+/**
+ * POST /api/schedule: adds one scheduled task. `model` is the optional
+ * per-task model override; null keeps the session model at fire time.
+ */
+export function addScheduleTask(cron: string, prompt: string, recurring: boolean, durable: boolean, model: string | null): Promise<{ id: string }> {
+  return requestJson('POST', '/api/schedule', model == null
+    ? { cron, prompt, recurring, durable }
+    : { cron, prompt, recurring, durable, model })
+}
+
+/**
+ * DELETE /api/schedule/{id}: removes one scheduled task; 404 when absent.
+ */
+export function removeScheduleTask(id: string): Promise<{ removed: boolean }> {
+  return requestJson('DELETE', `/api/schedule/${encodeURIComponent(id)}`)
+}
+
+/**
+ * GET /api/commands: the composer "+" menu catalogue — every non-hidden
+ * slash command, with skills included (they register as commands).
+ */
+export function fetchComposerCommands(): Promise<CommandsListing> {
+  return requestJson('GET', '/api/commands')
+}
+
+/**
+ * GET /api/session/context: the addressed session's model selection plus
+ * the context usage sample (claude-hud token accounting) for the
+ * composer's model seat and context meter. A null session id addresses
+ * the active TUI session.
+ */
+export function fetchSessionContext(sessionId?: string | null): Promise<SessionContext> {
+  const query = sessionId == null || sessionId === ''
+    ? ''
+    : `?session_id=${encodeURIComponent(sessionId)}`
+  return requestJson('GET', `/api/session/context${query}`)
+}
+
+/**
+ * POST /api/session/context: applies one model or effort selection to the
+ * addressed session and answers with the refreshed selection. Exactly one
+ * of `model` / `effort` must be present.
+ */
+export function selectSessionContext(input: {
+  readonly session_id?: string | null
+  readonly model?: string
+  readonly effort?: string
+}): Promise<SessionContextSelectResponse> {
+  const body = input.session_id == null || input.session_id === ''
+    ? { model: input.model, effort: input.effort }
+    : input
+  return requestJson('POST', '/api/session/context', body)
+}
+
+export type { ComposerCommandEntry } from './types'
+
+/**
+ * GET /api/models: every custom model known to the process.
+ */
+export function fetchCustomModels(): Promise<ModelsListing> {
+  return requestJson('GET', '/api/models')
+}
+
+/**
+ * POST /api/models: adds or updates one custom model, keyed by model name.
+ * `apiKey` carries the three-way credential signal: `undefined` keeps the
+ * existing key (edit without touching credentials), `null` clears it, and a
+ * string sets a new value. Answers with the refreshed listing.
+ */
+export function saveCustomModel(input: {
+  readonly modelName: string
+  readonly protocol: ModelProtocol
+  readonly baseUrl: string
+  readonly apiKey?: string | null
+  readonly headers?: Readonly<Record<string, string>>
+  readonly contextWindow?: number | null
+  /** `undefined` keeps the existing flag; `null`/`false`/`true` set it. */
+  readonly multimodal?: boolean | null
+}): Promise<ModelsListing> {
+  return requestJson('POST', '/api/models', {
+    model_name: input.modelName,
+    protocol: input.protocol,
+    base_url: input.baseUrl,
+    ...(input.apiKey === undefined ? {} : { api_key: input.apiKey }),
+    ...(input.headers == null ? {} : { headers: input.headers }),
+    ...(input.contextWindow == null ? {} : { context_window: input.contextWindow }),
+    ...(input.multimodal === undefined ? {} : { multimodal: input.multimodal }),
+  })
+}
+
+/**
+ * DELETE /api/models/{name}: removes one custom model; 404 when absent.
+ */
+export function removeCustomModel(modelName: string): Promise<{ removed: boolean }> {
+  return requestJson('DELETE', `/api/models/${encodeURIComponent(modelName)}`)
 }
 
 /**

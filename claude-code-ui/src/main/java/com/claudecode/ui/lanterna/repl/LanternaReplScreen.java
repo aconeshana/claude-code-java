@@ -56,6 +56,7 @@ import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
 import com.claudecode.runtime.sessionhost.SessionHostEffortController;
+import com.claudecode.runtime.sessionhost.SessionHostModelOptions;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostModelController;
@@ -867,6 +868,10 @@ public class LanternaReplScreen implements SlashHost {
         // messagePanel.calculatePreferredSize() returns the right height
         // immediately (otherwise SmartLayout gives it height=1 forever).
         renderFreshConversationWelcome();
+
+        // Eagerly start the web gateway off the first-frame path; the
+        // quick-entry row appears in the welcome block once it is live.
+        warmUpWebGateway();
 
         // Cold-start replay for --resume / --continue: if the engine was
         // preloaded with prior messages (ClaudeCodeCli before run()), render
@@ -2521,15 +2526,15 @@ public class LanternaReplScreen implements SlashHost {
             memoryFeature, sessionController);
         mcpController = new MCPController(gui, mcpDialog, inputPanel, transcriptSink,
             mcpManagement);
-// Bridge background-task (bash / subagent) terminal transitions into the session message
-// queue as <task-notification> messages.
+        // Bridge background-task (bash / subagent) terminal transitions into the session message
+        // queue as <task-notification> messages.
 
         // enqueue*Notification — see TaskNotificationBridge / TaskNotificationBuilder.
         new TaskNotificationBridge(queryEngine.conversation().getMessageQueue()).register();
-// …and let any such arrival wake an idle REPL.
+        // …and let any such arrival wake an idle REPL.
         turnEngine.bindIdleQueueWakeup(this::isLongRunningCommandInFlight);
         // Expose the session queue to background bash tasks so the stall
-// watchdog can enqueue an interactive-prompt notification. matches
+        // watchdog can enqueue an interactive-prompt notification. matches
         // the HookEngine.setMessageQueue wiring at the CLI root.
         featureRuntime.taskRegistry().setMessageQueue(queryEngine.conversation().getMessageQueue());
         // Hooks browser: snapshot loading + settings hot-reload subscription. toolNames /
@@ -2824,7 +2829,7 @@ public class LanternaReplScreen implements SlashHost {
             dispatcher.dispatch(new SDKMessage.System(fireMsg), messagePanel);
             queryEngine.conversation().getMessageQueue().enqueuePendingNotification(
                 QueuedCommand.modelScheduled(
-                    task.resolvedPrompt(), task.prompt(), "cron", null));
+                    task.resolvedPrompt(), task.prompt(), "cron", null, task.model()));
             turnEngine.drainIfIdle();
         });
     }
@@ -3203,6 +3208,25 @@ public class LanternaReplScreen implements SlashHost {
         int terminalWidth = screen != null
             ? screen.getTerminalSize().getColumns() : 100;
         welcomeBlock = welcomePanel.show(messagePanel, terminalWidth, model);
+    }
+
+    /**
+     * Feeds the gateway URL into the welcome block's web quick-entry row
+     * after the gateway finishes starting (or clears it after a warmup
+     * failure leaves the gateway absent). Runs on the GUI thread; a
+     * whole-block re-render happens only when the row is newly appearing,
+     * otherwise the existing row is updated in place.
+     */
+    private void refreshWelcomeWebEntry(String url) {
+        Runnable repaint = () -> {
+            if (messagePanel == null || welcomeBlock == null) return;
+            int terminalWidth = screen != null
+                ? screen.getTerminalSize().getColumns() : 100;
+            welcomeBlock = welcomePanel.updateWebLine(
+                messagePanel, welcomeBlock, terminalWidth, model, url);
+        };
+        if (gui != null) gui.getGUIThread().invokeLater(repaint);
+        else repaint.run();
     }
 
     private void publishActiveSession() {
@@ -3683,9 +3707,12 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * Starts the in-process web gateway on demand ({@code /web}) and surfaces
-     * the token-embedded URL as a transcript line. The URL is the only place
-     * the token is displayed; it never goes to logs.
+     * {@code /web}: waits for the web gateway to be running — joining an
+     * in-flight start (startup warmup or an earlier {@code /web}) rather than
+     * starting a second binding — then opens the token-embedded URL in the
+     * system browser and surfaces the URL as a transcript line (the copyable
+     * fallback when no browser can be spawned). The URL is the only place the
+     * token is displayed; it never goes to logs.
      */
     public void startWebGateway() {
         if (gatewaySupervisor == null) {
@@ -3693,15 +3720,48 @@ public class LanternaReplScreen implements SlashHost {
             return;
         }
         Thread.ofVirtual().name("web-gateway-start").start(() -> {
+            GatewaySupervisorPort.Started started;
             try {
-                GatewaySupervisorPort.Started started =
-                    gatewaySupervisor.start();
-                postSystemMessage("Web gateway: " + started.url());
+                started = gatewaySupervisor.start();
             } catch (RuntimeException failure) {
                 log.warn("[LANTERNA] Web gateway failed to start", failure);
                 postSystemMessage("Web gateway failed to start: " + failure.getMessage());
+                return;
             }
+            openWebGatewayInBrowser(started.url());
+            refreshWelcomeWebEntry(started.url());
+            postSystemMessage("Web gateway: " + started.url());
         });
+    }
+
+    /** Opens the gateway URL with the platform browser; posts a hint on failure. */
+    private void openWebGatewayInBrowser(String url) {
+        boolean opened = plugins != null && plugins.openExternalUrl(url);
+        if (!opened) {
+            postSystemMessage("Could not open a browser — open the URL manually.");
+        }
+    }
+
+    /**
+     * Eagerly starts the web gateway in the background at REPL startup so the
+     * welcome block can surface its quick-entry row almost immediately. The
+     * start is shared with {@code /web} (single-flight): if the user invokes
+     * {@code /web} while the warmup is still binding, both await the same
+     * start. A warmup failure is silent — it must not disturb the first
+     * frame; {@code /web} remains the explicit retry path.
+     */
+    private void warmUpWebGateway() {
+        if (gatewaySupervisor == null) return;
+        gatewaySupervisor.startAsync()
+            .whenComplete((started, failure) -> {
+                if (started != null) {
+                    log.info("[LANTERNA] Web gateway warmed up: {}",
+                        LogoPanel.webOrigin(started.url()));
+                } else if (failure != null) {
+                    log.debug("Web gateway warmup failed: {}", failure.toString());
+                }
+                refreshWelcomeWebEntry(started != null ? started.url() : null);
+            });
     }
 
     /** Applies a SessionStart hook title through the live terminal/session-host path. */

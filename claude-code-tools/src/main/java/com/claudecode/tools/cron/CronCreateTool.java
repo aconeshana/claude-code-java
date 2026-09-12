@@ -112,17 +112,9 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
         // (errorCodes 1/2/3) via ValidationResult.invalid, NOT as a plain-text
 // "Error: …" from call (which would look like a successful result).
         String cron = input.path("cron").asText("");
-        if (!CronUtils.isValid(cron)) {
-            return ValidationResult.invalid(
-                "Invalid cron expression '" + cron + "'. Expected 5 fields: M H DoM Mon DoW.");
-        }
-        if (CronUtils.nextRunMs(cron) == null) {
-            return ValidationResult.invalid(
-                "Cron expression '" + cron + "' does not match any calendar date in the next year.");
-        }
-        if (CronStore.list().size() >= CronStore.MAX_JOBS) {
-            return ValidationResult.invalid(
-                "Too many scheduled jobs (max " + CronStore.MAX_JOBS + "). Cancel one first.");
+        String rejection = CronStore.validateNewJob(cron);
+        if (rejection != null) {
+            return ValidationResult.invalid(rejection);
         }
         if (input.path("durable").asBoolean(false) && TeammateContextHolder.get() != null) {
             return ValidationResult.invalid(
