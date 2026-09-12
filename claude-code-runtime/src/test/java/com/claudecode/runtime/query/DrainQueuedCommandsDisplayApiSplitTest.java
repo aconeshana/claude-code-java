@@ -3,10 +3,10 @@ package com.claudecode.runtime.query;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.AttachmentRenderer;
 import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.queue.MessageQueueManager;
-import com.claudecode.core.queue.QueuePriority;
 import com.claudecode.core.queue.QueuedCommand;
 
 import org.junit.jupiter.api.Test;
@@ -54,10 +54,29 @@ class DrainQueuedCommandsDisplayApiSplitTest {
             "the UI/transcript stream must show only what the user actually typed");
 
         List<Message> history = engine.getMutableMessages();
-        UserMessage lastApiMessage = (UserMessage) history.get(history.size() - 1);
+        UserMessage lastApiMessage = (UserMessage) history.getLast();
         assertEquals(
             AttachmentRenderer.wrapQueuedCommandText("typed while busy", "prompt", null),
             lastApiMessage.message().text(),
             "the API-bound conversation history must still carry the urgency wrapper");
+    }
+
+    @Test
+    void promptDrain_marksRowsAsSystemInjectedSoTheyNeverClaimPromptProvenance() {
+        MessageQueueManager queue = new MessageQueueManager();
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(NOOP_CLIENT)
+            .messageQueue(queue)
+            .build());
+        queue.enqueue(QueuedCommand.prompt("typed while busy"));
+
+        QueryHelpers.drainQueuedCommands(engine, _ -> { });
+
+        for (Message message : engine.getMutableMessages()) {
+            UserMessage row = (UserMessage) message;
+            assertEquals(MessageOrigin.SYSTEM, row.origin(),
+                "a drained row participates in an already-measured turn and must read as "
+                    + "system-injected, never as a human-submitted prompt");
+        }
     }
 }

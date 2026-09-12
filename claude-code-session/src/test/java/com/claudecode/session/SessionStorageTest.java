@@ -184,6 +184,29 @@ class SessionStorageTest {
     }
 
     @Test
+    void queuedPromptDrainedMidTurnDoesNotClaimTypedPromptSource() throws Exception {
+        Path file = tempDir.resolve("drained-queued-prompt.jsonl");
+        // The drain path (QueryHelpers.drainQueuedCommands) materializes a queued
+        // prompt as an in-turn attachment stamped MessageOrigin.SYSTEM.
+        UserMessage drained = new UserMessage(
+            "drained-uuid", MessageContent.ofText("queued while busy"), false, false, null,
+            MessageOrigin.SYSTEM, null, Instant.parse("2026-09-11T19:52:52Z"),
+            null, null, "session-1", null);
+
+        storage.appendMessageWithParent(file, drained, "session-1", "/tmp/project",
+            false, null, "main", null, null, "parent-uuid", "prompt-1", "typed");
+
+        JsonNode line = mapper.readTree(Files.readString(file).trim());
+        assertFalse(line.has("promptSource"),
+            "a mid-turn drained queue row participates in an already-measured turn; "
+                + "claiming 'typed' would poison the metrics restore coverage check");
+        assertFalse(line.has("origin"),
+            "system-injected rows never claim the human origin kind");
+        assertTrue(new SessionStorage().readMetricTurnIds(file).isEmpty(),
+            "the drained row must not count as a turn that requires metrics coverage");
+    }
+
+    @Test
     void planClearHandoffRoundTripsAutoContinuationOriginAndPlanContent() throws Exception {
         Path file = tempDir.resolve("plan-clear-handoff.jsonl");
         UserMessage msg = new UserMessage(

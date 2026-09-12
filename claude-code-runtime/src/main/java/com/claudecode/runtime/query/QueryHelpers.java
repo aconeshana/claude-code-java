@@ -337,11 +337,15 @@ final class QueryHelpers {
             // feedback-echo-vs-api-content-two-streams.md.
             Instant now = Instant.now();
             String wrapped = AttachmentRenderer.wrapQueuedCommandText(cmd.text(), cmd.mode(), cmd.originKind());
+            // MessageOrigin.SYSTEM: the drained row is an in-turn injection, not a
+            // human-submitted prompt — it never opens its own metrics turn, and the
+            // transcript stamping relies on this origin to withhold promptSource
+            // (a 'typed' stamp would poison the metrics restore coverage check).
             UserMessage apiMsg = new UserMessage(
                 UUID.randomUUID().toString(),
                 MessageContent.ofText(wrapped),
                 cmd.isMeta(),
-                false, null, MessageOrigin.USER, null, now, null, null,
+                false, null, MessageOrigin.SYSTEM, null, now, null, null,
                 engine.getSessionId(), null);
             engine.getMutableMessages().add(apiMsg);
 
@@ -350,7 +354,7 @@ final class QueryHelpers {
                     UUID.randomUUID().toString(),
                     MessageContent.ofText(cmd.text()),
                     cmd.isMeta(),
-                    false, null, MessageOrigin.USER, null, now, null, null,
+                    false, null, MessageOrigin.SYSTEM, null, now, null, null,
                     engine.getSessionId(), null)
                 : apiMsg;
             emit.accept(new SDKMessage.User(displayMsg));

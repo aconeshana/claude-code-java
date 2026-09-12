@@ -51,7 +51,9 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -354,6 +356,15 @@ public class SessionStorage {
                 // createUserMessage({isMeta:true}) messages injected by tools
                 // (PDF pages/full documents/image metadata) are internal
                 // conversation material, not independently submitted SDK prompts.
+                node.remove("promptSource");
+                node.remove("origin");
+            } else if (user.origin() == MessageOrigin.SYSTEM) {
+                // System-injected rows — currently the mid-turn queue drain
+                // (QueryHelpers.drainQueuedCommands) materializing a queued
+                // prompt as an in-turn attachment. They participate in an
+                // already-measured turn and never open their own metrics turn,
+                // so claiming prompt provenance would poison the metrics
+                // restore coverage check (measuredTurnIds ⊇ transcriptTurnIds).
                 node.remove("promptSource");
                 node.remove("origin");
             } else if (!isLocalCommandTranscriptMessage(user)
@@ -924,15 +935,30 @@ public class SessionStorage {
         return List.copyOf(events);
     }
 
-    /** Main submitted user UUIDs that require one complete metrics turn. */
+    /**
+     * Main submitted user UUIDs that require one complete metrics turn.
+     *
+     * <p>A promptSource row whose transcript parent is a tool_result row is a
+     * mid-turn injection (historically the queue drain stamping the then-current
+     * prompt provenance), not a turn opener — it participates in an
+     * already-measured turn and must not enter the coverage obligation, or a
+     * single queued prompt drains would permanently poison the restore
+     * completeness check. The structural parent check also self-heals older
+     * transcripts written before drain rows stopped claiming prompt provenance.
+     */
     public List<String> readMetricTurnIds(Path sessionFile) {
         if (sessionFile == null || !Files.exists(sessionFile)) return List.of();
         List<String> turnIds = new ArrayList<>();
         try {
+            Map<String, JsonNode> byUuid = new HashMap<>();
             for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) {
+                if (node.hasNonNull("uuid")) byUuid.put(node.path("uuid").asText(), node);
+            }
+            for (JsonNode node : byUuid.values()) {
                 if (Strings.CS.equals("user", node.path("type").asText())
                         && node.hasNonNull("promptSource")
-                        && node.hasNonNull("uuid")) {
+                        && node.hasNonNull("uuid")
+                        && !isMidTurnInjectedPrompt(node, byUuid)) {
                     turnIds.add(node.path("uuid").asText());
                 }
             }
@@ -940,6 +966,25 @@ public class SessionStorage {
             log.debug("readMetricTurnIds failed for {}: {}", sessionFile, e.getMessage());
         }
         return List.copyOf(turnIds);
+    }
+
+    /**
+     * Whether a promptSource user row is chained onto a tool_result row — the
+     * transcript shape of a mid-turn injection that never opened its own turn.
+     */
+    private static boolean isMidTurnInjectedPrompt(JsonNode node, Map<String, JsonNode> byUuid) {
+        JsonNode parentUuid = node.path("parentUuid");
+        if (!parentUuid.isTextual()) return false;
+        JsonNode parent = byUuid.get(parentUuid.asText());
+        if (parent == null || !Strings.CS.equals("user", parent.path("type").asText())) {
+            return false;
+        }
+        JsonNode content = parent.path("message").path("content");
+        if (!content.isArray()) return false;
+        for (JsonNode block : content) {
+            if (Strings.CS.equals("tool_result", block.path("type").asText())) return true;
+        }
+        return false;
     }
 
     private static String textField(JsonNode node, String field) {

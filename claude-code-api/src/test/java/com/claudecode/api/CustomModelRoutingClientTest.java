@@ -352,6 +352,76 @@ class CustomModelRoutingClientTest {
     }
 
     @Test
+    void unsettingTheImageModelStopsCaptioningAndForwardsImagesUntouched() {
+        // The /model picker's `i` shortcut clears the imageModel user setting
+        // in place; the composition root reads it live per request, so the
+        // same router instance must switch from captioning to forwarding.
+        var textOnly = new CustomModelConfig("glm-alias", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.FALSE);
+        var imageModel = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
+            "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);
+        AtomicReference<String> imageModelSetting = new AtomicReference<>("vision-custom");
+        List<CreateMessageRequest> captionRequests = new ArrayList<>();
+        List<CreateMessageRequest> mainRequests = new ArrayList<>();
+        CustomModelRoutingClient router = new CustomModelRoutingClient(
+            new RecordingClient("fallback"),
+            name -> Strings.CS.equals("glm-alias", name) ? Optional.of(textOnly)
+                : Strings.CS.equals("vision-custom", name) ? Optional.of(imageModel)
+                : Optional.empty(),
+            config -> Strings.CS.equals("vision-custom", config.modelName())
+                ? new RecordingClient("vision-custom") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        captionRequests.add(request);
+                        return ApiMessage.stub(request.model(), "described");
+                    }
+                }
+                : new RecordingClient("glm-alias") {
+                    @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                        mainRequests.add(request);
+                        return ApiMessage.stub(request.model(), "ok");
+                    }
+                },
+            imageModelSetting::get);
+
+        Object imageBlock = Map.of("type", "image", "source", Map.of(
+            "type", "base64", "media_type", "image/png", "data", "aGk="));
+        Object textBlock = Map.of("type", "text", "text", "what is this?");
+
+        // Before the unset: the image is captioned and replaced with text.
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock, textBlock))))
+            .stream(false)
+            .build());
+        assertEquals(1, captionRequests.size(), "with an image model set the image is captioned");
+        assertEquals("text", ((Map<?, ?>) ((List<?>) mainRequests.getFirst()
+            .messages().getFirst().content()).getFirst()).get("type"));
+
+        // The unset: same router, the supplier now reads null.
+        captionRequests.clear();
+        mainRequests.clear();
+        imageModelSetting.set(null);
+
+        router.createMessage(CreateMessageRequest.builder()
+            .model("glm-alias")
+            .messages(List.of(new CreateMessageRequest.RequestMessage(
+                "user", List.of(imageBlock, textBlock))))
+            .stream(false)
+            .build());
+
+        assertTrue(captionRequests.isEmpty(),
+            "after the image model is unset no caption call is made");
+        assertEquals(1, mainRequests.size(),
+            "the main model still receives exactly one request");
+        List<?> forwarded = (List<?>) mainRequests.getFirst().messages().getFirst().content();
+        assertSame(imageBlock, forwarded.getFirst(),
+            "the original image block is forwarded to the target model by reference");
+        assertSame(textBlock, forwarded.get(1),
+            "the sibling text block is forwarded untouched too");
+    }
+
+    @Test
     void multimodalEndpointNeverCaptionsImages() {
         var multimodal = new CustomModelConfig("vision-custom", ModelApiProtocol.ANTHROPIC,
             "https://example.test/v1", "key", Map.of(), null, Boolean.TRUE);

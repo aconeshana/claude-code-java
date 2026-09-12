@@ -53,6 +53,31 @@ class SessionMetricsPersistenceTest {
         assertEquals("fork", metrics.get(1).path("sessionId").asText());
     }
 
+    @Test
+    void midTurnInjectedPromptRowDoesNotEnterTheMetricsCoverageObligation(
+        @TempDir Path dir) throws Exception {
+        // Historical poison shape: a queued prompt drained mid-turn was stamped
+        // with the then-current promptSource ("typed") while chained onto a
+        // tool_result row. It participates in an already-measured turn and must
+        // not require its own metrics turn, or the restore completeness check
+        // fails forever after every restart.
+        Path file = dir.resolve("poisoned.jsonl");
+        String toolResult = "{\"type\":\"user\",\"uuid\":\"tr-1\",\"isSidechain\":false,"
+            + "\"message\":{\"role\":\"user\",\"content\":"
+            + "[{\"type\":\"tool_result\",\"tool_use_id\":\"call-1\",\"content\":\"ok\"}]}}";
+        String drained = "{\"type\":\"user\",\"uuid\":\"drained-1\",\"isSidechain\":false,"
+            + "\"parentUuid\":\"tr-1\",\"promptSource\":\"typed\","
+            + "\"origin\":{\"kind\":\"human\"},"
+            + "\"message\":{\"role\":\"user\",\"content\":\"queued while busy\"}}";
+        String opener = "{\"type\":\"user\",\"uuid\":\"turn-1\",\"isSidechain\":false,"
+            + "\"parentUuid\":null,\"promptSource\":\"typed\","
+            + "\"message\":{\"role\":\"user\",\"content\":\"the real turn\"}}";
+        Files.writeString(file, toolResult + "\n" + drained + "\n" + opener + "\n");
+
+        assertEquals(List.of("turn-1"), new SessionStorage().readMetricTurnIds(file),
+            "the mid-turn injected row is excluded; the real turn opener remains");
+    }
+
     private static ObjectNode metric(String sessionId, long seq, String event, String turnId) {
         ObjectNode row = JsonUtils.getMapper().createObjectNode();
         row.put("type", SessionMetricsEvent.TRANSCRIPT_TYPE);
