@@ -253,7 +253,11 @@ paths:
         Server-sent events for the active TUI session plus every open headless
         session. Every frame's data JSON carries session_id. Reconnect with
         Last-Event-ID to replay the bounded ring; ?session_id= narrows to one
-        conversation view.
+        conversation view. The turn.completed frame's data carries elapsed_ms
+        (turn wall time), ttft_ms (time to first stream output; absent when
+        the turn produced none), time (epoch ms), and turn + turn_usage (the
+        durable-fold delta; the usage body's model is the turn's last-reported
+        model id).
       parameters:
         - name: session_id
           in: query
@@ -686,6 +690,13 @@ components:
         - cache_read_tokens
         - total_tokens
       properties:
+        model:
+          type: string
+          description: |
+            The model id the turn's stream last reported (Assistant message
+            model field); the usage dialog's model-route row. Absent when the
+            stream never reported a model (live frame path) or the snapshot
+            row carries no attribution.
         uncached_input_tokens:
           type: integer
           description: Provider input tokens (the uncached bucket)

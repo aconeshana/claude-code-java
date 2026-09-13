@@ -290,7 +290,8 @@ class GatewayServerInteropTest {
         EventSource source = openMirror(null, events);
 
         // No complete fold at turn start: no baseline, the completion frame
-        // stays without the delta fields.
+        // stays without the delta fields. No stream output either, so the
+        // frame carries no TTFT reading.
         hub.onTurnStart(UserInput.of("one", "one", null, "default"));
         hub.onTurnComplete(new TurnOutcome(
             false, false, 5L, null, null, null, "default"));
@@ -300,16 +301,24 @@ class GatewayServerInteropTest {
         assertThat(events.poll(5, TimeUnit.SECONDS))
             .contains("turn.completed")
             .contains("\"time\":")
-            .doesNotContain("turn_usage");
+            .doesNotContain("turn_usage")
+            .doesNotContain("ttft_ms");
 
         // Turn 1 starts over a complete fold of 2 turns; by completion the
-        // fold counts 3 turns with the turn's buckets added.
+        // fold counts 3 turns with the turn's buckets added. One assistant
+        // message arrives mid-turn, latching the first-output clock for the
+        // TTFT row.
         fold.set(new SessionMetricsSnapshot(
             true, 3, 4, 12_000, 4_000, 900, 4, 6_000, 400,
             1_000, 800, 200, 9_000));
         hub.onTurnStart(UserInput.of("two", "two", null, "default"));
         String baselineStart = events.poll(5, TimeUnit.SECONDS);
         assertThat(baselineStart).contains("turn.started");
+        hub.onMessage(assistantMessage(List.of(
+            new TextBlock("first output"))));
+        // The mid-turn assistant message publishes its own output.text frame
+        // ahead of the completion frame; drain it before asserting the tail.
+        assertThat(events.poll(5, TimeUnit.SECONDS)).contains("output.text");
         fold.set(new SessionMetricsSnapshot(
             true, 4, 5, 15_000, 5_000, 1_100, 5, 7_000, 500,
             1_200, 1_000, 300, 9_900));
@@ -325,7 +334,9 @@ class GatewayServerInteropTest {
             .contains("\"cache_write_tokens\":100")
             .contains("\"cache_read_tokens\":900")
             .contains("\"total_tokens\":1400")
-            .contains("\"elapsed_ms\":7");
+            .contains("\"elapsed_ms\":7")
+            .contains("\"ttft_ms\":")
+            .contains("\"model\":\"glm-4.7\"");
         source.cancel();
     }
 
@@ -1263,7 +1274,7 @@ class GatewayServerInteropTest {
         AssistantMessage message = new AssistantMessage(
             UUID.randomUUID().toString(),
             new AssistantContent(null, blocks, null));
-        return new SDKMessage.Assistant(message, Usage.EMPTY, "claude-sonnet-5");
+        return new SDKMessage.Assistant(message, Usage.EMPTY, "glm-4.7");
     }
 
     private SDKMessage.User toolResultMessage(String toolUseId,

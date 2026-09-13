@@ -29,6 +29,8 @@ interface AssistantMessageState {
   readonly turnUsage?: TurnUsage
   /** Turn wall time in ms (frame path only; the snapshot path has no per-turn clock). */
   readonly runMs?: number
+  /** Time to first stream output, ms (frame path; absent when the turn produced none). */
+  readonly ttftMs?: number
   /** Durable transcript timestamp, epoch ms — the turn-tail clock label. */
   readonly time?: number
 }
@@ -238,6 +240,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...(frame.data.turn !== undefined ? { turn: frame.data.turn } : {}),
         ...(frame.data.turn_usage !== undefined ? { turnUsage: frame.data.turn_usage } : {}),
         runMs: frame.data.elapsed_ms,
+        ...(frame.data.ttft_ms !== undefined ? { ttftMs: frame.data.ttft_ms } : {}),
         ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
       }))
       return { ...state, messages, turnRunning: false }

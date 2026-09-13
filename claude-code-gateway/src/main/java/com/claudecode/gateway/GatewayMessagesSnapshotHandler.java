@@ -146,8 +146,12 @@ final class GatewayMessagesSnapshotHandler {
             entry.put("turn", turn);
             // The step's provider-reported buckets, raw integers — the same
             // contract the turn.completed frame's delta serves.
-            Usage usage = message.message() == null ? null : message.message().usage();
-            if (usage != null) entry.set("turn_usage", turnUsageBody(usage));
+            AssistantContent envelope = message.message();
+            Usage usage = envelope == null ? null : envelope.usage();
+            if (usage != null) {
+                entry.set("turn_usage", turnUsageBody(usage,
+                    envelope == null ? null : envelope.model()));
+            }
         }
         ArrayNode content = entry.putArray("content");
         AssistantContent envelope = message.message();
@@ -165,9 +169,14 @@ final class GatewayMessagesSnapshotHandler {
         return entry;
     }
 
-    /** One assistant step's reported token buckets, snake_case on the wire. */
-    private static ObjectNode turnUsageBody(Usage usage) {
+    /**
+     * One assistant step's reported token buckets, snake_case on the wire.
+     * The model id rides along as the usage dialog's model-route row (absent
+     * on rows whose envelope carried none).
+     */
+    private static ObjectNode turnUsageBody(Usage usage, String model) {
         ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        if (model != null) node.put("model", model);
         node.put("uncached_input_tokens", usage.inputTokens());
         node.put("output_tokens", usage.outputTokens());
         node.put("cache_write_tokens", usage.cacheCreationInputTokens());

@@ -112,6 +112,25 @@ public final class MirrorHub {
     /** Each followed session's fold at its last turn start (the diff baseline). */
     private final Map<String, SessionMetricsSnapshot> turnBaselines =
         new ConcurrentHashMap<>();
+    /**
+     * Each followed session's wall clock at its last turn start, for the
+     * completion frame's TTFT (time to first stream output). A turn that
+     * errors before any output carries no reading.
+     */
+    private final Map<String, Long> turnStartClocks = new ConcurrentHashMap<>();
+    /**
+     * Each followed session's first stream-output wall clock for the running
+     * turn, recorded once; the first Assistant or System message counts as
+     * the first token (Progress frames are control-plane, not model output).
+     */
+    private final Map<String, Long> turnFirstOutputClocks = new ConcurrentHashMap<>();
+    /**
+     * Each followed session's last-seen model id for the running turn, from
+     * the Assistant messages' {@code model} field. The completion frame's
+     * turn-usage body carries it as the usage dialog's model-route row; a
+     * turn whose stream never reported a model stays without the field.
+     */
+    private final Map<String, String> turnModels = new ConcurrentHashMap<>();
 
     public MirrorHub(SessionHostRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -253,6 +272,11 @@ public final class MirrorHub {
         metricsReader.apply(sessionId)
             .filter(SessionMetricsSnapshot::complete)
             .ifPresent(baseline -> turnBaselines.put(sessionId, baseline));
+        // TTFT anchor: the turn's wall clock, diffed against the first
+        // stream output when it lands.
+        turnStartClocks.put(sessionId, System.currentTimeMillis());
+        turnFirstOutputClocks.remove(sessionId);
+        turnModels.remove(sessionId);
         ObjectNode payload = object();
         payload.put("display_text", input.displayText());
         payload.put("permission_mode", input.permissionMode());
@@ -264,6 +288,13 @@ public final class MirrorHub {
     }
 
     private void onMessage(String sessionId, SDKMessage msg) {
+        recordFirstOutput(sessionId, msg);
+        if (msg instanceof SDKMessage.Assistant assistant
+                && StringUtils.isNotBlank(assistant.model())) {
+            // The usage dialog's model-route row: the last model the stream
+            // reported for this turn (a mid-turn /model switch overwrites).
+            turnModels.put(sessionId, assistant.model());
+        }
         switch (msg) {
             case SDKMessage.Assistant assistant -> publishAssistant(sessionId, assistant);
             case SDKMessage.User user -> publishToolResults(sessionId, user);
@@ -281,6 +312,19 @@ public final class MirrorHub {
                 publish(sessionId, "output.text", payload);
             }
             default -> { /* Control-only messages are not chat output. */ }
+        }
+    }
+
+    /**
+     * Latches the turn's first stream-output clock, once per turn: the first
+     * Assistant or System message (Progress is control-plane, not model
+     * output). Turn-completion frames read the latch for the TTFT row;
+     * a turn with no recorded output carries no reading.
+     */
+    private void recordFirstOutput(String sessionId, SDKMessage msg) {
+        if (turnFirstOutputClocks.containsKey(sessionId)) return;
+        if (msg instanceof SDKMessage.Assistant || msg instanceof SDKMessage.System) {
+            turnFirstOutputClocks.put(sessionId, System.currentTimeMillis());
         }
     }
 
@@ -343,6 +387,14 @@ public final class MirrorHub {
         payload.put("done", true);
         payload.put("elapsed_ms", outcome.elapsedMs());
         payload.put("user_cancel", outcome.userCancel());
+        // TTFT: the turn-start clock diffed against the latched first
+        // stream-output clock. Absent when the turn produced no output
+        // (error, cancel, or a permission refusal before any model byte).
+        Long startClock = turnStartClocks.remove(sessionId);
+        Long firstOutput = turnFirstOutputClocks.remove(sessionId);
+        if (startClock != null && firstOutput != null) {
+            payload.put("ttft_ms", Math.max(0, firstOutput - startClock));
+        }
         // Epoch ms for the turn-tail's trailing clock label — the same fact
         // the snapshot path stamps on its assistant entries.
         payload.put("time", System.currentTimeMillis());
@@ -352,20 +404,24 @@ public final class MirrorHub {
         // never carries a client-side derivation (spec §6). Absent baseline
         // or unavailable fold leaves the frame without the delta.
         SessionMetricsSnapshot baseline = turnBaselines.remove(sessionId);
+        String turnModel = turnModels.remove(sessionId);
         Optional<SessionMetricsSnapshot> fold = baseline == null
             ? Optional.empty()
             : metricsReader.apply(sessionId).filter(SessionMetricsSnapshot::complete);
         if (fold.isPresent()) {
             payload.put("turn", fold.get().turns());
-            payload.set("turn_usage", turnUsageBody(baseline, fold.get()));
+            payload.set("turn_usage", turnUsageBody(baseline, fold.get(), turnModel));
         }
         publish(sessionId, "turn.completed", payload);
     }
 
     /** One completed turn's token-bucket delta between two durable folds. */
     private static ObjectNode turnUsageBody(
-            SessionMetricsSnapshot baseline, SessionMetricsSnapshot fold) {
+            SessionMetricsSnapshot baseline, SessionMetricsSnapshot fold, String model) {
         ObjectNode usage = object();
+        // The model-route row's attribution (upstream's provider/model routes
+        // collapse to the one model id this gateway's stream reported).
+        if (model != null) usage.put("model", model);
         usage.put("uncached_input_tokens",
             fold.uncachedInputTokens() - baseline.uncachedInputTokens());
         usage.put("output_tokens", fold.outputTokens() - baseline.outputTokens());
@@ -569,6 +625,9 @@ public final class MirrorHub {
         sessionIds.remove(sessionId);
         sessionProjectDirs.remove(sessionId);
         turnBaselines.remove(sessionId);
+        turnStartClocks.remove(sessionId);
+        turnFirstOutputClocks.remove(sessionId);
+        turnModels.remove(sessionId);
         if (subscription != null) {
             try { subscription.close(); } catch (Exception _) {
                 // Journal and fan-out state remain authoritative if an old

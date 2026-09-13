@@ -5,11 +5,12 @@
 // Adapted from ui-chat's TurnUsagePanel.tsx: the usage shape is the gateway's
 // TurnUsage wire type (snake_case buckets, always-present fields) instead of
 // upstream's TurnTokenUsage (optional buckets present only when every attempt
-// reported them), and the routes row (provider/model attribution) and the
-// reasoning subset row are cut — this gateway has no per-attempt attribution
-// or reasoning-token source. The TPS/TTFT dialog rows stay prop-driven: they
-// render only when the caller has the facts, matching upstream's
-// facts-absent-rows-omitted semantics.
+// reported them). The model-route row renders from the gateway's model field
+// (the turn's last-reported model id; upstream's provider/model routes
+// collapse to it — this gateway has no per-attempt provider attribution). The
+// reasoning subset row stays cut — no reasoning-token source. The TPS/TTFT
+// dialog rows stay prop-driven: they render only when the caller has the
+// facts, matching upstream's facts-absent-rows-omitted semantics.
 
 import { createPortal } from 'react-dom'
 import { IconClockOutline16, IconDatabaseOutline16 } from '@primitives'
@@ -95,6 +96,12 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
           </div>
           <div className={dialogCss.titleRule} aria-hidden />
           <dl className={dialogCss.details} data-turn-usage-details>
+            {usage.model !== undefined && (
+              <>
+                <dt>{t('message.turnUsage.model')}</dt>
+                <dd className={dialogCss.route}>{usage.model}</dd>
+              </>
+            )}
             {cacheHit !== null && (
               <>
                 <dt>{t('message.turnUsage.cacheHit')}</dt>

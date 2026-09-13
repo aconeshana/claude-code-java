@@ -81,7 +81,7 @@ describe('conversations frame reduction', () => {
     store().applyFrame(frame('turn.started', 1, { display_text: 'go', permission_mode: 'ask', origin: 'chat' }))
     store().applyFrame(frame('output.text', 2, { content: 'done' }))
     store().applyFrame(frame('turn.completed', 3, {
-      done: true, elapsed_ms: 7_300, user_cancel: false, turn: 4,
+      done: true, elapsed_ms: 7_300, user_cancel: false, turn: 4, ttft_ms: 900,
       turn_usage: {
         uncached_input_tokens: 200, output_tokens: 200,
         cache_write_tokens: 100, cache_read_tokens: 900, total_tokens: 1_400,
@@ -90,12 +90,13 @@ describe('conversations frame reduction', () => {
     const conversation = useConversations.getState().conversations[SESSION]
     const last = conversation.messages[conversation.messages.length - 1]
     // The turn tail chrome renders from these: the usage pill's buckets,
-    // the time pill's wall clock, and the turn number for ordering.
+    // the time pill's wall clock and TTFT, and the turn number for ordering.
     expect(last).toMatchObject({
       kind: 'assistant',
       open: false,
       turn: 4,
       runMs: 7_300,
+      ttftMs: 900,
       turnUsage: {
         uncached_input_tokens: 200, output_tokens: 200,
         cache_write_tokens: 100, cache_read_tokens: 900, total_tokens: 1_400,
@@ -115,6 +116,7 @@ describe('conversations frame reduction', () => {
     if (last.kind !== 'assistant') throw new Error('expected an assistant row')
     expect(last.turnUsage).toBeUndefined()
     expect(last.turn).toBeUndefined()
+    expect(last.ttftMs).toBeUndefined()
   })
 
   it('appends the submitted message immediately on turn.started', () => {

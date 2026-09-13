@@ -93,7 +93,19 @@ function AssistantItem({ message, t }: {
                 <TurnUsagePanel usage={message.turnUsage} t={t} />
               )}
               {message.runMs !== undefined && (
-                <TurnTimePanel runMs={message.runMs} t={t} />
+                <TurnTimePanel
+                  runMs={message.runMs}
+                  // Turn decode throughput: output tokens over the turn wall
+                  // time (upstream computes it over decode-timed steps; this
+                  // gateway reports one wall clock for the whole turn, so the
+                  // reading includes tool time — the closest available fact).
+                  tokensPerSecond={message.turnUsage !== undefined
+                    && message.turnUsage.output_tokens > 0 && message.runMs > 0
+                    ? message.turnUsage.output_tokens / (message.runMs / 1_000)
+                    : undefined}
+                  ttftMs={message.ttftMs}
+                  t={t}
+                />
               )}
             </>
           )}

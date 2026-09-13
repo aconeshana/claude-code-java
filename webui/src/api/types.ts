@@ -84,6 +84,8 @@ export type SnapshotContent =
 
 /** One assistant step's provider-reported token buckets (snapshot turn_usage / frame turn_usage). */
 export interface TurnUsage {
+  /** The turn's last-reported model id (frame path); the usage dialog's model-route row. */
+  readonly model?: string
   readonly uncached_input_tokens: number
   readonly output_tokens: number
   readonly cache_write_tokens: number
@@ -185,6 +187,8 @@ export type MirrorFrame =
       readonly done: boolean
       readonly elapsed_ms: number
       readonly user_cancel: boolean
+      /** Time to first stream output, ms; absent when the turn produced none. */
+      readonly ttft_ms?: number
       /** The turn-tail's trailing clock label, epoch ms. */
       readonly time?: number
       /** 1-based turn number; present when the durable fold served the delta. */
