@@ -39,4 +39,15 @@ public interface GatewaySessionCatalogPort {
 
     /** The fingerprint-validated listing; may block on transcript reads. */
     default List<ProjectEntry> listProjects() { return List.of(); }
+
+    /**
+     * The listing with each project's sessions truncated to its most recent
+     * {@code perProjectLimit} rows ({@code sessionCount} keeps the total).
+     * Paged listings keep the per-request enrichment bounded on a large
+     * history; {@code <= 0} means unlimited. The default ignores paging —
+     * implementations that serve real catalogs override both.
+     */
+    default List<ProjectEntry> listProjects(int perProjectLimit) {
+        return listProjects();
+    }
 }

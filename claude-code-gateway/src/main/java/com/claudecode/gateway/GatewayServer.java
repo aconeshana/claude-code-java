@@ -44,6 +44,11 @@ import org.apache.commons.lang3.StringUtils;
  * while requests without one keep submitting to the registry's active
  * (TUI) session. One shared in-flight guard bounds each session to one
  * concurrent turn without blocking other sessions.
+ *
+ * <p><b>Contract discipline</b>: this class's routing is the ground truth for
+ * the gateway's web-facing wire contract. Any route, request/response shape,
+ * or status-code change here must be mirrored in the root {@code openapi.yaml}
+ * (paths, schemas, and tags) in the same change.
  */
 public final class GatewayServer implements AutoCloseable {
 
@@ -73,6 +78,11 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionCatalogPort catalog;
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
+    private final GatewaySettingsHandler settingsApi;
+    private final GatewayScheduleHandler scheduleApi;
+    private final GatewayModelsHandler modelsApi;
+    private final GatewayCommandsHandler commandsApi;
+    private final GatewaySessionContextHandler sessionContextApi;
     private final AtomicBoolean started = new AtomicBoolean();
     private volatile HttpServer server;
 
@@ -101,6 +111,46 @@ public final class GatewayServer implements AutoCloseable {
             GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
             InteractionCoordinator interactions,
             GatewaySessionMessagesPort sessionMessages) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            new GatewaySettingsPort() {}, new GatewaySchedulePort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, new GatewayModelsPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, new GatewayCommandsPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, new GatewaySessionContextPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -156,6 +206,14 @@ public final class GatewayServer implements AutoCloseable {
         }
         this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
             sessionMessages);
+        this.settingsApi = new GatewaySettingsHandler(settings);
+        this.scheduleApi = new GatewayScheduleHandler(schedule);
+        this.modelsApi = new GatewayModelsHandler(models);
+        this.commandsApi = new GatewayCommandsHandler(commands);
+        this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
+        // The turn-completion delta folds read the same durable metrics the
+        // session-context endpoint serves — one projection, two consumers.
+        mirror.metricsReader(sessionContext::metrics);
         registry.subscribe(event -> {
             if (event.type() == SessionHostRegistry.EventType.ACTIVATED) {
                 registry.currentActivation()
@@ -215,6 +273,7 @@ public final class GatewayServer implements AutoCloseable {
         String method = exchange.getRequestMethod();
         boolean get = Strings.CS.equals("GET", method);
         boolean post = Strings.CS.equals("POST", method);
+        boolean delete = Strings.CS.equals("DELETE", method);
         // Static webui serving takes the GET paths the API never claims: the
         // landing page and the bundle's /webui/** assets. Every API route
         // below matches before this fallback runs, so the static handler sees
@@ -350,6 +409,117 @@ public final class GatewayServer implements AutoCloseable {
             permissionsApi.handle(exchange);
             return;
         }
+        if ((get || post) && Strings.CS.equals("/api/settings", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            try (exchange) {
+                if (get) {
+                    settingsApi.handleGet(exchange);
+                } else {
+                    settingsApi.handlePost(exchange);
+                }
+            }
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/schedule", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            try (exchange) {
+                if (get) {
+                    scheduleApi.handleGet(exchange);
+                } else {
+                    scheduleApi.handlePost(exchange);
+                }
+            }
+            return;
+        }
+        if (delete && Strings.CS.startsWith(path, "/api/schedule/")) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            String taskId = URLDecoder.decode(
+                path.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
+            try (exchange) {
+                scheduleApi.handleDelete(exchange, taskId);
+            }
+            return;
+        }
+        if (get && Strings.CS.equals("/api/commands", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            try (exchange) {
+                commandsApi.handleGet(exchange);
+            }
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/session/context", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            try (exchange) {
+                if (get) {
+                    sessionContextApi.handleGet(exchange);
+                } else {
+                    sessionContextApi.handlePost(exchange);
+                }
+            }
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/models", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            try (exchange) {
+                if (get) {
+                    modelsApi.handleGet(exchange);
+                } else {
+                    modelsApi.handlePost(exchange);
+                }
+            }
+            return;
+        }
+        if (delete && Strings.CS.startsWith(path, "/api/models/")) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            String modelName = URLDecoder.decode(
+                path.substring("/api/models/".length()), StandardCharsets.UTF_8);
+            try (exchange) {
+                modelsApi.handleDelete(exchange, modelName);
+            }
+            return;
+        }
         try (exchange) {
             if (!auth.authenticated(exchange)) {
                 respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -360,8 +530,12 @@ public final class GatewayServer implements AutoCloseable {
         }
     }
 
+    /** Sessions per project row by default: paged listing keeps one request's rows bounded. */
+    private static final int DEFAULT_PER_PROJECT = 5;
+
     private void listSessions(HttpExchange exchange) throws IOException {
         drain(exchange);
+        int perProjectLimit = perProjectLimitOf(exchange);
         // Off the exchange thread: the fingerprint-validated listing may block
         // on transcript reads. This handler owns the exchange lifecycle here —
         // the route dispatcher no longer closes it on return.
@@ -372,7 +546,8 @@ public final class GatewayServer implements AutoCloseable {
             // before that catch runs — closing the socket out from under the
             // 500 write and producing an empty reply instead of an error body.
             try {
-                respondJson(exchange, 200, sessionsBody().toString());
+                respondJson(exchange, 200,
+                    sessionsBody(perProjectLimit).toString());
             } catch (IOException _) {
                 // The client disconnected mid-listing; nothing to recover.
             } catch (RuntimeException failure) {
@@ -391,12 +566,15 @@ public final class GatewayServer implements AutoCloseable {
     /**
      * Two-level project→session body when a catalog adapter is injected
      * (the shape of the TUI's {@code /resume} project picker); otherwise a
-     * flat fallback over the registry's own listing.
+     * flat fallback over the registry's own listing. {@code perProjectLimit}
+     * truncates each project's rows to its most recent sessions (the total
+     * stays in {@code session_count}); {@code <= 0} serves every row.
      */
-    private ObjectNode sessionsBody() {
+    private ObjectNode sessionsBody(int perProjectLimit) {
         ObjectNode body =
             JsonUtils.getMapper().createObjectNode();
-        List<GatewaySessionCatalogPort.ProjectEntry> projects = catalog.listProjects();
+        List<GatewaySessionCatalogPort.ProjectEntry> projects =
+            catalog.listProjects(perProjectLimit);
         if (!projects.isEmpty()) {
             ArrayNode projectArray = body.putArray("projects");
             for (GatewaySessionCatalogPort.ProjectEntry project : projects) {
@@ -495,6 +673,24 @@ public final class GatewayServer implements AutoCloseable {
             return URLDecoder.decode(raw, StandardCharsets.UTF_8);
         }
         return null;
+    }
+
+    /**
+     * The {@code ?per_project=} page size: 1..1000 rows per project, the
+     * default {@link #DEFAULT_PER_PROJECT} when absent or unparsable, and
+     * unlimited ({@code 0}) only on the explicit {@code all}.
+     */
+    private static int perProjectLimitOf(HttpExchange exchange) {
+        String raw = queryParam(exchange, "per_project");
+        if (raw == null) return DEFAULT_PER_PROJECT;
+        if (Strings.CS.equals("all", raw.strip())) return 0;
+        try {
+            int parsed = Integer.parseInt(raw.strip());
+            if (parsed < 1) return 0;
+            return Math.min(parsed, 1_000);
+        } catch (NumberFormatException _) {
+            return DEFAULT_PER_PROJECT;
+        }
     }
 
     /** Releases the mirror subscription when the connection lane closes. */
