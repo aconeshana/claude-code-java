@@ -1304,4 +1304,104 @@ class SessionStorageTest {
         assertThrows(IllegalArgumentException.class,
             () -> storage.readAgentMetadata(transcript));
     }
+
+    // ---- Fused single-pass restore read ----
+
+    /**
+     * A transcript mixing every row family the resume pipeline consumes —
+     * conversation messages, content replacements, metric events, and the
+     * mid-turn-injection poison shape — must yield the exact same parts from
+     * the fused single-pass read as from the four independent readers.
+     */
+    @Test
+    void restoreSnapshotMatchesTheFourIndependentReaders() throws Exception {
+        Path file = tempDir.resolve("restore.jsonl");
+        String toolResult = "{\"type\":\"user\",\"uuid\":\"tr-1\",\"isSidechain\":false,"
+            + "\"message\":{\"role\":\"user\",\"content\":"
+            + "[{\"type\":\"tool_result\",\"tool_use_id\":\"call-1\",\"content\":\"ok\"}]}}";
+        String drained = "{\"type\":\"user\",\"uuid\":\"drained-1\",\"isSidechain\":false,"
+            + "\"parentUuid\":\"tr-1\",\"promptSource\":\"typed\","
+            + "\"origin\":{\"kind\":\"human\"},"
+            + "\"message\":{\"role\":\"user\",\"content\":\"queued while busy\"}}";
+        String opener = "{\"type\":\"user\",\"uuid\":\"turn-1\",\"isSidechain\":false,"
+            + "\"parentUuid\":null,\"promptSource\":\"typed\","
+            + "\"message\":{\"role\":\"user\",\"content\":\"the real turn\"}}";
+        String replacement = "{\"type\":\"content-replacement\",\"sessionId\":\"restore\","
+            + "\"replacements\":[{\"kind\":\"tool-result\","
+            + "\"toolUseId\":\"call-1\",\"replacement\":\"trimmed\"}]}";
+        StringBuilder rows = new StringBuilder();
+        for (String row : List.of(toolResult, drained, opener, replacement)) {
+            rows.append(row).append('\n');
+        }
+        for (ObjectNode metric : List.of(
+                metricRow("restore", 0, "session/start", null),
+                metricRow("restore", 1, "turn/start", "turn-1"))) {
+            rows.append(JsonUtils.getMapper().writeValueAsString(metric)).append('\n');
+        }
+        // Metadata rows the fused read must skip without parsing.
+        rows.append("{\"type\":\"custom-title\",\"sessionId\":\"restore\",\"customTitle\":\"t\"}\n");
+        rows.append("{\"type\":\"last-prompt\",\"sessionId\":\"restore\",\"leafUuid\":\"turn-1\"}\n");
+        Files.writeString(file, rows.toString());
+
+        SessionStorage.RestoreSnapshot snapshot = storage.readRestoreSnapshot(file);
+
+        assertEquals(storage.readMessages(file), snapshot.messages(),
+            "the fused pass yields the same conversation messages as readMessages");
+        assertEquals(storage.readContentReplacements(file), snapshot.contentReplacements(),
+            "the fused pass yields the same replacements as readContentReplacements");
+        assertEquals(storage.readSessionMetrics(file), snapshot.sessionMetrics(),
+            "the fused pass yields the same metric events as readSessionMetrics");
+        assertEquals(storage.readMetricTurnIds(file), snapshot.metricTurnIds(),
+            "the fused pass excludes the mid-turn injected row exactly like readMetricTurnIds");
+        assertEquals(List.of("turn-1"), snapshot.metricTurnIds());
+    }
+
+    @Test
+    void restoreSnapshotMissingFileYieldsEmptyParts() {
+        SessionStorage.RestoreSnapshot snapshot =
+            storage.readRestoreSnapshot(tempDir.resolve("absent.jsonl"));
+
+        assertTrue(snapshot.messages().isEmpty());
+        assertTrue(snapshot.contentReplacements().isEmpty());
+        assertTrue(snapshot.sessionMetrics().isEmpty());
+        assertTrue(snapshot.metricTurnIds().isEmpty());
+    }
+
+    /**
+     * A row whose message body quotes a metadata {@code type} value before the
+     * row's real {@code type} field must be classified by the real field, not
+     * by the first textual occurrence — the sniff is only trusted for types
+     * this pass consumes, everything else is confirmed by one authoritative
+     * parse.
+     */
+    @Test
+    void restoreSnapshotClassifiesByRealTypeFieldNotFirstOccurrence() throws Exception {
+        Path file = tempDir.resolve("content-first.jsonl");
+        String quotedMetadata = "{\"message\":{\"role\":\"user\",\"content\":"
+            + "\"discussing \\\"type\\\":\\\"java-session-metrics\\\" rows\"},"
+            + "\"type\":\"user\",\"uuid\":\"u-1\",\"isSidechain\":false}";
+        Files.writeString(file, quotedMetadata + "\n");
+
+        SessionStorage.RestoreSnapshot snapshot = storage.readRestoreSnapshot(file);
+
+        assertEquals(1, snapshot.messages().size(),
+            "the row is a real user message; the quoted type inside its body must not misroute it");
+        assertTrue(snapshot.sessionMetrics().isEmpty(),
+            "no metric rows exist — the quoted string must not project a metric event");
+    }
+
+    private static ObjectNode metricRow(String sessionId, long seq, String event, String turnId) {
+        ObjectNode row = JsonUtils.getMapper().createObjectNode();
+        row.put("type", "java-session-metrics");
+        row.put("schemaVersion", 1);
+        row.put("seq", seq);
+        row.put("time", seq + 1);
+        row.put("sessionId", sessionId);
+        row.put("event", event);
+        if (turnId != null) {
+            row.put("turnId", turnId);
+            row.put("turn", 1);
+        }
+        return row;
+    }
 }

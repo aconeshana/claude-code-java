@@ -278,11 +278,17 @@ final class CliSessionRestoreCoordinator {
             new AtomicReference<>();
         return new SessionLifecycle(
             engine,
-            path -> new SessionLifecycle.TranscriptSnapshot(
-                MessagesDeserializer.deserialize(storage.readMessages(path)),
-                storage.readContentReplacements(path),
-                storage.readSessionMetrics(path),
-                storage.readMetricTurnIds(path)),
+            path -> {
+                // One fused file pass replaces four full-file read+parse sweeps
+                // (messages, replacements, metric events, metric turn ids) —
+                // the dominant resume cost on multi-year transcripts.
+                SessionStorage.RestoreSnapshot snapshot = storage.readRestoreSnapshot(path);
+                return new SessionLifecycle.TranscriptSnapshot(
+                    MessagesDeserializer.deserialize(snapshot.messages()),
+                    snapshot.contentReplacements(),
+                    snapshot.sessionMetrics(),
+                    snapshot.metricTurnIds());
+            },
             new SessionLifecycle.Ports() {
                 @Override
                 public void captureCost(String sessionId) {
