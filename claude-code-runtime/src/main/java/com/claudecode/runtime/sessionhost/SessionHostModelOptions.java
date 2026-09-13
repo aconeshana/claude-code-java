@@ -1,4 +1,4 @@
-package com.claudecode.ui.lanterna.repl;
+package com.claudecode.runtime.sessionhost;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -8,7 +8,6 @@ import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.process.SubprocessEnvironment;
-import com.claudecode.runtime.sessionhost.SessionHostModelOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,18 +17,18 @@ import java.util.function.Predicate;
  * Builds the model choices projected by Session Link endpoints.
  */
 @Explanation("Projects the native /model catalogue onto semantic remote endpoints")
-final class SessionHostModelOptions {
+public final class SessionHostModelOptions {
 
     private SessionHostModelOptions() {}
 
-    static List<SessionHostModelOption> build(
+    public static List<SessionHostModelOption> build(
             String current,
             Predicate<String> allowed,
             List<CustomModelConfig> customModels) {
         return build(current, allowed, customModels, true);
     }
 
-    static List<SessionHostModelOption> build(
+    public static List<SessionHostModelOption> build(
             String current,
             Predicate<String> allowed,
             List<CustomModelConfig> customModels,

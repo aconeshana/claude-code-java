@@ -32,8 +32,17 @@ public final class LogoPanel {
     private static final int WELCOME_POKEMON_STAGE_HEIGHT = 12;
     private static final String CONFIG_KEY = "welcomePokemon";
 
-    public record WelcomeBlock(int firstLine, int lineCount, int modelLine, long contentEpoch) {}
-    private record Banner(String name, List<SpriteRow> sprite) {}
+    /**
+     * Replaceable welcome range plus the source lines of the live-updatable
+     * model row and the optional web-gateway quick-entry row ({@code -1} when
+     * the row is absent in this block).
+     */
+    public record WelcomeBlock(
+        int firstLine, int lineCount, int modelLine, int webLine, long contentEpoch) {
+        public WelcomeBlock(int firstLine, int lineCount, int modelLine, long contentEpoch) {
+            this(firstLine, lineCount, modelLine, -1, contentEpoch);
+        }
+    }    private record Banner(String name, List<SpriteRow> sprite) {}
     private record SpriteRow(String left, String bg, String right) {}
     private record RenderSprite(int width, List<List<MessagePanel.Segment>> rows) {
         int height() { return rows.size(); }
@@ -47,6 +56,11 @@ public final class LogoPanel {
     private volatile PokemonProfile pokemon;
     private volatile SpriteVariant cachedSpriteVariant;
     private volatile RenderSprite cachedPokemonSprite;
+    /**
+     * Quick-entry web-gateway URL (token-embedded) shown as a welcome row;
+     * {@code null} keeps the row absent until the gateway finishes starting.
+     */
+    private volatile String webUrl;
 
     private record SpriteVariant(String name, boolean shiny) {}
 
@@ -95,15 +109,54 @@ public final class LogoPanel {
         if (relative >= 0 && relative < rows.size()) panel.updateLine(block.modelLine(), rows.get(relative));
     }
 
+    /**
+     * Publishes the started web-gateway URL and refreshes only the quick-entry
+     * row, re-rendering the whole block when the row was absent (its addition
+     * changes the block's height) or the block was invalidated since.
+     */
+    public WelcomeBlock updateWebLine(MessagePanel panel, WelcomeBlock existing,
+                                      int terminalWidth, String model, String url) {
+        webUrl = StringUtils.trimToNull(url);
+        List<List<MessagePanel.Segment>> rows = renderRows(terminalWidth, model);
+        if (existing == null || existing.webLine() < 0
+                || panel.contentEpoch() != existing.contentEpoch()) {
+            int firstLine = panel.replaceHistoryTopAnchor(rows);
+            return block(panel, firstLine, rows, terminalWidth);
+        }
+        int relative = existing.webLine() - existing.firstLine();
+        if (relative >= 0 && relative < rows.size()) {
+            panel.updateLine(existing.webLine(), rows.get(relative));
+        }
+        return existing;
+    }
+
+    /** The currently published web-gateway URL, if the gateway has started. */
+    public String webUrl() { return webUrl; }
+
     private WelcomeBlock block(MessagePanel panel, int firstLine,
                                List<List<MessagePanel.Segment>> rows, int terminalWidth) {
         RenderSprite sprite = selectSprite(terminalWidth);
-        int metadataHeight = pokemon == null ? 3 : 4;
+        int metadataHeight = welcomeMetadataHeight();
         int bodyHeight = welcomeBodyHeight(sprite, metadataHeight);
         int metadataStart = Math.max(0, (bodyHeight - metadataHeight) / 2);
         int modelLine = firstLine < 0 ? -1 : firstLine + metadataStart + 1;
-        return new WelcomeBlock(firstLine, rows.size(), modelLine,
+        // The web row is the last metadata row; its relative index counts the
+        // rows rendered before it (title, model, cwd, pokemon), which is
+        // metadataRowCount() — the count excluding the web row itself.
+        int webRelative = webUrl == null ? -1 : metadataStart + metadataRowCount();
+        int webLine = firstLine < 0 || webRelative < 0 ? -1 : firstLine + webRelative;
+        return new WelcomeBlock(firstLine, rows.size(), modelLine, webLine,
             panel.contentEpoch());
+    }
+
+    /** Number of metadata rows before the optional web quick-entry row. */
+    private int metadataRowCount() {
+        return pokemon == null ? 3 : 4;
+    }
+
+    /** Metadata height including the web quick-entry row when present. */
+    private int welcomeMetadataHeight() {
+        return metadataRowCount() + (webUrl == null ? 0 : 1);
     }
 
     private List<List<MessagePanel.Segment>> renderRows(int terminalWidth, String model) {
@@ -133,13 +186,45 @@ public final class LogoPanel {
         String displayModel = StringUtils.isBlank(model) ? "unknown" : ModelDisplayName.render(model);
         String modelBilling = displayModel + UiSettings.readEffortSuffix(model) + " · API Usage Billing";
         String cwd = shortenCwd(System.getProperty("user.dir", ""), available);
-        List<List<MessagePanel.Segment>> rows = new ArrayList<>(4);
+        List<List<MessagePanel.Segment>> rows = new ArrayList<>(5);
         rows.add(titleSegments(available));
         rows.add(List.of(new MessagePanel.Segment(
             truncate(modelBilling, available), LanternaTheme.welcomeDim())));
         rows.add(List.of(new MessagePanel.Segment(cwd, LanternaTheme.welcomeDim())));
         if (pokemon != null) rows.add(pokemonTip(available));
+        if (webUrl != null) rows.add(webEntrySegments(available));
         return List.copyOf(rows);
+    }
+
+    /**
+     * Quick-entry row for the started web gateway. The visible text shows the
+     * token-free origin (the token itself never belongs in the transcript);
+     * the OSC 8 hyperlink carries the full token-embedded URL so a
+     * terminal-native click opens an authenticated page, and {@code /web}
+     * remains the copyable fallback.
+     */
+    private List<MessagePanel.Segment> webEntrySegments(int available) {
+        String origin = webOrigin(webUrl);
+        // One combined truncation: the " (/web)" suffix hint must survive
+        // narrow widths, so budget for it before truncating the origin.
+        int originBudget = Math.max(1, available - " (/web)".length());
+        String shown = truncate("Web UI: " + origin, originBudget);
+        List<MessagePanel.Segment> segments = new ArrayList<>(2);
+        segments.add(new MessagePanel.Segment(shown, LanternaTheme.welcomeDim()));
+        segments.add(new MessagePanel.Segment(" (/web)", LanternaTheme.welcomeDim()));
+        // Give both segments the same hyperlink so the whole row reads as one
+        // link in terminals that honor OSC 8.
+        return segments.stream()
+            .map(segment -> new MessagePanel.Segment(segment.text(),
+                segment.color(), segment.bgColor(), webUrl, segment.modifiers()))
+            .toList();
+    }
+
+    /** Strips the query string (token) from a gateway URL for display. */
+    public static String webOrigin(String url) {
+        if (url == null) return "";
+        int query = url.indexOf('?');
+        return query >= 0 ? url.substring(0, query) : url;
     }
 
     private List<MessagePanel.Segment> pokemonTip(int available) {

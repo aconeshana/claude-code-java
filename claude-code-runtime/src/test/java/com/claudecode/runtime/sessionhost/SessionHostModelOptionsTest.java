@@ -1,4 +1,4 @@
-package com.claudecode.ui.lanterna.repl;
+package com.claudecode.runtime.sessionhost;
 
 import org.apache.commons.lang3.Strings;
 
@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
-import com.claudecode.runtime.sessionhost.SessionHostModelOption;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

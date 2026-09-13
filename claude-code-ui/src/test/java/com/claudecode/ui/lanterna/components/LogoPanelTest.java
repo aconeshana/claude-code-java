@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LogoPanelTest {
@@ -156,6 +157,96 @@ class LogoPanelTest {
         assertTrue(panel.lines.stream().allMatch(line -> FormatUtils.displayWidth(line) <= 50));
     }
 
+    @Test
+    void webEntryAppearsAfterGatewayStartWithoutDisturbingModelRow() {
+        CapturingPanel panel = new CapturingPanel();
+        LogoPanel logo = new LogoPanel(null);
+        String url = "http://127.0.0.1:8087/?token=secret";
+
+        LogoPanel.WelcomeBlock before = logo.show(panel, 120, "claude-opus-4-6");
+        int beforeModelTextLine = modelTextLine(panel);
+        int beforeModelText = before.modelLine();
+        assertTrue(panel.lines.stream().noneMatch(line -> Strings.CS.contains(line, "Web UI")),
+            "no web row before the gateway starts");
+        int beforeCount = panel.snapshotLineCount();
+
+        LogoPanel.WelcomeBlock after =
+            logo.updateWebLine(panel, before, 120, "claude-opus-4-6", url);
+
+        // The metadata column re-centers inside the sprite when the web row
+        // appears, so the model row may shift by one line — what must hold is
+        // that the model TEXT is still rendered and the block grows by at
+        // most one line (sprite-dominated blocks may not grow at all).
+        assertTrue(panel.snapshotLineCount() == beforeCount
+                || panel.snapshotLineCount() == beforeCount + 1,
+            "the appearing web row adds at most one line");
+        String modelRow = rowText(panel, after.modelLine());
+        assertTrue(Strings.CS.contains(modelRow, "Opus 4.6"),
+            "the model row still renders after the web row appears");
+        int webLine = after.webLine();
+        assertTrue(webLine >= 0 && webLine < panel.snapshotLineCount(),
+            "web row index is inside the block");
+        List<MessagePanel.Segment> webSegments = panel.segmentLines.get(webLine);
+        assertTrue(webSegments.stream()
+            .anyMatch(segment -> Strings.CS.contains(segment.text(), "Web UI: ")));
+        assertTrue(webSegments.stream()
+            .noneMatch(segment -> Strings.CS.contains(segment.text(), "secret")),
+            "the token never appears in the visible row text");
+        List<MessagePanel.Segment> linked = webSegments.stream()
+            .filter(segment -> url.equals(segment.hyperlinkUrl()))
+            .toList();
+        assertFalse(linked.isEmpty(),
+            "the web row text carries the full token-embedded hyperlink");
+        assertTrue(linked.stream().mapToInt(segment ->
+                FormatUtils.displayWidth(segment.text())).sum()
+                >= FormatUtils.displayWidth("Web UI: " + LogoPanel.webOrigin(url)),
+            "the hyperlink covers the whole visible web entry text");
+        assertTrue(webSegments.stream().noneMatch(segment ->
+                segment.hyperlinkUrl() != null && !url.equals(segment.hyperlinkUrl())),
+            "no other hyperlink leaks into the web row");
+    }
+
+    /** The line currently showing the model billing text, for drift checks. */
+    private static int modelTextLine(CapturingPanel panel) {
+        for (int i = 0; i < panel.lines.size(); i++) {
+            if (Strings.CS.contains(panel.lines.get(i), "API Usage Billing")) return i;
+        }
+        return -1;
+    }
+
+    @Test
+    void webEntryUpdatesInPlaceWhenAlreadyPresent() {
+        CapturingPanel panel = new CapturingPanel();
+        LogoPanel logo = new LogoPanel(null);
+        String firstUrl = "http://127.0.0.1:8087/?token=one";
+
+        LogoPanel.WelcomeBlock shown = logo.show(panel, 120, "claude-opus-4-6");
+        LogoPanel.WelcomeBlock block =
+            logo.updateWebLine(panel, shown, 120, "claude-opus-4-6", firstUrl);
+        int lineCount = panel.snapshotLineCount();
+        String webRowText = rowText(panel, block.webLine());
+
+        LogoPanel.WelcomeBlock updated =
+            logo.updateWebLine(panel, block, 120, "claude-opus-4-6", firstUrl);
+
+        assertEquals(lineCount, panel.snapshotLineCount(),
+            "an unchanged URL must not re-render or grow the block");
+        assertEquals(block.webLine(), updated.webLine());
+        assertTrue(Strings.CS.contains(rowText(panel, updated.webLine()), "Web UI: "),
+            "the web row keeps its content across the idempotent update");
+        assertEquals(webRowText, rowText(panel, updated.webLine()),
+            "an idempotent update leaves the row byte-identical");
+    }
+
+    @Test
+    void webOriginStripsTheTokenQuery() {
+        assertEquals("http://127.0.0.1:8087/",
+            LogoPanel.webOrigin("http://127.0.0.1:8087/?token=abc"));
+        assertEquals("http://127.0.0.1:8087/",
+            LogoPanel.webOrigin("http://127.0.0.1:8087/"));
+        assertEquals("", LogoPanel.webOrigin(null));
+    }
+
     private static String rowText(MessagePanel panel, int index) {
         return ((CapturingPanel) panel).lines.get(index);
     }
@@ -187,6 +278,17 @@ class LogoPanelTest {
                 lines.set(index, text(segments));
                 segmentLines.set(index, List.copyOf(segments));
             }
+        }
+
+        @Override
+        public int replaceHistoryTopAnchor(List<List<MessagePanel.Segment>> rows) {
+            // The capturing panel has no history-top retention; emulate the
+            // in-place whole-block replacement over the appended rows: the
+            // previous block's rows are removed wherever they sit at the top.
+            int previousCount = Math.min(lines.size(), Math.max(0, lines.size()));
+            int start = 0;
+            replaceLines(start, previousCount, rows);
+            return start;
         }
 
         @Override
