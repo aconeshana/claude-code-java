@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { submitTurn } from './api/client'
 import { subscribeMirror, type MirrorConnection } from './api/events'
-import { captureTokenFromUrl, currentToken } from './api/token'
+import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
 import type { UserContentBlock } from './api/types'
 import { useApprovals } from './store/approvals'
+import { useAuth } from './store/auth'
 import { useConversations } from './store/conversations'
 import { useSessions } from './store/sessions'
 import { AppFrame } from './views/AppFrame'
@@ -23,7 +24,15 @@ export function App() {
 
   useEffect(() => {
     captureTokenFromUrl()
-    if (currentToken() == null) return
+    const captured = currentToken()
+    if (captured != null) useAuth.getState().setToken(captured)
+    initTokenSync((token) => { useAuth.getState().setToken(token) })
+  }, [])
+
+  const token = useAuth((state) => state.token)
+
+  useEffect(() => {
+    if (token == null) return
     const sessions = useSessions.getState()
     void sessions.refresh().then(() => { void sessions.selectActiveOrFirst() })
 
@@ -42,7 +51,7 @@ export function App() {
       connection.close()
       window.clearInterval(catalogTimer)
     }
-  }, [])
+  }, [token])
 
   const selectedId = useSessions((state) => state.selectedSessionId)
   const conversation = useConversations((state) =>
@@ -56,8 +65,7 @@ export function App() {
     })
   }, [selectedId])
 
-  const hasToken = currentToken() != null
-  if (!hasToken) {
+  if (token == null) {
     return <MissingToken />
   }
 
@@ -84,8 +92,10 @@ export function App() {
             )}
             <InputBar
               disabled={selectedId == null}
+              busy={conversation?.turnRunning === true}
               placeholder={selectedId == null ? '先在侧栏选择一个会话' : '输入消息，Enter 发送'}
               onSubmit={onSubmit}
+              sessionId={selectedId}
             />
           </div>
         }

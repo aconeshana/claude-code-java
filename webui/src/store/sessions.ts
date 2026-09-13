@@ -19,10 +19,15 @@ export interface SessionsStore {
   readonly error: string | null
   /** The conversation the UI is currently showing. */
   readonly selectedSessionId: string | null
+  /** Sessions fetched per project so far (null = the gateway's default page). */
+  readonly perPage: number | null
   refresh(): Promise<void>
+  /** Refetches with a larger per-project page (the "load more" affordance). */
+  growPerPage(next: number): Promise<void>
   select(sessionId: string): Promise<void>
   selectActiveOrFirst(): Promise<void>
   openSession(sessionId: string, projectPath: string | null): Promise<void>
+  createSession(projectPath: string | null): Promise<void>
   closeSession(sessionId: string): Promise<void>
 }
 
@@ -31,11 +36,23 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   loading: false,
   error: null,
   selectedSessionId: null,
+  perPage: null,
 
   async refresh() {
     set({ loading: true })
     try {
-      const catalog = await fetchCatalog()
+      const catalog = await fetchCatalog(get().perPage ?? undefined)
+      set({ projects: catalog.projects, loading: false, error: null })
+    } catch (failure) {
+      set({ loading: false, error: messageOf(failure) })
+    }
+  },
+
+  async growPerPage(next) {
+    if (next <= (get().perPage ?? 0)) return
+    set({ perPage: next, loading: true })
+    try {
+      const catalog = await fetchCatalog(next)
       set({ projects: catalog.projects, loading: false, error: null })
     } catch (failure) {
       set({ loading: false, error: messageOf(failure) })
@@ -65,6 +82,16 @@ export const useSessions = create<SessionsStore>((set, get) => ({
       await openHeadlessSession(sessionId, projectPath)
       await get().refresh()
       await get().select(sessionId)
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async createSession(projectPath: string | null) {
+    try {
+      const opened = await openHeadlessSession(null, projectPath)
+      await get().refresh()
+      await get().select(opened.session_id)
     } catch (failure) {
       set({ error: messageOf(failure) })
     }

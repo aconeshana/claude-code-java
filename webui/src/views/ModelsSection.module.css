@@ -1,0 +1,136 @@
+/*
+ * Card-style layout for the Models section, local to ModelsSection.tsx.
+ * Border/radius/background tokens follow the existing .card precedent in
+ * vendor/chat-styles/ApprovalPanel.module.css, adapted to a neutral (non-warn)
+ * surface using --dsw-alias-border-l2 / --dsw-alias-bg-layer-2.
+ */
+
+.intro {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.card {
+  margin-bottom: 12px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cardHeaderName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.advancedToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.advancedBody {
+  padding-top: 4px;
+}
+
+.entryList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.entryCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+}
+
+.entryInfo {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.entryName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.entryMeta {
+  overflow: hidden;
+  margin-top: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dangerButton {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.addTrigger {
+  width: 100%;
+  height: 36px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addTrigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.headerRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.headerRemove {
+  flex: none;
+}
+
+.addHeaderRow {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}

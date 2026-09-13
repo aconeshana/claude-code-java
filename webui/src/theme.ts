@@ -14,7 +14,7 @@ export type ThemePreference = (typeof THEME_PREFERENCES)[number]
 export const FONT_SIZE_MIN = 12
 export const FONT_SIZE_MAX = 17
 export const DEFAULT_FONT_SIZE = 14
-const STORAGE_KEY = 'webui-theme'
+export const STORAGE_KEY = 'webui-theme'
 
 export interface ThemeSettings {
   preference: ThemePreference

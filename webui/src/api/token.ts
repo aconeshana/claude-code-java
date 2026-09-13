@@ -32,3 +32,40 @@ export function currentToken(): string | null {
     return null
   }
 }
+
+const CHANNEL_NAME = 'webui-token-sync'
+
+interface TokenSyncMessage {
+  readonly type: 'request-token' | 'token'
+  readonly token?: string
+}
+
+/**
+ * Lets a tab without a launch token inherit one from an already-open tab via
+ * a same-origin BroadcastChannel handshake. The token is written back into
+ * this tab's own sessionStorage — it never gets promoted to localStorage, so
+ * the "forget on browser close" boundary is unchanged. Call once at startup,
+ * after captureTokenFromUrl().
+ */
+export function initTokenSync(onToken: (token: string) => void): void {
+  if (typeof BroadcastChannel === 'undefined') return
+  const channel = new BroadcastChannel(CHANNEL_NAME)
+  channel.onmessage = (event: MessageEvent<TokenSyncMessage>) => {
+    const message = event.data
+    if (message.type === 'request-token') {
+      const token = currentToken()
+      if (token != null) channel.postMessage({ type: 'token', token } satisfies TokenSyncMessage)
+    } else if (message.type === 'token' && message.token != null && currentToken() == null) {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, message.token)
+      } catch { /* storage unavailable: the token still works for this render */ }
+      onToken(message.token)
+    }
+  }
+  const existing = currentToken()
+  channel.postMessage(
+    existing != null
+      ? ({ type: 'token', token: existing } satisfies TokenSyncMessage)
+      : ({ type: 'request-token' } satisfies TokenSyncMessage),
+  )
+}

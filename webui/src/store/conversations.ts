@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { MessagesSnapshot, MirrorFrame, SnapshotMessage } from '../api/types'
+import type { MessagesSnapshot, MirrorFrame, SnapshotMessage, TurnUsage } from '../api/types'
 
 /**
  * Per-session conversation state: the snapshot is the authority, mirror
@@ -10,8 +10,8 @@ import type { MessagesSnapshot, MirrorFrame, SnapshotMessage } from '../api/type
  *   never deltas; appending is the whole story.
  * - tool.started opens a pending tool_call; tool.completed pairs back by
  *   tool_use_id and fills the result.
- * - turn.completed finishes the assistant message; turn.started opens a
- *   fresh one.
+ * - turn.completed finishes the assistant message and lands the frame's
+ *   turn usage facts on it; turn.started opens a fresh one.
  * - Every frame carries a monotonic id; a frame at or below the last
  *   applied id for its session is a journal replay overlap and drops.
  */
@@ -23,6 +23,14 @@ interface AssistantMessageState {
   readonly thinkingBlocks: readonly string[]
   readonly toolCalls: readonly ToolCallState[]
   readonly open: boolean
+  /** 1-based turn number (snapshot path); absent before the first human prompt. */
+  readonly turn?: number
+  /** This assistant step's provider-reported buckets (snapshot or frame path). */
+  readonly turnUsage?: TurnUsage
+  /** Turn wall time in ms (frame path only; the snapshot path has no per-turn clock). */
+  readonly runMs?: number
+  /** Durable transcript timestamp, epoch ms — the turn-tail clock label. */
+  readonly time?: number
 }
 
 export interface ToolCallState {
@@ -35,11 +43,14 @@ export interface ToolCallState {
   readonly resultType: string | null
   readonly resultError: string | null
   readonly transcriptPath: string | null
+  readonly locations: readonly string[] | null
 }
 
 export type MessageState =
   | AssistantMessageState
-  | { readonly kind: 'user'; readonly id: string; readonly text: string }
+  | { readonly kind: 'user'; readonly id: string; readonly text: string
+    /** Durable transcript timestamp, epoch ms — the user row's leading clock. */
+    readonly time?: number }
 
 export interface ConversationState {
   readonly messages: readonly MessageState[]
@@ -98,7 +109,12 @@ export const useConversations = create<ConversationsStore>((set, get) => ({
 
 function toMessageState(message: SnapshotMessage): MessageState {
   if (message.role === 'user') {
-    return { kind: 'user', id: message.id, text: message.text }
+    return {
+      kind: 'user',
+      id: message.id,
+      text: message.text,
+      ...(message.time !== undefined ? { time: message.time } : {}),
+    }
   }
   const textBlocks: string[] = []
   const thinkingBlocks: string[] = []
@@ -118,6 +134,7 @@ function toMessageState(message: SnapshotMessage): MessageState {
         resultType: tool.result?.type ?? null,
         resultError: tool.result?.errorMessage ?? null,
         transcriptPath: tool.result?.transcript_path ?? null,
+        locations: tool.result?.locations ?? null,
       })
     }
   }
@@ -128,6 +145,9 @@ function toMessageState(message: SnapshotMessage): MessageState {
     thinkingBlocks,
     toolCalls,
     open: false,
+    ...(message.time !== undefined ? { time: message.time } : {}),
+    ...(message.turn !== undefined ? { turn: message.turn } : {}),
+    ...(message.turn_usage !== undefined ? { turnUsage: message.turn_usage } : {}),
   }
 }
 
@@ -138,6 +158,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         kind: 'user',
         id: `live-user-${frame.id}`,
         text: frame.data.display_text,
+        ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
       }
       return {
         ...state,
@@ -171,6 +192,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         resultType: null,
         resultError: null,
         transcriptPath: null,
+        locations: null,
       }
       const messages = appendBlock(state.messages, (last) => ({
         ...last,
@@ -196,6 +218,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
             resultType: frame.data.result.type,
             resultError: frame.data.result.errorMessage ?? null,
             transcriptPath: frame.data.result.transcript_path ?? null,
+            locations: frame.data.result.locations ?? null,
           }
           return completed
         })
@@ -207,7 +230,16 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
       return { ...state, turnRunning: false, lastError: frame.data.message }
     }
     case 'turn.completed': {
-      const messages = closeAssistant(state.messages)
+      // The completion frame carries the turn's durable-fold delta and wall
+      // time; land them on the closing assistant row (the turn tail chrome
+      // renders from there).
+      const messages = closeAssistant(state.messages, (last) => ({
+        ...last,
+        ...(frame.data.turn !== undefined ? { turn: frame.data.turn } : {}),
+        ...(frame.data.turn_usage !== undefined ? { turnUsage: frame.data.turn_usage } : {}),
+        runMs: frame.data.elapsed_ms,
+        ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
+      }))
       return { ...state, messages, turnRunning: false }
     }
     case 'turn.cancelled': {
@@ -243,8 +275,11 @@ function appendBlock(
   })]
 }
 
-function closeAssistant(messages: readonly MessageState[]): readonly MessageState[] {
+function closeAssistant(
+  messages: readonly MessageState[],
+  edit?: (last: AssistantMessageState) => AssistantMessageState,
+): readonly MessageState[] {
   const last = messages[messages.length - 1]
   if (last == null || last.kind !== 'assistant' || !last.open) return messages
-  return [...messages.slice(0, -1), { ...last, open: false }]
+  return [...messages.slice(0, -1), edit == null ? { ...last, open: false } : { ...edit(last), open: false }]
 }

@@ -27,7 +27,7 @@ const EMPTY_SNAPSHOT = { session_id: 'x', messages: [] }
 describe('sessions store', () => {
   beforeEach(() => {
     sessionStorage.setItem('gateway-token', 'fake-token')
-    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null })
+    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null, perPage: null })
     useConversations.setState({ conversations: {} })
   })
 
@@ -40,6 +40,36 @@ describe('sessions store', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(CATALOG)))
     await useSessions.getState().refresh()
     expect(useSessions.getState().projects).toEqual(CATALOG.projects)
+  })
+
+  it('refresh keeps the grown per-project page on later refreshes', async () => {
+    // The gateway pages listings per project (?per_project=). A grown page
+    // (the "load more" affordance) must survive the 10s catalog refresh,
+    // or the sidebar would snap back to the default page mid-browsing.
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(urlOf(input))
+      return Promise.resolve(jsonResponse(CATALOG))
+    }))
+    await useSessions.getState().growPerPage(10)
+    await useSessions.getState().refresh()
+    expect(urls).toEqual([
+      '/api/sessions?per_project=10',
+      '/api/sessions?per_project=10',
+    ])
+    expect(useSessions.getState().perPage).toBe(10)
+  })
+
+  it('growPerPage refetches with the larger page and ignores shrinking requests', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(urlOf(input))
+      return Promise.resolve(jsonResponse(CATALOG))
+    }))
+    await useSessions.getState().growPerPage(5)
+    await useSessions.getState().growPerPage(3)
+    expect(urls).toEqual(['/api/sessions?per_project=5'])
+    expect(useSessions.getState().perPage).toBe(5)
   })
 
   it('select on an already-open session only loads its snapshot, no open round-trip', async () => {
@@ -73,6 +103,44 @@ describe('sessions store', () => {
 
     expect(calls[0]).toBe('POST /api/sessions/open')
     expect(useSessions.getState().selectedSessionId).toBe('closed-1')
+  })
+
+  it('createSession opens a session with no session_id, then refreshes and selects the minted id', async () => {
+    const bodies: unknown[] = []
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input)
+      if (url.includes('/open')) {
+        bodies.push(init?.body == null ? null : JSON.parse(init.body as string))
+        return Promise.resolve(jsonResponse({ session_id: 'minted-1', project_path: '/repo', resumed: false, headless: true }))
+      }
+      if (url.includes('/messages')) return Promise.resolve(jsonResponse(EMPTY_SNAPSHOT))
+      return Promise.resolve(jsonResponse(CATALOG))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await useSessions.getState().createSession('/repo')
+
+    expect(bodies[0]).toEqual({ project_path: '/repo' })
+    expect(useSessions.getState().selectedSessionId).toBe('minted-1')
+  })
+
+  it('createSession surfaces a failed open as a store error instead of throwing', async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/open')) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ error: { type: 'api_error', message: 'headless sessions are not configured' } }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        ))
+      }
+      return Promise.resolve(jsonResponse(CATALOG))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(useSessions.getState().createSession('/repo')).resolves.toBeUndefined()
+
+    expect(useSessions.getState().error).toBe('headless sessions are not configured')
+    expect(useSessions.getState().selectedSessionId).toBeNull()
   })
 
   it('closeSession closes the headless session and falls back to the active session', async () => {

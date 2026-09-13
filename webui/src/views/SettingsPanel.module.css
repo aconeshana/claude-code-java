@@ -1,0 +1,113 @@
+/*
+ * Local additions with no upstream equivalent: rule/directory list rows,
+ * error/hint banners, the header reload icon button, and inline input+button
+ * rows. Dialog chrome and field-row layout come from the vendored
+ * SettingsRoot.module.css / GeneralSection.module.css / PermissionRow.module.css.
+ */
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 28px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.button {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-selected);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button:not(:disabled):hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.ruleGroup {
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.ruleGroupTitle {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.listLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.empty {
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-quaternary);
+}
+
+.error {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-state-error-tertiary);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+  word-break: break-word;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}

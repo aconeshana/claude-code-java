@@ -12,3 +12,16 @@ body,
   height: 100%;
   margin: 0;
 }
+
+/*
+ * Token shim for the vendored chat-styles: StatsPills.module.css consumes
+ * --dsw-alias-separator-primary, which is dangling in upstream itself (no
+ * definition anywhere in the pinned dsh tree at 5dda764) and therefore not
+ * in the vendored design-platform.css either. Bound to the caption label
+ * alias per this app's separator convention (the dot separators elsewhere
+ * ride label-tertiary; the caption alias keeps the pill's dot readable on
+ * both themes). Remove when upstream defines the token.
+ */
+body {
+  --dsw-alias-separator-primary: var(--dsw-alias-label-caption);
+}

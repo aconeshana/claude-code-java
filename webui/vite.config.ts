@@ -32,6 +32,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Vendor-tree unit tests (the dsh adaptation view models) run in the same
+    // suite as app tests; upstream sources themselves stay test-free.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'vendor/**/*.test.ts', 'vendor/**/*.test.tsx'],
   },
 })
