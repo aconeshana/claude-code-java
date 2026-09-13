@@ -147,6 +147,39 @@ class ProjectCatalogTest {
     }
 
     @Test
+    void movedFileReEnrichesOnlyThatFileAndKeepsCarriedRows() throws Exception {
+        // Two sessions; the second one's file then moves (mtime+size) while
+        // the first stays untouched. The incremental pass must keep the first
+        // session's cached row even when its transcript becomes unparseable
+        // (a cache-carried row, not a re-read), while the moved file is
+        // re-enriched from disk.
+        writeRawSession("/proj/a", uuid(1), "/proj/a", 1000);
+        writeRawSession("/proj/a", uuid(2), "/proj/a", 2000);
+        ProjectCatalog catalog = catalog("/proj/a");
+        assertEquals(2, catalog.listProjects().getFirst().sessionCount());
+
+        // uuid(1) stays on disk but its parse-ability is destroyed: only a
+        // re-read would drop it, a carried row survives.
+        Path untouched = dirOf("/proj/a").resolve(uuid(1) + ".jsonl");
+        Files.writeString(untouched, "garbage!!\n");
+        Files.setLastModifiedTime(untouched, FileTime.fromMillis(1000));
+
+        // uuid(2) appends a line: mtime+size move, so only this file re-reads.
+        Path moved = dirOf("/proj/a").resolve(uuid(2) + ".jsonl");
+        Files.writeString(moved, Files.readString(moved)
+            + "{\"type\":\"user\",\"uuid\":\"" + UUID.randomUUID() + "\","
+            + "\"timestamp\":\"2026-07-03T00:00:00.000Z\",\"isSidechain\":false,"
+            + "\"cwd\":\"/proj/a\",\"message\":{\"role\":\"user\",\"content\":\"more\"}}\n");
+        Files.setLastModifiedTime(moved, FileTime.fromMillis(5000));
+
+        List<ProjectInfo> projects = catalog.listProjects();
+        assertEquals(2, projects.getFirst().sessionCount(),
+            "the carried row must survive the moved file's re-enrichment");
+        assertEquals(5000, projects.getFirst().lastActivityMs());
+        assertEquals(uuid(2), projects.getFirst().sessions().getFirst().info().id());
+    }
+
+    @Test
     void preferencesSurviveCacheRebuildAndNewInstances() throws Exception {
         writeRawSession("/proj/a", uuid(1), "/proj/a", 1000);
         ProjectCatalog first = catalog("/proj/a");

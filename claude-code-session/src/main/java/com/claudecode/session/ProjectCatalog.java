@@ -158,6 +158,26 @@ public final class ProjectCatalog {
         memory.entrySet().removeIf(
             entry -> !Objects.equals(live.get(entry.getKey()), entry.getValue().fingerprint()));
 
+        for (Map.Entry<String, List<SessionCatalog.Candidate>> dir : perDir.entrySet()) {
+            DirState previous = memory.get(dir.getKey());
+            if (previous == null) continue;
+            // Same fingerprint but new DirectoryState identity: an append-only
+            // directory whose newest file moved. Re-enrich only the files whose
+            // (mtime, size) moved — the live project's transcript changes on
+            // every keystroke, but the directory's hundreds of other files did
+            // not, and re-reading them is the dominant listing cost.
+            List<SessionCatalog.Candidate> moved = dir.getValue().stream()
+                .filter(candidate -> previous.sessions().stream().noneMatch(ref ->
+                    ref.info().id().equals(candidate.sessionId())
+                        && ref.info().lastModified() == candidate.mtime()
+                        && ref.info().fileSize() == candidate.fileSize()))
+                .toList();
+            if (moved.isEmpty()) continue;
+            memory.put(dir.getKey(), new DirState(live.get(dir.getKey()),
+                incrementalScan(previous, moved)));
+            dirty = true;
+        }
+
         List<String> staleDirs = new ArrayList<>();
         List<SessionCatalog.Candidate> stale = new ArrayList<>();
         perDir.forEach((dirName, candidates) -> {
@@ -184,6 +204,26 @@ public final class ProjectCatalog {
         }
         dirty = true;
         persistLater();
+    }
+
+    /**
+     * Re-enriches one directory's moved files and joins them with the carried
+     * rows: moved ids replace their previous rows (a rewritten transcript may
+     * change cwd and thus directory grouping), unmoved ids keep their cached
+     * rows, vanished ids drop out.
+     */
+    private List<ProjectSessionRef> incrementalScan(
+            DirState previous, List<SessionCatalog.Candidate> moved) {
+        Map<String, ProjectSessionRef> joined = new LinkedHashMap<>();
+        for (ProjectSessionRef ref : previous.sessions()) joined.put(ref.info().id(), ref);
+        for (SessionCatalog.Entry entry
+                : SessionCatalog.enrichBatch(moved, builtInCommand, SessionCatalog.Visibility.PICKER)) {
+            joined.put(entry.info().id(), new ProjectSessionRef(entry.info(), entry.transcript()));
+        }
+        return joined.values().stream()
+            .sorted(Comparator.comparingLong(
+                (ProjectSessionRef ref) -> ref.info().lastModified()).reversed())
+            .toList();
     }
 
     /** Cross-dir merge then cwd grouping; pure in-memory, no I/O. */
