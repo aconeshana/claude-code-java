@@ -164,9 +164,15 @@ sourceSets.main {
     resources.srcDir(vendorRipgrep)
     vendorCcConnect?.let { resources.srcDir(it) }
     // The vite build emits dist/webui/** (the classpath prefix the gateway's
-    // static routes expect). srcDir wires the buildWebui dependency implicitly;
-    // when the task is skipped (no pnpm) the directory is simply empty.
-    resources.srcDir(webuiDir.dir("dist"))
+    // static routes expect). srcDir must take the buildWebui task's dist
+    // directory as a provider — a plain srcDir(webuiDir.dir("dist")) would
+    // read whatever stale bundle sits in dist (the task would never join the
+    // graph), while mapping to the task's outputs alone would flatten
+    // dist/webui/** into the jar root and lose the webui/ prefix. Mapping to
+    // the enclosing dist directory keeps both: the task dependency and the
+    // layout. When the task is skipped (no pnpm) it produces nothing and the
+    // directory is simply empty.
+    resources.srcDir(buildWebui.map { webuiDir.dir("dist") })
 }
 
 dependencies {
