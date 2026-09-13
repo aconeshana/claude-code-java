@@ -18,6 +18,20 @@ class SessionMetricsFormatTest {
         assertEquals("1.2M", SessionMetricsFormat.formatTokens(1_200_000));
     }
 
+    /**
+     * The §4 compact-token ladder, pinned with the same rows as the TS side
+     * (webui/vendor/dsh-stats-pills/statsPillsModel.test.ts, "the §4 fixture
+     * rows") so the two languages' formatters cannot drift.
+     */
+    @Test
+    void pinsTheCompactTokenLadderSharedWithTheWebuiFixture() {
+        assertEquals("999", SessionMetricsFormat.formatTokens(999));
+        assertEquals("1K", SessionMetricsFormat.formatTokens(1_000));
+        assertEquals("12.2K", SessionMetricsFormat.formatTokens(12_200));
+        assertEquals("517K", SessionMetricsFormat.formatTokens(517_000));
+        assertEquals("1.2M", SessionMetricsFormat.formatTokens(1_234_567));
+    }
+
     @Test
     void cacheHitNeverRoundsANonFullRatioToOneHundred() {
         assertEquals("99.5", SessionMetricsFormat.cacheHitPercent(snapshot(5, 995)));

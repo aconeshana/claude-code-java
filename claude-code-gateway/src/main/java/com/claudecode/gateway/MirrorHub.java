@@ -10,6 +10,7 @@ import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -18,6 +19,7 @@ import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -25,11 +27,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -98,9 +102,28 @@ public final class MirrorHub {
      */
     private final Map<String, String> toolNamesByUseId =
         new ConcurrentHashMap<>();
+    /**
+     * The durable metrics reader (the session-context port's projection),
+     * consulted at turn boundaries to fold one turn's delta frame. Absent
+     * (tests, unwired compositions) leaves the frame without the delta.
+     */
+    private volatile Function<String, Optional<SessionMetricsSnapshot>> metricsReader =
+        _ -> Optional.empty();
+    /** Each followed session's fold at its last turn start (the diff baseline). */
+    private final Map<String, SessionMetricsSnapshot> turnBaselines =
+        new ConcurrentHashMap<>();
 
     public MirrorHub(SessionHostRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
+    }
+
+    /**
+     * Wires the durable metrics reader the turn-completion delta folds read.
+     * The reader must resolve the same live-engine fold the session-context
+     * endpoint serves; the hub never derives token counts client-side.
+     */
+    public void metricsReader(Function<String, Optional<SessionMetricsSnapshot>> reader) {
+        this.metricsReader = Objects.requireNonNull(reader, "reader");
     }
 
     /**
@@ -225,10 +248,18 @@ public final class MirrorHub {
     }
 
     private void onTurnStart(String sessionId, UserInput input) {
+        // Baseline the durable fold before the turn starts: the completion
+        // frame's per-turn delta is this session's fold diffed against it.
+        metricsReader.apply(sessionId)
+            .filter(SessionMetricsSnapshot::complete)
+            .ifPresent(baseline -> turnBaselines.put(sessionId, baseline));
         ObjectNode payload = object();
         payload.put("display_text", input.displayText());
         payload.put("permission_mode", input.permissionMode());
         payload.put("origin", input.inputOrigin());
+        // Epoch ms for the live user row's leading clock label — the same
+        // fact the snapshot path stamps on its user entries.
+        payload.put("time", System.currentTimeMillis());
         publish(sessionId, "turn.started", payload);
     }
 
@@ -292,7 +323,7 @@ public final class MirrorHub {
         if (content.blocks() == null) return null;
         StringBuilder body = new StringBuilder();
         for (ContentBlock block : content.blocks()) {
-            if (block instanceof TextBlock text) body.append(text.text());
+            if (block instanceof TextBlock(String text1)) body.append(text1);
         }
         return body.isEmpty() ? null : body.toString();
     }
@@ -312,7 +343,40 @@ public final class MirrorHub {
         payload.put("done", true);
         payload.put("elapsed_ms", outcome.elapsedMs());
         payload.put("user_cancel", outcome.userCancel());
+        // Epoch ms for the turn-tail's trailing clock label — the same fact
+        // the snapshot path stamps on its assistant entries.
+        payload.put("time", System.currentTimeMillis());
+        // The per-turn delta: this session's durable fold diffed against the
+        // baseline captured at the turn's start. The reader resolves the same
+        // live-engine fold the session-context endpoint serves, so the frame
+        // never carries a client-side derivation (spec §6). Absent baseline
+        // or unavailable fold leaves the frame without the delta.
+        SessionMetricsSnapshot baseline = turnBaselines.remove(sessionId);
+        Optional<SessionMetricsSnapshot> fold = baseline == null
+            ? Optional.empty()
+            : metricsReader.apply(sessionId).filter(SessionMetricsSnapshot::complete);
+        if (fold.isPresent()) {
+            payload.put("turn", fold.get().turns());
+            payload.set("turn_usage", turnUsageBody(baseline, fold.get()));
+        }
         publish(sessionId, "turn.completed", payload);
+    }
+
+    /** One completed turn's token-bucket delta between two durable folds. */
+    private static ObjectNode turnUsageBody(
+            SessionMetricsSnapshot baseline, SessionMetricsSnapshot fold) {
+        ObjectNode usage = object();
+        usage.put("uncached_input_tokens",
+            fold.uncachedInputTokens() - baseline.uncachedInputTokens());
+        usage.put("output_tokens", fold.outputTokens() - baseline.outputTokens());
+        usage.put("cache_write_tokens",
+            fold.cacheWriteTokens() - baseline.cacheWriteTokens());
+        usage.put("cache_read_tokens",
+            fold.cacheReadTokens() - baseline.cacheReadTokens());
+        usage.put("total_tokens",
+            (fold.billedInputTokens() + fold.outputTokens())
+                - (baseline.billedInputTokens() + baseline.outputTokens()));
+        return usage;
     }
 
     private void onIdle(String sessionId) {
@@ -366,6 +430,11 @@ public final class MirrorHub {
             String transcriptPath = agentTranscriptPath(
                 sessionId, toolName, user.message().toolUseResult());
             if (transcriptPath != null) projected.put("transcript_path", transcriptPath);
+            List<String> locations = toolLocations(toolName, user.message().toolUseResult());
+            if (!locations.isEmpty()) {
+                ArrayNode array = projected.putArray("locations");
+                locations.forEach(array::add);
+            }
             payload.set("result", projected);
             publish(sessionId, "tool.completed", payload);
         }
@@ -400,6 +469,30 @@ public final class MirrorHub {
     }
 
     /**
+     * The file path(s) a Write/Edit/NotebookEdit tool produced, or empty for
+     * every other tool. Write/Edit carry the path on {@code FileChangeResult}'s
+     * {@code filePath} field; NotebookEdit's structured result is a raw
+     * {@code ObjectNode} with a differently-named {@code notebook_path} field.
+     */
+    private static List<String> toolLocations(String toolName, Object toolUseResult) {
+        String field = switch (toolName) {
+            case "Write", "Edit" -> "filePath";
+            case "NotebookEdit" -> "notebook_path";
+            case null, default -> null;
+        };
+        if (field == null || toolUseResult == null) return List.of();
+        JsonNode payload;
+        try {
+            payload = JsonUtils.getMapper().valueToTree(toolUseResult);
+        } catch (RuntimeException _) {
+            return List.of();
+        }
+        JsonNode path = payload.path(field);
+        return path.isTextual() && StringUtils.isNotBlank(path.asText())
+            ? List.of(path.asText()) : List.of();
+    }
+
+    /**
      * Projects one tool result into the alignment spec's {@code ToolResult}
      * shape: a type discriminator per tool family, the concatenated textual
      * payload (bounded, with an explicit truncation marker), and the error
@@ -429,7 +522,7 @@ public final class MirrorHub {
         if (result.content() == null || result.content().isEmpty()) return null;
         StringBuilder body = new StringBuilder();
         for (ContentBlock block : result.content()) {
-            if (block instanceof TextBlock text) body.append(text.text());
+            if (block instanceof TextBlock(String text1)) body.append(text1);
         }
         return body.isEmpty() ? null : body.toString();
     }
@@ -475,6 +568,7 @@ public final class MirrorHub {
         AutoCloseable subscription = subscriptions.remove(sessionId);
         sessionIds.remove(sessionId);
         sessionProjectDirs.remove(sessionId);
+        turnBaselines.remove(sessionId);
         if (subscription != null) {
             try { subscription.close(); } catch (Exception _) {
                 // Journal and fan-out state remain authoritative if an old

@@ -2,6 +2,7 @@ package com.claudecode.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.claudecode.core.diff.FileChangeResult;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.Message;
@@ -154,6 +155,42 @@ class GatewayMessagesSnapshotInteropTest {
 
     @Test
     @Timeout(20)
+    void snapshotProjectsLocationsForFileProducingTools() throws Exception {
+        List<Message> conversation = List.of(
+            new AssistantMessage(UUID.randomUUID().toString(), new AssistantContent(
+                "msg_d", List.of(
+                    new ToolUseBlock("toolu_write_1", "Write", null),
+                    new ToolUseBlock("toolu_bash_1", "Bash", null)), null)),
+            new UserMessage(UUID.randomUUID().toString(),
+                MessageContent.ofBlocks(List.of(
+                    new ToolResultBlock("toolu_write_1",
+                        List.of(new TextBlock("File created successfully")), false))),
+                false, false, FileChangeResult.created("/work/new-file.txt", "hello"),
+                MessageOrigin.USER, null, null, null, null, null,
+                null, null, null, null, null, null, null),
+            new UserMessage(UUID.randomUUID().toString(),
+                MessageContent.ofBlocks(List.of(
+                    new ToolResultBlock("toolu_bash_1",
+                        List.of(new TextBlock("ok")), false))),
+                false, false, null, MessageOrigin.USER, null, null, null, null, null,
+                null, null, null, null, null, null, null));
+        startServer(fixedMessages(conversation));
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            assertThat(body).contains("\"tool_use_id\":\"toolu_write_1\"")
+                .contains("\"locations\":[\"/work/new-file.txt\"]");
+            // toolu_bash_1's result carries no locations field at all.
+            String bashSegment = body.substring(body.indexOf("\"toolu_bash_1\""));
+            assertThat(bashSegment).doesNotContain("\"locations\"");
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void unknownSessionIs404AndMissingTokenIs401() throws Exception {
         // The port answers empty (unknown id) — not the active session — so
         // the handler must surface 404 even though a session is active.
@@ -199,6 +236,36 @@ class GatewayMessagesSnapshotInteropTest {
     private static UserMessage userText(String text) {
         return new UserMessage(UUID.randomUUID().toString(),
             MessageContent.ofText(text));
+    }
+
+    @Test
+    @Timeout(20)
+    void snapshotStampsEpochTimeOnUserAndAssistantRows() throws Exception {
+        // Both row kinds carry the durable transcript timestamp as epoch ms
+        // — the clock label fact the turn-tail and user-row chrome consume.
+        Instant userTime = Instant.ofEpochMilli(1_700_000_000_000L);
+        Instant assistantTime = Instant.ofEpochMilli(1_700_000_005_000L);
+        List<Message> conversation = List.of(
+            new UserMessage(UUID.randomUUID().toString(),
+                MessageContent.ofText("when did I ask"),
+                false, false, null, MessageOrigin.USER, null, userTime, null, null),
+            new AssistantMessage(UUID.randomUUID().toString(), new AssistantContent(
+                "msg_t", List.of(new TextBlock("just now")), null),
+                false, null, assistantTime));
+        startServer(fixedMessages(conversation));
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            // The user row's leading clock fact and the assistant row's
+            // trailing one: durable transcript time as epoch ms.
+            assertThat(body).contains("\"role\":\"user\"")
+                .contains("\"time\":1700000000000");
+            assertThat(body).contains("\"time\":1700000005000")
+                .contains("\"turn\":1");
+        }
     }
 
     private record NoopSink() implements SessionSink {

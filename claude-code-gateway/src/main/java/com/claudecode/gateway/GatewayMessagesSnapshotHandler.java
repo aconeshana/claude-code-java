@@ -10,13 +10,16 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,9 @@ final class GatewayMessagesSnapshotHandler {
     /** Bounded excerpt per tool result, matching the mirror frame projection. */
     private static final int MAX_RESULT_CHARS = 20_000;
     private static final String TRUNCATION_MARKER = "\n…[truncated]";
+
+    /** A paired tool result plus the structured side-channel it carried. */
+    private record ToolOutcome(ToolResultBlock result, Object toolUseResult) {}
 
     private final GatewayHeadlessSessions headless;
     private final GatewaySessionMessagesPort messages;
@@ -73,14 +79,15 @@ final class GatewayMessagesSnapshotHandler {
     private static ObjectNode snapshot(String sessionId, List<Message> rows) {
         // Tool results pair with their tool_use entries by id; collect them
         // in one pass so each assistant message can look them up.
-        Map<String, ToolResultBlock> resultsByUseId = new HashMap<>();
+        Map<String, ToolOutcome> resultsByUseId = new HashMap<>();
         for (Message row : rows) {
             if (!(row instanceof UserMessage user) || user.message() == null) continue;
             List<ContentBlock> blocks = user.message().blocks();
             if (blocks == null) continue;
             for (ContentBlock block : blocks) {
                 if (block instanceof ToolResultBlock result && result.toolUseId() != null) {
-                    resultsByUseId.put(result.toolUseId(), result);
+                    resultsByUseId.put(result.toolUseId(),
+                        new ToolOutcome(result, user.toolUseResult()));
                 }
             }
         }
@@ -88,10 +95,17 @@ final class GatewayMessagesSnapshotHandler {
         ObjectNode body = JsonUtils.getMapper().createObjectNode();
         body.put("session_id", sessionId);
         ArrayNode messagesNode = body.putArray("messages");
+        // Turn numbering mirrors the metrics tracker's turn opener: each
+        // human-prompted user row (not a tool result, meta, or compact
+        // summary row) opens turn N+1; assistant rows inherit the open turn.
+        // Rows before the first opener sit outside any turn (pre-turn
+        // listings) and carry no turn fields.
+        long openTurn = 0;
         for (Message row : rows) {
             if (row instanceof AssistantMessage assistant) {
-                messagesNode.add(assistantEntry(assistant, resultsByUseId));
+                messagesNode.add(assistantEntry(assistant, resultsByUseId, openTurn));
             } else if (row instanceof UserMessage user) {
+                if (opensTurn(user)) openTurn += 1;
                 ObjectNode entry = userEntry(user);
                 if (entry != null) messagesNode.add(entry);
             }
@@ -101,13 +115,40 @@ final class GatewayMessagesSnapshotHandler {
         return body;
     }
 
+    /**
+     * Whether this user row opens a new turn: the message-level view of the
+     * metrics tracker's opener rule. Tool-result rows, injected meta rows,
+     * and compact summaries participate in an already-open turn; the
+     * transcript-level {@code promptSource} stamp encodes the same split but
+     * is not carried on the {@code Message} rows this handler serves.
+     */
+    private static boolean opensTurn(UserMessage user) {
+        if (user.isMeta() || user.isCompactSummary() || user.toolUseResult() != null) {
+            return false;
+        }
+        if (user.message() == null || user.message().blocks() == null) return true;
+        return user.message().blocks().stream()
+            .noneMatch(ToolResultBlock.class::isInstance);
+    }
+
     /** One assistant message with its typed content[] entries. */
     private static ObjectNode assistantEntry(
-            AssistantMessage message, Map<String, ToolResultBlock> resultsByUseId) {
+            AssistantMessage message, Map<String, ToolOutcome> resultsByUseId, long turn) {
         ObjectNode entry = JsonUtils.getMapper().createObjectNode();
         if (message.uuid() != null) entry.put("id", message.uuid());
         if (message.requestId() != null) entry.put("request_id", message.requestId());
         entry.put("complete", true);
+        // Epoch ms for the turn-tail clock label — the same fact the TUI
+        // transcript row stamps. Absent on synthetic rows (no durable time).
+        message.timestamp().map(Instant::toEpochMilli)
+            .ifPresent(time -> entry.put("time", time));
+        if (turn > 0) {
+            entry.put("turn", turn);
+            // The step's provider-reported buckets, raw integers — the same
+            // contract the turn.completed frame's delta serves.
+            Usage usage = message.message() == null ? null : message.message().usage();
+            if (usage != null) entry.set("turn_usage", turnUsageBody(usage));
+        }
         ArrayNode content = entry.putArray("content");
         AssistantContent envelope = message.message();
         if (envelope == null || envelope.content() == null) return entry;
@@ -124,6 +165,18 @@ final class GatewayMessagesSnapshotHandler {
         return entry;
     }
 
+    /** One assistant step's reported token buckets, snake_case on the wire. */
+    private static ObjectNode turnUsageBody(Usage usage) {
+        ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        node.put("uncached_input_tokens", usage.inputTokens());
+        node.put("output_tokens", usage.outputTokens());
+        node.put("cache_write_tokens", usage.cacheCreationInputTokens());
+        node.put("cache_read_tokens", usage.cacheReadInputTokens());
+        node.put("total_tokens", usage.inputTokens() + usage.outputTokens()
+            + usage.cacheCreationInputTokens() + usage.cacheReadInputTokens());
+        return node;
+    }
+
     /** One user message's textual content, when it carries any. */
     private static ObjectNode userEntry(UserMessage message) {
         MessageContent content = message.message();
@@ -132,7 +185,7 @@ final class GatewayMessagesSnapshotHandler {
         if (text == null && content.blocks() != null) {
             StringBuilder body = new StringBuilder();
             for (ContentBlock block : content.blocks()) {
-                if (block instanceof TextBlock textBlock) body.append(textBlock.text());
+                if (block instanceof TextBlock(String text1)) body.append(text1);
             }
             text = body.isEmpty() ? null : body.toString();
         }
@@ -141,6 +194,10 @@ final class GatewayMessagesSnapshotHandler {
         if (message.uuid() != null) entry.put("id", message.uuid());
         entry.put("role", "user");
         entry.put("complete", true);
+        // Epoch ms for the user row's leading clock label (upstream places
+        // the clock before the copy/branch icons on user rows).
+        message.timestamp().map(Instant::toEpochMilli)
+            .ifPresent(time -> entry.put("time", time));
         entry.put("text", text);
         return entry;
     }
@@ -150,27 +207,28 @@ final class GatewayMessagesSnapshotHandler {
      * tool_result block. Without the result the call is still pending.
      */
     private static ObjectNode toolCallEntry(
-            ToolUseBlock tool, Map<String, ToolResultBlock> resultsByUseId) {
+            ToolUseBlock tool, Map<String, ToolOutcome> resultsByUseId) {
         ObjectNode node = JsonUtils.getMapper().createObjectNode();
         node.put("type", "tool_call");
         ObjectNode call = node.putObject("tool");
         call.put("tool_use_id", tool.id());
         call.put("name", tool.name());
         if (tool.input() != null) call.set("args", tool.input());
-        ToolResultBlock result = tool.id() == null ? null : resultsByUseId.get(tool.id());
-        if (result == null) {
+        ToolOutcome outcome = tool.id() == null ? null : resultsByUseId.get(tool.id());
+        if (outcome == null) {
             call.put("status", "pending");
             call.put("ready", false);
             return node;
         }
-        call.put("status", result.isError() ? "failed" : "executed");
+        call.put("status", outcome.result().isError() ? "failed" : "executed");
         call.put("ready", true);
-        call.set("result", projectResult(tool.name(), result));
+        call.set("result", projectResult(tool.name(), outcome.result(), outcome.toolUseResult()));
         return node;
     }
 
     /** The result projection shared with the mirror frame shape. */
-    private static ObjectNode projectResult(String toolName, ToolResultBlock result) {
+    private static ObjectNode projectResult(
+            String toolName, ToolResultBlock result, Object toolUseResult) {
         ObjectNode node = JsonUtils.getMapper().createObjectNode();
         node.put("type", resultType(toolName));
         String text = resultText(result);
@@ -185,7 +243,36 @@ final class GatewayMessagesSnapshotHandler {
             node.put("errorMessage", text);
             node.put("errorCode", "tool_error");
         }
+        List<String> locations = toolLocations(toolName, toolUseResult);
+        if (!locations.isEmpty()) {
+            ArrayNode array = node.putArray("locations");
+            locations.forEach(array::add);
+        }
         return node;
+    }
+
+    /**
+     * The file path(s) a Write/Edit/NotebookEdit tool produced, or empty for
+     * every other tool. Mirrors {@code MirrorHub}'s helper of the same name —
+     * both files independently project the same {@code ToolResult} wire
+     * shape and neither shares a common projection module.
+     */
+    private static List<String> toolLocations(String toolName, Object toolUseResult) {
+        String field = switch (toolName) {
+            case "Write", "Edit" -> "filePath";
+            case "NotebookEdit" -> "notebook_path";
+            case null, default -> null;
+        };
+        if (field == null || toolUseResult == null) return List.of();
+        JsonNode payload;
+        try {
+            payload = JsonUtils.getMapper().valueToTree(toolUseResult);
+        } catch (RuntimeException _) {
+            return List.of();
+        }
+        JsonNode path = payload.path(field);
+        return path.isTextual() && StringUtils.isNotBlank(path.asText())
+            ? List.of(path.asText()) : List.of();
     }
 
     /** Concatenates the result's textual content blocks, or null when none. */
@@ -193,7 +280,7 @@ final class GatewayMessagesSnapshotHandler {
         if (result.content() == null || result.content().isEmpty()) return null;
         StringBuilder body = new StringBuilder();
         for (ContentBlock block : result.content()) {
-            if (block instanceof TextBlock text) body.append(text.text());
+            if (block instanceof TextBlock(String text1)) body.append(text1);
         }
         return body.isEmpty() ? null : body.toString();
     }

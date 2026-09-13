@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.*;
+import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.ToolPermissionContext;
@@ -16,6 +18,7 @@ import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskStore;
 import com.claudecode.tools.tasks.TaskType;
 import org.assertj.core.api.Assertions;
+import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -185,6 +188,116 @@ class CliHeadlessGatewaySessionsTest {
     }
 
     @Test
+    void openedHistorySessionRestoresDurableMetrics() throws IOException {
+        // One persisted turn: a user row (promptSource + uuid — the turn id
+        // readMetricTurnIds requires) followed by a contiguous
+        // java-session-metrics event stream. Opening the history session
+        // restores the fold into the live engine: the same rows the TUI
+        // /resume path consumes.
+        String sessionId = "ws-metrics";
+        SessionManager manager = new SessionManager(mainProject.toString());
+        Path transcript = manager.getSessionFile(sessionId);
+        Files.createDirectories(transcript.getParent());
+        List<String> lines = new ArrayList<>();
+        UserMessage user = new UserMessage("turn-1",
+            new MessageContent("prior prompt", null));
+        ObjectNode userRow = (ObjectNode) JsonUtils.getMapper()
+            .readTree(JsonUtils.getMapper().writeValueAsString(user));
+        userRow.put("promptSource", "typed");
+        lines.add(JsonUtils.getMapper().writeValueAsString(userRow));
+        lines.add(metricRow(sessionId, 0, "session/start", null, 0, 0));
+        lines.add(metricRow(sessionId, 1, "turn/start", "turn-1", 1, 0));
+        lines.add(metricRow(sessionId, 2, "step/start", "turn-1", 1, 1));
+        String usage = "uncachedInputTokens:100,outputTokens:50,"
+            + "cacheWriteTokens:10,cacheReadTokens:900";
+        lines.add(metricRow(sessionId, 3, "assistant/usage", "turn-1", 1, 1, usage));
+        lines.add(metricRow(sessionId, 4, "assistant/message", "turn-1", 1, 1));
+        lines.add(metricRow(sessionId, 5, "step/end", "turn-1", 1, 1));
+        lines.add(metricRow(sessionId, 6, "turn/end", "turn-1", 1, 1));
+        Files.write(transcript, lines, StandardCharsets.UTF_8);
+
+        CliHeadlessGatewaySessions sessions = sessions();
+        sessions.open(new GatewayHeadlessSessions.OpenRequest(sessionId, null));
+
+        SessionMetricsSnapshot metrics = sessions.liveEngine(sessionId)
+            .orElseThrow()
+            .execution()
+            .getSessionMetrics();
+        assertThat(metrics.complete()).isTrue();
+        assertThat(metrics.turns()).isEqualTo(1);
+        assertThat(metrics.steps()).isEqualTo(1);
+        assertThat(metrics.uncachedInputTokens()).isEqualTo(100);
+        assertThat(metrics.outputTokens()).isEqualTo(50);
+        assertThat(metrics.cacheWriteTokens()).isEqualTo(10);
+        assertThat(metrics.cacheReadTokens()).isEqualTo(900);
+    }
+
+    @Test
+    void openedHistorySessionWithDiscontinuousMetricsStaysIncomplete()
+            throws IOException {
+        // A seq gap poisons the restore: the fold must stay INCOMPLETE so
+        // the gateway serves null instead of a partial total (spec §6).
+        String sessionId = "ws-gap";
+        SessionManager manager = new SessionManager(mainProject.toString());
+        Path transcript = manager.getSessionFile(sessionId);
+        Files.createDirectories(transcript.getParent());
+        List<String> lines = new ArrayList<>();
+        UserMessage user = new UserMessage("turn-1",
+            new MessageContent("prior prompt", null));
+        ObjectNode userRow = (ObjectNode) JsonUtils.getMapper()
+            .readTree(JsonUtils.getMapper().writeValueAsString(user));
+        userRow.put("promptSource", "typed");
+        lines.add(JsonUtils.getMapper().writeValueAsString(userRow));
+        lines.add(metricRow(sessionId, 0, "session/start", null, 0, 0));
+        lines.add(metricRow(sessionId, 1, "turn/start", "turn-1", 1, 0));
+        lines.add(metricRow(sessionId, 2, "step/start", "turn-1", 1, 1));
+        // seq 3 missing: the restore rejects the stream wholesale.
+        lines.add(metricRow(sessionId, 4, "step/end", "turn-1", 1, 1));
+        lines.add(metricRow(sessionId, 5, "turn/end", "turn-1", 1, 1));
+        Files.write(transcript, lines, StandardCharsets.UTF_8);
+
+        CliHeadlessGatewaySessions sessions = sessions();
+        sessions.open(new GatewayHeadlessSessions.OpenRequest(sessionId, null));
+
+        SessionMetricsSnapshot metrics = sessions.liveEngine(sessionId)
+            .orElseThrow()
+            .execution()
+            .getSessionMetrics();
+        assertThat(metrics.complete()).isFalse();
+    }
+
+    /**
+     * One persisted {@code java-session-metrics} row in the transcript
+     * writer's exact wire shape, optionally carrying usage buckets.
+     */
+    private static String metricRow(String sessionId, long seq, String event,
+            String turnId, long turn, long step) {
+        return metricRow(sessionId, seq, event, turnId, turn, step, null);
+    }
+
+    private static String metricRow(String sessionId, long seq, String event,
+            String turnId, long turn, long step, String usageFields) {
+        ObjectNode row = JsonUtils.getMapper().createObjectNode();
+        row.put("type", "java-session-metrics");
+        row.put("schemaVersion", 1);
+        row.put("seq", seq);
+        row.put("time", 1_700_000_000_000L + seq * 100);
+        row.put("sessionId", sessionId);
+        row.put("event", event);
+        if (turnId != null) row.put("turnId", turnId);
+        if (turn > 0) row.put("turn", turn);
+        if (step > 0) row.put("step", step);
+        if (usageFields != null) {
+            for (String pair : usageFields.split(",")) {
+                int split = pair.indexOf(':');
+                row.put(pair.substring(0, split).strip(),
+                    Long.parseLong(pair.substring(split + 1).strip()));
+            }
+        }
+        return JsonUtils.getMapper().valueToTree(row).toString();
+    }
+
+    @Test
     void openRejectsMissingProjectDirectory() {
         CliHeadlessGatewaySessions sessions = sessions();
         String missing = otherProject.resolve("gone").toString();
@@ -192,6 +305,64 @@ class CliHeadlessGatewaySessionsTest {
             sessions.open(new GatewayHeadlessSessions.OpenRequest("ws-x", missing)))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("project_path");
+    }
+
+    @Test
+    void openFreshSessionPersistsExactlyOneSessionStartRow() throws IOException {
+        // The recorder flushes transcript rows asynchronously, so a restore
+        // that reads after the sink install races its own session/start row:
+        // an unflushed queue makes the read miss the row and the empty-events
+        // restore branch emits a second session/start with a reset seq,
+        // permanently breaking the strict-sequence restore. A fresh open must
+        // persist exactly one session/start row and keep the live fold
+        // complete, so a later reopen restores the fold from a clean stream.
+        String sessionId = "ws-fresh-single-start";
+        CliHeadlessGatewaySessions sessions = sessions();
+        sessions.open(new GatewayHeadlessSessions.OpenRequest(sessionId, null));
+
+        SessionMetricsSnapshot metrics = sessions.liveEngine(sessionId)
+            .orElseThrow()
+            .execution()
+            .getSessionMetrics();
+        assertThat(metrics.complete()).isTrue();
+
+        Path transcript = new SessionManager(mainProject.toString())
+            .getSessionFile(sessionId);
+        // The recorder's write queue is asynchronous; wait until the row lands.
+        List<String> rows = awaitRows(transcript, 1);
+        assertThat(rows).isNotEmpty();
+        List<String> starts = rows.stream()
+            .filter(line -> Strings.CS.contains(line, "\"event\":\"session/start\""))
+            .toList();
+        assertThat(starts).hasSize(1);
+        // The whole stream stays strictly sequential: one seq-0 row only.
+        List<Long> seqs = new ArrayList<>();
+        for (String line : rows) {
+            seqs.add(JsonUtils.getMapper()
+                .readTree(line).path("seq").asLong());
+        }
+        assertThat(seqs).containsExactly(0L);
+    }
+
+    /** Reads the transcript's custom metric rows, waiting for at least {@code min} to flush. */
+    private static List<String> awaitRows(Path transcript, int min) throws IOException {
+        List<String> rows = List.of();
+        for (int i = 0; i < 200; i++) {
+            if (Files.isRegularFile(transcript)) {
+                rows = Files.readAllLines(transcript, StandardCharsets.UTF_8)
+                    .stream()
+                    .filter(line -> Strings.CS.contains(line, "\"java-session-metrics\""))
+                    .toList();
+                if (rows.size() >= min) return rows;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted while waiting for transcript rows", e);
+            }
+        }
+        return rows;
     }
 
     @Test

@@ -33,6 +33,7 @@ import com.claudecode.services.claudemd.MemoryPromptBuilder;
 import com.claudecode.services.claudemd.MemoryType;
 import com.claudecode.services.config.WorkspaceSettings;
 import com.claudecode.session.SessionManager;
+import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
@@ -41,6 +42,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -120,6 +122,30 @@ final class CliHeadlessSessionFactory {
         }
         QuerySession engine = querySessionFactory.create(builder.build());
         TranscriptRecorder recorder = new TranscriptRecorder(new SessionManager(projectPath));
+        Path sessionFile = new SessionManager(projectPath).getSessionFile(sessionId);
+        // Restore the durable HUD fold from the same persisted rows the TUI
+        // /resume path consumes, so an opened history session reports
+        // whole-session metrics instead of an empty fold. Contiguous seq +
+        // full turnId coverage is required by the tracker; anything short
+        // stays INCOMPLETE, which the gateway serves as null rather than a
+        // partial total. Must land before any turn can start.
+        if (Files.isRegularFile(sessionFile)) {
+            // Restore BEFORE the sink install: the recorder flushes writes
+            // asynchronously, so a restore that reads after setTranscriptSink
+            // races the just-emitted session/start row — an unflushed queue
+            // makes the read miss it and the empty-events branch then emits a
+            // second session/start with a reset seq, permanently breaking the
+            // strict-sequence restore for this transcript. Restoring first
+            // reads a pristine file; a successful replay marks the session
+            // started, which also suppresses the sink install's own
+            // ensureStarted emit.
+            SessionStorage storage = new SessionStorage();
+            engine.execution().restoreSessionMetrics(sessionId,
+                storage.readSessionMetrics(sessionFile), storage.readMetricTurnIds(sessionFile));
+        }
+        // A brand-new session skips the restore entirely: with no file the
+        // tracker is already fresh-complete, and the sink install below emits
+        // exactly one session/start row.
         engine.execution().setTranscriptSink(recorder);
 
         SessionHostInfo info = new SessionHostInfo(

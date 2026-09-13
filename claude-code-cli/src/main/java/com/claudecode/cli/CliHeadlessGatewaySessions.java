@@ -4,6 +4,7 @@ import com.claudecode.core.message.Message;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
 import com.claudecode.permissions.PermissionMode;
+import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
@@ -148,6 +149,12 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         return entry == null
             ? Optional.empty()
             : Optional.of(entry.assembled().engine().conversation().getMessages());
+    }
+
+    /** The open headless session's live engine, or empty when none is open under that id. */
+    Optional<QuerySession> liveEngine(String sessionId) {
+        Entry entry = sessionId == null ? null : sessions.get(sessionId);
+        return entry == null ? Optional.empty() : Optional.of(entry.assembled().engine());
     }
 
     /**
