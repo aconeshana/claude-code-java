@@ -19,6 +19,7 @@ import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.TranscriptSink;
+import com.claudecode.core.config.VersionInfo;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
@@ -550,7 +551,10 @@ class ClaudeCodeCliTest {
         cmd.setOut(new PrintWriter(sw));
         int exitCode = cmd.execute("--version");
         assertEquals(0, exitCode);
-        assertTrue(Strings.CS.contains(sw.toString(), "claude-code-java 0.1.0"),
+        // The printed string follows the build's VersionInfo, not a pinned
+        // literal — a version bump must not break this check.
+        assertTrue(Strings.CS.contains(sw.toString(),
+                "claude-code-java " + VersionInfo.version()),
             "Version output should contain version string, got: " + sw.toString());
     }
 
