@@ -3,6 +3,7 @@ package com.claudecode.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.claudecode.core.engine.StreamingClient;
+import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.message.*;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.serialization.JsonUtils;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -316,6 +318,8 @@ class CliHeadlessGatewaySessionsTest {
         // permanently breaking the strict-sequence restore. A fresh open must
         // persist exactly one session/start row and keep the live fold
         // complete, so a later reopen restores the fold from a clean stream.
+        // Deferred materialization: the row only lands once the session's
+        // first chain message materializes the file, so seed one row first.
         String sessionId = "ws-fresh-single-start";
         CliHeadlessGatewaySessions sessions = sessions();
         sessions.open(new GatewayHeadlessSessions.OpenRequest(sessionId, null));
@@ -326,9 +330,17 @@ class CliHeadlessGatewaySessionsTest {
             .getSessionMetrics();
         assertThat(metrics.complete()).isTrue();
 
+        TranscriptSink sink = sessions.liveEngine(sessionId)
+            .orElseThrow()
+            .execution()
+            .getTranscriptSink();
+        assertThat(sink).isNotNull();
+        sink.record(sessionId, new UserMessage(
+            UUID.randomUUID().toString(), new MessageContent("seed", null)));
+
         Path transcript = new SessionManager(mainProject.toString())
             .getSessionFile(sessionId);
-        // The recorder's write queue is asynchronous; wait until the row lands.
+        // The recorder's write queue is asynchronous; wait until the rows land.
         List<String> rows = awaitRows(transcript, 1);
         assertThat(rows).isNotEmpty();
         List<String> starts = rows.stream()

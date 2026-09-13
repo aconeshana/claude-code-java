@@ -409,6 +409,11 @@ class TranscriptRecorderTest {
     @Test
     void contentReplacementRecordsArePersistedAsMetadata() throws Exception {
         String sessionId = sessionManager.createSession();
+        // Content replacements ride on tool results, so the session is already
+        // materialized when one is recorded.
+        recorder.recordTranscript(sessionId,
+            new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("seed")));
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
         recorder.recordContentReplacements(sessionId, List.of(
             new ToolResultBudget.Replacement("tool-1", "<persisted-output>preview</persisted-output>")));
 
@@ -1300,17 +1305,23 @@ class TranscriptRecorderTest {
     @Test
     void resumedSessionModeIsQueuedAfterLastPromptLikeOfficialCli() throws Exception {
         String sessionId = sessionManager.createSession();
+        // Resumed session: its JSONL already exists from the previous process.
+        recorder.recordTranscript(sessionId,
+            new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("earlier")));
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
+        assertTrue(recorder.releaseSessionState(sessionId, 5_000));
 
         recorder.recordLastPrompt(sessionId, "resume prompt");
         recorder.recordMode(sessionId, "normal");
         Thread.sleep(500);
 
         List<String> lines = Files.readAllLines(sessionManager.getSessionFile(sessionId));
-        assertEquals(2, lines.size());
+        // seed user row + last-prompt + mode
+        assertEquals(3, lines.size());
 
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode lastPrompt = mapper.readTree(lines.getFirst());
-        JsonNode mode = mapper.readTree(lines.get(1));
+        JsonNode lastPrompt = mapper.readTree(lines.get(1));
+        JsonNode mode = mapper.readTree(lines.get(2));
         assertEquals("last-prompt", lastPrompt.path("type").asText());
         assertEquals("resume prompt", lastPrompt.path("lastPrompt").asText());
         assertEquals("mode", mode.path("type").asText());
@@ -1321,6 +1332,10 @@ class TranscriptRecorderTest {
     @Test
     void permissionModeChangeIsQueuedAfterLastPrompt() throws Exception {
         String sessionId = sessionManager.createSession();
+        // ExitPlanMode approval lands after a turn, so the file already exists.
+        recorder.recordTranscript(sessionId,
+            new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("seed")));
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         recorder.recordLastPrompt(sessionId, "approved plan");
         recorder.recordPermissionMode(sessionId, "default");
@@ -1328,11 +1343,12 @@ class TranscriptRecorderTest {
 
         List<JsonNode> lines = JsonUtils.readJsonLines(
             sessionManager.getSessionFile(sessionId));
-        assertEquals(2, lines.size());
-        assertEquals("last-prompt", lines.getFirst().path("type").asText());
-        assertEquals("permission-mode", lines.get(1).path("type").asText());
-        assertEquals("default", lines.get(1).path("permissionMode").asText());
-        assertEquals(sessionId, lines.get(1).path("sessionId").asText());
+        // seed user row + last-prompt + permission-mode
+        assertEquals(3, lines.size());
+        assertEquals("last-prompt", lines.get(1).path("type").asText());
+        assertEquals("permission-mode", lines.get(2).path("type").asText());
+        assertEquals("default", lines.get(2).path("permissionMode").asText());
+        assertEquals(sessionId, lines.get(2).path("sessionId").asText());
     }
 
     @Test
@@ -1353,12 +1369,16 @@ class TranscriptRecorderTest {
     @Test
     void generatedTitleUsesReleasedAiTitleMetadataShape() throws Exception {
         String sessionId = sessionManager.createSession();
+        // The title helper only fires after a first turn, so the file exists.
+        recorder.recordTranscript(sessionId,
+            new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("seed")));
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         recorder.recordAiTitle(sessionId, "Wire title");
         assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         JsonNode line = JsonUtils.readJsonLines(
-            sessionManager.getSessionFile(sessionId)).getFirst();
+            sessionManager.getSessionFile(sessionId)).getLast();
         assertEquals("ai-title", line.path("type").asText());
         assertEquals("Wire title", line.path("aiTitle").asText());
         assertEquals(sessionId, line.path("sessionId").asText());

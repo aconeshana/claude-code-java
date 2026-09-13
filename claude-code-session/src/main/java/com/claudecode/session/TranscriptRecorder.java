@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -42,6 +43,25 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Fire-and-forget async transcript writer.
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code src/utils/sessionStorage.ts} — the transcript writer's deferred
+ *       materialization: while a session has no first user/assistant/system row,
+ *       metadata entries stay in the in-memory {@code pendingEntries} buffer and
+ *       the JSONL must not exist on disk (authoritative formula verified against
+ *       the 2.1.197 and 2.1.236 bundles' {@code materializeSessionFile}/
+ *       {@code appendEntry}/{@code resetSessionFile}); the first chain message
+ *       materializes the file and flushes the buffer ahead of itself; a released
+ *       un-materialized session drops its buffer without writing. Covers the
+ *       metadata-entry buffering paths (mode/permission-mode/last-prompt/ai-title/
+ *       metrics/queue-operation/fork-context-ref/content-replacement/parent-session).
+ *   <li>{@code src/commands/clear/conversation.ts} — {@code /clear} lineage: the
+ *       successor's {@code parent-session} row routes through the same buffer so a
+ *       cleared session that never receives a conversation leaves no empty file
+ *       (the upstream keeps lineage in memory only; the Java wire format persists
+ *       it once the session materializes).
+ * </ul>
  */
 public class TranscriptRecorder implements TranscriptSink {
 
@@ -99,6 +119,25 @@ public class TranscriptRecorder implements TranscriptSink {
     private String cachedSessionAgentName;
     private String cachedAgentSetting;
     private boolean activeSessionMetadataMaterialized;
+
+    /**
+     * Deferred-materialization buffer, mirroring the upstream transcript writer's
+     * {@code pendingEntries}: while a session's JSONL holds no first user/assistant/
+     * system row, metadata writes for it stay in memory and the file must not appear
+     * on disk. Flushed (and the buffer dropped) when the first chain message
+     * materializes the file; dropped without flushing when the session is released.
+     */
+    private final Object pendingEntriesLock = new Object();
+    private String pendingEntriesSessionId;
+    private final List<ObjectNode> pendingEntries = new ArrayList<>();
+    /**
+     * Sessions whose file this recorder has already materialized in-process. The
+     * on-disk existence check alone is racy — the first chain row is enqueued but
+     * flushed asynchronously, so immediately-following metadata would re-enter the
+     * buffer and never flush. Mirrors the upstream writer's non-null
+     * {@code sessionFile} pointer.
+     */
+    private final Set<String> materializedSessions = ConcurrentHashMap.newKeySet();
 
     private record LeafState(String uuid, Instant timestamp) {}
 
@@ -216,6 +255,11 @@ public class TranscriptRecorder implements TranscriptSink {
         if (cleaned.isEmpty()) return;
         Message persistedMessage = cleaned.getFirst();
 
+        // The first chain row materializes the session file; buffered metadata
+        // for this session flushes ahead of it (upstream materializeSessionFile).
+        if (isChainParticipant(persistedMessage)) {
+            materializeSessionFile(sessionId, sessionFile);
+        }
         prepareSessionMaterialization(sessionId);
         updateCurrentLeaf(key, persistedMessage);
         if (isChainParticipant(persistedMessage)) {
@@ -298,7 +342,7 @@ public class TranscriptRecorder implements TranscriptSink {
             entry.put("cacheReadTokens", event.cacheReadTokens());
         }
         if (event.synthetic()) entry.put("synthetic", true);
-        enqueue(file, () -> writeCustom(sessionId, file, entry));
+        enqueueBuffered(sessionId, file, entry);
     }
 
     @Override
@@ -324,7 +368,7 @@ public class TranscriptRecorder implements TranscriptSink {
         if (content != null) {
             entry.put("content", content);
         }
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
 
@@ -345,7 +389,28 @@ public class TranscriptRecorder implements TranscriptSink {
         entry.put("parentSessionId", parentSessionId);
         entry.put("parentLastUuid", parentLastUuid);
         entry.put("contextLength", Math.max(0, contextLength));
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
+    }
+
+    /**
+     * Records a {@code parent-session} lineage row for a {@code /clear} or
+     * {@code /branch} successor. Routed through the deferred-materialization
+     * buffer: a cleared successor that never receives a conversation leaves no
+     * empty JSONL behind (upstream keeps lineage in memory only, but the Java
+     * wire format persists it once the session materializes).
+     */
+    public void appendParentSession(String sessionId, String parentSessionId, String relation) {
+        if (StringUtils.isBlank(sessionId)
+                || parentSessionId == null || StringUtils.isBlank(parentSessionId)) {
+            return;
+        }
+        Path sessionFile = sessionFile(sessionId);
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        entry.put("type", "parent-session");
+        entry.put("parentSessionId", parentSessionId);
+        entry.put("relation", relation);
+        entry.put("sessionId", sessionId);
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     /** Returns the active headless queue turn's prompt id, if one exists. */
@@ -550,7 +615,7 @@ public class TranscriptRecorder implements TranscriptSink {
         if (renderedPrompt != null || leaf != null) {
             String promptValue = renderedPrompt;
             String leafUuid = leaf == null ? null : leaf.uuid();
-            enqueue(sessionFile, () -> {
+            Runnable write = () -> {
                 LeafState effectiveLeaf = endPromptIdentity
                     ? currentLeaves.get(sessionFile.toString()) : null;
                 String effectiveLeafUuid = effectiveLeaf != null
@@ -561,7 +626,20 @@ public class TranscriptRecorder implements TranscriptSink {
                 if (effectiveLeafUuid != null) entry.put("leafUuid", effectiveLeafUuid);
                 entry.put("sessionId", sessionId);
                 writeCustom(sessionId, sessionFile, entry);
-            });
+            };
+            // The deferred buffer holds plain entries, but this row resolves its
+            // leaf lazily at write time. A buffered session has no chain leaf yet,
+            // so freezing the (null) leaf early is equivalent; unbuffered writes
+            // keep the lazy resolution.
+            synchronized (pendingEntriesLock) {
+                if (pendingEntriesSessionId != null
+                        && Strings.CS.equals(pendingEntriesSessionId, sessionId)) {
+                    pendingEntries.add(frozenLastPromptEntry(
+                        sessionId, promptValue, leafUuid));
+                } else {
+                    enqueue(sessionFile, write);
+                }
+            }
         }
         if (endPromptIdentity) {
             cachedLastPrompts.remove(sessionFile.toString());
@@ -663,7 +741,7 @@ public class TranscriptRecorder implements TranscriptSink {
         entry.put("type", "mode");
         entry.put("mode", mode);
         entry.put("sessionId", sessionId);
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     @Override
@@ -680,7 +758,7 @@ public class TranscriptRecorder implements TranscriptSink {
         entry.put("type", "ai-title");
         entry.put("aiTitle", title);
         entry.put("sessionId", sessionId);
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     @Override
@@ -691,7 +769,7 @@ public class TranscriptRecorder implements TranscriptSink {
         entry.put("type", "permission-mode");
         entry.put("permissionMode", permissionMode);
         entry.put("sessionId", sessionId);
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     @Override
@@ -722,7 +800,7 @@ public class TranscriptRecorder implements TranscriptSink {
             item.put("replacement", replacement.replacement());
         }
         if (array.isEmpty()) return;
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     @Override
@@ -801,6 +879,12 @@ public class TranscriptRecorder implements TranscriptSink {
         preparedManualCompactMetadata.remove(key);
         resumedSessionFiles.remove(key);
         freshlyMaterializedRestoredModes.remove(key);
+        synchronized (pendingEntriesLock) {
+            if (Strings.CS.equals(pendingEntriesSessionId, sessionId)) {
+                dropPendingEntriesLocked();
+            }
+        }
+        materializedSessions.remove(sessionId);
         synchronized (activeSessionMetadataLock) {
             if (Strings.CS.equals(activeMetadataSessionId, sessionId)) {
                 clearActiveSessionMetadata();
@@ -883,7 +967,7 @@ public class TranscriptRecorder implements TranscriptSink {
         entry.put("type", type);
         entry.put(field, value);
         entry.put("sessionId", sessionId);
-        enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        enqueueBuffered(sessionId, sessionFile, entry);
     }
 
     private void writeCustom(String sessionId, Path sessionFile, ObjectNode entry) {
@@ -894,6 +978,70 @@ public class TranscriptRecorder implements TranscriptSink {
             log.error("Failed to record transcript metadata for session {}: {}",
                 sessionId, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Routes a custom metadata row through the deferred-materialization buffer when
+     * the session's file does not yet hold a first chain row: the entry stays in
+     * memory (no file is created), and flushes ahead of the first message. A session
+     * whose file already exists — restored, sidechain, or previously materialized —
+     * bypasses the buffer and writes immediately.
+     */
+    private void enqueueBuffered(String sessionId, Path sessionFile, ObjectNode entry) {
+        synchronized (pendingEntriesLock) {
+            if (pendingEntriesSessionId != null
+                    && !Strings.CS.equals(pendingEntriesSessionId, sessionId)) {
+                dropPendingEntriesLocked();
+            }
+            if (pendingEntriesSessionId == null
+                    && (materializedSessions.contains(sessionId)
+                        || Files.exists(sessionFile))) {
+                enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+                return;
+            }
+            pendingEntriesSessionId = sessionId;
+            pendingEntries.add(entry);
+        }
+    }
+
+    /**
+     * First-chain-row materialization: flush the buffered metadata rows ahead of
+     * the message that triggered the write. Called from {@link #record} before the
+     * message itself is enqueued, so both land in the same per-file queue in order.
+     */
+    private void materializeSessionFile(String sessionId, Path sessionFile) {
+        List<ObjectNode> buffered;
+        synchronized (pendingEntriesLock) {
+            if (pendingEntriesSessionId == null
+                    || !Strings.CS.equals(pendingEntriesSessionId, sessionId)) {
+                materializedSessions.add(sessionId);
+                return;
+            }
+            buffered = List.copyOf(pendingEntries);
+            pendingEntries.clear();
+            pendingEntriesSessionId = null;
+            materializedSessions.add(sessionId);
+        }
+        for (ObjectNode entry : buffered) {
+            enqueue(sessionFile, () -> writeCustom(sessionId, sessionFile, entry));
+        }
+    }
+
+    /** Drops the buffer without flushing — an un-materialized session stays off disk. */
+    private void dropPendingEntriesLocked() {
+        pendingEntries.clear();
+        pendingEntriesSessionId = null;
+    }
+
+    /** Frozen {@code last-prompt} row for a buffered session: no chain leaf exists yet. */
+    private static ObjectNode frozenLastPromptEntry(
+            String sessionId, String promptValue, String leafUuid) {
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        entry.put("type", "last-prompt");
+        if (promptValue != null) entry.put("lastPrompt", promptValue);
+        if (leafUuid != null) entry.put("leafUuid", leafUuid);
+        entry.put("sessionId", sessionId);
+        return entry;
     }
 
     private void writeOne(String sessionId, Message message, Path sessionFile,

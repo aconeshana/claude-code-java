@@ -148,7 +148,10 @@ public final class CliInteractiveSessionAdapter implements InteractiveSessionPor
 
     @Override public void appendParentSession(String cwd, String sessionId,
                                                String parentSessionId, String reason) {
-        new SessionManager(cwd).appendParentSession(sessionId, parentSessionId, reason);
+        // Routed through the recorder's deferred-materialization buffer so a
+        // /clear successor with no conversation leaves no empty JSONL behind.
+        new TranscriptRecorder(new SessionManager(cwd))
+            .appendParentSession(sessionId, parentSessionId, reason);
     }
 
     @Override public void reAppendSessionMetadata(String cwd, String sessionId) {
