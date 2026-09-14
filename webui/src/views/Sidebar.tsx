@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
-import { IconClockOutline16, IconNewChatOutline16, IconRefreshOutline16, IconSettingsOutline16, Pill } from '@primitives'
+import { IconNewChatOutline16, IconRefreshOutline16, IconSettingsOutline16, Pill } from '@primitives'
 import css from '@chat-styles/SidebarRoot.module.css'
 import browserCss from '@chat-styles/WorkspaceBrowser.module.css'
 import triggerCss from '@chat-styles/SettingsRoot.module.css'
@@ -11,7 +11,6 @@ import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { ProjectRowItem, SessionNodeItem } from './SessionRows'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
-import { SchedulePanel } from './SchedulePanel'
 
 /** Session rows visible per project before the local overflow control (upstream's COLLAPSED_SESSION_LIMIT). */
 const COLLAPSED_SESSION_LIMIT = 5
@@ -29,8 +28,14 @@ const NOW_TICK_MS = 30_000
  * - WorkspaceBrowser.tsx's own `.root` wrapper (the session-list edge inset
  *   that coordinates with `.regionArea`'s canceling margin) and the grouped
  *   SessionTree: section header, 34px project rows, 32px session rows,
- *   per-group 5-row collapse + overflow button, bottom fade — plus
- *   Rows.tsx's row grammar, see SessionRows.tsx.
+ *   per-group 5-row collapse + the overflow button as a LOCAL fold toggle
+ *   (upstream's expandedSessionGroups + toggled(): expanded shows every row
+ *   and flips the button to "Show less", aria-expanded carries the state),
+ *   bottom fade — plus Rows.tsx's row grammar, see SessionRows.tsx.
+ *   Deviation: upstream's account holds every row client-side, while this
+ *   port's rows are a gateway page (?per_project=, session_count keeps the
+ *   total) — so expanding ALSO grows the page one step while the listing
+ *   still truncates, and the paged-out remainder counts in the button's n.
  * Dropped, with no backend surface: search (local + Host content search —
  * `localCss.headerActions`'s `margin-left: auto` reproduces the search
  * slot's title/actions split without the search machinery), the flat "In
@@ -38,16 +43,12 @@ const NOW_TICK_MS = 30_000
  * (add/rename/delete/pick flow), session rename/fork/archive menus, and
  * drag-and-drop ordering (both rows and workspace groups). The refresh
  * affordance in the section header is this port's own (upstream's list is
- * live-pushed; ours is a request/response catalog). The settings and
- * scheduled-task panel toggles stay in the sidebar foot per the vendored
- * `SidebarRoot.module.css` `.footArea` structure ("additive actions stack
- * above Settings"): the schedule trigger occupies `.footerActions` while the
- * settings trigger gets its own `.settingsArea` seat, both reusing
- * `SettingsRoot.module.css`'s `triggerRow` geometry. The seats are not
- * interchangeable — `.footerActions` is a horizontal flex and a `triggerRow`
- * is `flex: none; width: calc(100% + 4px)`, so two rows in one seat push the
- * second past the clipped sidebar column (upstream seats them separately:
- * `renderSlot('sidebar.footer.action')` over `renderSlot('sidebar.settings')`).
+ * live-pushed; ours is a request/response catalog). The sidebar foot stays
+ * Settings-only per the vendored `SidebarRoot.module.css` `.footArea`
+ * structure (`.footerActions` seat left empty): the scheduled-task surface
+ * moved into the settings dialog as its own nav section (see
+ * SchedulePanel.tsx) — upstream's own schedule surface is a read-only
+ * conversation-header catalog, so no foot trigger corresponds to it.
  */
 export function Sidebar() {
   const projects = useSessions((state) => state.projects)
@@ -61,7 +62,6 @@ export function Sidebar() {
   const loading = useSessions((state) => state.loading)
   const error = useSessions((state) => state.error)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [scheduleOpen, setScheduleOpen] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
 
   // Relative-time labels re-derive their bucket on a slow tick, the same
@@ -72,22 +72,34 @@ export function Sidebar() {
     return () => { window.clearInterval(timer) }
   }, [])
 
+  // Alphabetical by project name, then the selected session's project is
+  // lifted to the top (upstream's activity promotion in compareSessionRecency
+  // hoists the current session's account; this catalog has no per-session
+  // recency order to restore behind it, so the rest keeps the name order).
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.sessions.some((session) => session.id === selectedId)),
+    [projects, selectedId],
+  )
   const sorted = useMemo(
-    () => [...projects].sort((a, b) => a.project_name.localeCompare(b.project_name)),
-    [projects],
+    () => [...projects].sort((a, b) => {
+      const aCurrent = a.project_path === selectedProject?.project_path
+      const bCurrent = b.project_path === selectedProject?.project_path
+      if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
+      return a.project_name.localeCompare(b.project_name)
+    }),
+    [projects, selectedProject],
   )
 
   // Groups auto-expand to reveal the selected session (upstream's
   // groupExpansion effect on the current group).
-  const selectedProject = useMemo(
-    () => sorted.find((project) => project.sessions.some((session) => session.id === selectedId)),
-    [sorted, selectedId],
-  )
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   useEffect(() => {
     if (selectedProject == null) return
     setCollapsedGroups((keys) => keys.filter((key) => key !== selectedProject.project_path))
   }, [selectedProject])
+  // Local overflow expansion per project (upstream's expandedSessionGroups):
+  // one list of project paths whose rows are NOT folded to the 5-row limit.
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([])
 
   return (
     <div className={css.root}>
@@ -127,6 +139,7 @@ export function Sidebar() {
                     key={project.project_path}
                     project={project}
                     expanded={!collapsedGroups.includes(project.project_path)}
+                    overflowExpanded={expandedGroups.includes(project.project_path)}
                     selectedId={selectedId}
                     now={now}
                     containsCurrent={project.project_path === selectedProject?.project_path}
@@ -147,10 +160,17 @@ export function Sidebar() {
                         : openSession(session.id, project.project_path))
                     }}
                     onClose={(session) => { void closeSession(session.id) }}
-                    onGrow={() => {
-                      // One "load more" grows every project's page by one
-                      // step; the gateway pages listings per project.
-                      void growPerPage(currentPageSize(projects) + COLLAPSED_SESSION_LIMIT)
+                    onOverflowToggle={() => {
+                      // Upstream's overflow control is a local fold toggle —
+                      // expanded shows every row the account holds and flips
+                      // the button to "Show less". This port's account rows
+                      // are a gateway page, so expanding also grows the page
+                      // one step when the listing still truncates
+                      // (session_count > the rows it carried).
+                      setExpandedGroups((keys) => toggled(keys, project.project_path))
+                      if (project.session_count > project.sessions.length) {
+                        void growPerPage(currentPageSize(projects) + COLLAPSED_SESSION_LIMIT)
+                      }
                     }}
                     t={t}
                   />
@@ -162,21 +182,6 @@ export function Sidebar() {
         </div>
       </div>
       <div className={css.footArea}>
-        <div className={css.footerActions}>
-          <div className={triggerCss.triggerRow}>
-            <button
-              type="button"
-              className={triggerCss.trigger}
-              onClick={() => { setScheduleOpen(true) }}
-              aria-haspopup="dialog"
-              aria-expanded={scheduleOpen}
-              aria-label="打开定时任务面板"
-            >
-              <IconClockOutline16 size={16} />
-              <span className={triggerCss.triggerLabel}>定时任务</span>
-            </button>
-          </div>
-        </div>
         <div className={css.settingsArea}>
           <div className={triggerCss.triggerRow}>
             <button
@@ -195,7 +200,6 @@ export function Sidebar() {
         <Pill>Claude Code</Pill>
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
-      <SchedulePanel open={scheduleOpen} onClose={() => { setScheduleOpen(false) }} />
     </div>
   )
 }
@@ -213,25 +217,49 @@ function currentPageSize(projects: readonly CatalogProject[]): number {
   return projects.reduce((max, project) => Math.max(max, project.sessions.length), 0)
 }
 
+/** Immutable membership toggle for the local overflow-expansion array (upstream's toggled). */
+function toggled(list: readonly string[], key: string): string[] {
+  return list.includes(key) ? list.filter(k => k !== key) : [...list, key]
+}
+
 /** One project group: the 34px header row plus its 32px session rows. */
-function GroupSection({ project, expanded, selectedId, now, containsCurrent, onToggle, onOpen, onClose, onGrow, t }: {
+function GroupSection({ project, expanded, overflowExpanded, selectedId, now, containsCurrent, onToggle, onOpen, onClose, onOverflowToggle, t }: {
   project: CatalogProject
   expanded: boolean
+  /** Rows unfolded past the 5-row limit (upstream's sessionsExpanded). */
+  overflowExpanded: boolean
   selectedId: string | null
   now: number
   containsCurrent: boolean
   onToggle: () => void
   onOpen: (session: CatalogSession) => void
   onClose: (session: CatalogSession) => void
-  /** Grows the per-project page by one step (the gateway pages listings). */
-  onGrow: () => void
+  /** Toggles this group's overflow fold (upstream's overflow-button onClick). */
+  onOverflowToggle: () => void
   t: ReturnType<typeof useTranslate>
 }) {
-  const collapsed = collapsedSessionRows(project.sessions)
-  const rows = expanded && collapsed.hiddenCount === 0
-    ? project.sessions
+  // The selected session lifts to the head of its group before the fold is
+  // taken, so it is never hidden behind the 5-row limit or the paged
+  // remainder (upstream's activity promotion hoists the current session in
+  // compareSessionRecency; the rest keeps the listing's order).
+  const ordered = useMemo(
+    () => containsCurrent
+      ? [...project.sessions].sort((a, b) => {
+          if (a.id === b.id) return 0
+          return a.id === selectedId ? -1 : b.id === selectedId ? 1 : 0
+        })
+      : project.sessions,
+    [project.sessions, containsCurrent, selectedId],
+  )
+  const collapsed = collapsedSessionRows(ordered)
+  // The page may still truncate (session_count > sessions.length): the folded
+  // view hides the paged-out remainder too, so it counts against hiddenCount.
+  const hiddenCount = overflowExpanded
+    ? Math.max(0, project.session_count - ordered.length)
+    : collapsed.hiddenCount + Math.max(0, project.session_count - ordered.length)
+  const rows = expanded && (overflowExpanded || collapsed.hiddenCount === 0)
+    ? ordered
     : collapsed.rows
-  const hiddenCount = expanded ? project.session_count - rows.length : 0
   return (
     <div className={browserCss.groupSection}>
       <ProjectRowItem
@@ -255,9 +283,12 @@ function GroupSection({ project, expanded, selectedId, now, containsCurrent, onT
         <button
           type="button"
           className={browserCss.sessionOverflowButton}
-          onClick={onGrow}
+          aria-expanded={overflowExpanded}
+          onClick={onOverflowToggle}
         >
-          {t('sessions.expand', { n: hiddenCount })}
+          {overflowExpanded
+            ? t('sessions.collapse')
+            : t('sessions.expand', { n: hiddenCount })}
         </button>
       )}
     </div>

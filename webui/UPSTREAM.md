@@ -213,11 +213,11 @@ Product-scope deviations (documented, not gaps):
 
 | File here | Upstream package | Upstream file |
 |-----------|-------------------|----------------|
-| `SettingsRoot.module.css` | `ui-settings-general` | `src/client/SettingsRoot.module.css` — the real Settings dialog shell (800px, two-column nav rail): `overlay`/`mask`/`panel`/`nav`/`navTitle`/`navList`/`navCell`/`content`/`header`/`actions`/`close`/`options`. `SettingsPanel.tsx` and `SchedulePanel.tsx` both render this shell directly instead of wrapping the generic `vendor/ui-primitives/Modal.tsx` (a 380px confirm-dialog primitive — a different, unrelated upstream component that earlier revisions of these two panels wrongly used, which is why they did not visually resemble dsh's Settings dialog). `SchedulePanel.tsx` omits the `nav`/`navList` classes since it has only one view. |
+| `SettingsRoot.module.css` | `ui-settings-general` | `src/client/SettingsRoot.module.css` — the real Settings dialog shell (800px, two-column nav rail): `overlay`/`mask`/`panel`/`nav`/`navTitle`/`navList`/`navCell`/`content`/`header`/`actions`/`close`/`options`. `SettingsPanel.tsx` renders this shell directly instead of wrapping the generic `vendor/ui-primitives/Modal.tsx` (a 380px confirm-dialog primitive — a different, unrelated upstream component that an earlier revision wrongly used, which is why the panel did not visually resemble dsh's Settings dialog). The schedule surface renders inside this shell as the dialog's "定时任务" nav section (`ScheduleSection`, since 2026-09-13; its earlier revision stood as a separate overlay). |
 | `GeneralSection.module.css` | `ui-settings-general` | `src/client/GeneralSection.module.css` — the plain flex-column section wrapper each settings section is rendered in |
 | `PermissionRow.module.css` | `ui-permission-presets` | `src/client/PermissionRow.module.css` — the reusable settings-row visual pattern (`row`/`rowText`/`title`/`desc`/`selector`/`chevron`), reused in `SettingsPanel.tsx` for every field row via a local `SettingsRow` wrapper and a `MenuSelect` helper (the `Menu` primitive + `.selector`/`.chevron`) that replaces native `<select>` elements |
 | `ScheduleCatalogAction.module.css` | `ui-schedule` | `src/client/ScheduleCatalogAction.module.css` — the task-row visual pattern (`row`/`status`/`statusDot`/`prompt`/`metadata`), reused in `SchedulePanel.tsx`'s task list. The `.menu`/`.trigger`/`.count`/`.triggerOpen` classes in this file belong to upstream's read-only header-popover trigger and are not used here. |
-| `SidebarRoot.module.css` | `ui-sidebar` | `src/client/SidebarRoot.module.css` — the sidebar column frame `Sidebar.tsx` renders inside (`root`/`scroll`). `.newSession` (the 38px/12px-radius bar) and `.regionArea` (the seat that hosts the session browser, canceling the shell's edge inset so the nested scrollbar sits flush) **are** ported — `POST /api/sessions/open` already mints a session with no `session_id` (openapi.yaml), so this was a real backend-supported feature an earlier revision had wrongly dropped by omission, not a genuine gap. Still out of scope: the rail-collapse classes (`root.collapsed`, `logoRow`, `brand`, collapse keyframes) — our sidebar has no collapse/rail mode or brand wordmark. Its `.footArea` comment ("additive actions stack above Settings: each occupant owns its button geometry") is the structural fact behind the trigger placement below: it is why `Sidebar.tsx` stacks its own trigger buttons in the footer rather than the header, why the schedule trigger sits above the settings trigger, and why the two occupy separate seats (`.footerActions` over `.settingsArea`, matching upstream's `sidebar.footer.action` / `sidebar.settings` slot split) — the seats are not interchangeable, because `.footerActions` is a horizontal flex while a `triggerRow` is `flex: none; width: calc(100% + 4px)`, so two rows in one seat push the second past the clipped sidebar column. |
+| `SidebarRoot.module.css` | `ui-sidebar` | `src/client/SidebarRoot.module.css` — the sidebar column frame `Sidebar.tsx` renders inside (`root`/`scroll`). `.newSession` (the 38px/12px-radius bar) and `.regionArea` (the seat that hosts the session browser, canceling the shell's edge inset so the nested scrollbar sits flush) **are** ported — `POST /api/sessions/open` already mints a session with no `session_id` (openapi.yaml), so this was a real backend-supported feature an earlier revision had wrongly dropped by omission, not a genuine gap. Still out of scope: the rail-collapse classes (`root.collapsed`, `logoRow`, `brand`, collapse keyframes) — our sidebar has no collapse/rail mode or brand wordmark. Its `.footArea` structure ("additive actions stack above Settings") is why `Sidebar.tsx` puts its settings trigger in the foot's `.settingsArea` seat; the `.footerActions` seat above it stays empty (upstream registers no default `sidebar.footer.action` occupant, and the schedule surface moved into the settings dialog on 2026-09-13 — see the Schedule seat deviation below). |
 | `AppearanceRow.module.css` | `ui-theme` | `src/client/AppearanceRow.module.css` — the three-cube theme selector (`group`/`title`/`cubeRow`/`themeCube`/`selected`), rendered by a local `AppearanceRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts` |
 | `FontSizeRow.module.css` | `ui-theme` | `src/client/FontSizeRow.module.css` — the font-size stepper pill (`row`/`control`/`stepper`/`value`/`arrows`/`arrow`), rendered by a local `FontSizeRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts`. `EnterBehaviorRow.module.css`/`TranscriptViewRow.module.css` are **not** vendored separately — both rows are pixel-identical to the already-vendored `PermissionRow.module.css` row/selector pattern and reuse `SettingsPanel.tsx`'s existing `SettingsRow`/`MenuSelect` helpers. |
 
@@ -225,7 +225,7 @@ Product-scope deviations (documented, not gaps):
 
 | File here | Upstream package | Upstream file |
 |-----------|-------------------|----------------|
-| `WorkspaceBrowser.module.css` | `ui-workspace` | `src/client/WorkspaceBrowser.module.css` — the session-list seat: its own `.root` wrapper (declares `--dsh-session-list-edge-inset`, canceling `SidebarRoot.module.css`'s `.regionArea` negative margin so the nested scrollbar sits flush), `.sectionHeader`/`.sectionLabel`/`.headerActions`, `.listArea`/`.treeBody`/`.list`/`.fade`, and the grouped-project row shell (`.groupSection`, `.sessionOverflowButton`). `.sectionHeader` uses `justify-content: flex-end`; upstream's dropped `.searchSlot` (`flex: 1; max-width: 28px; margin-left: auto`) is what pushes `.sectionLabel` left / `.headerActions` right, so a local `Sidebar.module.css` `.headerActions { margin-left: auto }` reproduces just that split without the search UI itself. The flat "In one list" view and its view-options menu are not ported (no backend surface — see `session sidebar` scope note in `Sidebar.tsx`'s class Javadoc). |
+| `WorkspaceBrowser.module.css` | `ui-workspace` | `src/client/WorkspaceBrowser.module.css` — the session-list seat: its own `.root` wrapper (declares `--dsh-session-list-edge-inset`, canceling `SidebarRoot.module.css`'s `.regionArea` negative margin so the nested scrollbar sits flush), `.sectionHeader`/`.sectionLabel`/`.headerActions`, `.listArea`/`.treeBody`/`.list`/`.fade`, and the grouped-project row shell (`.groupSection`, `.sessionOverflowButton`). `.sectionHeader` uses `justify-content: flex-end`; upstream's dropped `.searchSlot` (`flex: 1; max-width: 28px; margin-left: auto`) is what pushes `.sectionLabel` left / `.headerActions` right, so a local `Sidebar.module.css` `.headerActions { margin-left: auto }` reproduces just that split without the search UI itself. The flat "In one list" view and its view-options menu are not ported (no backend surface — see `session sidebar` scope note in `Sidebar.tsx`'s class Javadoc). **Overflow-control semantics** (fixed 2026-09-13): upstream's `sessionOverflowButton` is a LOCAL fold toggle over `expandedSessionGroups` — expanded renders every group row and flips the button to `sessions.collapse` ("Show less"), `aria-expanded` carries the state, and the header's collapse ALSO drops the group from `expandedSessionGroups`. An earlier revision had wrongly wired the button to `growPerPage` alone (refetch with a larger `?per_project=` page) with a rows/hiddenCount derivation that contradicted itself (`expanded && hiddenCount === 0` gating against `session_count`-based hiddenCount), so clicking "Show {n} more sessions" never unfolded the group. The port now mirrors the local toggle (`expandedGroups` + `toggled()`), with one recorded deviation: upstream's client holds every account row, while this port's rows are a gateway page, so expanding ALSO grows the page one step while `session_count > sessions.length` (the paged-out remainder counts in the button's `n`). |
 
 ### `vendor/chat-styles/` — reasoning row & tool-call row
 
@@ -316,17 +316,28 @@ here rather than silently improvised:
   `/api/session/context` model catalogue the composer's model seat reads
   ("跟随会话" = no override). A product-scope deviation with no upstream
   counterpart.
-- **Trigger placement: sidebar footer, not a header icon pair.** Both panels
-  are opened from `Sidebar.tsx`'s footer, reusing `SettingsRoot.module.css`'s
-  own `triggerRow`/`trigger`/`triggerLabel` classes (uniform 42px-height
-  labeled rows) rather than ad hoc small icon buttons in the session-list
-  header. This matches upstream's actual trigger location — dsh's real
-  Settings trigger lives in the sidebar foot, and `SidebarRoot.module.css`'s
-  `.footArea` comment documents that additive actions (like our schedule
-  trigger, which has no upstream equivalent) stack above the Settings
-  trigger rather than sitting beside it. An earlier revision placed both as
-  small icon-only buttons in the session-list header instead — the wrong
-  location and a visual style with no upstream basis.
+- **Trigger placement: sidebar footer, not a header icon pair.** The settings
+  panel is opened from `Sidebar.tsx`'s footer, reusing
+  `SettingsRoot.module.css`'s own `triggerRow`/`trigger`/`triggerLabel`
+  classes (uniform 42px-height labeled rows) rather than ad hoc small icon
+  buttons in the session-list header. This matches upstream's actual trigger
+  location — dsh's real Settings trigger lives in the sidebar foot. An
+  earlier revision placed both panels' triggers as small icon-only buttons in
+  the session-list header instead — the wrong location and a visual style
+  with no upstream basis.
+- **Schedule seat (moved 2026-09-13): settings nav section, not a foot
+  trigger.** An earlier revision opened the schedule surface as its own
+  sidebar-foot overlay occupying `SidebarRoot.module.css`'s `.footerActions`
+  seat. The seat assignment was wrong twice over: upstream's own schedule
+  surface is a read-only conversation-header catalog (`ui-schedule`), and
+  upstream's `.footerActions` is an empty horizontal flex (`renderSlot(
+  'sidebar.footer.action')` registers no default occupant) — its comment
+  describes where third-party additive actions *would* go, not one it ships
+  itself. The schedule mutation UI now lives as the settings dialog's
+  "定时任务" nav section (`SchedulePanel.tsx` exports `ScheduleSection`
+  instead of the old overlay), so the sidebar foot is Settings-only,
+  matching upstream's foot. Recorded here and in both components' class
+  Javadocs since neither seat has an upstream occupant to align against.
 
 ### Product-scope deviations (general settings)
 

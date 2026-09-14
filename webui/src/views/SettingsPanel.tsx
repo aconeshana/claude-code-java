@@ -3,8 +3,9 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconApiOutline14, IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
-  IconCloseOutline16, IconDarkOutline16, IconFolderOpenOutline16, IconFollowsystemOutline16,
-  IconLightOutline16, IconRefreshOutline16, IconSettingsOutline16, Input, Menu, Pill, Switch,
+  IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconFolderOpenOutline16,
+  IconFollowsystemOutline16, IconLightOutline16, IconRefreshOutline16, IconSettingsOutline16,
+  Input, Menu, Pill, Switch,
 } from '@primitives'
 import css from '@chat-styles/SettingsRoot.module.css'
 import sectionCss from '@chat-styles/GeneralSection.module.css'
@@ -23,6 +24,7 @@ import { SETTINGS_NS, settingsDicts } from '../i18n/dictionaries/settings'
 import type { PermissionBehaviorKind, SettingsTier } from '../api/types'
 import localCss from './SettingsPanel.module.css'
 import { ModelsSection } from './ModelsSection'
+import { ScheduleSection } from './SchedulePanel'
 
 /**
  * Settings dialog: reads the effective (merged, tier-attributed) settings
@@ -35,9 +37,9 @@ import { ModelsSection } from './ModelsSection'
  *
  * Chrome (overlay/mask/nav-rail panel/header/options scroll) is vendored
  * verbatim from dsh's `SettingsRoot.module.css`; field rows reuse
- * `PermissionRow.module.css`'s row/selector pattern. Three real differences
+ * `PermissionRow.module.css`'s row/selector pattern. Four real differences
  * from dsh's own Settings panel: (1) the section list here is
- * general/permissions/directories/models, not dsh's
+ * general/permissions/directories/models/schedule, not dsh's
  * models/agent-presets/plugins, because that's the write surface
  * `SettingsEditor` actually exposes; (2) the permission section edits raw
  * allow/deny/ask rule arrays per tier rather than dsh's three named presets
@@ -46,16 +48,20 @@ import { ModelsSection } from './ModelsSection'
  * without a backend change; (3) the models section is a flat
  * `CustomModelConfig` list, not dsh's provider-grouped `ModelsSection` with
  * per-provider `ProviderEditor` cards — our backend catalogue has no
- * provider grouping concept.
+ * provider grouping concept; (4) the scheduled-task section exposes the
+ * gateway schedule port's add/remove round-trips (dsh's own schedule surface
+ * is a conversation-header read-only catalog — "creating and deleting
+ * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'directories' | 'models'
+type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'schedule'
 
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
   { id: 'permissions', label: '权限', icon: <IconChecklistOutline14 className={css.navIcon} size={16} /> },
   { id: 'directories', label: '目录', icon: <IconFolderOpenOutline16 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
+  { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
 ]
 
 const TIERS: readonly SettingsTier[] = ['user', 'project', 'local']
@@ -286,6 +292,12 @@ export function SettingsPanel({ open, onClose }: {
             {activeSection === 'models' && (
               <div className={sectionCss.section}>
                 <ModelsSection />
+              </div>
+            )}
+
+            {activeSection === 'schedule' && (
+              <div className={sectionCss.section}>
+                <ScheduleSection />
               </div>
             )}
           </div>
