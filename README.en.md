@@ -65,7 +65,24 @@ Upgrade your buddy into a Pokemon system — **38 kinds of Pokémon to gacha**.
 
 <video src="docs/acceptance-assets/pokemon-hatch-evolve.mp4" controls style="max-width: 100%;"></video>
 
-### 5. Project menu and cross-project resume
+### 5. Built-in sudo password input
+
+Commands that need sudo used to break the flow: since claude code cannot do interactive
+input inside the TUI, the model was constantly forced to stop and wait for a human
+bridge to keep the agent moving. The current version covers the most common case —
+password input; more interactive scenarios may follow if they prove worthwhile.
+
+<!-- Media slot 5: sudo password input dialog screenshot -->
+![Built-in sudo password input](docs/acceptance-assets/builtin-pwd-input.png)
+
+### 6. Inline Image Protocol support
+
+Image preview support — the author hasn't quite figured out what it's good for yet...
+
+<!-- Media slot 6: Inline Image Protocol image preview screenshot -->
+![Inline Image Protocol support](docs/acceptance-assets/Inline-Image-Protocol-support.png)
+
+### 7. Project menu and cross-project resume
 
 The official resume picker is a **flat list of sessions within one project**, and it
 **refuses cross-directory resumes** outright — picking another project only prints a

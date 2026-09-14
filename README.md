@@ -61,7 +61,21 @@ agent sdk、以非交互式方式启动。
 <!-- 媒体位 4：宝可梦孵化 / 进化演示（GitHub 只渲染附件通道的 video；仓库相对路径的 <video> 会被 sanitizer 剥掉） -->
 <video src="https://github.com/user-attachments/assets/10bcc7b6-8a26-48af-a406-6b5e87df5a12" controls style="max-width: 100%;"></video>
 
-### 5. 项目菜单与跨项目 resume
+### 5. 内置 sudo 密码输入
+
+原版需要 sudo 的命令由于 claude code 不支持在 TUI 内进行交互式输入，经常导致模型无法调用需要人工桥接让 agent 流程连贯。当前版本实现了最常见的密码输入场景；后续如果有更多的交互式场景考虑追加支持。
+
+<!-- 媒体位 5：sudo 密码输入对话框截图 -->
+![内置 sudo 密码输入](docs/acceptance-assets/builtin-pwd-input.png)
+
+### 6. 内联图片协议支持
+
+支持了 img preview 功能，作者暂时也没想好能干嘛...
+
+<!-- 媒体位 6：Inline Image Protocol 图片预览截图 -->
+![内联图片协议支持](docs/acceptance-assets/Inline-Image-Protocol-support.png)
+
+### 7. 项目菜单与跨项目 resume
 
 官方的 resume 选择器是**单项目内的平铺会话列表**，且**拒绝跨目录 resume**——选到别的项目
 只会打印一条 `cd … && claude --resume …` 提示让你自己重开一个进程。
