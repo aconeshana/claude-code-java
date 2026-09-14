@@ -532,6 +532,8 @@ public class LanternaReplScreen implements SlashHost {
     private BypassPermissionsStartupGate bypassPermissionsStartupGate;
     /** Ctrl+C/D, signal, worktree-exit, and shutdown state machine. */
     private ReplExitController exitController;
+    /** Shared with {@link #exitController}; ESC reuses its turn-abort rule directly. */
+    private ReplInterruptActions interruptActions;
 
     private AutoModeEntryWarningController autoModeEntryWarning;
 
@@ -2214,27 +2216,28 @@ public class LanternaReplScreen implements SlashHost {
         mcpDialog.setKeybindingsStore(keybindingsStore);
         worktreeExitDialog = new WorktreeExitDialog(); // inline, zero height until shown
         worktreeExitDialog.setKeybindingsStore(keybindingsStore);
+        interruptActions = new ReplInterruptActions(
+            () -> bashModeExecutor,
+            () -> turnEngine != null && turnEngine.isInFlight(),
+            new ReplInterruptActions.TurnAbortTarget() {
+                @Override public void interrupt() { queryEngine.submission().interrupt(); }
+                @Override public void softInterrupt() { queryEngine.submission().softInterrupt(); }
+                @Override public String sessionId() {
+                    return queryEngine.conversation().getSessionId();
+                }
+                @Override public TranscriptSink transcriptSink() {
+                    return queryEngine.execution().getTranscriptSink();
+                }
+            },
+            interactionCoordinator,
+            () -> inputPanel,
+            task -> gui.getGUIThread().invokeLater(task),
+            () -> lastSubmittedInput,
+            () -> lastSubmittedInputWasInteractiveStartupPrompt);
         exitController = ReplExitController.standard(
             shutdown,
             worktreeExitDialog,
-            new ReplInterruptActions(
-                () -> bashModeExecutor,
-                () -> turnEngine != null && turnEngine.isInFlight(),
-                new ReplInterruptActions.TurnAbortTarget() {
-                    @Override public void interrupt() { queryEngine.submission().interrupt(); }
-                    @Override public void softInterrupt() { queryEngine.submission().softInterrupt(); }
-                    @Override public String sessionId() {
-                        return queryEngine.conversation().getSessionId();
-                    }
-                    @Override public TranscriptSink transcriptSink() {
-                        return queryEngine.execution().getTranscriptSink();
-                    }
-                },
-                interactionCoordinator,
-                () -> inputPanel,
-                task -> gui.getGUIThread().invokeLater(task),
-                () -> lastSubmittedInput,
-                () -> lastSubmittedInputWasInteractiveStartupPrompt),
+            interruptActions,
             message -> appendLine("  " + message, LanternaTheme.welcomeDim()),
             this::stop,
             new ReplExitController.JobControlActions() {
@@ -2957,17 +2960,9 @@ public class LanternaReplScreen implements SlashHost {
             // the top of its cancel handler, ahead of the abort and the prompt salvage).
             if (turnView != null) turnView.salvageInterruptedThinking();
             featureRuntime.loopWakeups().cancelAll();
-            if (interactionCoordinator != null) {
-                interactionCoordinator.cancelSession(queryEngine.conversation().getSessionId());
-            }
-            // Official 2.1.236 aborts whenever an un-aborted request is in
-            // flight — it never consults the spinner. Gating on the spinner
-            // here made ESC a no-op for the whole stretch where assistant text
-            // is streaming, because streaming text stops the spinner
-            // (SpinnerStateMachine.onStreamTextVisibility).
-            if (turnEngine != null && turnEngine.isInFlight()) {
-                queryEngine.submission().interrupt();
-            }
+            // Shares its abort rule with Ctrl+C (ReplExitController.handleCtrlC) via the
+            // same ReplInterruptActions instance instead of re-deriving it here.
+            interruptActions.interruptTurnIfRunning();
         }
 
         @Override public void killBackgroundAgents() {
