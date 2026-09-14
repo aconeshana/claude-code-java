@@ -40,6 +40,14 @@ export const statsZh = {
   'message.turnTime.duration': '本轮总用时',
   'message.turnTime.speed': '输出速度（TPS）',
   'message.turnTime.ttft': '首 token 用时（TTFT）',
+  'message.turnProcess.toolCalls.one': '{count} 次工具调用',
+  'message.turnProcess.toolCalls.other': '{count} 次工具调用',
+  'message.turnProcess.messages.one': '{count} 条消息',
+  'message.turnProcess.messages.other': '{count} 条消息',
+  'message.turnProcess.subagents.one': '{count} 个 subagent',
+  'message.turnProcess.subagents.other': '{count} 个 subagent',
+  'message.turnProcess.thoughtForAWhile': '已思考',
+  'message.turnProcess.separator': ' · ',
 } as const
 
 export const statsEn: Record<keyof typeof statsZh, string> = {
@@ -77,6 +85,14 @@ export const statsEn: Record<keyof typeof statsZh, string> = {
   'message.turnTime.duration': 'Total run time',
   'message.turnTime.speed': 'Tokens per second (TPS)',
   'message.turnTime.ttft': 'Time to first token (TTFT)',
+  'message.turnProcess.toolCalls.one': '{count} tool call',
+  'message.turnProcess.toolCalls.other': '{count} tool calls',
+  'message.turnProcess.messages.one': '{count} message',
+  'message.turnProcess.messages.other': '{count} messages',
+  'message.turnProcess.subagents.one': '{count} subagent',
+  'message.turnProcess.subagents.other': '{count} subagents',
+  'message.turnProcess.thoughtForAWhile': 'Thought for a while',
+  'message.turnProcess.separator': ' · ',
 }
 
 export const statsDicts: Readonly<Record<LocaleId, LocaleDict>> = { zh: statsZh, en: statsEn }

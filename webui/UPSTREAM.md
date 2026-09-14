@@ -236,6 +236,7 @@ Product-scope deviations (documented, not gaps):
 | `TurnUsagePanel.module.css` | `ui-chat` | `src/client/chat/TurnUsagePanel.module.css` — the turn-tail pill chrome (root/trigger/label), verbatim; consumed by `vendor/dsh-stats-pills/TurnUsagePanel.tsx` |
 | `MessageIconActions.module.css` | `ui-chat` | `src/client/chat/MessageIconActions.module.css` — the shared copy/clock icon-row chrome (actions row, `timeStart`/`timeEnd` clock sides, the 28px `.action` buttons, hover-reveal `data-actions-reveal` gate), vendored verbatim in an earlier pass; consumed since the icon-row round by `vendor/dsh-stats-pills/MessageIconActions.tsx` |
 | `TurnTailNodeView.module.css` | `ui-chat` | `src/client/chat/TurnTailNodeView.module.css` — the turn-tail column and its `.actions { margin-left: -6px }` offset, verbatim; only the `.actions` class is consumed (the turn-tail wrapper here is the assistant stack itself, not a separate node view) |
+| `TurnProcessNodeView.module.css` | `ui-chat` | `src/client/chat/TurnProcessNodeView.module.css` — the turn-level process-disclosure control (root/label/chevron, the 0.5px l2 divider, the 8px closed-gap margin, the -90°→0° chevron rotation), vendored verbatim; consumed since the turn-process fold round (2026-09-13) by `src/views/TurnProcessControl.tsx`, ported from `TurnProcessNodeView.tsx` (see the turn-process fold deviation below). |
 | `ReasoningRow.module.css` | `ui-conversation` | `src/client/ReasoningRow.module.css` — already vendored verbatim in an earlier pass but never fully wired: `MessageItem.tsx` used to merge every `thinking` segment of a message into one string and wrap it in a single ad hoc `DisclosureRow` (hand-rolled `◦` icon, a title that toggled between "正在思考…"/"已深度思考"). The real upstream `ReasoningRow.tsx` renders **one row per thinking segment**, with a fixed title, the real `IconThinkOutline14` icon, and a collapsed summary derived from `firstLine`/`latestLine` (the latter only for the streaming segment) with `**` markdown markers stripped. `src/views/ReasoningRow.tsx` is a new small local component doing exactly that, and `MessageItem.tsx`'s `AssistantItem` now maps `message.thinkingBlocks` (already a per-segment `readonly string[]` in `store/conversations.ts`) to independent `<ReasoningRow>` instances instead of the merged single block. |
 | `ToolRow.module.css` | `ui-tool` | `packages/client/ui-tool/src/client/tool/components/ToolRow.module.css` — newly vendored this round. `ToolCallRow.tsx` previously imported `TurnProcessNodeView.module.css`, which on inspection of upstream source is the style for a **turn-level** fold/unfold summary button (e.g. "3 次工具调用 · 2 条消息"), not a per-tool-call row — a wrong-source mistake from an earlier pass, not a deliberate scope cut. `TurnProcessNodeView.module.css` is left in the vendor directory (a future turn-level fold feature could still use it) but is no longer imported by `ToolCallRow.tsx`. `ToolCallRow.tsx` is rewritten against the real `ToolRow.tsx`: state-derived leading icon (`StateDot` replaces the icon on error, matching `leadingFor()`), summary-priority chain (error's first line > a bash call's own `description` argument > the existing command/path/pattern/query fallback chain, renamed `argsSummary()`), and an expanded body dispatched through `.bodyWrap`/`.ioCard`/`.ioSection`/`.ioLabel`/`.ioText`/`.ioDivider`/`.terminalBody`/`.diffBody`/`.readBody` in place of the old inline `style={{...}}` attributes. |
 
@@ -264,10 +265,34 @@ is a genuinely-supported backend field being wired up, not new backend work.
   `TerminalBlock` is only given `running={call.status === 'pending'}` — no
   `exitCode`/`signal` props — relying on `call.status` (pending/executed/
   failed) as the one reliable state source instead.
-- **No turn-level fold/unfold row.** This app's message model renders one
-  row per assistant message, not upstream's per-turn `ChatNode` grouping —
-  there is no equivalent concept to fold multiple tool calls/messages under
-  one `TurnProcessNodeView`-style summary button.
+- **Turn-level fold/unfold row (restored 2026-09-13).** An earlier revision
+  recorded "no turn-level fold" as a structural consequence of this app's
+  one-row-per-message model. The fold now exists, ported from upstream's
+  turn-process projection (`turn-process.ts` /
+  `turn-process-presentation.ts` / `ChatNodeSeat.tsx` /
+  `TurnProcessNodeView.tsx` + the 2026-08-14 folding design note): in
+  compact mode, a closed turn whose LAST closed assistant message carries
+  non-blank reply text and no tool calls is the answer; every assistant row
+  before it in the turn (thinking, tool rows, intermediate replies) hides
+  behind one summary control rendered right after the opening user row —
+  "N 次工具调用 · N 条消息 · N 个 subagent" with zero segments omitted and
+  "已思考" when all are zero. Upstream derives membership from a
+  per-ChatNode `TurnProcessSpec` event projection with seq anchors; this
+  port derives it in `src/store/turnProcess.ts` from the reduced message
+  list (`deriveTurnProcessView`), same rules on a simpler substrate. Rows
+  hide with `hidden="until-found"` (never unmounted — stateful tool
+  renderers keep state, browser find reveals them, and a `beforematch` on a
+  member expands the group via `ChatView.tsx`'s native listener). Manual
+  expansion lives in the non-persisted `useTurnProcess` store (absent =
+  collapsed); transcriptView "normal" disables folding entirely; an open
+  turn and a no-answer turn never fold (upstream: "a closed Turn with no
+  final answer keeps all process evidence visible"). The vendored
+  `ChatView.module.css` gap rules (the `[data-turn-process-answer]` 8px
+  follow-gap, hidden-row spacing exemption) and `TurnProcessNodeView.module.css`
+  are consumed as-is. Subagent counting (`subagent`/`subagent_*` names → the
+  subagent segment, never the tool-call segment) is ported verbatim; this
+  gateway currently has no subagent delegation tools, so the segment stays
+  at zero until one exists.
 - **No Inspect pill / trajectory-view jump.** Upstream's hover-revealed
   Inspect button on an expanded tool row jumps to a trajectory/replay view
   this app does not have; the button is not rendered.
