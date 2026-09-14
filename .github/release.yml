@@ -1,0 +1,34 @@
+# release.yml 分类规则：--generate-notes 依据它把 v0.1.1..v0.2.0 这类
+# commit range 按 conventional commit 前缀分组列出。此前（无此文件）对
+# 单人仓库退化成只输出一行 Full Changelog 链接，40 个 commit 一条不列。
+# 仅影响 auto-generated release notes，不影响 tag / 工作流行为。
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release-notes
+    authors:
+      - dependabot
+  categories:
+    - title: 🚀 Features
+      labels:
+        - feat
+    - title: 🐛 Bug Fixes
+      labels:
+        - fix
+    - title: ⚡ Performance
+      labels:
+        - perf
+    - title: 📚 Documentation
+      labels:
+        - docs
+    - title: 🔧 CI & Tooling
+      labels:
+        - ci
+        - chore
+        - build
+    - title: ♻️ Refactoring
+      labels:
+        - refactor
+    - title: ✅ Tests
+      labels:
+        - test
