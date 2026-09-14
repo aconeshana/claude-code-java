@@ -15,6 +15,7 @@ import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.engine.CompactProgressEvent;
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.HookDispatcher;
+import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.engine.PermissionExplainerCallback;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.config.EnvUtils;
@@ -2216,63 +2217,24 @@ public class LanternaReplScreen implements SlashHost {
         exitController = ReplExitController.standard(
             shutdown,
             worktreeExitDialog,
-            new ReplExitController.InterruptActions() {
-                @Override
-                public boolean interruptBashIfRunning() {
-                    if (bashModeExecutor == null || !bashModeExecutor.isRunning()) return false;
-                    bashModeExecutor.interrupt();
-                    return true;
-                }
-
-                @Override
-                public boolean interruptTurnIfRunning() {
-                    if (turnEngine == null || !turnEngine.isInFlight()
-                            || spinnerComponent == null || !spinnerComponent.isSpinning()) {
-                        return false;
+            new ReplInterruptActions(
+                () -> bashModeExecutor,
+                () -> turnEngine != null && turnEngine.isInFlight(),
+                new ReplInterruptActions.TurnAbortTarget() {
+                    @Override public void interrupt() { queryEngine.submission().interrupt(); }
+                    @Override public void softInterrupt() { queryEngine.submission().softInterrupt(); }
+                    @Override public String sessionId() {
+                        return queryEngine.conversation().getSessionId();
                     }
-                    queryEngine.submission().interrupt();
-                    if (interactionCoordinator != null) {
-                        interactionCoordinator.cancelSession(queryEngine.conversation().getSessionId());
+                    @Override public TranscriptSink transcriptSink() {
+                        return queryEngine.execution().getTranscriptSink();
                     }
-                    return true;
-                }
-
-                @Override
-                public void softInterruptTurnIfRunning() {
-                    if (InterruptedPromptPolicy.shouldCacheSoftInterruptedPrompt(lastSubmittedInput,
-                            lastSubmittedInputWasInteractiveStartupPrompt)
-                            && queryEngine.execution().getTranscriptSink() != null) {
-                        queryEngine.execution().getTranscriptSink().cacheLastPrompt(
-                            queryEngine.conversation().getSessionId(), lastSubmittedInput);
-                    }
-                    // Do not depend on the UI in-flight flag here. During the
-                    // terminal teardown race the query iterator can still be
-                    // blocked in HTTP while the UI has already cleared its
-                    // visible busy state.
-                    queryEngine.submission().softInterrupt();
-                }
-
-                @Override
-                public boolean clearInputIfPresent() {
-                    if (inputPanel == null || inputPanel.getText() == null
-                            || inputPanel.getText().isEmpty()) {
-                        return false;
-                    }
-                    gui.getGUIThread().invokeLater(() -> {
-                        inputPanel.setText("");
-                        inputPanel.resetHistory();
-                    });
-                    return true;
-                }
-
-                @Override
-                public void showExitHint(String text, int durationMs) {
-                    if (inputPanel != null) {
-                        gui.getGUIThread().invokeLater(() ->
-                            inputPanel.showTransientHint(text, durationMs));
-                    }
-                }
-            },
+                },
+                interactionCoordinator,
+                () -> inputPanel,
+                task -> gui.getGUIThread().invokeLater(task),
+                () -> lastSubmittedInput,
+                () -> lastSubmittedInputWasInteractiveStartupPrompt),
             message -> appendLine("  " + message, LanternaTheme.welcomeDim()),
             this::stop,
             new ReplExitController.JobControlActions() {
@@ -2648,7 +2610,7 @@ public class LanternaReplScreen implements SlashHost {
                 request.toolUseId(), request.toolUseResult(), request.progressMessages(),
                 queryEngine.configuration().getConfig().model())));
 
-// ── Per-tool inline header (e.g.
+        // ── Per-tool inline header (e.g.
 
         // CollapsedReadSearchContent as a normal message-panel line — independent
 
@@ -2708,9 +2670,9 @@ public class LanternaReplScreen implements SlashHost {
         // never repainted until an unrelated key changes the footer.
         inputPanel.startTaskPillRefresh();
 
-// ── Input callbacks ──────────────────────────────────────────────── Stable config/data
-// injected directly; behaviors go through the single InputActions port wired via
-// setActions(...) below.
+        // ── Input callbacks ──────────────────────────────────────────────── Stable config/data
+        // injected directly; behaviors go through the single InputActions port wired via
+        // setActions(...) below.
         inputPanel.setHasMessages(() -> !queryEngine.conversation().getMessages().isEmpty());
         inputPanel.setPromptHistory(promptHistory);
         inputPanel.setLiveHistorySupplier(transcriptController::viewedPromptHistory);
@@ -2759,7 +2721,7 @@ public class LanternaReplScreen implements SlashHost {
         // Transcript search navigation is owned by TranscriptController; the main
         // InputPanel never sees those keys while the overlay is open.
 
-// Live query → slash-command + @-file/dir typeahead.
+        // Live query → slash-command + @-file/dir typeahead.
         suggestionController = new SuggestionController(
             gui, inputPanel, commandRegistry, slashDispatcher,
             fileSuggestionService, directorySuggestionService,
@@ -2998,7 +2960,12 @@ public class LanternaReplScreen implements SlashHost {
             if (interactionCoordinator != null) {
                 interactionCoordinator.cancelSession(queryEngine.conversation().getSessionId());
             }
-            if (spinnerComponent.isSpinning()) {
+            // Official 2.1.236 aborts whenever an un-aborted request is in
+            // flight — it never consults the spinner. Gating on the spinner
+            // here made ESC a no-op for the whole stretch where assistant text
+            // is streaming, because streaming text stops the spinner
+            // (SpinnerStateMachine.onStreamTextVisibility).
+            if (turnEngine != null && turnEngine.isInFlight()) {
                 queryEngine.submission().interrupt();
             }
         }
