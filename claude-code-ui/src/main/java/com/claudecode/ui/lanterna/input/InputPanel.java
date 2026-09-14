@@ -699,6 +699,8 @@ public class InputPanel extends Panel {
          */
         private Result rl_handlePaste(String pastedText) {
             beginPaste();
+            // Captured on the GUI thread: the paste work below runs off it.
+            final int rows = terminalRows();
             PASTE_EXECUTOR.execute(() -> {
                 try {
                 // Empty bracketed paste on macOS = user pasted an image with Cmd+V.
@@ -735,7 +737,7 @@ public class InputPanel extends Panel {
                 // 2. Large/multiline text paste → [Pasted text #N +X lines] chip.
                 String stripped = PromptPasteTextPolicy.normalize(pastedText);
                 int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines)) {
+                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, rows)) {
                     final int pasteId = pastedContent.nextId();
                     PastedContent content = PastedContent.text(pasteId, stripped);
                     pastedContent.put(content);
@@ -989,6 +991,15 @@ public class InputPanel extends Panel {
          */
         private boolean pendingBatchEnter;
 
+        /**
+         * Prompt text and caret at the start of this batch. Everything the batch
+         * inserts lands contiguously at {@code batchStartCaret}, so the batch's
+         * own text — the only thing a paste-flood fold may consume — is the
+         * delta between then and the batch end.
+         */
+        private int batchStartCaret;
+        private int batchStartLength;
+
         private boolean canBufferPlainCharacter(KeyStroke key) {
             if (key.getKeyType() != KeyType.CHARACTER
                     || key.getCharacter() == null
@@ -1051,22 +1062,61 @@ public class InputPanel extends Panel {
         }
 
         /**
-         * Folds an unbracketed-paste flood accumulated during one GUI input batch
-         * into a {@code [Pasted text #N +X lines]} chip — the same end state the
-         * bracketed path produces. Runs at batch end (see {@link #endGuiInputBatch});
-         * no-op below the paste threshold or when chips already occupy the box.
+         * The text this batch inserted, or {@code ""} when it cannot be
+         * recovered. Everything a batch inserts lands contiguously at
+         * {@link #batchStartCaret}, so the run is the length delta ending at
+         * the caret. A caret that no longer sits at the end of that run means
+         * the batch also moved it (arrow keys, mouse) — folding a guess would
+         * be wrong, so report nothing to fold.
          */
-        private void foldUnbracketedPasteFloodIntoChip() {
-            if (!pastedContent.isEmpty()) return;
-            String text = getText();
-            if (!PromptPasteTextPolicy.looksLikeUnbracketedPaste(text)) return;
-            String stripped = PromptPasteTextPolicy.normalize(text);
+        private String batchText() {
+            int inserted = currentText.length() - batchStartLength;
+            if (inserted <= 0) return "";
+            int caret = caretCol();
+            if (caret != batchStartCaret + inserted) return "";
+            return currentText.substring(batchStartCaret, caret);
+        }
+
+        /**
+         * Folds one GUI input batch's text into a {@code [Pasted text #N +X
+         * lines]} chip — the same end state the bracketed path produces.
+         *
+         * <p>Only this batch's own text is judged, because official folds per
+         * stdin chunk: a long prompt typed one drain at a time never clears the
+         * threshold, whereas a genuine flood arrives in a single batch. A flood
+         * too large for one drain folds once per drain, which is what official
+         * 2.1.236 does too. Only the batch's own text is replaced, so anything
+         * typed before the flood survives.
+         *
+         * @return true when the batch was folded into a chip
+         */
+        private boolean foldUnbracketedPasteFloodIntoChip(String batchText) {
+            return foldUnbracketedPasteFloodIntoChip(batchText, "");
+        }
+
+        /**
+         * @param trailing batch text that was never inserted — the newline of an
+         *     ENTER the batch swallowed. Official folds a whole stdin chunk,
+         *     terminator included, so it counts toward the chip's content and
+         *     line count.
+         */
+        private boolean foldUnbracketedPasteFloodIntoChip(String batchText, String trailing) {
+            if (batchText.isEmpty()) return false;
+            String stripped = PromptPasteTextPolicy.normalize(batchText + trailing);
             int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
+            if (!PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, terminalRows())) {
+                return false;
+            }
             int pasteId = pastedContent.nextId();
             pastedContent.put(PastedContent.text(pasteId, stripped));
-            setText("");
+            int caret = caretCol();
+            int start = caret - batchText.length();
+            InputPanel.this.setText(
+                currentText.substring(0, start) + currentText.substring(caret));
+            TextBoxOffsetAdapter.setOffset(textBox, start);
             insertChipAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
             firePastedContentsChange();
+            return true;
         }
 
         private boolean canBufferPlainBackspace(KeyStroke key) {
@@ -1615,18 +1665,6 @@ public class InputPanel extends Panel {
                 log.debug("[key-diag] Enter submit branch: lineCount={} text=[{}]",
                     getLineCount(), text.replace("\n", "\\n"));
             }
-            // Catch genuinely huge unbracketed pastes before they can be submitted.
-            if (PromptPasteTextPolicy.looksLikeUnbracketedPaste(text)) {
-                String stripped = PromptPasteTextPolicy.normalize(text);
-                int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-                int pasteId = pastedContent.nextId();
-                pastedContent.put(PastedContent.text(pasteId, stripped));
-                setText("");
-                insertChipAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
-                firePastedContentsChange();
-                return Result.HANDLED;
-            }
-
             String submitText = prependModePrefix(text.trim());
             if (taskNavigation.isViewing()) {
                 taskNavigation.injectViewed(submitText);
@@ -1901,6 +1939,8 @@ public class InputPanel extends Panel {
          */
         private Result rl_imagePaste() {
             beginPaste();
+            // Captured on the GUI thread: the paste work below runs off it.
+            final int rows = terminalRows();
             PASTE_EXECUTOR.execute(() -> {
                 try {
                 // 1. Clipboard image
@@ -1942,7 +1982,7 @@ public class InputPanel extends Panel {
                 // 3. Large/multiline text paste → [Pasted text #N +X lines] chip
                 String stripped = PromptPasteTextPolicy.normalize(text);
                 int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines)) {
+                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, rows)) {
                     final int pasteId = pastedContent.nextId();
                     PastedContent content = PastedContent.text(pasteId, stripped);
                     pastedContent.put(content);
@@ -2451,8 +2491,11 @@ public class InputPanel extends Panel {
     /** Starts one terminal-read input batch; called only by the GUI host. */
     public void beginGuiInputBatch() {
         if (guiInputBatchDepth == 0) {
-            ((PromptTextBox) textBox).plainInputCharsThisBatch = 0;
-            ((PromptTextBox) textBox).pendingBatchEnter = false;
+            PromptTextBox prompt = (PromptTextBox) textBox;
+            prompt.plainInputCharsThisBatch = 0;
+            prompt.pendingBatchEnter = false;
+            prompt.batchStartCaret = caretCol();
+            prompt.batchStartLength = currentText.length();
         }
         guiInputBatchDepth++;
     }
@@ -2506,14 +2549,17 @@ public class InputPanel extends Panel {
             PromptTextBox prompt = (PromptTextBox) textBox;
             if (prompt.pendingBatchEnter) {
                 // The batch ended right after the swallowed ENTER — nothing
-                // followed it, so it was a terminal one-line submit, not a
-                // paste newline. Commit the buffered text and perform the
-                // submit now.
+                // followed it. Official folds a whole stdin chunk including its
+                // trailing newline, so a batch that is a flood folds and the
+                // swallowed ENTER goes into the chip; anything smaller was a
+                // terminal one-line submit, so commit and submit it.
                 prompt.pendingBatchEnter = false;
                 prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
                 prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
                 prompt.plainInputCharsThisBatch = 0;
-                prompt.tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
+                if (!prompt.foldUnbracketedPasteFloodIntoChip(prompt.batchText(), "\n")) {
+                    prompt.tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
+                }
                 guiInputBatchDepth--;
                 return;
             }
@@ -2521,7 +2567,7 @@ public class InputPanel extends Panel {
             prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
             if (prompt.plainInputCharsThisBatch > 0) {
                 prompt.plainInputCharsThisBatch = 0;
-                prompt.foldUnbracketedPasteFloodIntoChip();
+                prompt.foldUnbracketedPasteFloodIntoChip(prompt.batchText());
             }
         }
         guiInputBatchDepth--;
@@ -2937,6 +2983,20 @@ public class InputPanel extends Panel {
     }
 
     public String getText() { return currentText; }
+
+    /**
+     * Live terminal height, used by the paste chip thresholds: official derives
+     * its newline cap from the current rows, so a two-line paste stays editable
+     * on a tall terminal but folds on a short one.
+     */
+    private int terminalRows() {
+        var gui = getTextGUI();
+        if (gui == null || gui.getScreen() == null) {
+            return PromptPasteTextPolicy.DEFAULT_TERMINAL_ROWS;
+        }
+        int rows = gui.getScreen().getTerminalSize().getRows();
+        return rows > 0 ? rows : PromptPasteTextPolicy.DEFAULT_TERMINAL_ROWS;
+    }
 
     /**
      * Set the input text programmatically (e.g., from external editor).

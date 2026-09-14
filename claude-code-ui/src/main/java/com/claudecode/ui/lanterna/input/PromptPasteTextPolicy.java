@@ -7,6 +7,9 @@ final class PromptPasteTextPolicy {
 
     private static final int PASTE_THRESHOLD = 800;
 
+    /** Terminal height assumed when no screen is attached (headless, unit tests). */
+    static final int DEFAULT_TERMINAL_ROWS = 24;
+
     private PromptPasteTextPolicy() {}
 
     static String normalize(String raw) {
@@ -17,16 +20,14 @@ final class PromptPasteTextPolicy {
         return normalized.replace("\t", "    ");
     }
 
-    static boolean shouldFoldIntoChip(String normalized, int numLines) {
-        return normalized.length() > PASTE_THRESHOLD || numLines > 0;
-    }
-
-    static boolean looksLikeUnbracketedPaste(String text) {
-        int lineCount = 1;
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == '\n') lineCount++;
-        }
-        return text.length() > PASTE_THRESHOLD
-            || (lineCount > 6 && text.length() > 200);
+    /**
+     * Official 2.1.236 folds a paste into a chip when its length clears
+     * {@code cur = 800} or when its newline count clears a terminal-height
+     * derived cap {@code Math.max(0, Math.min(rows - 10, 2))}. The cap keeps a
+     * two-line paste editable on a tall terminal but folds it on a short one.
+     */
+    static boolean shouldFoldIntoChip(String normalized, int numLines, int terminalRows) {
+        int lineLimit = Math.max(0, Math.min(terminalRows - 10, 2));
+        return normalized.length() > PASTE_THRESHOLD || numLines > lineLimit;
     }
 }

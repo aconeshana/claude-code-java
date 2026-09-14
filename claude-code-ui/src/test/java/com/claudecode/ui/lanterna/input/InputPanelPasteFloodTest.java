@@ -30,11 +30,11 @@ class InputPanelPasteFloodTest {
         InputPanel panel = new InputPanel();
         panel.setActions(actions);
         List<String> lines = List.of(
-            "teamai import --from-repo https://gitlab.ximalaya.com/infra/deepgate",
+            "teamai import --from-repo https://gitlab.example.com/infra/deepgate",
             "✔ Import remote repository [9s]",
-            "  › Repository: https://gitlab.ximalaya.com/infra/deepgate",
+            "  › Repository: https://gitlab.example.com/infra/deepgate",
             "ℹ Importing remote repo: infra/deepgate (provider: git)",
-            "ℹ Shallow clone to cache: /Users/xmly/.teamai/cache/repos/git/infra/deepgate",
+            "ℹ Shallow clone to cache: /Users/dev/.teamai/cache/repos/git/infra/deepgate",
             "ℹ Clone/Fetch complete: SHA=94697e38, branch=master",
             "ℹ Scanning repository...",
             "⚠ AI codebase scan failed (non-blocking): AI call failed:");
@@ -140,6 +140,95 @@ class InputPanelPasteFloodTest {
         assertEquals("alpha bravo charlie\ndelta echo foxtrot\ngolf hotel india",
             panel.getText(),
             "each ENTER between batched text runs becomes a newline");
+    }
+
+    @Test
+    void typedTextPastTheChipThresholdIsNeverFolded() {
+        // Official folds per stdin chunk, and a real keystroke is its own PTY
+        // drain — so no single batch ever carries paste-sized text no matter
+        // how much the user types. This is the regression the whole batch-scoped
+        // fold exists for: judging getText() folded a long prompt mid-typing.
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        for (int i = 0; i < 850; i++) {
+            panel.beginGuiInputBatch();
+            panel.handleKeyForTest(new KeyStroke('a', false, false));
+            panel.endGuiInputBatch();
+        }
+
+        assertEquals("a".repeat(850), panel.getText(),
+            "typing past the paste threshold stays plain text");
+        assertTrue(panel.getPastedContents().isEmpty(), "typing never creates a chip");
+        assertEquals(List.of(), actions.submissions);
+    }
+
+    @Test
+    void floodSpanningSeveralDrainsFoldsOneChipPerDrain() {
+        // Official 2.1.236 folds per stdin chunk: a 10KB tmux paste arrived as
+        // ten chunks and produced ten chips, with the tail left editable.
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        for (int drain = 0; drain < 2; drain++) {
+            panel.beginGuiInputBatch();
+            for (int line = 0; line < 8; line++) {
+                type(panel, "drain" + drain + " line" + line);
+                if (line < 7) panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+            }
+            panel.endGuiInputBatch();
+        }
+
+        assertEquals(List.of(), actions.submissions);
+        assertEquals(2, panel.getPastedContents().size(),
+            "each drain's flood folds into its own chip — was: " + panel.getText());
+        assertEquals("[Pasted text #1 +7 lines][Pasted text #2 +7 lines]", panel.getText(),
+            "chips accumulate in order after the text they replaced");
+    }
+
+    @Test
+    void floodReplacesOnlyItsOwnText() {
+        // A flood must not swallow a draft typed before it arrived.
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        panel.beginGuiInputBatch();
+        type(panel, "already typed");
+        panel.endGuiInputBatch();
+
+        panel.beginGuiInputBatch();
+        for (int line = 0; line < 8; line++) {
+            type(panel, "flood line " + line);
+            if (line < 7) panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+        }
+        panel.endGuiInputBatch();
+
+        assertEquals("already typed[Pasted text #1 +7 lines]", panel.getText(),
+            "the fold consumes the flood only — was: " + panel.getText());
+    }
+
+    @Test
+    void floodEndingWithAnEnterFoldsInsteadOfSubmitting() {
+        // tmux paste-buffer and CRLF clipboards end the flood with a newline,
+        // which arrives as a swallowed ENTER. Official folds the whole chunk
+        // with its terminator, so the fold must win over the submit.
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        panel.beginGuiInputBatch();
+        for (int line = 0; line < 8; line++) {
+            type(panel, "flood line " + line);
+            panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+        }
+        panel.endGuiInputBatch();
+
+        assertEquals(List.of(), actions.submissions, "a flood is never submitted");
+        assertEquals("[Pasted text #1 +8 lines]", panel.getText(),
+            "the swallowed trailing ENTER folds into the chip — was: " + panel.getText());
     }
 
     private static void type(InputPanel panel, String text) {
