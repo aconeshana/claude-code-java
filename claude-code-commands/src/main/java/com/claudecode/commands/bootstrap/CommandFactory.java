@@ -33,6 +33,7 @@ import com.claudecode.commands.impl.info.StubCommand;
 import com.claudecode.commands.impl.info.TagCommand;
 import com.claudecode.commands.impl.info.UsageCommand;
 import com.claudecode.commands.impl.info.VersionCommand;
+import com.claudecode.commands.impl.review.CodeReviewCommand;
 import com.claudecode.commands.impl.integration.HooksCommand;
 import com.claudecode.commands.impl.integration.PluginCommand;
 import com.claudecode.commands.impl.integration.ReloadPluginsCommand;
@@ -154,8 +155,11 @@ public final class CommandFactory {
             "Toggle brief-only mode"));
         builtIns.add(new StubCommand("install",
             "Install Claude Code native build"));
-        builtIns.add(new StubCommand("review",
-            "Review a pull request"));
+        // /code-review (+ the /review alias): prompt-type command — the staged
+        // multi-angle review prompt (ported from the 236 bundle) runs in the
+        // main loop; the old standalone /review stub predates 236 merging
+        // /review into /code-review as an alias.
+        builtIns.add(new CodeReviewCommand());
         builtIns.add(new StubCommand("ultrareview",
             "~10–20 min · Finds and verifies bugs in your branch. "
             + "Runs in Claude Code on the web. "

@@ -29,8 +29,11 @@ class StubCommandHiddenTest {
     @Test
     void registeredStub_isStillDispatchable() {
         CommandRegistry registry = CommandFactory.createDefault();
-        CommandResult r = registry.dispatch("/review", CommandContext.minimal());
-        assertEquals("/review: Not yet implemented", r.output());
+        // /review was a stub until the 236-parity /code-review port; it is now
+        // that command's alias and dispatches to the review prompt. Pick a
+        // still-stubbed entry to pin the stub dispatch contract instead.
+        CommandResult r = registry.dispatch("/commit", CommandContext.minimal());
+        assertEquals("/commit: Not yet implemented", r.output());
     }
 
     @Test
@@ -55,7 +58,6 @@ class StubCommandHiddenTest {
         CommandResult r = registry.dispatch("/help", CommandContext.minimal());
         String out = r.output();
         // Sample of stubs registered in CommandFactory:
-        assertFalse(Strings.CS.contains(out, "/review"), "/help must not surface hidden stub /review");
         assertFalse(Strings.CS.contains(out, "/ultraplan"), "/help must not surface hidden stub /ultraplan");
         assertFalse(Strings.CS.contains(out, "/terminal-setup"), "/help must not surface hidden stub /terminal-setup");
         // But real commands still appear:
