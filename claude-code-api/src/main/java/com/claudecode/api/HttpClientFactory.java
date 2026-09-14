@@ -54,6 +54,7 @@ public final class HttpClientFactory {
             .followSslRedirects(true)
             .retryOnConnectionFailure(false)
             .addInterceptor(new RetryInterceptor(resolveMaxRetries()))
+            .addInterceptor(new ByteWatchdogInterceptor())
             .build();
     }
 

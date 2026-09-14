@@ -39,7 +39,7 @@ class EventSourceStreamBridgeTest {
     }
 
     @Test
-    void optInWatchdogTerminatesAnIdleOpenStream() throws Exception {
+    void idleWatchdogTerminatesAnIdleOpenStream() throws Exception {
         startIdleStream();
         Iterator<StreamEvent> events = EventSourceStreamBridge.connect(
             streamingClient(), request(), (_, _, _) -> { },
@@ -50,6 +50,46 @@ class EventSourceStreamBridgeTest {
         StreamEvent.Error error = assertInstanceOf(StreamEvent.Error.class, events.next());
         assertTrue(Strings.CS.contains(error.exception().getMessage(), "idle timeout"));
         assertFalse(events.hasNext());
+    }
+
+    @Test
+    void byteWatchdogAbortsAStreamThatDeliversBytesButNoCompleteEvent() throws Exception {
+        // A server that holds the connection open and emits a partial frame: the
+        // event-level watchdog never sees a chunk to reset against, so only the
+        // byte-level tier can break the wedge.
+        startPartialFrameStream();
+        Iterator<StreamEvent> events = EventSourceStreamBridge.connect(
+            streamingClient(), request(), (_, _, _) -> { },
+            Duration.ofSeconds(2),
+            new ApiTimeouts.StreamWatchdog(false, Duration.ofSeconds(90)),
+            CancellationRegistrar.NONE, null,
+            new ApiTimeouts.ByteWatchdog(true, Duration.ofMillis(200)));
+
+        StreamEvent.Error error = assertInstanceOf(StreamEvent.Error.class, events.next());
+        assertInstanceOf(ApiStreamException.class, error.exception());
+        assertEquals(ApiStreamException.Reason.WATCHDOG,
+            ((ApiStreamException) error.exception()).reason());
+        assertTrue(Strings.CS.contains(error.exception().getMessage(), "no bytes for 200ms"));
+        assertFalse(events.hasNext());
+    }
+
+    @Test
+    void disabledByteWatchdogLeavesAPartialFrameStreamWedgeable() throws Exception {
+        startPartialFrameStream();
+        Iterator<StreamEvent> events = EventSourceStreamBridge.connect(
+            streamingClient(), request(), (_, _, _) -> { },
+            Duration.ofSeconds(2),
+            new ApiTimeouts.StreamWatchdog(false, Duration.ofSeconds(90)),
+            CancellationRegistrar.NONE, null, ApiTimeouts.ByteWatchdog.DISABLED);
+
+        // Nothing aborts the wedged stream, so releasing it is what ends the
+        // iteration — and the failure is the SSE reader's own truncated-frame
+        // error, not a watchdog classification.
+        releaseStream.countDown();
+        StreamEvent.Error error = assertInstanceOf(StreamEvent.Error.class, events.next());
+        assertInstanceOf(ApiException.class, error.exception());
+        assertFalse(error.exception() instanceof ApiStreamException,
+            "a disabled byte watchdog must not produce a watchdog classification");
     }
 
     @Test
@@ -213,6 +253,28 @@ class EventSourceStreamBridgeTest {
         assertEquals("Prompt is too long", failure.getMessage());
     }
 
+    /** Sends a partial SSE frame (no terminating blank line) and holds the socket open. */
+    private void startPartialFrameStream() throws Exception {
+        releaseStream = new CountDownLatch(1);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        executor = Executors.newVirtualThreadPerTaskExecutor();
+        server.setExecutor(executor);
+        server.createContext("/events", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try {
+                exchange.getResponseBody().write(
+                    "event: content_block_delta\ndata: {\"partial\":".getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush();
+                releaseStream.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        server.start();
+    }
+
     private void startIdleStream() throws Exception {
         releaseStream = new CountDownLatch(1);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -232,9 +294,11 @@ class EventSourceStreamBridgeTest {
         server.start();
     }
 
+    /** Mirrors the production streaming profile: the byte watchdog lives in the interceptor chain. */
     private OkHttpClient streamingClient() {
         return new OkHttpClient.Builder()
             .readTimeout(Duration.ZERO)
+            .addInterceptor(new ByteWatchdogInterceptor())
             .build();
     }
 

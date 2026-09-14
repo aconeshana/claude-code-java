@@ -75,10 +75,13 @@ public final class OpenAiResponsesClient implements LlmClient {
         log.info("OpenAI Responses streaming request to {} model {}", apiUrl, config.model());
         try {
             Request httpRequest = buildRequest(request, true);
+            // An OpenAI-compatible endpoint is never the Anthropic first party, so
+            // the byte-level tier resolves disabled for this provider.
             return EventSourceStreamBridge.connect(
                 streamingHttpClient, httpRequest, new ResponsesEventTranslator(),
                 ApiTimeouts.apiTimeout(), ApiTimeouts.watchdog(),
-                request.cancellationRegistrar(), onRequestSubmitted);
+                request.cancellationRegistrar(), onRequestSubmitted,
+                ApiTimeouts.byteWatchdog(ApiConfig.ApiProvider.OPENAI_COMPAT, config.baseUrl()));
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {

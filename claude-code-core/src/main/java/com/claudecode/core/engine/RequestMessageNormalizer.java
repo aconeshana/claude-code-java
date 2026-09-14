@@ -1,6 +1,10 @@
 package com.claudecode.core.engine;
 
+import com.claudecode.core.config.CachedFeatureValues;
+import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.message.MessageOrigin;
+import com.claudecode.core.model.AnthropicProviderUrls;
+import com.claudecode.core.process.SubprocessEnvironment;
 import java.time.Instant;
 import org.apache.commons.lang3.Strings;
 
@@ -37,6 +41,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Owns every API-request normalization that sits *between* the raw {@link Message} history and the
  * wire-ready turns produced by {@link ApiMessageFormatter}.
+ *
+ * <ul>
+ *   <li>{@code stripExcessMediaItems}, including
+ *       the count and inlined-byte budgets with their keep-recent hysteresis bands
+ *       and the {@code [media removed: request limit]} placeholder.</li>
+ * </ul>
  */
 public final class RequestMessageNormalizer {
 
@@ -44,6 +54,20 @@ public final class RequestMessageNormalizer {
 
 
     public static final int API_MAX_MEDIA_PER_REQUEST = 100;
+
+    /** {@code Tfp}: media items preserved ahead of the count limit before eviction starts. */
+    private static final int API_MEDIA_KEEP_RECENT = 20;
+    /** {@code wfp}: default byte ceiling for inlined base64 media on a non-first-party provider. */
+    private static final long API_MEDIA_BYTE_CAP = 78_643_200L;
+    /** {@code Cfp}: bytes of the most recent media preserved ahead of the byte ceiling. */
+    private static final long API_MEDIA_KEEP_RECENT_BYTES = 10_485_760L;
+    /** {@code Efp = T$r - 8388608}: first-party byte ceiling. */
+    private static final long API_MEDIA_BYTE_CAP_FIRST_PARTY = 25_165_824L;
+    /** {@code vfp}/{@code Sfp}: count limit used when the long-context beta is active. */
+    private static final int API_MAX_MEDIA_LONG_CONTEXT = 600;
+    private static final String MEDIA_REMOVED_PLACEHOLDER = "[media removed: request limit]";
+    /** {@code tengu_media_byte_cap}: remote override for the byte ceiling, in bytes. */
+    private static final String MEDIA_BYTE_CAP_FEATURE = "tengu_media_byte_cap";
 
     /**
      * Full normalization pipeline used by the main turn loop: strip meta-image/
@@ -136,10 +160,30 @@ public final class RequestMessageNormalizer {
         wire = sanitizeErrorToolResultContent(wire);
         wire = ensureToolResultPairing(wire);
 
-        // rewrite (tool_result pairing, error-result sanitation) and is a no-op
-        // below the limit, so it never alters a well-formed request's wire bytes.
-        wire = stripExcessMediaItems(wire, API_MAX_MEDIA_PER_REQUEST);
+        // and is a no-op below the limits, so it never alters a well-formed
+        // request's wire bytes.
+        wire = stripExcessMediaItems(wire,
+            isLongContextModel(model) ? API_MAX_MEDIA_LONG_CONTEXT : API_MAX_MEDIA_PER_REQUEST,
+            API_MEDIA_KEEP_RECENT, mediaByteCap(), API_MEDIA_KEEP_RECENT_BYTES);
         return wire;
+    }
+
+    /** {@code jw}: the {@code [1m]} long-context tag, which raises the media limits. */
+    private static boolean isLongContextModel(String model) {
+        return model != null && Strings.CI.contains(model, "[1m]");
+    }
+
+    /** {@code EOT()}: remote-config override, else 24 MiB first-party and 75 MiB otherwise. */
+    private static long mediaByteCap() {
+        Long override = CachedFeatureValues.number(MEDIA_BYTE_CAP_FEATURE);
+        if (override != null && override > 0) return override;
+        String baseUrl = SubprocessEnvironment.get("ANTHROPIC_BASE_URL");
+        if (EnvUtils.isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_BEDROCK"))
+                || EnvUtils.isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_VERTEX"))) {
+            return API_MEDIA_BYTE_CAP;
+        }
+        return AnthropicProviderUrls.isFirstPartyBaseUrl(baseUrl)
+            ? API_MEDIA_BYTE_CAP_FIRST_PARTY : API_MEDIA_BYTE_CAP;
     }
 
 
@@ -1061,30 +1105,69 @@ public final class RequestMessageNormalizer {
     }
 
 
+    /**
+     * Count-only overload kept for the pure limit tests.
+     */
     public static List<StreamingClient.StreamRequest.RequestMessage> stripExcessMediaItems(
             List<StreamingClient.StreamRequest.RequestMessage> messages, int limit) {
-        int toRemove = 0;
+        return stripExcessMediaItems(messages, limit, 0, 0L, 0L);
+    }
+
+    /**
+     * Evicts inlined media from oldest to newest across two independent budgets:
+     * a count of media blocks and a total of inlined base64 bytes. Once a budget
+     * is exceeded its reclaim target is widened by the corresponding
+     * {@code keepRecent*} allowance, so a trim overshoots the configured ceiling
+     * and the next trim only happens after real headroom is consumed again —
+     * the released client's hysteresis band, which keeps a long conversation from
+     * re-trimming on every turn. Eviction proceeds in message order and, within a
+     * message, nested {@code tool_result} media before top-level media. A message
+     * whose content is emptied entirely is replaced by a
+     * {@value #MEDIA_REMOVED_PLACEHOLDER} text block rather than being sent with
+     * no content.
+     *
+     * @param limit           media-block ceiling for the whole request
+     * @param keepRecentCount extra media blocks reclaimed once {@code limit} is exceeded
+     * @param byteLimit       inlined-byte ceiling; {@code <= 0} disables byte eviction
+     * @param keepRecentBytes extra bytes reclaimed once {@code byteLimit} is exceeded
+     */
+    public static List<StreamingClient.StreamRequest.RequestMessage> stripExcessMediaItems(
+            List<StreamingClient.StreamRequest.RequestMessage> messages, int limit,
+            int keepRecentCount, long byteLimit, long keepRecentBytes) {
+        int totalCount = 0;
+        long totalBytes = 0;
         for (StreamingClient.StreamRequest.RequestMessage msg : messages) {
             List<Map<String, Object>> blocks = asStringKeyedMapList(msg.content());
             if (blocks == null) continue;
             for (Map<String, Object> block : blocks) {
-                if (isMedia(block)) toRemove++;
+                if (isMedia(block)) {
+                    totalCount++;
+                    totalBytes += mediaByteLength(block);
+                }
                 if (isToolResult(block) && block.get("content") instanceof List<?>) {
                     List<Map<String, Object>> inner = asStringKeyedMapList(block.get("content"));
                     if (inner != null) {
                         for (Map<String, Object> nested : inner) {
-                            if (isMedia(nested)) toRemove++;
+                            if (isMedia(nested)) {
+                                totalCount++;
+                                totalBytes += mediaByteLength(nested);
+                            }
                         }
                     }
                 }
             }
         }
-        toRemove -= limit;
-        if (toRemove <= 0) return messages;
+
+        Budget budget = new Budget(totalCount - limit, byteLimit > 0 ? totalBytes - byteLimit : -1L);
+        if (!budget.overBudget()) return messages;
+
+        budget.retainCount(keepRecentCount);
+        boolean byteEviction = budget.overBytes();
+        if (byteEviction) budget.retainBytes(keepRecentBytes);
 
         List<StreamingClient.StreamRequest.RequestMessage> out = new ArrayList<>(messages.size());
         for (StreamingClient.StreamRequest.RequestMessage msg : messages) {
-            if (toRemove <= 0) {
+            if (!budget.overBudget()) {
                 out.add(msg);
                 continue;
             }
@@ -1094,11 +1177,11 @@ public final class RequestMessageNormalizer {
                 continue;
             }
 
-            final int before = toRemove;
+            final int removedBefore = budget.removedCount;
 
             List<Map<String, Object>> mapped = new ArrayList<>(blocks.size());
             for (Map<String, Object> block : blocks) {
-                if (toRemove <= 0 || !isToolResult(block)
+                if (!budget.overBudget() || !isToolResult(block)
                         || !(block.get("content") instanceof List<?>)) {
                     mapped.add(block);
                     continue;
@@ -1110,10 +1193,7 @@ public final class RequestMessageNormalizer {
                 }
                 List<Map<String, Object>> filtered = new ArrayList<>();
                 for (Map<String, Object> nested : inner) {
-                    if (toRemove > 0 && isMedia(nested)) {
-                        toRemove--;
-                        continue;
-                    }
+                    if (isMedia(nested) && budget.evict(nested)) continue;
                     filtered.add(nested);
                 }
                 if (filtered.size() == inner.size()) {
@@ -1127,18 +1207,79 @@ public final class RequestMessageNormalizer {
 
             List<Map<String, Object>> stripped = new ArrayList<>(mapped.size());
             for (Map<String, Object> block : mapped) {
-                if (toRemove > 0 && isMedia(block)) {
-                    toRemove--;
-                    continue;
-                }
+                if (isMedia(block) && budget.evict(block)) continue;
                 stripped.add(block);
             }
 
-            out.add(before == toRemove
-                ? msg
-                : new StreamingClient.StreamRequest.RequestMessage(msg.role(), stripped));
+            if (removedBefore == budget.removedCount) {
+                out.add(msg);
+                continue;
+            }
+            List<Map<String, Object>> content = stripped.isEmpty()
+                ? List.of(placeholderBlock()) : stripped;
+            out.add(new StreamingClient.StreamRequest.RequestMessage(msg.role(), content));
         }
         return out;
+    }
+
+    private static Map<String, Object> placeholderBlock() {
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "text");
+        block.put("text", MEDIA_REMOVED_PLACEHOLDER);
+        return block;
+    }
+
+    /**
+     * {@code XTl}: an inlined media block's payload length, counted only for
+     * {@code base64} sources — a {@code url} source carries no inline bytes.
+     */
+    private static long mediaByteLength(Map<String, Object> block) {
+        if (!(block.get("source") instanceof Map<?, ?> source)) return 0;
+        if (!(source.get("type") instanceof String sourceType)
+                || !Strings.CS.equals("base64", sourceType)) {
+            return 0;
+        }
+        return source.get("data") instanceof String data ? data.length() : 0;
+    }
+
+    /** Mutable eviction budget shared across the whole request walk. */
+    private static final class Budget {
+        private int remainingCount;
+        private long remainingBytes;
+        private int removedCount;
+
+        Budget(int remainingCount, long remainingBytes) {
+            this.remainingCount = remainingCount;
+            this.remainingBytes = remainingBytes;
+        }
+
+        boolean overBudget() {
+            return remainingCount > 0 || remainingBytes > 0;
+        }
+
+        boolean overBytes() {
+            return remainingBytes > 0;
+        }
+
+        void retainCount(int keepRecentCount) {
+            if (remainingCount > 0) remainingCount += keepRecentCount;
+        }
+
+        void retainBytes(long keepRecentBytes) {
+            remainingBytes += keepRecentBytes;
+        }
+
+        /** Consumes one media block against whichever budget is still exceeded. */
+        boolean evict(Map<String, Object> block) {
+            long bytes = mediaByteLength(block);
+            if (remainingCount > 0 || (remainingBytes > 0 && bytes > 0)) {
+                remainingCount--;
+                remainingBytes -= bytes;
+                removedCount++;
+                return true;
+            }
+            return false;
+        }
     }
 
     private static boolean isMedia(Map<String, Object> block) {

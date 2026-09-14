@@ -1,12 +1,9 @@
 package com.claudecode.core.engine;
 
-import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.CachedFeatureValues;
 import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.model.AnthropicProviderUrls;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
-import com.fasterxml.jackson.databind.JsonNode;
-import java.nio.file.Files;
 
 /**
  * Session-stable gates for fields added to model-visible tool schemas.
@@ -36,14 +33,6 @@ public final class ToolSchemaGate {
     }
 
     private static boolean cachedFeature(String name) {
-        try {
-            if (!Files.isRegularFile(ClaudePaths.GLOBAL_JSON)) return false;
-            JsonNode global = JsonUtils.readJson(ClaudePaths.GLOBAL_JSON);
-            JsonNode value = global == null ? null
-                : global.path("cachedGrowthBookFeatures").get(name);
-            return value != null && value.isBoolean() && value.asBoolean();
-        } catch (Exception _) {
-            return false;
-        }
+        return CachedFeatureValues.bool(name, false);
     }
 }

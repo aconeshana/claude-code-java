@@ -143,7 +143,8 @@ public class AnthropicSdkClient implements LlmClient {
             return EventSourceStreamBridge.connect(
                 streamingHttpClient, httpRequest, translator,
                 ApiTimeouts.apiTimeout(), streamWatchdog,
-                request.cancellationRegistrar(), onRequestSubmitted);
+                request.cancellationRegistrar(), onRequestSubmitted,
+                ApiTimeouts.byteWatchdog(ApiConfig.ApiProvider.ANTHROPIC, effectiveBaseUrl()));
         } catch (IOException e) {
             throw new ApiException("Failed to send request: " + e.getMessage(), 0, e);
         }

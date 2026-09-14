@@ -55,8 +55,13 @@ import java.util.function.Consumer;
  *
  * <ul>
  *   <li>initial-fetch timeout,
- *       AbortSignal propagation, response-header metadata capture, and opt-in
- *       streaming idle watchdog.</li>
+ *       AbortSignal propagation, response-header metadata capture, and the
+ *       event-level streaming idle watchdog (enabled unless explicitly
+ *       disabled).</li>
+ *   <li>arms the byte-level idle watchdog by
+ *       tagging the request, which {@link ByteWatchdogInterceptor} turns into a
+ *       watchdog-wrapped response body. The wrapping cannot happen here: the SSE
+ *       implementation reads {@code body.source()} before {@code onOpen} runs.</li>
  * </ul>
  */
 final class EventSourceStreamBridge {
@@ -104,18 +109,31 @@ final class EventSourceStreamBridge {
                                          EventTranslator translator, Duration connectTimeout,
                                          ApiTimeouts.StreamWatchdog watchdog,
                                          CancellationRegistrar cancellation) {
-        return connect(client, request, translator, connectTimeout, watchdog, cancellation, null);
+        return connect(client, request, translator, connectTimeout, watchdog, cancellation,
+            null, ApiTimeouts.ByteWatchdog.DISABLED);
     }
 
-    /**
-     * Establishes the same synchronous response-header handshake as the six-argument overload, while
-     * exposing the earlier point at which OkHttp has already enqueued the request.
-     */
+    /** Submission-callback overload without a byte-level watchdog. */
     static Iterator<StreamEvent> connect(OkHttpClient client, Request request,
                                          EventTranslator translator, Duration connectTimeout,
                                          ApiTimeouts.StreamWatchdog watchdog,
                                          CancellationRegistrar cancellation,
                                          Runnable onRequestSubmitted) {
+        return connect(client, request, translator, connectTimeout, watchdog, cancellation,
+            onRequestSubmitted, ApiTimeouts.ByteWatchdog.DISABLED);
+    }
+
+    /**
+     * Establishes the same synchronous response-header handshake as the six-argument overload, while
+     * exposing the earlier point at which OkHttp has already enqueued the request and the
+     * byte-level watchdog resolved for the provider being called.
+     */
+    static Iterator<StreamEvent> connect(OkHttpClient client, Request request,
+                                         EventTranslator translator, Duration connectTimeout,
+                                         ApiTimeouts.StreamWatchdog watchdog,
+                                         CancellationRegistrar cancellation,
+                                         Runnable onRequestSubmitted,
+                                         ApiTimeouts.ByteWatchdog byteWatchdog) {
         ApiStreamDiagnostics.Trace diagnostics = ApiStreamDiagnostics.from(request);
         if (diagnostics != null) {
             diagnostics.submitted();
@@ -123,7 +141,7 @@ final class EventSourceStreamBridge {
         }
         BridgeState state = new BridgeState(translator, watchdog, diagnostics);
         EventSource eventSource = EventSources.createFactory(client)
-            .newEventSource(request, state.listener());
+            .newEventSource(ByteWatchdogTag.apply(request, byteWatchdog), state.listener());
         state.attach(eventSource, cancellation);
         if (onRequestSubmitted != null) onRequestSubmitted.run();
         try {
@@ -361,6 +379,12 @@ final class EventSourceStreamBridge {
      * response with a {@code Throwable} means a connection-level failure.
      */
     private static ApiException toApiException(Throwable t, Response response) {
+        // A watchdog (or any other in-band abort) reaches onFailure with the
+        // response still in hand. Its classification is the whole point of the
+        // exception, so it must not be rewritten into a generic API failure.
+        for (Throwable cause = t; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ApiStreamException streamFailure) return streamFailure;
+        }
         if (response != null) {
             String body;
             try (Response r = response) {

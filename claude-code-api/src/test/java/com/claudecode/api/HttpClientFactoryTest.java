@@ -63,13 +63,85 @@ class HttpClientFactoryTest {
         assertEquals(Duration.ofMinutes(10), ApiTimeouts.resolveApiTimeout(null));
         assertEquals(Duration.ofMinutes(10), ApiTimeouts.resolveApiTimeout("invalid"));
         assertEquals(Duration.ofSeconds(42), ApiTimeouts.resolveApiTimeout("42000"));
+    }
 
-        assertFalse(ApiTimeouts.resolveWatchdog(null, null).enabled());
-        assertEquals(Duration.ofSeconds(90),
-            ApiTimeouts.resolveWatchdog("true", null).idleTimeout());
-        assertEquals(Duration.ofSeconds(12),
-            ApiTimeouts.resolveWatchdog("1", "12000").idleTimeout());
-        assertTrue(ApiTimeouts.resolveWatchdog("on", null).enabled());
+    @Test
+    void streamWatchdogIsOnUnlessExplicitlyDisabledAndFloorsItsIdleWindow() {
+
+        // Oja(): max(CLAUDE_STREAM_IDLE_TIMEOUT_MS || 0, 300000), so a small
+        // configured window is raised rather than taken verbatim.
+        assertTrue(ApiTimeouts.resolveWatchdog(null, null, true).enabled());
+        assertEquals(Duration.ofMinutes(5),
+            ApiTimeouts.resolveWatchdog(null, null, true).idleTimeout());
+        assertEquals(Duration.ofMinutes(5),
+            ApiTimeouts.resolveWatchdog(null, "12000", true).idleTimeout());
+        assertEquals(Duration.ofSeconds(600),
+            ApiTimeouts.resolveWatchdog(null, "600000", true).idleTimeout());
+        assertTrue(ApiTimeouts.resolveWatchdog("on", null, true).enabled());
+        assertTrue(ApiTimeouts.resolveWatchdog("1", null, true).enabled());
+        assertFalse(ApiTimeouts.resolveWatchdog("off", null, true).enabled());
+        assertFalse(ApiTimeouts.resolveWatchdog("0", null, true).enabled());
+    }
+
+    @Test
+    void streamWatchdogSwitchFallsBackToTheRemoteDefaultWhenUnset() {
+        assertFalse(ApiTimeouts.resolveWatchdog(null, null, false).enabled());
+        assertTrue(ApiTimeouts.resolveWatchdog("true", null, false).enabled(),
+            "an explicit truthy switch overrides a remote default of off");
+    }
+
+    @Test
+    void byteWatchdogIsFirstPartyOnlyAndClampsItsIdleWindow() {
+        var provider = ApiConfig.ApiProvider.ANTHROPIC;
+
+        // A third-party ANTHROPIC_BASE_URL reports om() false, which disables the
+        // byte-level tier even though the switch itself defaults to on.
+        assertFalse(ApiTimeouts.resolveByteWatchdog(
+            provider, "https://gateway.example.com", null, null, null, null, true, null).enabled());
+        assertFalse(ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", "off", null, null, null, true, null).enabled());
+
+        var firstParty = ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", null, null, null, null, true, null);
+        assertTrue(firstParty.enabled());
+        assertEquals(Duration.ofSeconds(180), firstParty.idleTimeout());
+
+        // An explicit byte timeout wins, and the resolved window is clamped.
+        assertEquals(Duration.ofSeconds(45), ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", null, null, "45000", null, true, null)
+            .idleTimeout());
+        assertEquals(Duration.ofSeconds(10), ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", null, null, "1", null, true, null)
+            .idleTimeout());
+        assertEquals(Duration.ofMinutes(30), ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", null, null, "99999999", null, true, null)
+            .idleTimeout());
+
+        // A positive stream idle window replaces the provider default and, being
+        // positive, suppresses the remote byte-idle lookup entirely.
+        assertEquals(Duration.ofMinutes(5), ApiTimeouts.resolveByteWatchdog(
+            provider, "https://api.anthropic.com", null, null, null, "1000", true, 99_000L)
+            .idleTimeout());
+    }
+
+    @Test
+    void byteWatchdogUsesTheRemoteDefaultWhenNeitherTimeoutIsConfigured() {
+        assertEquals(Duration.ofSeconds(99), ApiTimeouts.resolveByteWatchdog(
+            ApiConfig.ApiProvider.ANTHROPIC, "https://api.anthropic.com",
+            null, null, null, null, true, 99_000L).idleTimeout());
+    }
+
+    @Test
+    void byteWatchdogOnlyWatchesBedrockBehindItsOwnOptIn() {
+        var provider = ApiConfig.ApiProvider.BEDROCK;
+
+        assertFalse(ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, null, null, null, true, null).enabled());
+        assertTrue(ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, "true", null, null, true, null).enabled());
+        assertFalse(ApiTimeouts.resolveByteWatchdog(
+            ApiConfig.ApiProvider.OPENAI_COMPAT, null, null, "true", null, null, true, null)
+            .enabled());
     }
 
     @Test
