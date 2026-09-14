@@ -130,10 +130,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ env.RELEASE_TAG }}"
-          # 各平台 job 并发，release 不存在则先创建（幂等兜底）
+          # 各平台 job 并发，release 不存在则先创建（幂等兜底）。notes 由 GitHub
+          # 自动生成本 tag 相对上一 tag 的 changelog（无上一 tag 时为全部历史）。
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
-              --notes "Claude Code Java ${{ env.RELEASE_VERSION }}" || true
+              --generate-notes || true
           fi
           gh release upload "$TAG" "release/${{ matrix.asset }}" --clobber
 
@@ -195,8 +196,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ env.RELEASE_TAG }}"
+          # 同 build-native：首个并发到达的 job 创建 release，notes 自动生成。
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
-              --notes "Claude Code Java ${{ env.RELEASE_VERSION }}" || true
+              --generate-notes || true
           fi
           gh release upload "$TAG" "release/claude-code-app.jar" --clobber
