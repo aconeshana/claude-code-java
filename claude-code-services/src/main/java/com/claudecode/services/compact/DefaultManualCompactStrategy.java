@@ -107,6 +107,10 @@ final class DefaultManualCompactStrategy implements ManualCompactStrategy {
                 "Compaction interrupted · This may be due to network issues — please try again.");
         }
 
+        // 197 khp passes a <summary>-less response through unchanged; rejecting
+        // it here is a deliberate Java-side hardening that keeps a refusal or
+        // cut-off answer from being persisted as isCompactSummary and
+        // replacing the conversation.
         if (!CompactService.containsSummarySection(summary)) {
             throw new CompactException(
                 "Compaction failed · the model answered without a summary section — "

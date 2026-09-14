@@ -9,6 +9,7 @@ import com.claudecode.api.StreamEvent;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -87,7 +89,7 @@ class TerminalSessionTitleGeneratorTest {
     }
 
     @Test
-    void canonicalClaude46TitleFallsBackToHaikuWithExplicitDisabledThinking() throws Exception {
+    void claude46MainModelStaysTheTitleModelWithExplicitDisabledThinking() throws Exception {
         CapturingClient client = new CapturingClient("{\"title\":\"Title\"}");
         TerminalSessionTitleGenerator generator = new TerminalSessionTitleGenerator(
             client, "claude-sonnet-4-6");
@@ -96,15 +98,38 @@ class TerminalSessionTitleGeneratorTest {
             .get(2, TimeUnit.SECONDS);
 
         CreateMessageRequest request = client.request.get();
-        // A Claude main model is not a custom endpoint, so the helper falls back
-        // to the default Haiku helper (the per-scenario sessionTitleModel /
-        // global sideQueryModel chain is absent in this test environment).
-        // haiku-4-5 predates adaptive thinking, so no explicit disabled config
-        // or 1.0 temperature is attached for it.
-        assertEquals("claude-haiku-4-5", request.model());
-        assertNull(request.thinking());
-        assertNull(request.temperature());
+        // 197 Vv(): with no per-scenario sessionTitleModel / global sideQueryModel
+        // and no env override, the title query falls back to the MAIN model —
+        // not to a default Haiku. Dpc attaches thinking {type:"disabled"} and
+        // temperature 1 for every 4.x Claude model, the main model included.
+        assertEquals("claude-sonnet-4-6", request.model());
+        assertEquals(CreateMessageRequest.ThinkingConfig.disabled(), request.thinking());
+        assertEquals(1.0, request.temperature());
         assertEquals("high", request.outputConfig().effort());
+    }
+
+    @Test
+    void envOverridesStillWinOverTheMainModelFallback() throws Exception {
+        try {
+            SubprocessEnvironment.updateRuntime(Map.of(
+                "ANTHROPIC_SMALL_FAST_MODEL", "claude-haiku-4-5"));
+            CapturingClient client = new CapturingClient("{\"title\":\"Title\"}");
+            TerminalSessionTitleGenerator generator = new TerminalSessionTitleGenerator(
+                client, "claude-sonnet-4-6");
+
+            generator.generateAsync("a sufficiently long topic", "sid", null, "high")
+                .get(2, TimeUnit.SECONDS);
+
+            assertEquals("claude-haiku-4-5", client.request.get().model());
+            // Dpc keeps the explicit disabled thinking and temperature 1 even
+            // for Haiku (w4e lists haiku-4-5 as not-thinking, which routes the
+            // disabled config through; lkn lists it for temperature).
+            assertEquals(CreateMessageRequest.ThinkingConfig.disabled(),
+                client.request.get().thinking());
+            assertEquals(1.0, client.request.get().temperature());
+        } finally {
+            SubprocessEnvironment.clearRuntimeOverrides();
+        }
     }
 
     @Test

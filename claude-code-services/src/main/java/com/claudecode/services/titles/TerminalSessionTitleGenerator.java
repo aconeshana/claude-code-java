@@ -67,12 +67,15 @@ public final class TerminalSessionTitleGenerator {
 
     /**
      * Creates a generator whose helper model is resolved against the active main
-     * model. 236 {@code vO()}: with no dedicated small-fast override the title
-     * query falls back to the main model, so {@code mainModel} stays the
-     * resolution input rather than a verbatim request model.
+     * model. 197 {@code Vv()} / 236 {@code vO()}: {@code ANTHROPIC_SMALL_FAST_MODEL}
+     * and {@code ANTHROPIC_DEFAULT_HAIKU_MODEL} win first, but with neither override
+     * set (and no subscription key on the first-party endpoint) the title query
+     * falls back to the MAIN model — {@code Cs()}/{@code d6()} — never to a
+     * default Haiku. {@code mainModel} stays the resolution input rather than a
+     * verbatim request model.
      */
     public TerminalSessionTitleGenerator(LlmClient llmClient, String mainModel) {
-        this(llmClient, () -> SideQuery.resolveSmallFastModel(mainModel, "sessionTitleModel"),
+        this(llmClient, () -> SideQuery.resolveMainModelFallback(mainModel, "sessionTitleModel"),
             (sessionId, wire) -> ApiRequestDumper.instance().dump(sessionId, wire));
     }
 
@@ -197,9 +200,13 @@ public final class TerminalSessionTitleGenerator {
             .skipCacheWrite(true)
             .promptCachingEnabled(false)
             .querySource("generate_session_title");
-        if (model != null
-                && Strings.CI.contains(model, "claude")
-                && CreateMessageRequest.supportsAdaptiveThinking(model)) {
+        // 197 Dpc: thinking {type:"disabled"} is sent for every 4.x+ model the
+        // small-fast chain can resolve to — including Haiku — and temperature
+        // defaults to 1 whenever thinking is disabled (lkn lists every 4.x
+        // model). supportsAdaptiveThinking here is the 5.x-and-newer adaptive
+        // gate, a strict superset of models that still carry the explicit
+        // disabled marker in 197.
+        if (model != null && Strings.CI.contains(model, "claude")) {
             builder.thinking(CreateMessageRequest.ThinkingConfig.disabled())
                 .temperature(1.0);
         }

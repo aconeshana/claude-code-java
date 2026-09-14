@@ -49,6 +49,24 @@ class SideQueryTest {
     }
 
     @Test
+    void mainModelFallbackKeepsTheMainModelForClaudeAndCustomEndpoints() {
+        // 197 Vv(): no override + no subscription key resolves to Cs(), the
+        // main model family — a Claude main model stays the title model.
+        assertEquals("claude-sonnet-4-6",
+            SideQuery.resolveMainModelFallback("claude-sonnet-4-6", null, null));
+        assertEquals("glm-5.2",
+            SideQuery.resolveMainModelFallback("glm-5.2", null, null));
+        // Overrides still win, so per-scenario narrowing keeps working.
+        assertEquals("gateway-small",
+            SideQuery.resolveMainModelFallback("claude-sonnet-4-6", "gateway-small", null));
+        assertEquals("gateway-haiku",
+            SideQuery.resolveMainModelFallback("claude-sonnet-4-6", null, "gateway-haiku"));
+        // A blank main model is the only case left to the default Haiku.
+        assertEquals(SideQuery.DEFAULT_HAIKU_MODEL,
+            SideQuery.resolveMainModelFallback(null, null, null));
+    }
+
+    @Test
     void helperRequestsCarryBackgroundQuerySources() {
         CapturingClient client = new CapturingClient();
         SideQuery sideQuery = new SideQuery(client);

@@ -86,6 +86,27 @@ public final class SideQuery {
             SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"));
     }
 
+    /**
+     * Main-model fallback variant for scenarios the original pins to the main
+     * model (197 {@code Vv()} with no override and no subscription key resolves
+     * to {@code Cs()}, the main model family — never a default Haiku). Settings
+     * and env overrides still win, so per-scenario narrowing keeps working.
+     */
+    public static String resolveMainModelFallback(String mainModel, String scenarioKey) {
+        return resolveMainModelFallback(
+            mainModel,
+            StringUtils.defaultIfBlank(
+                RuntimeSettings.loadScenarioModel(scenarioKey),
+                SubprocessEnvironment.get("ANTHROPIC_SMALL_FAST_MODEL")),
+            SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"));
+    }
+
+    static String resolveMainModelFallback(String mainModel, String override, String defaultHaiku) {
+        if (StringUtils.isNotBlank(override)) return override;
+        if (StringUtils.isNotBlank(defaultHaiku)) return defaultHaiku;
+        return StringUtils.defaultIfBlank(mainModel, DEFAULT_HAIKU_MODEL);
+    }
+
     static String resolveSmallFastModel(String mainModel, String override, String defaultHaiku) {
         if (StringUtils.isNotBlank(override)) return override;
         if (StringUtils.isNotBlank(defaultHaiku)) return defaultHaiku;
