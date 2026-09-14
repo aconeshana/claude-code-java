@@ -765,6 +765,15 @@ public class InputPanel extends Panel {
             if (deferredPasteSubmit.get() && key.getKeyType() != KeyType.ENTER) {
                 deferredPasteSubmit.set(false);
             }
+            if (pendingBatchEnter && key.getKeyType() != KeyType.ENTER) {
+                // Input followed the swallowed ENTER inside the same batch, so
+                // the ENTER was a paste newline — materialize the line split
+                // right before this keystroke applies. Batched text runs
+                // materialize it in bufferPlainText instead (they bypass this
+                // method).
+                pendingBatchEnter = false;
+                super.handleKeyStroke(new KeyStroke(KeyType.ENTER));
+            }
             if (guiInputBatchDepth > 0
                     && key.getKeyType() == KeyType.CHARACTER
                     && key.getCharacter() != null
@@ -961,12 +970,24 @@ public class InputPanel extends Panel {
         private DraftUndoBuffer.Snapshot bufferedBackspaceStart;
         /**
          * Printable characters seen during the current GUI input batch (one PTY
-         * drain). Human keystrokes arrive one drain at a time, so a plain ENTER
-         * sharing a drain with buffered text is an unbracketed-paste newline
-         * (tmux {@code paste-buffer}, CRLF clipboards), never a submit — the
-         * twin of Ink receiving the whole flood as one stdin chunk.
+         * drain). A batch that carries plain characters before a plain ENTER
+         * may be an unbracketed-paste flood (tmux {@code paste-buffer}, CRLF
+         * clipboards) — the twin of Ink receiving the whole flood as one stdin
+         * chunk — so such an ENTER's meaning is deferred: see
+         * {@link #pendingBatchEnter}.
          */
         private int plainInputCharsThisBatch;
+
+        /**
+         * A plain ENTER swallowed earlier in this batch, whose meaning is still
+         * unresolved. If further input follows in the same batch the ENTER was
+         * a paste newline (materialized as a line split just in time); if the
+         * batch ends with the ENTER still pending, it was a terminal one-line
+         * submit and the batch end performs it. This matches official 197,
+         * which discriminates a paste by what the stdin chunk contains, not by
+         * which drain delivered it.
+         */
+        private boolean pendingBatchEnter;
 
         private boolean canBufferPlainCharacter(KeyStroke key) {
             if (key.getKeyType() != KeyType.CHARACTER
@@ -995,6 +1016,13 @@ public class InputPanel extends Panel {
                 if (Character.isISOControl(character)
                         || character == '!' && !hasBufferedPrefix) return false;
                 hasBufferedPrefix = true;
+            }
+            // This run bypasses handleKeyStroke, so it must materialize a pending
+            // swallowed ENTER itself — text following an ENTER inside the same batch
+            // proves a paste flood, and the ENTER becomes a newline ahead of this text.
+            if (pendingBatchEnter) {
+                pendingBatchEnter = false;
+                bufferedPlainInput.append('\n');
             }
             if (bufferedPlainInput.isEmpty()) bufferedInputStart = captureDraftSnapshot();
             bufferedPlainInput.append(text);
@@ -1570,11 +1598,16 @@ public class InputPanel extends Panel {
             if (guiInputBatchDepth > 0 && plainInputCharsThisBatch > 0) {
                 // Unbracketed paste flood: this ENTER shares one PTY drain with
                 // pasted text (tmux paste-buffer turns \n into \r; CRLF
-                // clipboards send raw \r), so it is a paste newline, not a
-                // submit. Split the line like Shift/Alt+Enter; the batch end
-                // folds the accumulated text into a chip when it clears the
-                // paste threshold (same end state as bracketed paste).
-                return super.handleKeyStroke(new KeyStroke(KeyType.ENTER));
+                // clipboards send raw \r), so it may be a paste newline rather
+                // than a submit — official 197 discriminates by what the stdin
+                // chunk contains, not by which drain delivered it. Swallow it
+                // for now: further input in this batch materializes it as a
+                // line split (paste newline); the batch end submits it instead
+                // when nothing followed (a terminal one-line submit — the TTY
+                // driver coalesces those for fast typists and scripted drivers
+                // alike).
+                pendingBatchEnter = true;
+                return Result.HANDLED;
             }
 
             String text = getText();
@@ -2417,7 +2450,10 @@ public class InputPanel extends Panel {
 
     /** Starts one terminal-read input batch; called only by the GUI host. */
     public void beginGuiInputBatch() {
-        if (guiInputBatchDepth == 0) ((PromptTextBox) textBox).plainInputCharsThisBatch = 0;
+        if (guiInputBatchDepth == 0) {
+            ((PromptTextBox) textBox).plainInputCharsThisBatch = 0;
+            ((PromptTextBox) textBox).pendingBatchEnter = false;
+        }
         guiInputBatchDepth++;
     }
 
@@ -2468,6 +2504,19 @@ public class InputPanel extends Panel {
             // discovery remains asynchronous inside SuggestionController.
             boolean replaceVisibleSuggestions = suggestionPanel.isVisible();
             PromptTextBox prompt = (PromptTextBox) textBox;
+            if (prompt.pendingBatchEnter) {
+                // The batch ended right after the swallowed ENTER — nothing
+                // followed it, so it was a terminal one-line submit, not a
+                // paste newline. Commit the buffered text and perform the
+                // submit now.
+                prompt.pendingBatchEnter = false;
+                prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
+                prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
+                prompt.plainInputCharsThisBatch = 0;
+                prompt.tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
+                guiInputBatchDepth--;
+                return;
+            }
             prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
             prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
             if (prompt.plainInputCharsThisBatch > 0) {

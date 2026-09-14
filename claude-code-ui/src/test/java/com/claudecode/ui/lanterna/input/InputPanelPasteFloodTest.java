@@ -70,6 +70,11 @@ class InputPanelPasteFloodTest {
         type(panel, "gamma");
         panel.endGuiInputBatch();
 
+        // "alpha\nbeta\ngamma" (2 synthetic newlines, 17 chars) sits under the
+        // >6-lines-and->200-chars / >800-chars paste threshold, yet these
+        // ENTERs still split rather than submit: the batch carried more than
+        // the short one-line write of a plain submit, so it reads as a small
+        // multiline paste that stays an editable draft.
         assertEquals(List.of(), actions.submissions);
         assertEquals("alpha\nbeta\ngamma", panel.getText(),
             "flood ENTERs split lines; a small paste stays an editable draft");
@@ -77,10 +82,11 @@ class InputPanelPasteFloodTest {
     }
 
     @Test
-    void enterSharingOneDrainWithTypedTextDoesNotSubmit_butTheNextEnterDoes() {
-        // The deliberate trade-off of batch-granularity detection: a human
-        // Enter landing in the same PTY drain as typed text is treated as a
-        // newline. A second Enter in its own drain submits normally.
+    void enterSharingOneDrainWithTypedTextStillSubmits() {
+        // Official 197 discriminates pastes by content volume, not by drain
+        // batching: a one-line write plus its ENTER coalesced into one PTY
+        // drain (fast typists, scripted drivers) is a submit. Only a
+        // flood-sized batch downgrades its ENTERs to newlines.
         RecordingActions actions = new RecordingActions();
         InputPanel panel = new InputPanel();
         panel.setActions(actions);
@@ -90,14 +96,9 @@ class InputPanelPasteFloodTest {
         panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
         panel.endGuiInputBatch();
 
-        assertEquals(List.of(), actions.submissions,
-            "an ENTER sharing the drain with text is a newline, not a submit");
-        assertEquals("hi\n", panel.getText());
-
-        panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
-
         assertEquals(List.of("hi"), actions.submissions,
-            "a lone ENTER outside any text batch still submits");
+            "a short write sharing the drain with its ENTER still submits");
+        assertEquals("", panel.getText());
     }
 
     @Test
@@ -114,6 +115,31 @@ class InputPanelPasteFloodTest {
         panel.endGuiInputBatch();
 
         assertEquals(List.of("typed earlier"), actions.submissions);
+    }
+
+    @Test
+    void batchedTextRunsMaterializeSwallowedEntersAsNewlines() {
+        // The production PTY path feeds decoded text runs through
+        // handleGuiTextBatch (not per-keystroke typing), so a flood delivered
+        // as [run, ENTER, run, ENTER, ...] must still materialize each
+        // swallowed ENTER as a newline — otherwise the batch would end as a
+        // single-line concatenation and the paste fold would misjudge it.
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        panel.beginGuiInputBatch();
+        panel.handleGuiTextBatchForTest("alpha bravo charlie");
+        panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+        panel.handleGuiTextBatchForTest("delta echo foxtrot");
+        panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+        panel.handleGuiTextBatchForTest("golf hotel india");
+        panel.endGuiInputBatch();
+
+        assertEquals(List.of(), actions.submissions);
+        assertEquals("alpha bravo charlie\ndelta echo foxtrot\ngolf hotel india",
+            panel.getText(),
+            "each ENTER between batched text runs becomes a newline");
     }
 
     private static void type(InputPanel panel, String text) {
