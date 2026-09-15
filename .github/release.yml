@@ -1,7 +1,14 @@
-# release.yml 分类规则：--generate-notes 依据它把 v0.1.1..v0.2.0 这类
-# commit range 按 conventional commit 前缀分组列出。此前（无此文件）对
-# 单人仓库退化成只输出一行 Full Changelog 链接，40 个 commit 一条不列。
-# 仅影响 auto-generated release notes，不影响 tag / 工作流行为。
+# release.yml: configures `gh release create --generate-notes`. GitHub builds
+# those notes from merged pull requests only — the sections below match PR
+# *labels*, and commits pushed straight to a branch are never listed as
+# entries. This repo has no pull requests, so every category here is inert:
+# `releases/generate-notes` returns a bare Full Changelog line either way.
+# Kept for a future PR-based flow, and because the changelog.exclude block
+# still documents intent.
+#
+# (v0.2.0's categorized bullet list was not produced by this file — that
+# release was created with a 22-byte Full Changelog body and rewritten an
+# hour later by hand.)
 changelog:
   exclude:
     labels:
