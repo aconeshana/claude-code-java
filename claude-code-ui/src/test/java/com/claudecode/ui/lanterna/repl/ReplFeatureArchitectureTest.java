@@ -26,7 +26,8 @@ class ReplFeatureArchitectureTest {
                 "EffortSliderDialog", "ModelPickerDialog", "ThemePickerDialog",
                 "SettingsTabContainer", "PermissionsPanel", "AgentsPanel",
                 "AddDirDialog", "SandboxSettingsDialog", "ReplSettingsController",
-                "MemorySelectorDialog")) {
+                "MemorySelectorDialog", "BypassPermissionsModeDialog", "WorktreeExitDialog",
+                "MessageSelectorDialog")) {
             assertFalse(Strings.CS.contains(source, forbidden),
                 () -> "LanternaReplScreen must not own concrete feature view: " + forbidden);
         }

@@ -103,7 +103,6 @@ import com.claudecode.ui.lanterna.components.PokemonEvolutionOverlay;
 import com.claudecode.ui.lanterna.components.SpinnerComponent;
 import com.claudecode.ui.lanterna.dialog.BackgroundTasksDialog;
 import com.claudecode.ui.lanterna.dialog.BtwSideQuestionDialog;
-import com.claudecode.ui.lanterna.dialog.BypassPermissionsModeDialog;
 import com.claudecode.ui.lanterna.dialog.ClaudeMdExternalIncludesDialog;
 import com.claudecode.ui.lanterna.dialog.CollaborationPickerDialog;
 import com.claudecode.ui.lanterna.dialog.FeishuSetupDialog;
@@ -119,7 +118,6 @@ import com.claudecode.ui.lanterna.dialog.HooksConfigMenuDialog;
 import com.claudecode.ui.lanterna.dialog.LspRecommendationDialog;
 import com.claudecode.ui.lanterna.dialog.MCPSettingsDialog;
 import com.claudecode.ui.lanterna.dialog.ManagedSettingsSecurityDialog;
-import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.dialog.PluginHintMenu;
 import com.claudecode.ui.lanterna.dialog.PokemonHatchDialog;
@@ -130,7 +128,6 @@ import com.claudecode.ui.lanterna.dialog.TagRemovalDialog;
 import com.claudecode.ui.lanterna.dialog.ThinkingToggleDialog;
 import com.claudecode.ui.lanterna.dialog.TrustFolderDialog;
 import com.claudecode.ui.lanterna.dialog.WorkflowsDialog;
-import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
 import com.claudecode.ui.lanterna.features.agents.AgentsFeature;
 import com.claudecode.ui.lanterna.features.help.HelpCommandCatalog;
 import com.claudecode.ui.lanterna.features.help.HelpPanel;
@@ -317,8 +314,6 @@ public class LanternaReplScreen implements SlashHost {
      *  activated once at REPL startup (see {@code run}) when the cwd is untrusted. */
     private TrustFolderDialog trustDialog;
     private ManagedSettingsSecurityDialog managedSettingsDialog;
-    /** Final startup safety gate for dangerous permission bypass. */
-    private BypassPermissionsModeDialog bypassPermissionsDialog;
     /** Second startup gate — warns when CLAUDE.md @-imports files outside the cwd.
      *  Collapses to (0,0) when idle; activated at REPL startup (see {@code run})
      *  after the trust dialog resolves, only when external imports are detected
@@ -352,12 +347,9 @@ public class LanternaReplScreen implements SlashHost {
      */
     private final ReplScene scene = new ReplScene();
 
-    /** Worktree exit confirmation dialog — inline, zero height until shown. */
-    private WorktreeExitDialog worktreeExitDialog;
     private TagRemovalDialog tagRemovalDialog;
     private PokemonHatchDialog pokemonHatchDialog;
     private MemoryFeature memoryFeature;
-    private MessageSelectorDialog messageSelectorDialog;
     private DoctorDialog doctorDialog;
     private SkillsDialog skillsDialog;
     /** Meta+T thinking picker and mid-conversation confirmation. */
@@ -2175,8 +2167,6 @@ public class LanternaReplScreen implements SlashHost {
         trustDialog.setKeybindingsStore(keybindingsStore);
         managedSettingsDialog = new ManagedSettingsSecurityDialog();  // inline, zero height until shown
         managedSettingsDialog.setKeybindingsStore(keybindingsStore);
-        bypassPermissionsDialog = new BypassPermissionsModeDialog(terminalRows);
-        bypassPermissionsDialog.setKeybindingsStore(keybindingsStore);
         externalIncludesDialog = new ClaudeMdExternalIncludesDialog(); // inline, zero height until shown
         externalIncludesDialog.setKeybindingsStore(keybindingsStore);
         startupGateController = new StartupGateController(
@@ -2205,17 +2195,16 @@ public class LanternaReplScreen implements SlashHost {
             null,
             message -> log.warn(
                 "[LANTERNA] Failed to compute external CLAUDE.md includes: {}", message));
-        bypassPermissionsStartupGate = new BypassPermissionsStartupGate(
+        bypassPermissionsStartupGate = BypassPermissionsStartupGate.standard(
             () -> allowDangerouslySkipPermissions
                 || (permissionGate != null
                     && permissionGate.currentMode() == PermissionMode.BYPASS_PERMISSIONS),
             UiSettings::readSkipDangerousModePermissionPrompt,
             UiSettings::persistDangerousModePermissionPrompt,
-            bypassPermissionsDialog::prompt);
+            terminalRows,
+            keybindingsStore);
         mcpDialog        = new MCPSettingsDialog();  // inline, zero height until shown
         mcpDialog.setKeybindingsStore(keybindingsStore);
-        worktreeExitDialog = new WorktreeExitDialog(); // inline, zero height until shown
-        worktreeExitDialog.setKeybindingsStore(keybindingsStore);
         interruptActions = new ReplInterruptActions(
             () -> bashModeExecutor,
             () -> turnEngine != null && turnEngine.isInFlight(),
@@ -2236,14 +2225,13 @@ public class LanternaReplScreen implements SlashHost {
             () -> lastSubmittedInputWasInteractiveStartupPrompt);
         exitController = ReplExitController.standard(
             shutdown,
-            worktreeExitDialog,
             interruptActions,
             message -> appendLine("  " + message, LanternaTheme.welcomeDim()),
             this::stop,
             new ReplExitController.JobControlActions() {
                 @Override public void beforeSuspend() { suspendForJobControl(); }
                 @Override public void afterResume() { resumeAfterJobControl(); }
-            }, interactiveSessions, featureRuntime.currentWorktree());
+            }, interactiveSessions, featureRuntime.currentWorktree(), keybindingsStore);
         collaborationPickerDialog.setExitGestureHandler(key -> {
             if (key == 'c') handleCtrlC();
             else if (key == 'd') handleCtrlD();
@@ -2256,15 +2244,6 @@ public class LanternaReplScreen implements SlashHost {
         tagRemovalDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
         pokemonHatchDialog = new PokemonHatchDialog(); // inline, zero height until shown
         pokemonHatchDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        messageSelectorDialog = new MessageSelectorDialog(); // inline, zero height until shown
-        messageSelectorDialog.setKeybindingsStore(keybindingsStore);
-        messageSelectorDialog.setTerminalRowsSupplier(
-            () -> screen != null ? screen.getTerminalSize().getRows() : 40);
-        messageSelectorDialog.setTerminalColumnsSupplier(
-            () -> screen != null ? screen.getTerminalSize().getColumns() : 80);
-        messageSelectorDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        messageSelectorDialog.setExitAction(
-            () -> exitController.requestShutdown("prompt_input_exit", 0));
         diffDialog.setKeybindingsStore(keybindingsStore);
         doctorDialog = new DoctorDialog(doctor);
         doctorDialog.setKeybindingsStore(keybindingsStore);
@@ -2314,7 +2293,7 @@ public class LanternaReplScreen implements SlashHost {
         sessionController = new SessionController(
             gui, screen, queryEngine, commandContext, messagePanel,
             messageHistory, collapser, inputPanel,
-            messageSelectorDialog, () -> permissionGate, sessionLifecycle,
+            () -> permissionGate, sessionLifecycle,
             conversationReset,
             () -> {
                 if (sessionTopicTitleCoordinator != null) {
@@ -2331,7 +2310,8 @@ public class LanternaReplScreen implements SlashHost {
             }, sessionId -> {
                 if (interactionCoordinator != null) interactionCoordinator.cancelSession(sessionId);
             }, this::renderFreshConversationWelcome, this::publishActiveSession,
-            interactiveSessions, featureRuntime.invokedSkills());
+            interactiveSessions, featureRuntime.invokedSkills(),
+            () -> exitController.requestShutdown("prompt_input_exit", 0));
         sessionController.setKeybindingsStore(keybindingsStore);
         sessionController.setModelChanged(this::setModel);
         transcriptController = new TranscriptController(
@@ -2540,11 +2520,11 @@ public class LanternaReplScreen implements SlashHost {
         scene.register(projectPanel);
         scene.register(pluginSettingsPanel);
         scene.register(mcpDialog);
-        scene.register(worktreeExitDialog);
+        scene.register(exitController.overlay());
         scene.register(tagRemovalDialog);
         scene.register(pokemonHatchDialog);
         scene.register(memoryFeature.overlay());
-        scene.register(messageSelectorDialog);
+        scene.register(sessionController.overlay());
         scene.register(doctorDialog);
         scene.register(skillsDialog);
         scene.register(tasksDialog);
@@ -2552,7 +2532,7 @@ public class LanternaReplScreen implements SlashHost {
         scene.register(statsDialog);
         scene.register(trustDialog);
         scene.register(managedSettingsDialog);
-        scene.register(bypassPermissionsDialog);
+        scene.register(bypassPermissionsStartupGate.overlay());
         scene.register(externalIncludesDialog);
 
         // ── Root: SmartLayout — messagePanel sized by content, input pinned right below ──
@@ -2568,7 +2548,7 @@ public class LanternaReplScreen implements SlashHost {
             toolApprovalInteraction.refusalView(),
             trustDialog,
             managedSettingsDialog,
-            bypassPermissionsDialog,
+            bypassPermissionsStartupGate.view(),
             sandboxFeature.view(),
             externalIncludesDialog,
             lspRecommendationDialog,
@@ -2593,11 +2573,11 @@ public class LanternaReplScreen implements SlashHost {
             permissionsFeature.rulesView(),
             agentsFeature.view(),
             mcpDialog,
-            worktreeExitDialog,
+            exitController.view(),
             tagRemovalDialog,
             pokemonHatchDialog,
             memoryFeature.view(),
-            messageSelectorDialog,
+            sessionController.view(),
             doctorDialog,
             skillsDialog,
             tasksDialog,

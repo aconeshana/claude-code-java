@@ -1,8 +1,11 @@
 package com.claudecode.ui.lanterna.repl;
 
+import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.shutdown.ShutdownPort;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.googlecode.lanterna.gui2.Component;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -44,6 +47,7 @@ final class ReplExitController {
     private final ShutdownPort shutdown;
     private final InterruptActions interruptActions;
     private final Supplier<WorktreeSession> currentWorktree;
+    private final WorktreeExitDialog dialog;
     private final BiConsumer<WorktreeSession, Consumer<WorktreeExitDialog.Result>> worktreeExit;
     private final Consumer<WorktreeSession> persistWorktreeExit;
     private final Consumer<String> transcript;
@@ -56,19 +60,26 @@ final class ReplExitController {
     private final AtomicLong lastCtrlD = new AtomicLong();
     private volatile boolean jobControlSuspended;
 
+    /**
+     * Builds the controller with a self-constructed {@link WorktreeExitDialog}, so callers no
+     * longer hold the dialog field directly. Extracted from {@code LanternaReplScreen}.
+     */
     static ReplExitController standard(ShutdownPort shutdown,
-                                       WorktreeExitDialog worktreeExitDialog,
                                        InterruptActions interruptActions,
                                        Consumer<String> transcript,
                                        Runnable stop,
                                        JobControlActions jobControlActions,
                                        InteractiveSessionPort sessions,
-                                       Supplier<WorktreeSession> currentWorktree) {
+                                       Supplier<WorktreeSession> currentWorktree,
+                                       UserKeybindingsStore keybindingsStore) {
+        WorktreeExitDialog dialog = new WorktreeExitDialog(); // inline, zero height until shown
+        dialog.setKeybindingsStore(keybindingsStore);
         return new ReplExitController(
             shutdown,
             interruptActions,
             currentWorktree,
-            worktreeExitDialog::show,
+            dialog,
+            dialog::show,
             sessions == null ? _ -> {} : sessions::persistWorktreeExit,
             transcript,
             stop,
@@ -76,6 +87,14 @@ final class ReplExitController {
             () -> JvmSignals.raise("STOP"),
             code -> Runtime.getRuntime().halt(code),
             System::currentTimeMillis);
+    }
+
+    InlineOverlay overlay() {
+        return dialog;
+    }
+
+    Component view() {
+        return dialog;
     }
 
     ReplExitController(ShutdownPort shutdown,
@@ -87,7 +106,7 @@ final class ReplExitController {
                        Runnable stop,
                        IntConsumer halt,
                        LongSupplier clock) {
-        this(shutdown, interruptActions, currentWorktree, worktreeExit,
+        this(shutdown, interruptActions, currentWorktree, null, worktreeExit,
             persistWorktreeExit, transcript, stop, null, () -> {}, halt, clock);
     }
 
@@ -102,9 +121,26 @@ final class ReplExitController {
                        Runnable suspendProcess,
                        IntConsumer halt,
                        LongSupplier clock) {
+        this(shutdown, interruptActions, currentWorktree, null, worktreeExit,
+            persistWorktreeExit, transcript, stop, jobControlActions, suspendProcess, halt, clock);
+    }
+
+    private ReplExitController(ShutdownPort shutdown,
+                       InterruptActions interruptActions,
+                       Supplier<WorktreeSession> currentWorktree,
+                       WorktreeExitDialog dialog,
+                       BiConsumer<WorktreeSession, Consumer<WorktreeExitDialog.Result>> worktreeExit,
+                       Consumer<WorktreeSession> persistWorktreeExit,
+                       Consumer<String> transcript,
+                       Runnable stop,
+                       JobControlActions jobControlActions,
+                       Runnable suspendProcess,
+                       IntConsumer halt,
+                       LongSupplier clock) {
         this.shutdown = shutdown != null ? shutdown : ShutdownPort.noop();
         this.interruptActions = interruptActions;
         this.currentWorktree = currentWorktree != null ? currentWorktree : () -> null;
+        this.dialog = dialog;
         this.worktreeExit = worktreeExit;
         this.persistWorktreeExit = persistWorktreeExit != null ? persistWorktreeExit : _ -> {};
         this.transcript = transcript != null ? transcript : _ -> {};

@@ -71,16 +71,19 @@ import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessageCollapser;
 import com.claudecode.ui.lanterna.transcript.MessageHistory;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
+import com.googlecode.lanterna.gui2.Component;
 
 /**
  * Owns the conversation / session lifecycle for the REPL: resuming a past session into the view,
  * replaying its messages, rewinding the current conversation to a picked message, and
- * partial-compact summarization.
+ * partial-compact summarization. Owns the {@link MessageSelectorDialog} instance and its scene
+ * registration surface. Extracted from {@code LanternaReplScreen}.
  */
 public final class SessionController implements ReplCommandUiBridge.Session {
 
@@ -137,7 +140,6 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       MessageHistory messageHistory,
                       MessageCollapser collapser,
                       InputPanel inputPanel,
-                      MessageSelectorDialog messageSelectorDialog,
                       Supplier<PermissionGate> permissionGate,
                       SessionLifecycle sessionLifecycle,
                       ConversationResetPort conversationReset,
@@ -145,9 +147,9 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       Runnable markExistingSession,
                       Consumer<String> terminalTitle) {
         this(gui, screen, queryEngine, commandContext, messagePanel, messageHistory,
-            collapser, inputPanel, messageSelectorDialog, permissionGate,
+            collapser, inputPanel, permissionGate,
             sessionLifecycle, conversationReset, resetTopicTitle,
-            markExistingSession, terminalTitle, null, null, null, null, null);
+            markExistingSession, terminalTitle, null, null, null, null, null, null);
     }
 
     SessionController(WindowBasedTextGUI gui,
@@ -158,7 +160,6 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       MessageHistory messageHistory,
                       MessageCollapser collapser,
                       InputPanel inputPanel,
-                      MessageSelectorDialog messageSelectorDialog,
                       Supplier<PermissionGate> permissionGate,
                       SessionLifecycle sessionLifecycle,
                       ConversationResetPort conversationReset,
@@ -167,9 +168,9 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       Consumer<String> terminalTitle,
                       Runnable sessionActivated) {
         this(gui, screen, queryEngine, commandContext, messagePanel, messageHistory,
-            collapser, inputPanel, messageSelectorDialog, permissionGate,
+            collapser, inputPanel, permissionGate,
             sessionLifecycle, conversationReset, resetTopicTitle,
-            markExistingSession, terminalTitle, null, null, sessionActivated, null, null);
+            markExistingSession, terminalTitle, null, null, sessionActivated, null, null, null);
     }
 
     SessionController(WindowBasedTextGUI gui,
@@ -180,7 +181,6 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       MessageHistory messageHistory,
                       MessageCollapser collapser,
                       InputPanel inputPanel,
-                      MessageSelectorDialog messageSelectorDialog,
                       Supplier<PermissionGate> permissionGate,
                       SessionLifecycle sessionLifecycle,
                       ConversationResetPort conversationReset,
@@ -190,10 +190,10 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       Consumer<String> cancelSessionInteractions,
                       Runnable sessionActivated) {
         this(gui, screen, queryEngine, commandContext, messagePanel, messageHistory,
-            collapser, inputPanel, messageSelectorDialog, permissionGate,
+            collapser, inputPanel, permissionGate,
             sessionLifecycle, conversationReset, resetTopicTitle,
             markExistingSession, terminalTitle, cancelSessionInteractions,
-            null, sessionActivated, null, null);
+            null, sessionActivated, null, null, null);
     }
 
     SessionController(WindowBasedTextGUI gui,
@@ -204,7 +204,6 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       MessageHistory messageHistory,
                       MessageCollapser collapser,
                       InputPanel inputPanel,
-                      MessageSelectorDialog messageSelectorDialog,
                       Supplier<PermissionGate> permissionGate,
                       SessionLifecycle sessionLifecycle,
                       ConversationResetPort conversationReset,
@@ -215,7 +214,8 @@ public final class SessionController implements ReplCommandUiBridge.Session {
                       Runnable renderFreshConversationWelcome,
                       Runnable sessionActivated,
                       InteractiveSessionPort sessions,
-                      InvokedSkillRegistry invokedSkills) {
+                      InvokedSkillRegistry invokedSkills,
+                      Runnable messageSelectorExitAction) {
         this.gui = gui;
         this.screen = screen;
         this.queryEngine = queryEngine;
@@ -224,7 +224,7 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         this.messageHistory = messageHistory;
         this.collapser = collapser;
         this.inputPanel = inputPanel;
-        this.messageSelectorDialog = messageSelectorDialog;
+        this.messageSelectorDialog = new MessageSelectorDialog(); // inline, zero height until shown
         this.permissionGate = permissionGate;
         this.sessionLifecycle = sessionLifecycle;
         this.sessions = sessions;
@@ -241,9 +241,28 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         this.sessionActivated = sessionActivated != null ? sessionActivated : () -> {};
         this.initialModelPreference = queryEngine != null
             ? queryEngine.configuration().getConfig().modelPreference() : null;
-        if (messageSelectorDialog != null && gui != null) {
+        this.messageSelectorDialog.setTerminalRowsSupplier(
+            () -> screen != null ? screen.getTerminalSize().getRows() : 40);
+        this.messageSelectorDialog.setTerminalColumnsSupplier(
+            () -> screen != null ? screen.getTerminalSize().getColumns() : 80);
+        this.messageSelectorDialog.setExitAction(
+            messageSelectorExitAction != null ? messageSelectorExitAction : () -> {});
+        if (gui != null) {
             messageSelectorDialog.setGuiInvoker(this::laterOnGuiThread);
         }
+    }
+
+    InlineOverlay overlay() {
+        return messageSelectorDialog;
+    }
+
+    Component view() {
+        return messageSelectorDialog;
+    }
+
+    /** Test-only access to the internally-constructed dialog instance. */
+    MessageSelectorDialog messageSelectorDialog() {
+        return messageSelectorDialog;
     }
 
     static void resetFreshConversationSurface(
@@ -266,6 +285,7 @@ public final class SessionController implements ReplCommandUiBridge.Session {
 
     void setKeybindingsStore(UserKeybindingsStore store) {
         this.keybindingsStore = store;
+        messageSelectorDialog.setKeybindingsStore(store);
     }
 
     void setModelChanged(Consumer<String> callback) {

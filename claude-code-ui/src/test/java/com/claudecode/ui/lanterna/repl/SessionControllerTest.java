@@ -382,12 +382,12 @@ class SessionControllerTest {
             .llmClient(NOOP_CLIENT)
             .initialMessages(List.of(selected, between, selected))
             .build());
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(null, false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
@@ -566,12 +566,12 @@ class SessionControllerTest {
             }
         };
         MessagePanel panel = new MessagePanel();
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         MessageCollapser collapser = new MessageCollapser(
             new LanternaMessageDispatcher(), false);
         SessionController controller = new SessionController(
             null, null, engine, null, panel, new MessageHistory(),
-            collapser, input, dialog, null, null, null, null, null, null);
+            collapser, input, null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
@@ -693,7 +693,7 @@ class SessionControllerTest {
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false), new InputPanel(),
-            new MessageSelectorDialog(), null, null, null, null, null, null);
+            null, null, null, null, null, null);
 
         CompletionStage<?> completion = controller.runSummarize(
             selected,
@@ -756,12 +756,11 @@ class SessionControllerTest {
                 .build(),
             compactor);
         MessagePanel panel = new MessagePanel();
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, panel, new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
 
         AtomicBoolean success = new AtomicBoolean(false);
         AtomicReference<String> failure = new AtomicReference<>();
@@ -812,12 +811,12 @@ class SessionControllerTest {
                 .workingDirectory(tempDir.toString())
                 .build(),
             compactor);
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
@@ -858,7 +857,7 @@ class SessionControllerTest {
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), new MessageSelectorDialog(), null,
+            }, new InputPanel(), null,
             null, null, null, null, null);
         AtomicBoolean success = new AtomicBoolean(false);
         AtomicReference<String> failure = new AtomicReference<>();
@@ -893,12 +892,12 @@ class SessionControllerTest {
                 .workingDirectory(tempDir.toString())
                 .build(),
             compactor);
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
         AtomicReference<Supplier<? extends CompletionStage<?>>> deferred = new AtomicReference<>();
         controller.setAsyncRewindDeferrer(deferred::set);
 
@@ -954,12 +953,12 @@ class SessionControllerTest {
                 .workingDirectory(tempDir.toString())
                 .build(),
             compactor);
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
@@ -1003,7 +1002,7 @@ class SessionControllerTest {
         SessionController controller = new SessionController(
             null, null, engine, null, panel, new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false), new InputPanel(),
-            new MessageSelectorDialog(), null, null, null, null, null, null);
+            null, null, null, null, null, null);
 
         AtomicReference<String> failure = new AtomicReference<>();
         CompletionStage<?> completion = controller.runSummarize(
@@ -1029,7 +1028,7 @@ class SessionControllerTest {
         SessionController controller = new SessionController(
             null, null, engine, null, panel, new MessageHistory(),
             new MessageCollapser(new LanternaMessageDispatcher(), false), new InputPanel(),
-            new MessageSelectorDialog(), null, null, null, null, null, null);
+            null, null, null, null, null, null);
 
         AtomicReference<String> failure = new AtomicReference<>();
         CompletionStage<?> completion = controller.runSummarize(
@@ -1057,12 +1056,12 @@ class SessionControllerTest {
                 return List.of(old, boundary, current);
             }
         };
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(null, false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
 
@@ -1101,7 +1100,7 @@ class SessionControllerTest {
         SessionController controller = new SessionController(
             null, null, engine, null, panel, history,
             new MessageCollapser(new LanternaMessageDispatcher(), false), new InputPanel(),
-            new MessageSelectorDialog(), null, null, null, null, null, null);
+            null, null, null, null, null, null);
         controller.replayLoadedMessages(List.of(first, selected, later));
 
         invokeSummarize(controller, selected,
@@ -1140,7 +1139,7 @@ class SessionControllerTest {
         SessionController controller = new SessionController(
             null, null, engine, null, panel, history,
             new MessageCollapser(new LanternaMessageDispatcher(), false), new InputPanel(),
-            new MessageSelectorDialog(), null, null, null, null, null, null);
+            null, null, null, null, null, null);
         controller.replayLoadedMessages(List.of(first, selected, later));
 
         invokeSummarize(controller, selected,
@@ -1171,13 +1170,13 @@ class SessionControllerTest {
                 throw new IllegalStateException("boom");
             }
         };
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         MessageCollapser collapser = new MessageCollapser(null, false) {
             @Override public void resetTurn() {}
         };
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
-            collapser, failingInput, dialog, null, null, null, null, null, null);
+            collapser, failingInput, null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
@@ -1200,12 +1199,12 @@ class SessionControllerTest {
                 .fileHistoryEnabled(true)
                 .workingDirectory(tempDir.toString())
                 .build());
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
             new MessageCollapser(null, false) {
                 @Override public void resetTurn() {}
-            }, new InputPanel(), dialog, null, null, null, null, null, null);
+            }, new InputPanel(), null, null, null, null, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
         AtomicBoolean synchronousPathUsed = new AtomicBoolean(false);
         AtomicReference<Supplier<? extends CompletionStage<?>>> deferred = new AtomicReference<>();
         controller.setRewindDeferrer(_ -> synchronousPathUsed.set(true));
@@ -1241,14 +1240,14 @@ class SessionControllerTest {
                 return tempDir.resolve(sessionId + ".jsonl");
             }
         };
-        MessageSelectorDialog dialog = new MessageSelectorDialog();
         MessageCollapser collapser = new MessageCollapser(null, false) {
             @Override public void resetTurn() {}
         };
         SessionController controller = new SessionController(
             null, null, engine, null, new MessagePanel(), new MessageHistory(),
-            collapser, null, dialog, null, null, null, null, null, null,
-            null, null, null, sessions, null);
+            collapser, null, null, null, null, null, null, null,
+            null, null, null, sessions, null, null);
+        MessageSelectorDialog dialog = controller.messageSelectorDialog();
 
         controller.showMessageSelector();
         dialog.handleKey(new KeyStroke(
