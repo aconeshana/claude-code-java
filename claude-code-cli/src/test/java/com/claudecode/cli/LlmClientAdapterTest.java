@@ -299,6 +299,64 @@ class LlmClientAdapterTest {
     }
 
     @Test
+    void genericServerErrorAfterVisibleOutputFinalizesInsteadOfSyncFallback() {
+        // Mirrors 236: once qo (visible output) is true, even a genuine mid-stream
+        // server_error (not just watchdog/stale-connection) finalizes rather than
+        // falling back to a non-streaming resend that would duplicate the visible text.
+        AtomicBoolean fallbackCalled = new AtomicBoolean();
+        LlmClient client = new LlmClient() {
+            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request) {
+                return List.<StreamEvent>of(
+                    new StreamEvent.MessageStart(ApiMessage.builder().id("msg-partial").model("test-model").build()),
+                    new StreamEvent.ContentBlockStart(0, new TextBlock("")),
+                    new StreamEvent.ContentBlockDelta(0, new Delta.TextDelta("partial")),
+                    new StreamEvent.Error(new ApiException("mid-stream error event", 0))).iterator();
+            }
+            @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                fallbackCalled.set(true);
+                return ApiMessage.stub("test-model", "duplicate");
+            }
+            @Override public String getModel() { return "test-model"; }
+        };
+
+        var request = new StreamingClient.StreamRequest(
+            "test-model", 100, "system", List.of(), true);
+        List<StreamingEvent> events = new ArrayList<>();
+        new LlmClientAdapter(client).createStream(request).forEachRemaining(events::add);
+
+        assertFalse(fallbackCalled.get());
+        assertTrue(events.stream().anyMatch(StreamingEvent.MessageStopEvent.class::isInstance));
+        assertTrue(events.stream().anyMatch(event -> event instanceof StreamingEvent.SystemApiErrorEvent apiError
+            && Strings.CS.contains(apiError.content(), "Server error mid-response")));
+    }
+
+    @Test
+    void watchdogAfterVisibleOutputUsesTheStoppedArrivingText() {
+        LlmClient client = new LlmClient() {
+            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request) {
+                return List.<StreamEvent>of(
+                    new StreamEvent.MessageStart(ApiMessage.builder().id("msg-partial").model("test-model").build()),
+                    new StreamEvent.ContentBlockStart(0, new TextBlock("")),
+                    new StreamEvent.ContentBlockDelta(0, new Delta.TextDelta("partial")),
+                    new StreamEvent.Error(new ApiStreamException("idle", 0,
+                        ApiStreamException.Reason.WATCHDOG))).iterator();
+            }
+            @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                return ApiMessage.stub("test-model", "duplicate");
+            }
+            @Override public String getModel() { return "test-model"; }
+        };
+
+        var request = new StreamingClient.StreamRequest(
+            "test-model", 100, "system", List.of(), true);
+        List<StreamingEvent> events = new ArrayList<>();
+        new LlmClientAdapter(client).createStream(request).forEachRemaining(events::add);
+
+        assertTrue(events.stream().anyMatch(event -> event instanceof StreamingEvent.SystemApiErrorEvent apiError
+            && Strings.CS.contains(apiError.content(), "The response stopped arriving")));
+    }
+
+    @Test
     void nonStreamingFailurePropagatesInsteadOfRestoringTheOriginalStreamError() {
         ApiException fallbackFailure = new ApiException("sync failed", 503);
         LlmClient client = new LlmClient() {

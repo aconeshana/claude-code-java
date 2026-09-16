@@ -129,7 +129,7 @@ class ResumeReplayRenderingTest {
         MessageCollapser collapser = new MessageCollapser(dispatcher, false);
         return new SessionController(
             null, null, null, null, panel,
-            new MessageHistory(), collapser, null, null, () -> null, null,
+            new MessageHistory(), collapser, null, () -> null, null,
             null, null, null, null);
     }
 
@@ -214,8 +214,8 @@ class ResumeReplayRenderingTest {
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         SessionController controller = new SessionController(
             null, null, null, null, panel, history,
-            new MessageCollapser(dispatcher, false), null, null, () -> null, null,
-            null, null, null, null, null, null, null, sessions, null);
+            new MessageCollapser(dispatcher, false), null, () -> null,
+            null, null, null, null, null, null, null, null, sessions, null, null);
 
         controller.replayLoadedMessages(List.of(use, result), "/project", "session-1");
 

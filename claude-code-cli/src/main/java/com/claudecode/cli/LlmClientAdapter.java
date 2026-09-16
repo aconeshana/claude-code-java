@@ -57,8 +57,8 @@ public class LlmClientAdapter implements StreamingClient {
     // anything not a subagent land under this tracked prefix).
     private static final String PROMPT_CACHE_SOURCE = "repl_main_thread";
 
-// Wall-clock time (ms) when the most recent assistant turn finished, keyed by cache-detection
-// source.
+    // Wall-clock time (ms) when the most recent assistant turn finished, keyed by cache-detection
+    // source.
     static final Map<String, Long> lastAssistantTurnMsBySource = new ConcurrentHashMap<>();
 
     /** Opt-out env var for first-party-only experimental beta headers (context management). */
@@ -210,17 +210,11 @@ public class LlmClientAdapter implements StreamingClient {
             .speed(request.fastMode() ? "fast" : null)
             .thinking(thinkingSelection.config());
 
-
-
-
-
-// feature: shouldIncludeFirstPartyOnlyBetas  suppresses
+        // feature: shouldIncludeFirstPartyOnlyBetas  suppresses
 
         // context_management body field with it — when the user sets
         // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS. Gating the attachment here (not
         // just the header push in AnthropicSdkClient) suppresses both body + header
-
-
 
         // a one-way latch (ThinkingClearLatch, core module — see its Javadoc for
         // why it isn't a field on this class) that flips to "keep only the last
@@ -231,8 +225,7 @@ public class LlmClientAdapter implements StreamingClient {
         // input tokens off every request from then on. Reset on /clear
         // (SessionController.clearConversation) and after a completed compaction
 
-
-// classifiers/compaction); every LlmClientAdapter.createStream call is
+        // classifiers/compaction); every LlmClientAdapter.createStream call is
         // the main agentic loop in Java's architecture (compaction goes through
         // LlmCompactSummarizer directly, not this adapter), so that condition is
         // always true here too.
@@ -250,9 +243,6 @@ public class LlmClientAdapter implements StreamingClient {
                     ? CreateMessageRequest.ContextEditStrategy.clearThinkingKeepLastTurn()
                     : CreateMessageRequest.ContextEditStrategy.clearThinkingKeepAll())));
         }
-
-
-
 
         if (StringUtils.isNotBlank(request.effort()) || request.taskBudget() != null) {
             requestBuilder.outputConfig(new CreateMessageRequest.OutputConfig(
@@ -291,7 +281,6 @@ public class LlmClientAdapter implements StreamingClient {
             requestBuilder.tools(apiTools);
         }
 
-
         JsonNode metadata = requestMetadata(request.sessionId());
         if (metadata != null) requestBuilder.metadata(metadata);
 
@@ -305,7 +294,7 @@ public class LlmClientAdapter implements StreamingClient {
 
         // DUMP_PROMPTS=1: dump the exact wire body (same serialization the
         // Anthropic client sends, cache_control and all) keyed by session id.
-// The isEnabled gate keeps the extra serialization off the normal path.
+        // The isEnabled gate keeps the extra serialization off the normal path.
         if (ApiRequestDumper.instance().isEnabled()
                 && request.sessionId() != null) {
             try {
@@ -317,8 +306,8 @@ public class LlmClientAdapter implements StreamingClient {
             }
         }
 
-// Idle gap since the previous assistant turn finished — drives the cache-break detection
-// TTL-expiry branches.
+        // Idle gap since the previous assistant turn finished — drives the cache-break detection
+        // TTL-expiry branches.
         Long timeSinceLastAssistantMs = lastAssistantTurnMsBySource.containsKey(PROMPT_CACHE_SOURCE)
             ? System.currentTimeMillis() - lastAssistantTurnMsBySource.get(PROMPT_CACHE_SOURCE)
             : null;
@@ -398,8 +387,8 @@ public class LlmClientAdapter implements StreamingClient {
         try {
             var mapper = JsonUtils.getMapper();
             var userId = mapper.createObjectNode();
-// Spread user-supplied extra metadata first so the three identity keys below always
-// override it.
+            // Spread user-supplied extra metadata first so the three identity keys below always
+            // override it.
             ObjectNode extra = ExtraMetadata.resolve();
             if (extra != null) userId.setAll(extra);
             userId.put("device_id", deviceId());
@@ -662,7 +651,7 @@ public class LlmClientAdapter implements StreamingClient {
                         done = true;
                         throw new AbortException("Request aborted");
                     }
-                    if (shouldFinalizePartial(apiEx)) {
+                    if (shouldFinalizePartial()) {
                         finalizePartialResponse(apiEx);
                         continue;
                     }
@@ -751,12 +740,11 @@ public class LlmClientAdapter implements StreamingClient {
             }
         }
 
-        private boolean shouldFinalizePartial(ApiException failure) {
-            if (!visibleOutputCompleted || !(failure instanceof ApiStreamException streamFailure)) {
-                return false;
-            }
-            return streamFailure.reason() == ApiStreamException.Reason.WATCHDOG
-                || streamFailure.reason() == ApiStreamException.Reason.STALE_CONNECTION;
+        private boolean shouldFinalizePartial() {
+            // Mirrors 236: once qo (visible output) is true, ANY subsequent stream
+            // failure — watchdog, stale connection, or a genuine server_error event —
+            // finalizes the partial response instead of retrying or switching models.
+            return visibleOutputCompleted;
         }
 
         private void switchToStandardSpeed() {
@@ -791,14 +779,29 @@ public class LlmClientAdapter implements StreamingClient {
             pendingCoreEvents.addLast(new StreamingEvent.MessageDeltaEvent(
                 stopReason, null, Usage.EMPTY, null));
             pendingCoreEvents.addLast(new StreamingEvent.MessageStopEvent());
-            String content = failure instanceof ApiStreamException streamFailure
-                    && streamFailure.reason() == ApiStreamException.Reason.WATCHDOG
-                ? "API Error: Response stalled mid-stream. The response above may be incomplete."
-                : "API Error: Connection closed mid-response. The response above may be incomplete.";
             pendingCoreEvents.addLast(new StreamingEvent.SystemApiErrorEvent(
-                content, null, "server_error"));
+                "API Error: " + partialFinalizeCauseText(failure), null, "server_error"));
             fallbackAttempted = true;
             fallbackEvents = Collections.emptyIterator();
+        }
+
+        /**
+         * Mirrors 236's tengu_streaming_partial_finalized mid-response text, which
+         * distinguishes watchdog / server_error / connection_lost (236 also has a
+         * "computer went to sleep" variant keyed off a StreamSuspended connection-error
+         * code; the JVM has no equivalent OS-sleep signal, so that variant is unreachable
+         * here and falls back to connection_lost).
+         */
+        private static String partialFinalizeCauseText(ApiException failure) {
+            if (failure instanceof ApiStreamException streamFailure) {
+                return switch (streamFailure.reason()) {
+                    case WATCHDOG ->
+                        "The response stopped arriving. The response above may be incomplete.";
+                    case STALE_CONNECTION, ABORTED, OTHER ->
+                        "Connection lost mid-response. The response above may be incomplete.";
+                };
+            }
+            return "Server error mid-response. The response above may be incomplete.";
         }
 
         /** Convert one normal Messages response into the stream event contract consumed by QueryLoop. */
