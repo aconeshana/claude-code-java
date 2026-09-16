@@ -127,6 +127,12 @@ export const useContextTimeline = create<ContextTimelineStore>((set, get) => {
           return
         }
         const head = timelineOf(raw)
+        // A revision that went backwards is a fresh ledger (the session was
+        // closed and re-opened): its seqs restart, so cached node text keyed
+        // by seq would lie. Drop it.
+        const previous = get().sessions[sessionId]?.head?.detailRev
+        const next = head?.detailRev
+        if (next !== undefined && previous !== undefined && next < previous) forgetContextContent(sessionId)
         patch(sessionId, { head, cold: false, loading: false, failed: head === null })
       } catch {
         patch(sessionId, { loading: false, failed: true })
@@ -174,7 +180,9 @@ export const detailFetcher: DetailFetcher = async (sessionId: string): Promise<C
 // ---- on-demand content -----------------------------------------------------
 
 const contentCache = new Map<string, Map<number, Promise<ConversationNodeLike | null>>>()
-const headerCache = new Map<string, HeaderEpochContent | null>()
+const headerCache = new Map<string, { content: HeaderEpochContent | null; at: number }>()
+/** Header epoch re-read cadence: matches the gateway ledger's own header TTL. */
+const HEADER_TTL_MS = 15_000
 
 /**
  * A node's stored text as the `ConversationNodeLike` the vendored browser
@@ -233,13 +241,14 @@ export function nodeOfContent(raw: Record<string, unknown> | null, seq: number):
  */
 export function makeHeaderFetcher(sessionId: string): HeaderFetcher {
   return async (): Promise<HeaderEpochContent | null> => {
-    if (headerCache.has(sessionId)) return headerCache.get(sessionId) ?? null
+    const hit = headerCache.get(sessionId)
+    if (hit !== undefined && Date.now() - hit.at < HEADER_TTL_MS) return hit.content
     const [system, tools] = await Promise.all([
       fetchContextContent(sessionId, { kind: 'system' }),
       fetchContextContent(sessionId, { kind: 'tools' }),
     ])
     const content = headerContentOf(system, tools)
-    headerCache.set(sessionId, content)
+    headerCache.set(sessionId, { content, at: Date.now() })
     return content
   }
 }

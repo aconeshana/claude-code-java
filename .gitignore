@@ -100,3 +100,6 @@ docs/archive-*.md
 webui/node_modules/
 webui/dist/
 webui/*.tsbuildinfo
+
+# Eclipse JDT language-server output (Cursor/VS Code Java extension); Gradle uses build/
+bin/

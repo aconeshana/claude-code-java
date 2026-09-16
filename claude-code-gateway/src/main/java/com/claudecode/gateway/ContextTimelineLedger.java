@@ -274,7 +274,14 @@ public final class ContextTimelineLedger {
                 entry.fold.envelope(breakdown.systemTokens(), breakdown.toolsTokens()));
             port.selection(id).map(GatewaySessionContextPort.ModelSelection::current)
                 .ifPresent(entry.fold::model);
-            if (entry.fold.sync(rows)) entry.updatedAt = System.currentTimeMillis();
+            try {
+                if (entry.fold.sync(rows)) entry.updatedAt = System.currentTimeMillis();
+            } catch (RuntimeException _) {
+                // The live engine's list is an unsynchronized view: a GET that
+                // races an append or a compaction rewrite can observe a
+                // shifting size. The next sync (the hub's own callback runs on
+                // the engine thread) re-folds from a settled list.
+            }
         }
     }
 
@@ -361,6 +368,15 @@ public final class ContextTimelineLedger {
                 sync(sessionId, entry);
             }
             @Override public void onMessage(SDKMessage msg) {
+                // Only rows that change the conversation list re-fold; stream
+                // deltas, progress, and status frames would otherwise cost an
+                // O(n) diff each on the engine thread under the hub lock.
+                if (!(msg instanceof SDKMessage.Assistant || msg instanceof SDKMessage.User
+                    || msg instanceof SDKMessage.System || msg instanceof SDKMessage.Attachment
+                    || msg instanceof SDKMessage.CompactBoundary || msg instanceof SDKMessage.Tombstone
+                    || msg instanceof SDKMessage.Result || msg instanceof SDKMessage.Error)) {
+                    return;
+                }
                 Entry entry = entries.get(sessionId);
                 if (entry != null) sync(sessionId, entry);
             }

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * {@code GET /api/session/context/{timeline,detail,content,overview}}: the
@@ -87,7 +88,7 @@ final class GatewayContextTimelineHandler {
             }
         }
         String kind = query.get("kind");
-        if (seq == null && !StringUtils.equalsAny(kind, "system", "tool", "tools")) {
+        if (seq == null && !Strings.CS.equalsAny(kind, "system", "tool", "tools")) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 "provide seq=<node seq>, kind=system, kind=tools, or kind=tool&name=<tool>"));
             return;
