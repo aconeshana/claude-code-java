@@ -34,4 +34,8 @@ public record ReplLaunchState(
     CollaborationSetupPort collaborationSetup,
     @Explanation("On-demand web gateway start for the third endpoint")
     GatewaySupervisorPort gatewaySupervisor
-) {}
+) {
+    public ReplLaunchState {
+        if (tipSupplier == null) tipSupplier = () -> "";
+    }
+}

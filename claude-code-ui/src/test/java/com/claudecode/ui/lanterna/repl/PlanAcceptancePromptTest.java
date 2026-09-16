@@ -15,7 +15,7 @@ class PlanAcceptancePromptTest {
                 # Plan
                 - update parser
                 If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /tmp/session.jsonl""",
-            LanternaReplScreen.buildClearedContextPlanPrompt(
+            ReplSubmissionCoordinator.buildClearedContextPlanPrompt(
                 "# Plan\n- update parser", Path.of("/tmp/session.jsonl")));
     }
 
@@ -27,7 +27,7 @@ class PlanAcceptancePromptTest {
                 If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /tmp/session.jsonl
                 If this plan can be broken down into multiple independent tasks, consider spawning named teammates with the Agent tool (pass a `name`) to parallelize the work.
                 User feedback on this plan: keep the public API compatible""",
-            LanternaReplScreen.buildClearedContextPlanPrompt(
+            ReplSubmissionCoordinator.buildClearedContextPlanPrompt(
                 "Implement parser", Path.of("/tmp/session.jsonl"),
                 true, "  keep the public API compatible  "));
     }

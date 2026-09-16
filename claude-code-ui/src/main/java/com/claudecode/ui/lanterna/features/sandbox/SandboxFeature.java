@@ -8,6 +8,7 @@ import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.List;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import org.apache.commons.lang3.StringUtils;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
@@ -16,7 +17,7 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
 /**
  * Sandbox feature owning the full settings panel and confirmation lifecycle.
  */
-public final class SandboxFeature implements ReplCommandUiBridge.Sandbox {
+public final class SandboxFeature implements ReplCommandUiBridge.Sandbox, ReplFeature {
 
     private final WindowBasedTextGUI gui;
     private final InputPanel inputPanel;
@@ -35,7 +36,7 @@ public final class SandboxFeature implements ReplCommandUiBridge.Sandbox {
         }
     }
 
-    public List<InlineOverlay> overlays() { return List.of(dialog); }
+    @Override public List<InlineOverlay> overlays() { return List.of(dialog); }
     public Component view() { return dialog; }
 
     @Override

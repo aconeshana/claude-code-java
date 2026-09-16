@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.concurrent.atomic.AtomicLong;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
@@ -21,7 +22,7 @@ import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 /**
  * Agent-management feature owning the agents panel and its accumulated transcript output.
  */
-public final class AgentsFeature implements ReplCommandUiBridge.Agents {
+public final class AgentsFeature implements ReplCommandUiBridge.Agents, ReplFeature {
 
     private record ChangeLine(String text, TextColor color) {}
 
@@ -76,7 +77,7 @@ public final class AgentsFeature implements ReplCommandUiBridge.Agents {
         this.panel = new AgentsPanel(memoryCatalog, taskRegistry);
     }
 
-    public List<InlineOverlay> overlays() { return List.of(panel); }
+    @Override public List<InlineOverlay> overlays() { return List.of(panel); }
     public Component view() { return panel; }
 
     public void setKeybindingsStore(UserKeybindingsStore store) {

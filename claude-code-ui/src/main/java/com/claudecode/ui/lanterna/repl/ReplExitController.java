@@ -4,6 +4,7 @@ import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.shutdown.ShutdownPort;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.googlecode.lanterna.gui2.Component;
 import java.lang.reflect.InvocationTargetException;
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * Owns REPL exit gestures, OS signal registration, worktree exit mediation, and the final
  * shutdown/stop decision.
  */
-final class ReplExitController {
+final class ReplExitController implements ReplFeature {
 
     private static final Logger log = LoggerFactory.getLogger(ReplExitController.class);
     static final long DOUBLE_PRESS_TIMEOUT_MS = 800L;
@@ -89,8 +90,8 @@ final class ReplExitController {
             System::currentTimeMillis);
     }
 
-    InlineOverlay overlay() {
-        return dialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(dialog);
     }
 
     Component view() {

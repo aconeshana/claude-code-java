@@ -2,164 +2,63 @@ package com.claudecode.ui.lanterna.repl;
 
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandRegistry;
-import com.claudecode.commands.context.ContextData;
-import com.claudecode.commands.diff.DiffData;
-import com.claudecode.commands.diff.GitDiffCollector;
-import com.claudecode.commands.diff.TurnDiffExtractor;
-import com.claudecode.commands.impl.info.VersionCommand;
-import com.claudecode.commands.impl.terminal.CopyCommand;
 import com.claudecode.commands.prompt.PromptInvocation;
-import com.claudecode.commands.session.ResumeRequest;
-import com.claudecode.core.effort.EffortHelpers;
-import com.claudecode.core.engine.CompactProgressEvent;
-import com.claudecode.core.engine.AbortController;
-import com.claudecode.core.engine.HookDispatcher;
-import com.claudecode.core.engine.TranscriptSink;
-import com.claudecode.core.engine.PermissionExplainerCallback;
-import com.claudecode.core.engine.ToolExecutionContext;
-import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.imagestore.ImageStore;
-import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.lsp.LspPluginRecommendation;
 import com.claudecode.core.lsp.LspRecommendationResponse;
-import com.claudecode.core.lsp.LspToolUseSummary;
-import com.claudecode.core.message.*;
-import com.claudecode.core.model.CustomModelCatalog;
-import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageFactory;
+import com.claudecode.core.message.PastedContent;
+import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.model.ModelNames;
-import com.claudecode.core.model.PermissionModeKind;
-import com.claudecode.core.pokemon.PokemonProfile;
-import com.claudecode.core.process.SubprocessEnvironment;
-import com.claudecode.core.process.ExternalEditorDefaults;
 import com.claudecode.core.queue.QueuedCommand;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.state.CwdState;
-import com.claudecode.core.text.FormatUtils;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.permissions.PermissionGate;
-import com.claudecode.permissions.PermissionMode;
-import com.claudecode.runtime.compact.CompactWarningProvider;
-import com.claudecode.runtime.doctor.DoctorPort;
-import com.claudecode.runtime.gateway.GatewaySupervisorPort;
-import com.claudecode.runtime.hooks.HookConfigurationPort;
-import com.claudecode.runtime.interaction.InteractionCoordinator;
-import com.claudecode.runtime.memory.MemoryCatalog;
-import com.claudecode.runtime.mcp.McpManagementPort;
-import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
-import com.claudecode.runtime.plugins.PluginMarketplacePort;
-import com.claudecode.runtime.session.ConversationResetPort;
-import com.claudecode.runtime.session.SessionLifecycle;
-import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
-import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
-import com.claudecode.runtime.sessionhost.SessionCollaborationController;
-import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
-import com.claudecode.runtime.sessionhost.SessionHostEffortController;
-import com.claudecode.runtime.sessionhost.SessionHostModelOptions;
-import com.claudecode.runtime.sessionhost.SessionHostEffortState;
-import com.claudecode.runtime.sessionhost.SessionHostInfo;
-import com.claudecode.runtime.sessionhost.SessionHostModelController;
-import com.claudecode.runtime.sessionhost.SessionHostModelState;
-import com.claudecode.runtime.sessionhost.SessionHostRegistry;
-import com.claudecode.runtime.sessionhost.SessionHostSession;
-import com.claudecode.runtime.sessionhost.SessionHostSubmission;
-import com.claudecode.runtime.sessionhost.SessionOpenRequest;
-import com.claudecode.runtime.shutdown.ShutdownPort;
-import com.claudecode.runtime.startup.StartupTrustPort;
-import com.claudecode.runtime.statusline.StatusLinePort;
-import com.claudecode.runtime.tasks.TaskBoardPort;
-import com.claudecode.runtime.turn.ConversationOps;
-import com.claudecode.runtime.turn.QueuedInputDraft;
-import com.claudecode.runtime.turn.SessionEventHub;
-import com.claudecode.runtime.turn.TurnAwakeGuard;
-import com.claudecode.runtime.turn.TurnEngine;
-import com.claudecode.runtime.turn.UserInput;
-import com.claudecode.tools.Tool;
-import com.claudecode.tools.ToolRegistry;
-import com.claudecode.tools.ToolUseRenderContext;
-import com.claudecode.tools.plan.PlanFiles;
-import com.claudecode.tools.agent.AgentTool;
-import com.claudecode.tools.agent.AgentContinuationService;
 import com.claudecode.runtime.interaction.SudoPasswordInteraction;
-import com.claudecode.tools.cron.CronFeatureGate;
+import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
+import com.claudecode.runtime.sessionhost.SessionCollaborationController;
+import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.sessionhost.SessionOpenRequest;
+import com.claudecode.runtime.turn.QueuedInputDraft;
+import com.claudecode.runtime.turn.TurnEngine;
 import com.claudecode.tools.cron.CronScheduler;
-import com.claudecode.tools.cron.CronStore;
 import com.claudecode.tools.hints.ClaudeCodeHint;
 import com.claudecode.tools.hints.ClaudeCodeHintStore;
-import com.claudecode.tools.skills.Skill;
-import com.claudecode.tools.tasks.TaskNotificationBridge;
+import com.claudecode.tools.plan.PlanFiles;
 import com.claudecode.tools.tasks.PendingBackgroundWork;
 import com.claudecode.tools.tasks.TaskState;
-import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
-import com.claudecode.ui.lanterna.bashmode.BashModeExecutor;
-import com.claudecode.ui.lanterna.components.ChipSegments;
-import com.claudecode.ui.lanterna.components.LogoPanel;
 import com.claudecode.ui.lanterna.components.ModelDisplayName;
-import com.claudecode.ui.lanterna.components.OSC52Helper;
 import com.claudecode.ui.lanterna.components.SpinnerComponent;
-import com.claudecode.ui.lanterna.components.WelcomeBlockHolder;
-import com.claudecode.ui.lanterna.dialog.BackgroundTasksDialog;
-import com.claudecode.ui.lanterna.dialog.ClaudeMdExternalIncludesDialog;
 import com.claudecode.ui.lanterna.dialog.CollaborationPickerDialog;
 import com.claudecode.ui.lanterna.dialog.FeishuSetupDialog;
-import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
-import com.claudecode.ui.lanterna.dialog.CopyPickerDialog;
-import com.claudecode.ui.lanterna.dialog.DiffDialog;
-import com.claudecode.ui.lanterna.dialog.DoctorDialog;
-import com.claudecode.ui.lanterna.dialog.ExportDialog;
-import com.claudecode.ui.lanterna.dialog.GoalDialog;
 import com.claudecode.ui.lanterna.dialog.HistorySearchDialog;
-import com.claudecode.ui.lanterna.dialog.ItermImagePreviewWindow;
 import com.claudecode.ui.lanterna.dialog.LspRecommendationDialog;
-import com.claudecode.ui.lanterna.dialog.ManagedSettingsSecurityDialog;
 import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.dialog.PluginHintMenu;
-import com.claudecode.ui.lanterna.dialog.SkillsDialog;
-import com.claudecode.ui.lanterna.dialog.StatsDialog;
 import com.claudecode.ui.lanterna.dialog.SudoPasswordDialog;
-import com.claudecode.ui.lanterna.dialog.TagRemovalDialog;
 import com.claudecode.ui.lanterna.dialog.ThinkingToggleDialog;
-import com.claudecode.ui.lanterna.dialog.TrustFolderDialog;
-import com.claudecode.ui.lanterna.dialog.WorkflowsDialog;
-import com.claudecode.ui.lanterna.features.agents.AgentsFeature;
-import com.claudecode.ui.lanterna.features.btw.BtwFeature;
-import com.claudecode.ui.lanterna.features.help.HelpCommandCatalog;
-import com.claudecode.ui.lanterna.features.help.HelpPanel;
-import com.claudecode.ui.lanterna.features.memory.MemoryFeature;
-import com.claudecode.ui.lanterna.features.pokemon.PokemonFeature;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanel;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanelController;
-import com.claudecode.ui.lanterna.features.sandbox.SandboxFeature;
 import com.claudecode.ui.lanterna.features.settings.AutoModeEntryWarningController;
 import com.claudecode.ui.lanterna.features.settings.BypassPermissionsStartupGate;
-import com.claudecode.ui.lanterna.features.settings.HooksController;
-import com.claudecode.ui.lanterna.features.settings.MCPController;
-import com.claudecode.ui.lanterna.features.settings.PermissionsFeature;
-import com.claudecode.ui.lanterna.features.settings.PreferencesFeature;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
-import com.claudecode.ui.lanterna.input.ExternalEditorCommand;
-import com.claudecode.ui.lanterna.input.CoordinatorNavigationController;
+import com.claudecode.ui.lanterna.features.web.WebGatewayFeature;
 import com.claudecode.ui.lanterna.input.InputActions;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.input.PromptExternalEditor;
 import com.claudecode.ui.lanterna.input.PromptHistory;
-import com.claudecode.ui.lanterna.input.WindowInputRouter;
 import com.claudecode.ui.lanterna.mouse.SelectionController;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.plugin.PluginPanelServices;
-import com.claudecode.ui.lanterna.plugin.PluginRoute;
-import com.claudecode.ui.lanterna.plugin.PluginSettingsPanel;
-import com.claudecode.ui.lanterna.slash.PromptInvocationAdapter;
-import com.claudecode.ui.lanterna.slash.ReplRefs;
-import com.claudecode.ui.lanterna.slash.SlashCommandDispatcher;
 import com.claudecode.ui.lanterna.slash.SlashHost;
-import com.claudecode.ui.lanterna.status.GoalStatusHistory;
 import com.claudecode.ui.lanterna.statusline.StatusLineController;
-import com.claudecode.ui.lanterna.statusline.StatusLineInputBuilder;
 import com.claudecode.ui.lanterna.suggest.DirectorySuggestionService;
-import com.claudecode.ui.lanterna.suggest.FileSuggestionService;
 import com.claudecode.ui.lanterna.suggest.SuggestionController;
 import com.claudecode.ui.lanterna.theme.ClaudeTheme;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
-import com.claudecode.ui.lanterna.transcript.ContextVisualizationRenderer;
 import com.claudecode.ui.lanterna.transcript.BackgroundTaskPill;
 import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
 import com.claudecode.ui.lanterna.transcript.MessageActionsController;
@@ -168,22 +67,16 @@ import com.claudecode.ui.lanterna.transcript.MessageHistory;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.claudecode.ui.lanterna.transcript.Selection;
 import com.claudecode.ui.lanterna.transcript.SelectionAwareTextGUI;
-import com.claudecode.ui.lanterna.transcript.ToolApprovalInteraction;
 import com.claudecode.ui.lanterna.transcript.ToolPresentationSnapshotStore;
 import com.claudecode.ui.lanterna.transcript.TranscriptController;
 import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.googlecode.lanterna.CursorStyle;
-import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.BasicWindow;
-import com.googlecode.lanterna.gui2.EmptySpace;
 import com.googlecode.lanterna.gui2.SameTextGUIThread;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.screen.Screen.RefreshType;
 import com.googlecode.lanterna.screen.TerminalScreen;
-import com.googlecode.lanterna.input.KeyStroke;
-import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.Terminal;
@@ -191,34 +84,52 @@ import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
+/**
+ * Interactive REPL screen: owns the Lanterna terminal/GUI lifecycle, hands scene construction to
+ * {@link ReplComposer} in {@link #composeScene()}, and implements the {@link SlashHost} command
+ * port that the slash dispatcher and {@link InputActions} call back into.
+ *
+ * <p>Ownership boundaries (each enforced by {@code ReplFeatureArchitectureTest}):
+ * <ul>
+ *   <li>Scene construction and wiring: {@link ReplComposer} builds the {@link ReplGraph} from a
+ *       {@link ReplContext}; the graph reaches back only through the narrow
+ *       {@link ReplComposer.Host} port implemented by {@link ComposerHost}.</li>
+ *   <li>Overlay registration and z-order mounting: {@link ReplSceneLayout} over
+ *       {@link ReplScene}.</li>
+ *   <li>Text → turn pipeline, history, queue hand-off: {@link ReplSubmissionCoordinator}.</li>
+ *   <li>Session Host publication / remote control: {@link SessionHostPublisher}.</li>
+ *   <li>Status-line ingredients: {@link ReplStatusLineIngredients} + {@link StatusLineController}.</li>
+ *   <li>Slash-command dialogs: feature facades installed into {@link ReplCommandUiBridge}
+ *       (conversation tools, diagnostics, tasks, plugins, goal, hooks, MCP, pokemon, btw,
+ *       compact progress, session lifecycle). The CLI binds launchers to the bridge only.</li>
+ * </ul>
+ *
+ * <p>TS coverage (paths relative to the claude-code repo root):
+ * <ul>
+ *   <li>{@code screens/REPL.tsx} — top-level interactive screen: message stream + prompt
+ *       input + inline overlays, turn-state gating, and the slash-command host surface.</li>
+ *   <li>{@code components/PromptInput/} — the parts of prompt submission not yet moved into
+ *       {@link ReplSubmissionCoordinator} (bash-mode routing, interrupt gestures).</li>
+ *   <li>{@code utils/terminal.ts} / {@code utils/Cursor.ts} — terminal setup, cursor style,
+ *       job-control suspend/resume, resize handling.</li>
+ * </ul>
+ */
 public class LanternaReplScreen implements SlashHost {
 
     private static final Logger log = LoggerFactory.getLogger(LanternaReplScreen.class);
@@ -241,8 +152,6 @@ public class LanternaReplScreen implements SlashHost {
     /** Owns terminal escape-sequence I/O (title / OSC 9;4 progress / OSC 21337
      *  tab status / extended-key detection / screen dump). Built in {@link #initTerminal}. */
     private TerminalController terminalController;
-    /** Interactive approval + teammate bridge; owns its three inline dialog views. */
-    private ToolApprovalInteraction toolApprovalInteraction;
     /** Inline LSP-plugin recommendation prompt — sibling of
      *  the approval question dialog; collapses to (0,0) when idle and is shown
      *  (via {@link #showLspRecommendation}) when the user opens a file whose
@@ -255,97 +164,30 @@ public class LanternaReplScreen implements SlashHost {
     /** Inline todo list panel — sits above InputPanel; Ctrl+T cycles compact,
      *  terminal-capacity expanded, and hidden views (app:toggleTodos). */
     private TaskBoardFeature taskBoardFeature;
-    private final TaskBoardPort taskBoard;
-    private final ProjectCatalogPort projectCatalog;
-    /** Inline /export picker — sibling of effortSlider; collapses to (0,0) when
-     *  idle and is activated by {@code openExportDialog}. */
-    private ExportDialog exportDialog;
 
-    private GoalDialog goalDialog;
-
-    private BtwFeature btwFeature;
-    /** Inline /copy content picker — sibling of themePicker; collapses to (0,0)
-     *  when idle and is activated by {@code openCopyPicker(...)}. */
-    private CopyPickerDialog copyPicker;
-    /** Inline /diff dialog — sibling of copyPicker; collapses to (0,0) when
-     *  idle and is activated by {@code openDiffDialog}. */
-    private DiffDialog diffDialog;
-    /** Inline /help panel — sibling of diffDialog; collapses to (0,0) when
-     *  idle and is activated by {@code openHelpPanel}. */
-    private HelpPanel helpPanel;
     /** Left-docked project drawer (Java-side extension, no 197 counterpart);
      *  covers the transcript's left strip when active, toggled by
      *  {@code toggleProjectPanel} — the footer button is its only entry point. */
     private ProjectPanel projectPanel;
     private ProjectPanelController projectPanelController;
-    /** Inline /plugin settings panel — sibling of helpPanel; collapses to (0,0)
-     *  when idle and is activated by {@code openPluginPanel(String)}. */
-    private PluginSettingsPanel pluginSettingsPanel;
-    /** Startup "trust this folder?" dialog — collapses to (0,0) when idle and is
-     *  activated once at REPL startup (see {@code run}) when the cwd is untrusted. */
-    private TrustFolderDialog trustDialog;
-    private ManagedSettingsSecurityDialog managedSettingsDialog;
-    /** Second startup gate — warns when CLAUDE.md @-imports files outside the cwd.
-     *  Collapses to (0,0) when idle; activated at REPL startup (see {@code run})
-     *  after the trust dialog resolves, only when external imports are detected
-     *  and the user hasn't already decided for this project. */
-    private ClaudeMdExternalIncludesDialog externalIncludesDialog;
     /** Late-bound command-to-feature capability bridge installed when the scene is built. */
     private final ReplCommandUiBridge commandUi;
-    /** Drives the /hooks browser: snapshot loading + settings hot-reload subscription.
-     *  Reads {@link #toolNames} live and uses the injected hook configuration port. */
-    private HooksController hooksController;
-    /** Collects the /context usage snapshot ({@code ContextUsageAnalyzer} wired by the CLI);
-     *  consumed by {@link #showContextVisualization()}. Null in headless / bridge contexts. */
-    private Supplier<ContextData> contextDataCollector;
-    /** Drives the /mcp browser's backend actions (reconnect / enable / disable /
-     *  view tools) through the application-owned management port. */
-    private MCPController mcpController;
-    private final McpManagementPort mcpManagement;
-    /** Shared tool registry — used to push newly-discovered MCP tools into the model's catalog
-     *  after the user completes {@code Authenticate} or {@code Reconnect} against a remote server. */
-    private final ToolRegistry toolRegistry;
     /**
-     * Inline overlays (effort / export / hooks / mcp) polled by {@code onInput} ahead of the
-     * global key switch, in registration = priority order. They are mutually exclusive; see
-    /** Inline dialog stack — one active at a time. Consult {@link InlineOverlay}. Registered in {@link #buildLayout}.
-     * <p>Registration order dictates polling order and rendering z-index for the
-     * inline dialog stack. See {@link InlineOverlay} for the single-active
-     * invariant.
+     * Inline dialog stack (one active at a time — see {@link InlineOverlay}) and the root
+     * layout. Populated and sealed by {@link ReplComposer} through {@link ReplSceneLayout}.
      */
     private final ReplScene scene = new ReplScene();
 
-    private TagRemovalDialog tagRemovalDialog;
-    private PokemonFeature pokemonFeature;
-    private DoctorDialog doctorDialog;
-    private SkillsDialog skillsDialog;
     /** Meta+T thinking picker and mid-conversation confirmation. */
     private ThinkingToggleDialog thinkingToggleDialog;
     private CollaborationPickerDialog collaborationPickerDialog;
     private FeishuSetupDialog feishuSetupDialog;
-    /** /stats interactive panel — heatmap + Overview/Models tabs. Built in buildLayout. */
-    private StatsDialog statsDialog;
-    /** Inline /tasks (alias /bashes) background-tasks panel — sibling of
-     *  skillsDialog; collapses to (0,0) when idle and is activated by
-     *  {@code openTasksDialog}. */
-    private BackgroundTasksDialog tasksDialog;
-    /** Inline {@code /workflows} browser; independent from {@code /tasks}. */
-    private WorkflowsDialog workflowsDialog;
-    /**
-     * Hook snapshot/hot-reload port installed by the CLI via {@link ReplWiring}.
-     */
-    private final HookConfigurationPort hookConfiguration;
     /** Virtual text selection + mouse-driven UX. Owns the {@link Selection}
      *  state, multi-click detection, drag-to-autoscroll, and OSC 52 copy.
      *  Keyboard handlers still drive selection state directly via
      *  {@link SelectionController#getSelection}. */
     private SelectionController selectionController;
 
-    private BashModeExecutor bashModeExecutor;
-    /**
-     * Slash-command + skill dispatcher.
-     */
-    private SlashCommandDispatcher slashDispatcher;
     /** Directory/path completions for path-like @-tokens (~/, /, ./, ../). */
     private final DirectorySuggestionService directorySuggestionService =
         new DirectorySuggestionService();
@@ -355,34 +197,20 @@ public class LanternaReplScreen implements SlashHost {
     private SessionController sessionController;
     /** Transcript mode + viewed-teammate transcript presentation. */
     private TranscriptController transcriptController;
-    /** The subagent coordinator panel — persistent {@code main} + local-agent list. */
-    private CoordinatorTaskPanel coordinatorTaskPanel;
     private LocalAgentInputRouter localAgentInputRouter;
     /** Message selection/navigation/copy/edit interaction. */
     private MessageActionsController messageActionsController;
-    /** Headless turn orchestrator (owns turnInFlight + the in-flight queue). Built in {@link #buildLayout}. */
+    /** Headless turn orchestrator (owns turnInFlight + the in-flight queue). Built by {@link ReplComposer}. */
     private TurnEngine turnEngine;
     /** Owns submitted-text routing and busy-turn queue hand-off. */
     private ReplSubmissionCoordinator submissionCoordinator;
 
     // ── App state ──────────────────────────────────────────────────────────
     private final QuerySession       queryEngine;
-    private final CompactWarningProvider compactWarnings;
-    private final SessionLifecycle  sessionLifecycle;
+    /** One-time startup wiring handed to {@link ReplComposer} when the scene is composed. */
+    private final ReplWiring wiring;
     private final InteractiveSessionPort interactiveSessions;
     private final ReplFeatureRuntime featureRuntime;
-    private final ConversationResetPort conversationReset;
-    private final MemoryCatalog memoryCatalog;
-    private final OutputStyleCatalog outputStyles;
-    private final DoctorPort doctor;
-    private final CustomModelCatalog customModels;
-    private final boolean showBuiltInModelFamilies;
-    private final PluginMarketplacePort plugins;
-    private final StatusLinePort statusLine;
-    private final StartupTrustPort startupTrust;
-    private final ShutdownPort shutdown;
-    private final TurnAwakeGuard awakeGuard;
-    private final Supplier<String> tipSupplier;
     private final CommandRegistry   commandRegistry;
     private final CommandContext    commandContext;
     private final ToolPresentationSnapshotStore presentationSnapshots;
@@ -398,24 +226,22 @@ public class LanternaReplScreen implements SlashHost {
      */
     private final MessageHistory    messageHistory = new MessageHistory();
     private final PermissionGate          permissionGate;
-    private final boolean allowDangerouslySkipPermissions;
-    private final PermissionExplainerCallback permissionExplainer;
-    private final Supplier<List<Skill>> skillsSupplier;
-    private final Consumer<String> skillHookRegistrar;
     /** Opt-in user keybinding resolver (gate on); null when customization disabled. */
     private final UserKeybindingsStore keybindingsStore;
-    private final SessionHostRegistry sessionHostRegistry;
-    private final InteractionCoordinator interactionCoordinator;
+    /** Session Host publication + remote control surface; bound to scene collaborators by {@link ReplComposer}. */
+    private final SessionHostPublisher sessionHostPublisher;
     private final SessionCollaborationController collaborationController;
     private final CollaborationSetupPort collaborationSetup;
-    private final GatewaySupervisorPort gatewaySupervisor;
 
     private volatile String model = "";
     private boolean verbose = false;
 
-    private final LogoPanel welcomePanel = new LogoPanel();
-    /** Replaceable source-line range occupied by the welcome block, shared with {@link PokemonFeature}. */
-    private final WelcomeBlockHolder welcomeBlock = new WelcomeBlockHolder();
+    /** Welcome banner render/model-line/web-row updates. */
+    private WelcomePresenter welcome;
+    /** {@code /web} + startup warmup of the third session endpoint. */
+    private WebGatewayFeature webGateway;
+    /** Ctrl+G external editor over the terminal handoff hooks below. */
+    private PromptExternalEditor externalEditor;
 
     // Transcript search and its query/match state are owned by TranscriptController.
 
@@ -430,8 +256,7 @@ public class LanternaReplScreen implements SlashHost {
     /**
      * The last text submitted by the user.
      */
-    private volatile String lastSubmittedInput = null;
-    private volatile boolean lastSubmittedInputWasInteractiveStartupPrompt;
+    private final AtomicReference<String> lastSubmittedInput = new AtomicReference<>();
 
     /** Persistent prompt history — shared with InputPanel for Up/Down navigation. */
     private final PromptHistory promptHistory = new PromptHistory();
@@ -454,18 +279,10 @@ public class LanternaReplScreen implements SlashHost {
     private final boolean restoredSession;
     /** One-shot title lifecycle, separate from /rename's persisted session name. */
     private SessionTopicTitleCoordinator sessionTopicTitleCoordinator;
-    private volatile String publishedHostSessionTitle;
-    /** Latest-session-wins fence for background transcript-title reads. */
-    private final AtomicLong sessionHostTitleGeneration = new AtomicLong();
     /** Interactive turn sink; also owns first-turn transcript metadata ordering. */
     private LanternaSessionSink turnView;
-    private SessionEventHub sessionEvents;
-    private String publishedHostSessionId;
-    private final CompletableFuture<Void> sessionHostReady = new CompletableFuture<>();
     private final ReplStartupReadiness startupReadiness;
     private CompletionStage<Void> hotUiReadiness = CompletableFuture.completedFuture(null);
-    /** True only while the one-shot argv prompt is synchronously routed through handleInput. */
-    private boolean routingInteractiveStartupPrompt;
     /** Ordered trust/external-include/managed-settings startup state machine. */
     private StartupGateController startupGateController;
 
@@ -485,6 +302,7 @@ public class LanternaReplScreen implements SlashHost {
             CommandContext commandContext,
             ReplWiring wiring) {
         this.queryEngine     = queryEngine;
+        this.wiring          = wiring;
         this.commandRegistry = commandRegistry;
         this.commandContext  = commandContext;
         this.presentationSnapshots = new ToolPresentationSnapshotStore();
@@ -507,56 +325,33 @@ public class LanternaReplScreen implements SlashHost {
             });
         ReplLaunchState launch   = wiring.launch();
         this.permissionGate      = featureRuntime.permissionGate();
-        this.allowDangerouslySkipPermissions = launch.allowDangerouslySkipPermissions();
-        this.commandUi           = application.commandUi() != null
-            ? application.commandUi() : new ReplCommandUiBridge();
+        // Optional ports arrive normalized to their inert implementation (see ReplApplicationPorts).
+        this.commandUi           = application.commandUi();
         this.interactiveSessions = application.sessions();
-        this.hookConfiguration   = application.hooks();
-        this.mcpManagement       = application.mcp() != null
-            ? application.mcp() : McpManagementPort.none();
-        this.toolRegistry        = featureRuntime.toolRegistry();
-        this.permissionExplainer = featureRuntime.permissionExplainer();
-        this.skillsSupplier      = featureRuntime.skills();
-        this.skillHookRegistrar  = featureRuntime.skillHookRegistrar();
-        this.compactWarnings     = application.compactWarnings() != null
-            ? application.compactWarnings() : CompactWarningProvider.none();
-        this.sessionLifecycle    = application.sessionLifecycle();
-        this.conversationReset   = application.conversationReset() != null
-            ? application.conversationReset() : ConversationResetPort.noop();
-        this.memoryCatalog       = application.memory() != null
-            ? application.memory() : MemoryCatalog.empty();
-        this.outputStyles        = application.outputStyles() != null
-            ? application.outputStyles() : OutputStyleCatalog.builtIns();
-        this.doctor              = application.doctor();
-        this.customModels        = launch.customModels();
-        this.showBuiltInModelFamilies = launch.showBuiltInModelFamilies();
-        this.plugins             = application.plugins();
-        this.statusLine          = application.statusLine() != null
-            ? application.statusLine() : StatusLinePort.disabled();
-        this.startupTrust        = application.startupTrust() != null
-            ? application.startupTrust() : StartupTrustPort.trustAll();
-        this.shutdown            = application.shutdown() != null
-            ? application.shutdown() : ShutdownPort.noop();
-        this.awakeGuard          = application.awakeGuard() != null
-            ? application.awakeGuard() : TurnAwakeGuard.noop();
-        this.taskBoard           = application.taskBoard() != null
-            ? application.taskBoard() : TaskBoardPort.none();
-        this.projectCatalog      = application.projects() != null
-            ? application.projects() : ProjectCatalogPort.none();
-        this.tipSupplier         = launch.tipSupplier() != null ? launch.tipSupplier() : () -> "";
         this.keybindingsStore    = launch.keybindings();
         this.dispatcher.setKeybindingsStore(this.keybindingsStore);
         this.collapser.setKeybindingsStore(this.keybindingsStore);
-        this.sessionHostRegistry = launch.sessionHostRegistry();
-        this.interactionCoordinator = launch.interactionCoordinator();
         this.collaborationController = launch.collaborationController();
         this.collaborationSetup = launch.collaborationSetup();
-        this.gatewaySupervisor = launch.gatewaySupervisor();
         this.initialPrompt       = launch.initialPrompt();
         this.initialSessionName  = StringUtils.trimToNull(launch.initialSessionName());
         this.restoredSession     = launch.restoredSession();
         this.sessionTitleGenerator = launch.sessionTitleGenerator();
-        this.publishedHostSessionTitle = StringUtils.defaultString(initialSessionName);
+        this.sessionHostPublisher = new SessionHostPublisher(
+            launch.sessionHostRegistry(), queryEngine, commandContext, interactiveSessions,
+            launch.customModels(), launch.showBuiltInModelFamilies(), collaborationController,
+            initialSessionName,
+            task -> gui.getGUIThread().invokeLater(task),
+            new SessionHostPublisher.Feedback() {
+                @Override public void modelChanged(String model) { setModel(model); }
+                @Override public void system(String text) { postSystemMessage(text); }
+                @Override public void transientHint(String text, int millis) {
+                    gui.getGUIThread().invokeLater(() -> inputPanel.showTransientHint(text, millis));
+                }
+                @Override public void statusLineChanged() {
+                    if (statusLineController != null) statusLineController.scheduleUpdate();
+                }
+            });
         Path stableProjectRoot = CwdState.getOriginalCwd();
         this.historyProjectRoot = PromptHistory.resolveProject(stableProjectRoot != null
             ? stableProjectRoot.toString() : System.getProperty("user.dir"));
@@ -578,9 +373,9 @@ public class LanternaReplScreen implements SlashHost {
         this.verbose = verbose;
         dispatcher.setVerbose(verbose);
         collapser.setVerbose(verbose);
-        // spinnerComponent is created in buildLayout during run; CLI may
+        // spinnerComponent is created by ReplComposer during run; CLI may
         // call setVerbose before then. Apply eagerly if already built, otherwise
-        // buildLayout will pick it up from the persisted `verbose` field.
+        // ReplComposer will pick it up from the persisted `verbose` field.
         if (spinnerComponent != null) spinnerComponent.setVerbose(verbose);
     }
 
@@ -652,7 +447,7 @@ public class LanternaReplScreen implements SlashHost {
     /**
      * Shows the plugin-hint menu when a tool emits a {@code <claude-code-hint
      * type="plugin" />} tag. matches the wiring of {@link #showLspRecommendation}:
-     * the {@link ClaudeCodeHintStore} listener (set in {@link #buildLayout}) invokes
+     * the {@link ClaudeCodeHintStore} listener (set in {@link #installPluginHintListener}) invokes
      * this on the GUI thread; the menu is shown inline (non-blocking) and the
      * once-per-session flag is flipped as soon as it appears so no further prompt
      * surfaces this session.
@@ -724,7 +519,7 @@ public class LanternaReplScreen implements SlashHost {
         try (TuiOutputGuard _ = initTerminal()) {
         log.info("[LANTERNA] initTerminal() OK, terminal class={}", terminal.getClass().getName());
         // initTerminal starts the GUI thread. Install the title coordinator
-        // before buildLayout publishes a focused input panel; otherwise a PTY
+        // before composeScene publishes a focused input panel; otherwise a PTY
         // can submit the first prompt in the narrow interval after the footer
         // becomes visible but before title state exists, silently skipping the
         // helper request and left-shifting every wire request number.
@@ -736,14 +531,10 @@ public class LanternaReplScreen implements SlashHost {
                 if (transcript != null) {
                     transcript.recordAiTitle(queryEngine.conversation().getSessionId(), title);
                 }
-                sessionHostTitleGeneration.incrementAndGet();
-                publishedHostSessionTitle = title;
-                if (sessionHostRegistry != null) {
-                    sessionHostRegistry.refreshLocal(buildHostSession(queryEngine.conversation().getSessionId()));
-                }
+                sessionHostPublisher.applyTitle(title);
                 gui.getGUIThread().invokeLater(() -> terminalController.setTitle(title));
             });
-        buildLayout();
+        composeScene();
         startupReadiness.mark("scene");
         // This is the prestart/caller thread, never Lanterna's live GUI event
         // thread. Scene construction overlaps semantic startup, then the first
@@ -784,7 +575,7 @@ public class LanternaReplScreen implements SlashHost {
                 },
                 this::requestShutdown),
             this::requestShutdown);
-        log.info("[LANTERNA] buildLayout() OK, screen size={}", screen.getTerminalSize());
+        log.info("[LANTERNA] composeScene() OK, screen size={}", screen.getTerminalSize());
 
         exitController.registerSignalHandlers();
 
@@ -810,11 +601,11 @@ public class LanternaReplScreen implements SlashHost {
         // Show welcome BEFORE the GUI loop's first layout pass, so
         // messagePanel.calculatePreferredSize() returns the right height
         // immediately (otherwise SmartLayout gives it height=1 forever).
-        renderFreshConversationWelcome();
+        welcome.renderFresh();
 
         // Eagerly start the web gateway off the first-frame path; the
         // quick-entry row appears in the welcome block once it is live.
-        warmUpWebGateway();
+        webGateway.warmUp();
 
         // Cold-start replay for --resume / --continue: if the engine was
         // preloaded with prior messages (ClaudeCodeCli before run()), render
@@ -890,11 +681,6 @@ public class LanternaReplScreen implements SlashHost {
             if (taskBoardFeature != null) taskBoardFeature.close();
             releaseTerminalForExit();
         }
-    }
-
-
-    private void handleCtrlC() {
-        exitController.handleCtrlC();
     }
 
     private void handleCtrlD() {
@@ -973,56 +759,14 @@ public class LanternaReplScreen implements SlashHost {
         // event-driven rather than reactive; explicitly refresh it here instead
         // of waiting for the next assistant message or turn completion.
         executeStatusLineCommandImmediately();
-        Runnable repaintWelcomeModel = () -> {
-            LogoPanel.WelcomeBlock block = welcomeBlock.get();
-            if (messagePanel == null || block == null) return;
-            int terminalWidth = screen != null
-                ? screen.getTerminalSize().getColumns() : 100;
-            welcomePanel.updateModelLine(
-                messagePanel, block, terminalWidth, model);
-        };
-        // Model commands can finish on a virtual thread. Component mutation
-        // stays on Lanterna's GUI thread; startup calls (before gui exists)
-        // only seed the volatile model field used by buildLayout().
-        if (gui != null) gui.getGUIThread().invokeLater(repaintWelcomeModel);
-        else repaintWelcomeModel.run();
+        // Model commands can finish on a virtual thread; the presenter hops to the GUI thread.
+        // Startup calls (before the scene exists) only seed the volatile model field.
+        if (welcome != null) welcome.repaintModelLine();
     }
 
     public void applyModelSelection(String model) {
         setModel(model != null ? model : ModelNames.defaultMainLoopModel());
         saveModelSetting(model);
-    }
-
-
-    public void openBtwDialog(String question, Function<String, String> sideQuestionRunner) {
-        btwFeature.open(question, sideQuestionRunner);
-    }
-
-    private ToolExecutionContext currentAgentToolExecutionContext() {
-        var config = queryEngine.configuration().getConfig();
-        var permissionMode = config.permissionModeSupplier() == null
-            ? null : config.permissionModeSupplier().get();
-        return ToolExecutionContext
-            .builder(new AbortController(), queryEngine.conversation().getSessionId())
-            .workingDirectory(config.workingDirectory())
-            .permissionAskCallback(queryEngine.execution().getPermissionAskCallback())
-            .fileStateCache(queryEngine.forks().getFileStateCache())
-            .fileHistoryManager(queryEngine.conversation().getFileHistoryManager())
-            .messageQueueManager(queryEngine.conversation().getMessageQueue())
-            .agentId(config.agentId())
-            .nestedMemoryAttachmentTriggers(queryEngine.forks().getNestedMemoryAttachmentTriggers())
-            .loadedNestedMemoryPaths(queryEngine.forks().getLoadedNestedMemoryPaths())
-            .teamMemoryEnabled(config.teamMemoryEnabledSupplier().get())
-            .currentModel(config.model())
-            .sandboxConfig(config.sandboxConfigSupplier().get())
-            .readDenyIgnorePatterns(config.readDenyIgnorePatternsSupplier().get())
-            .turnTokenBudget(queryEngine.execution().getTurnTokenBudget())
-            .workingDirectoryController(queryEngine.configuration().workingDirectoryController())
-            .enabledTools(config.tools())
-            .currentPermissionMode(permissionMode)
-            .conversationMessages(queryEngine.conversation().getMessages())
-            .renderedSystemPrompt(queryEngine.configuration().fetchSystemPromptParts())
-            .build();
     }
 
     /** Persists {@code false}, or removes the default-on setting when enabled. */
@@ -1052,91 +796,6 @@ public class LanternaReplScreen implements SlashHost {
         return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
     }
 
-    /**
-     * Opens the {@code /copy} interactive flow.
-     */
-    public void openCopyPicker(String fullText,
-                               List<CopyCommand.CodeBlock> codeBlocks,
-                               boolean skipPicker) {
-        if (gui == null || copyPicker == null) return;
-        gui.getGUIThread().invokeLater(() -> {
-            if (skipPicker) {
-                handleCopyDialogResult(fullText, codeBlocks,
-                    new CopyPickerDialog.CopySelection(-1, false, false));
-                return;
-            }
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            copyPicker.show(fullText, codeBlocks, selection -> {
-                if (inputPanel != null) inputPanel.setSuppressed(false);
-                handleCopyDialogResult(fullText, codeBlocks, selection);
-            });
-        });
-    }
-
-    /**
-     * Executes a {@code /copy} selection and echoes the result.
-     */
-    private void handleCopyDialogResult(
-            String fullText,
-            List<CopyCommand.CodeBlock> codeBlocks,
-            CopyPickerDialog.CopySelection selection) {
-        appendLine("", TextColor.ANSI.DEFAULT);  // spacer
-        messagePanel.appendMixed(
-            ChipSegments.of(" ❯ /copy",
-                LanternaTheme.inputText(),
-                LanternaTheme.claude(),
-                LanternaTheme.userQueryBg()));
-        if (selection == null) {
-
-            appendLine("  ⎿  Copy cancelled", LanternaTheme.welcomeDim());
-            return;
-        }
-        String text;
-        String filename;
-        if (selection.blockIndex() >= 0 && selection.blockIndex() < codeBlocks.size()) {
-            var block = codeBlocks.get(selection.blockIndex());
-            text = block.code();
-            filename = "copy" + CopyCommand.fileExtension(block.lang());
-        } else {
-            text = fullText;
-            filename = CopyCommand.RESPONSE_FILENAME;
-        }
-        if (!selection.writeOnly()) {
-            OSC52Helper.copyToClipboard(text);
-        }
-        Thread.startVirtualThread(() -> {
-            String result = commandContext.presentation().copyApplyFromDialog() != null
-                ? commandContext.presentation().copyApplyFromDialog().apply(
-                    text, filename, selection.always(), selection.writeOnly())
-                : null;
-            gui.getGUIThread().invokeLater(() -> {
-                if (StringUtils.isNotBlank(result)) {
-                    String[] lines = result.split("\n");
-                    for (int i = 0; i < lines.length; i++) {
-                        appendLine((i == 0 ? "  ⎿  " : "     ") + lines[i], LanternaTheme.welcomeDim());
-                    }
-                }
-            });
-        });
-    }
-
-
-    public void openHelpPanel() {
-        if (gui == null || helpPanel == null) return;
-        HelpCommandCatalog.Catalog catalog = HelpCommandCatalog.build(
-            commandRegistry, commandContext);
-        var resolver = keybindingsStore.currentResolver();
-        var shortcutLabels = HelpPanel.ShortcutLabels.from(
-            resolver, keybindingsStore.isEnabled());
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            helpPanel.show(LogoPanel.appVersion(), catalog.builtin(), catalog.custom(),
-                shortcutLabels, resolver, () -> {
-                if (inputPanel != null) inputPanel.setSuppressed(false);
-                appendLine("  Help dialog dismissed", LanternaTheme.welcomeDim());
-            });
-        });
-    }
 
     /**
      * Toggles the left-docked project drawer (≡ footer button).
@@ -1155,439 +814,6 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * Drawer resume. The drawer lists every project, so picking a session from another
-     * directory carries the session's own project through as the resume target and the
-     * runtime moves the whole app there before restoring — the released picker instead
-     * prints a {@code cd} command, which makes a drawer that can browse but not open.
-     */
-    private void resumeSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
-        gui.getGUIThread().invokeLater(() -> {
-            if (sessionController == null) return;
-            String targetCwd = StringUtils.isBlank(entry.cwd())
-                ? commandContext.session().workingDirectory() : entry.cwd();
-            sessionController.resume(new ResumeRequest(
-                entry.id(), entry.transcriptPath(), targetCwd,
-                ResumeRequest.Entrypoint.SLASH_COMMAND_PICKER));
-        });
-    }
-
-    /** Drawer delete — disk I/O off the GUI thread; the panel already removed the row. */
-    private void deleteSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
-        Thread.ofVirtual().name("project-panel-delete").start(() -> {
-            try {
-                InteractiveSessionPort.SessionEntry sessionEntry = new InteractiveSessionPort.SessionEntry(
-                    entry.id(), entry.lastModified(), entry.createdAt(), entry.messageCount(),
-                    entry.summary(), entry.gitBranch(), entry.cwd(), entry.tag(),
-                    entry.transcriptPath(), null, entry.customTitle(), entry.fileSize(), false);
-                boolean deleted = interactiveSessions.deleteSession(sessionEntry,
-                    commandContext.session().workingDirectory());
-                if (!deleted) {
-                    gui.getGUIThread().invokeLater(() -> appendLine(
-                        "  Could not delete session " + entry.id(), LanternaTheme.welcomeDim()));
-                }
-            } catch (RuntimeException failure) {
-                gui.getGUIThread().invokeLater(() -> appendLine(
-                    "  Failed to delete session " + entry.id() + ": " + failure.getMessage(),
-                    LanternaTheme.welcomeDim()));
-            }
-        });
-    }
-
-    /** Drawer preview — transcript read off the GUI thread, replayed when it lands. */
-    private void previewSessionFromProjectPanel(ProjectCatalogPort.ProjectSessionEntry entry) {
-        Thread.ofVirtual().name("project-panel-preview").start(() -> {
-            List<Message> messages;
-            try {
-                // Same filter the resume picker applies: retracted turns are not
-                // part of the conversation the user would resume into.
-                messages = RetractedMessages.filter(
-                    interactiveSessions.readMessages(entry.transcriptPath()));
-            } catch (RuntimeException failure) {
-                log.warn("Failed to read the transcript for the drawer preview", failure);
-                messages = null;   // null reports the failure to the panel
-            }
-            List<Message> result = messages;
-            gui.getGUIThread().invokeLater(() -> projectPanel.showPreviewMessages(entry, result));
-        });
-    }
-
-    /**
-     * Opens the {@code /plugin} settings panel.
-     */
-    public void openPluginPanel(String args) {
-        if (gui == null || pluginSettingsPanel == null) return;
-        PluginRoute route = PluginRoute.parse(args);
-        List<Map.Entry<String, TextColor>> changeLog = new ArrayList<>();
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            pluginSettingsPanel.show(route,
-                (line, color) -> changeLog.add(Map.entry(line, color)),
-                () -> {
-                    if (inputPanel != null) inputPanel.setSuppressed(false);
-                    if (!changeLog.isEmpty()) {
-                        appendLine("", TextColor.ANSI.DEFAULT);
-                        for (var entry : changeLog) {
-                            appendLine("  " + entry.getKey(), entry.getValue());
-                        }
-                        // Plugins changed — re-inject runtime state.
-                        Thread.startVirtualThread(() -> {
-                            var rt = commandContext.application().plugins();
-                            if (rt != null) {
-                                try { rt.refresh(); } catch (Exception _) { }
-                            }
-                        });
-                    }
-                });
-        });
-    }
-
-    /**
-     * Opens the {@code /diff} dialog.
-     */
-    public void openDiffDialog() {
-        if (gui == null || diffDialog == null) return;
-        Thread.startVirtualThread(() -> {
-            DiffData gitDiff = null;
-            List<TurnDiffExtractor.TurnDiff> turnDiffs = List.of();
-            try {
-                gitDiff = new GitDiffCollector(
-                    System.getProperty("user.dir")).collect();
-            } catch (Exception _) {
-                // Not a git repo / git unavailable — dialog shows the empty state.
-            }
-            try {
-                turnDiffs = TurnDiffExtractor.extract(
-                    commandContext.session().messagesSupplier().get());
-            } catch (Exception _) {
-                // Per-turn extraction is best-effort.
-            }
-            final var fGit = gitDiff;
-            final var fTurns = turnDiffs;
-            gui.getGUIThread().invokeLater(() -> {
-                if (inputPanel != null) inputPanel.setSuppressed(true);
-                diffDialog.show(fGit, fTurns, () -> {
-                    if (inputPanel != null) inputPanel.setSuppressed(false);
-                    appendLine("  Diff dialog dismissed", LanternaTheme.welcomeDim());
-                });
-            });
-        });
-    }
-
-    /**
-     * Opens the inline {@code /export} picker (Clipboard / File).
-     */
-    public void openExportDialog(String content) {
-        if (gui == null || exportDialog == null || content == null) return;
-        final String firstPrompt = extractFirstPromptFromHistory();
-        final String defaultName = ExportDialog.buildDefaultFilename(firstPrompt);
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            exportDialog.show(content, defaultName, System.getProperty("user.dir"),
-                (result, _) -> {
-                    if (inputPanel != null) inputPanel.setSuppressed(false);
-                    handleExportDialogResult(result.message());
-                });
-        });
-    }
-
-    private void handleExportDialogResult(String message) {
-        // Same transcript shape as /effort: a grey-bg user-query row matching
-        // what the user "typed", followed by the result line. Keeps the
-        // history symmetric with a textual /export <filename>.
-        appendLine("", TextColor.ANSI.DEFAULT);  // spacer
-        messagePanel.appendMixed(
-            ChipSegments.of(" ❯ /export",
-                LanternaTheme.inputText(),
-                LanternaTheme.claude(),
-                LanternaTheme.userQueryBg()));
-        if (StringUtils.isNotBlank(message)) {
-            appendLine("  ⎿  " + message, LanternaTheme.welcomeDim());
-        }
-    }
-
-    /**
-     * Opens the inline hooks configuration browser — the {@code /hooks} entry point wired from
-     * the CLI. Backend orchestration (settings hot-reload subscription, snapshot loading) lives
-     * in {@link HooksController}; this thin delegate preserves the launcher contract.
-     */
-    public void openHooksDialog() {
-        hooksController.open();
-    }
-
-
-    public void openGoalDialog() {
-        if (gui == null || goalDialog == null) return;
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            Runnable onClose = () -> {
-                if (inputPanel != null) {
-                    inputPanel.setSuppressed(false);
-                    inputPanel.takeFocus();
-                }
-            };
-
-            HookDispatcher hooks = queryEngine.execution().getHookDispatcher();
-            if (hooks != null && hooks.activeGoal().isPresent()) {
-                goalDialog.showActive(
-                    () -> hooks.activeGoal().orElse(null),
-                    System::currentTimeMillis,
-                    this::currentTokenCount,
-                    onClose);
-                return;
-            }
-            GoalStatusAttachment latest = GoalStatusHistory.latestSuccessful(queryEngine.conversation().getMessages());
-            if (latest != null) goalDialog.showLatest(latest, onClose);
-            else goalDialog.showNone(onClose);
-        });
-    }
-
-    private long currentTokenCount() {
-        Usage usage = queryEngine.execution().getTotalUsage();
-        return usage == null ? 0L
-            : usage.inputTokens() + usage.outputTokens()
-                + usage.cacheCreationInputTokens() + usage.cacheReadInputTokens();
-    }
-
-    /**
-     * Opens the inline diagnostic report dialog for {@code /doctor} (LOADING →
-     * scrollable REPORT). Backend collection lives in
-     * the CLI doctor diagnostics adapter; this
-     * thin delegate preserves the launcher contract.
-     *
-     * <p>Called from {@link com.claudecode.commands.CommandPresentationPorts#doctorDialogLauncher}.
-     * No-op when the GUI isn't up yet (headless / bridge modes).
-     */
-    public void openDoctorDialog() {
-        if (gui == null || doctorDialog == null) return;
-        gui.getGUIThread().invokeLater(() ->
-            doctorDialog.show(() ->
-                appendLine("  Claude Code diagnostics dismissed", LanternaTheme.welcomeDim())));
-    }
-
-    /**
-     * Opens the read-only {@code /skills} list overlay — the {@code skillsDialogLauncher} entry point.
-     */
-    public void openSkillsDialog() {
-        if (gui == null || skillsDialog == null) return;
-        gui.getGUIThread().invokeLater(() ->
-            skillsDialog.show(() ->
-                appendLine("  Skills dialog dismissed", LanternaTheme.welcomeDim())));
-    }
-
-    /**
-     * Opens the {@code /stats} panel — the {@code statsDialogLauncher} entry point.
-     */
-    public void openStatsDialog() {
-        if (gui == null || statsDialog == null) return;
-        gui.getGUIThread().invokeLater(() ->
-            statsDialog.show(() ->
-                appendLine("  Stats dialog dismissed", LanternaTheme.welcomeDim())));
-    }
-
-    /**
-     * Opens the {@code /tasks} (alias {@code /bashes}) background-tasks panel — the {@code
-     * tasksDialogLauncher} entry point.
-     */
-    public void openTasksDialog() {
-        if (gui == null || tasksDialog == null) return;
-        gui.getGUIThread().invokeLater(() -> {
-
-            // PromptInput — the prompt bar must vanish while the dialog is
-            // open (same command-to-feature wiring pattern as other inline dialogs). The
-            // dialog's close is the single exit for every dismiss path
-            // (Esc/←/Space/Enter, kill-last-task auto-close, goBackToList's
-            // close branch) and always fires this callback, so the suppression
-            // flag cannot leak.
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            tasksDialog.show(() -> {
-                if (inputPanel != null) inputPanel.setSuppressed(false);
-                appendLine("  Background tasks dialog dismissed", LanternaTheme.welcomeDim());
-            });
-        });
-    }
-
-    private void viewAgentTask(TaskState task) {
-        if (task == null) return;
-        ViewedTeammateHolder.instance().enterLocalAgentViewing(task.id());
-        if (transcriptController != null) transcriptController.teammateViewChanged();
-        if (inputPanel != null) {
-            String name = featureRuntime != null
-                ? featureRuntime.taskRegistry().resolveAgentName(task.id()) : task.description();
-            inputPanel.setTransientStatusLine(
-                "Viewing @" + name + " — Esc to return to main", 0);
-        }
-    }
-
-
-    public void openWorkflowsDialog() {
-        openWorkflowsDialog(null, false);
-    }
-
-    private void openWorkflowsDialog(String taskId, boolean returnToTasks) {
-        if (gui == null || workflowsDialog == null) return;
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-        });
-        Thread.ofVirtual().name("workflows-dialog-load").start(() -> {
-            featureRuntime.workflowRuns().loadDirectory(
-                interactiveSessions.workflowRunPath(System.getProperty("user.dir"),
-                    queryEngine.conversation().getSessionId(), "wf_history")
-                    .getParent());
-            gui.getGUIThread().invokeLater(() -> {
-                Runnable onClose = () -> {
-                    if (returnToTasks) {
-                        openTasksDialog();
-                    } else {
-                        if (inputPanel != null) inputPanel.setSuppressed(false);
-                        appendLine("  Dynamic workflows dialog dismissed", LanternaTheme.welcomeDim());
-                    }
-                };
-                if (taskId == null) {
-                    workflowsDialog.show(onClose);
-                } else if (!workflowsDialog.showTask(taskId, onClose)) {
-                    if (returnToTasks) openTasksDialog();
-                    else if (inputPanel != null) inputPanel.setSuppressed(false);
-                    appendLine("  Dynamic workflow is no longer available", LanternaTheme.welcomeDim());
-                }
-            });
-        });
-    }
-
-
-    public void openTagRemovalDialog(CommandContext.TagRemovalRequest request) {
-        if (gui == null || tagRemovalDialog == null || request == null) return;
-        Runnable show = () -> tagRemovalDialog.show(request, result -> {
-            if (result != null && result.output() != null && !StringUtils.isBlank(result.output())) {
-                postSystemMessage(result.output());
-            }
-            inputPanel.takeFocus();
-        });
-        gui.getGUIThread().invokeLater(show);
-    }
-
-    /** Opens the safe-by-default confirmation used by {@code /pokemon hatch}. */
-    public void openPokemonHatchDialog(CommandContext.PokemonHatchRequest request) {
-        pokemonFeature.openHatchDialog(request);
-    }
-
-    /** Installs the /context data collector (CLI wiring). */
-    public void setContextDataCollector(Supplier<ContextData> collector) {
-        this.contextDataCollector = collector;
-    }
-
-
-    public void showContextVisualization() {
-        if (gui == null || contextDataCollector == null) return;
-        Thread.startVirtualThread(() -> {
-            try {
-                var data = contextDataCollector.get();
-                int width = screen != null ? screen.getTerminalSize().getColumns() : 80;
-                var lines = ContextVisualizationRenderer.render(data, width);
-                gui.getGUIThread().invokeLater(() -> {
-                    appendLine("", TextColor.ANSI.DEFAULT);
-                    for (var segments : lines) {
-                        messagePanel.appendMixed(segments);
-                    }
-                });
-            } catch (Exception e) {
-                gui.getGUIThread().invokeLater(() ->
-                    appendLine("  /context failed: " + e.getMessage(), LanternaTheme.toolError()));
-            }
-        });
-    }
-
-    /**
-     * True when {@link #handleCompactProgress} started the spinner itself for a
-     * standalone {@code /compact} (no query in flight — the spinner is otherwise
-     * only running during turns). Cleared at {@code compact_end}, which then also
-     * stops the spinner; when compaction happens mid-turn (auto-compact), the
-     * spinner was already running and must be left running.
-     */
-    private volatile boolean compactSpinnerAutostarted = false;
-
-    /**
-     * Handles a {@link CompactProgressEvent} from the manual {@code /compact} or auto-compact flow.
-     */
-    public void handleCompactProgress(CompactProgressEvent event) {
-        if (spinnerComponent == null) return;
-
-        // is always mounted in the REPL tree and shows whenever isCompacting.
-        if (!(event instanceof CompactProgressEvent.CompactEnd) && !spinnerComponent.isSpinning()) {
-            spinnerComponent.start("Compacting");
-            compactSpinnerAutostarted = true;
-        }
-        switch (event) {
-            case CompactProgressEvent.HooksStart hs -> {
-                String msg = switch (hs.hookType()) {
-                    case "pre_compact"   -> "Running PreCompact hooks…";
-                    case "post_compact"  -> "Running PostCompact hooks…";
-                    case "session_start" -> "Running SessionStart hooks…";
-                    default              -> "Running hooks…";
-                };
-                spinnerComponent.setOverrideColor(LanternaTheme.systemSpinner());
-                spinnerComponent.setOverrideShimmerColor(LanternaTheme.systemSpinnerShimmer());
-                spinnerComponent.setOverrideMessage(msg);
-            }
-            case CompactProgressEvent.CompactStart _ -> {
-                spinnerComponent.setOverrideColor(LanternaTheme.systemSpinner());
-                spinnerComponent.setOverrideShimmerColor(LanternaTheme.systemSpinnerShimmer());
-                spinnerComponent.setOverrideMessage("Compacting conversation");
-                spinnerComponent.setCompacting(true);
-            }
-            case CompactProgressEvent.CompactEnd _ -> {
-                spinnerComponent.setCompacting(false);
-                spinnerComponent.setOverrideColor(null);
-                spinnerComponent.setOverrideShimmerColor(null);
-                spinnerComponent.setOverrideMessage(null);
-                if (compactSpinnerAutostarted) {
-                    compactSpinnerAutostarted = false;
-                    spinnerComponent.stop();
-                }
-            }
-        }
-    }
-
-    // ── MCP dialog wiring ────────────────────────────────────────────────────
-
-    /**
-     * Opens the inline MCP browser — the {@code /mcp} entry point wired from
-     * {@code McpCommand.setDialogLauncher}. Backend orchestration lives in
-     * {@link MCPController}; this thin delegate preserves the launcher contract.
-     */
-    public void openMcpDialog() {
-        mcpController.open();
-    }
-
-    /**
-     * matches {@code ExportCommand.extractFirstPrompt} — first user message
-     * text, first line, max 50 chars. Used to seed the default filename in the
-     * picker. Returns empty string if no usable prompt found.
-     */
-    private String extractFirstPromptFromHistory() {
-        var messages = queryEngine.conversation().getMessages();
-        for (var msg : messages) {
-            if (!(msg instanceof UserMessage um)) continue;
-            if (um.message() == null) continue;
-            String text = null;
-            if (um.message().text() != null) {
-                text = um.message().text().trim();
-            } else if (um.message().blocks() != null) {
-                for (var block : um.message().blocks()) {
-                    if (block instanceof TextBlock(String text1)) {
-                        text = text1.trim();
-                        break;
-                    }
-                }
-            }
-            if (StringUtils.isEmpty(text)) continue;
-            String firstLine = text.split("\n")[0];
-            if (firstLine.length() > 50) firstLine = FormatUtils.truncate(firstLine, 50);
-            return firstLine;
-        }
-        return "";
-    }
-
-    /**
      * Applies a user-selected prompt-bar color from {@code /color}.
      */
     public void setSessionColor(String colorName) {
@@ -1600,16 +826,6 @@ public class LanternaReplScreen implements SlashHost {
         } else {
             inputPanel.setSessionColor(colorName);
         }
-    }
-
-    /** Live-applies a newly hatched Pokémon and renders its Buddy-style detail card. */
-    public void setWelcomePokemon(PokemonProfile pokemon) {
-        pokemonFeature.setWelcomePokemon(pokemon);
-    }
-
-    /** Renders the current Pokémon card without replacing welcome state. */
-    public void showWelcomePokemon(PokemonProfile pokemon) {
-        pokemonFeature.showWelcomePokemon(pokemon);
     }
 
     /**
@@ -1688,10 +904,11 @@ public class LanternaReplScreen implements SlashHost {
         // SCROLL_UP / SCROLL_DOWN events to handleKeyStroke. We use
         // CLICK_RELEASE_DRAG (not the lighter CLICK_RELEASE) so DRAG events
         // arrive too — required for virtual text selection: click-down
-        // anchors, drag updates focus, release commits. CLICK_RELEASE_DRAG_MOVE
-        // would also deliver hover/move which floods the input queue (one
-        // event per cell traversed) with no functional benefit — we have
-        // no hover semantics anywhere in the TUI.
+        // anchors, drag updates focus, release commits. In this fork,
+        // CLICK_RELEASE_DRAG also enables ?1003 (any-motion tracking), so
+        // button-less MOVE events arrive as a side effect — CompactAnsiTerminal
+        // no longer filters them out, since the coordinator panel now uses
+        // MOVE for row hover highlighting.
         if (terminal instanceof ExtendedTerminal et) {
             try {
                 TerminalMouseModeLifecycle.enableForTui(et);
@@ -1833,7 +1050,7 @@ public class LanternaReplScreen implements SlashHost {
         inputPanel.setVimEnabled(prepared.vimModeEnabled());
         sessionController.applyPreparedSessionColor(
             startupSessionId, prepared.sessionBadge(), System.getProperty("user.dir"));
-        publishActiveSession(prepared.sessionCustomTitle());
+        sessionHostPublisher.publishActiveSession(prepared.sessionCustomTitle());
         // The explicit launch name wins restored transcript metadata, matching
         // the previous construction order.
         if (StringUtils.isNotBlank(initialSessionName)) {
@@ -1851,712 +1068,107 @@ public class LanternaReplScreen implements SlashHost {
         }
     }
 
-    private void buildLayout() {
-        // ── Components ─────────────────────────────────────────────────────
-        messagePanel     = new MessagePanel();
-        messagePanel.setKeybindingsStore(keybindingsStore);
-        spinnerComponent = new SpinnerComponent();
-        spinnerComponent.setVerbose(verbose);
-        inputPanel       = new InputPanel(permissionGate != null
-            ? permissionGate.currentMode().kind().wireValue()
-            : "default");
-        // The GUI thread is already running. Keep the base REPL surface
-        // hidden before scene.attach publishes it; startup gates reveal it
-        // atomically once input is genuinely ready. Hiding only after
-        // buildLayout returns exposes a transient footer that PTY drivers (and
-        // fast users) can type into before callbacks are fully installed.
-        messagePanel.setVisible(false);
-        inputPanel.setVisible(false);
-        inputPanel.setBypassPermissionsModeAvailable(() ->
-            permissionGate != null && permissionGate.isBypassPermissionsModeAvailable());
-        inputPanel.setKeybindingsStore(keybindingsStore);
-        // Session Link may change collaboration state from a virtual thread.
-        // Install the GUI hop before subscribing the footer to that state.
-        inputPanel.setGuiInvoker(r -> gui.getGUIThread().invokeLater(r));
-        inputPanel.setCollaborationController(collaborationController);
-        int terminalRows = screen != null ? screen.getTerminalSize().getRows() : 40;
-        // Share the engine's SessionIdentity so a switchToSession call
-        // (resume/branch/clear) is visible here too without a separate
-        // setSessionId sync step.
-        inputPanel.wireSessionIdentity(queryEngine.conversation().sessionIdentity());
-        toolApprovalInteraction = new ToolApprovalInteraction(
-            gui, inputPanel, spinnerComponent, queryEngine, permissionGate, permissionExplainer,
-            () -> turnEngine != null && turnEngine.isInFlight(), this::handleQuery,
-            event -> dispatcher.dispatch(event, messagePanel), interactionCoordinator, messagePanel,
-            featureRuntime.taskRegistry());
-        toolApprovalInteraction.setPresentationSnapshotStore(presentationSnapshots);
-        toolApprovalInteraction.setPlanClearApprovalConsumer(this::acceptPlanWithClearedContext);
-        toolApprovalInteraction.setKeybindingsStore(keybindingsStore);
-        lspRecommendationDialog = new LspRecommendationDialog(); // inline, zero height until shown
-        lspRecommendationDialog.setKeybindingsStore(keybindingsStore);
-        pluginHintMenu   = new PluginHintMenu();   // inline, zero height until shown
-        pluginHintMenu.setKeybindingsStore(keybindingsStore);
-        taskBoardFeature = new TaskBoardFeature(
-            gui, screen, spinnerComponent, inputPanel, taskBoard, featureRuntime,
-            () -> turnView == null ? List.of() : turnView.runningTeammateMetricsSnapshot());
-        taskBoardFeature.start();
-        exportDialog     = new ExportDialog();       // inline, zero height until shown
-        exportDialog.setKeybindingsStore(keybindingsStore);
-        exportDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        thinkingToggleDialog = new ThinkingToggleDialog();
-        thinkingToggleDialog.setKeybindingsStore(keybindingsStore);
-        collaborationPickerDialog = new CollaborationPickerDialog();
-        collaborationPickerDialog.setKeybindingsStore(keybindingsStore);
-        collaborationPickerDialog.setInteractionBlocked(toolApprovalInteraction::isPromptActive);
-        feishuSetupDialog = new FeishuSetupDialog();
-        feishuSetupDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        goalDialog       = new GoalDialog();         // inline, zero height until shown
-        copyPicker       = new CopyPickerDialog();   // inline, zero height until shown
-        copyPicker.setKeybindingsStore(keybindingsStore);
-        diffDialog       = new DiffDialog(           // inline, zero height until shown
-            terminalRows);
-        helpPanel        = new HelpPanel(            // inline, zero height until shown
-            terminalRows);
-        helpPanel.setTerminalColumnsSupplier(
-            () -> screen != null ? screen.getTerminalSize().getColumns() : 80);
-        // Left-docked project drawer — covering overlay over the transcript's
-        // left strip; zero size until toggled. Loads run on virtual threads.
-        projectPanel = new ProjectPanel(
-            () -> screen != null ? screen.getTerminalSize().getColumns() : 80,
-            () -> screen != null ? screen.getTerminalSize().getRows() : terminalRows);
-        projectPanelController = new ProjectPanelController(
-            projectCatalog, projectPanel,
-            task -> Thread.ofVirtual().name("project-catalog-io").start(task),
+    /**
+     * Builds the scene through {@link ReplComposer} and adopts the collaborators this screen
+     * still drives from its lifecycle, input port, and public setters.
+     */
+    private void composeScene() {
+        ReplContext ctx = new ReplContext(
+            gui, screen, terminal,
             task -> gui.getGUIThread().invokeLater(task),
-            new ProjectPanel.Actions(
-                this::resumeSessionFromProjectPanel,
-                this::deleteSessionFromProjectPanel,
-                this::previewSessionFromProjectPanel,
-                () -> {
-                    if (inputPanel != null) {
-                        inputPanel.setSuppressed(false);
-                        inputPanel.setProjectsButtonActive(false);
-                    }
-                },
-                null));
-        pluginSettingsPanel = new PluginSettingsPanel( // inline, zero height until shown
-            new PluginPanelServices(plugins,
-                task -> Thread.ofVirtual().name("plugin-panel-io").start(task),
-                mcpManagement));
-        pluginSettingsPanel.setKeybindingsStore(keybindingsStore);
-        trustDialog      = new TrustFolderDialog();   // inline, zero height until shown
-        trustDialog.setKeybindingsStore(keybindingsStore);
-        managedSettingsDialog = new ManagedSettingsSecurityDialog();  // inline, zero height until shown
-        managedSettingsDialog.setKeybindingsStore(keybindingsStore);
-        externalIncludesDialog = new ClaudeMdExternalIncludesDialog(); // inline, zero height until shown
-        externalIncludesDialog.setKeybindingsStore(keybindingsStore);
-        startupGateController = new StartupGateController(
-            startupTrust,
-            memoryCatalog,
-            new StartupGateController.View() {
-                @Override
-                public void promptTrust(Path cwd, Runnable onAccept, Runnable onExit) {
-                    trustDialog.prompt(cwd, onAccept, onExit);
-                }
-
-                @Override
-                public void promptExternalIncludes(Path cwd, List<String> paths,
-                                                   Runnable onAllow, Runnable onDisable,
-                                                   Runnable onExit) {
-                    externalIncludesDialog.prompt(
-                        cwd, paths, onAllow, onDisable, onExit);
-                }
-
-                @Override
-                public void promptManagedSettings(Path cwd, List<String> items,
-                                                  Runnable onAccept, Runnable onExit) {
-                    managedSettingsDialog.prompt(cwd, items, onAccept, onExit);
-                }
-            },
-            null,
-            message -> log.warn(
-                "[LANTERNA] Failed to compute external CLAUDE.md includes: {}", message));
-        bypassPermissionsStartupGate = BypassPermissionsStartupGate.standard(
-            () -> allowDangerouslySkipPermissions
-                || (permissionGate != null
-                    && permissionGate.currentMode() == PermissionMode.BYPASS_PERMISSIONS),
-            UiSettings::readSkipDangerousModePermissionPrompt,
-            UiSettings::persistDangerousModePermissionPrompt,
-            terminalRows,
-            keybindingsStore);
-        interruptActions = new ReplInterruptActions(
-            () -> bashModeExecutor,
-            () -> turnEngine != null && turnEngine.isInFlight(),
-            new ReplInterruptActions.TurnAbortTarget() {
-                @Override public void interrupt() { queryEngine.submission().interrupt(); }
-                @Override public void softInterrupt() { queryEngine.submission().softInterrupt(); }
-                @Override public String sessionId() {
-                    return queryEngine.conversation().getSessionId();
-                }
-                @Override public TranscriptSink transcriptSink() {
-                    return queryEngine.execution().getTranscriptSink();
-                }
-            },
-            interactionCoordinator,
-            () -> inputPanel,
-            task -> gui.getGUIThread().invokeLater(task),
-            () -> lastSubmittedInput,
-            () -> lastSubmittedInputWasInteractiveStartupPrompt);
-        exitController = ReplExitController.standard(
-            shutdown,
-            interruptActions,
-            message -> appendLine("  " + message, LanternaTheme.welcomeDim()),
-            this::stop,
-            new ReplExitController.JobControlActions() {
-                @Override public void beforeSuspend() { suspendForJobControl(); }
-                @Override public void afterResume() { resumeAfterJobControl(); }
-            }, interactiveSessions, featureRuntime.currentWorktree(), keybindingsStore);
-        collaborationPickerDialog.setExitGestureHandler(key -> {
-            if (key == 'c') handleCtrlC();
-            else if (key == 'd') handleCtrlD();
-        });
-        feishuSetupDialog.setExitGestureHandler(key -> {
-            if (key == 'c') handleCtrlC();
-            else if (key == 'd') handleCtrlD();
-        });
-        tagRemovalDialog = new TagRemovalDialog(); // inline, zero height until shown
-        tagRemovalDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        diffDialog.setKeybindingsStore(keybindingsStore);
-        doctorDialog = new DoctorDialog(doctor);
-        doctorDialog.setKeybindingsStore(keybindingsStore);
-        skillsDialog = new SkillsDialog(
-            skillsSupplier != null ? skillsSupplier : List::of,
-            Path.of(System.getProperty("user.home")));
-        skillsDialog.setKeybindingsStore(keybindingsStore);
-        skillsDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        workflowsDialog = new WorkflowsDialog(featureRuntime.workflowRuns(),
-            featureRuntime.taskRegistry(), this::handleInput, this::postSystemMessage);
-        tasksDialog = new BackgroundTasksDialog(featureRuntime.taskRegistry());
-        tasksDialog.setKeybindingsStore(keybindingsStore);
-        // inline, zero height until shown
-        statsDialog = new StatsDialog(
-            interactiveSessions,
-            r -> gui.getGUIThread().invokeLater(r),
-            () -> {
-                try { return screen.getTerminalSize().getColumns(); }
-                catch (Exception _) { return 80; }
-            },
-            ZoneId.systemDefault());
-        statsDialog.setKeybindingsStore(keybindingsStore);
-        ImmediateCommandUiAdapter immediateAdapter = new ImmediateCommandUiAdapter(
-            inputPanel, messagePanel, r -> gui.getGUIThread().invokeLater(r));
-        bashModeExecutor = new BashModeExecutor(gui, messagePanel, queryEngine, interactiveSessions,
-            interactionCoordinator,
-            (image, onClose) -> ItermImagePreviewWindow.show(gui, image, onClose));
-        // See com.claudecode.ui.lanterna.suggest.FileSuggestionService for cache,
-        // throttling, git-index mtime, and stale-VT gen semantics.
-        FileSuggestionService fileSuggestionService = new FileSuggestionService(gui, inputPanel);
-
-        selectionController = new SelectionController(gui, messagePanel, true);
-        Selection selection = selectionController.getSelection();
-        selectionController.setBareClickHandler(inputPanel::handlePromptBareClick);
-        // Screen-level selection: the GUI intercepts selection mouse events
-        // above window dispatch and paints the highlight over the full back
-        // buffer after every draw (see SelectionAwareTextGUI).
-        gui.wireSelection(selection, selectionController::handleMouse,
-            mouse -> inputPanel.handleProjectsButtonMouse(mouse)
-                || inputPanel.handleTasksPillMouse(mouse));
-        // SlashHost is a pure command port; the components a slash command reads/renders into
-        // are injected as plain references (see ReplRefs / SlashHost).
-        ReplRefs replRefs = new ReplRefs(gui, messagePanel, inputPanel, messageHistory,
-            dispatcher, queryEngine, permissionGate);
-        slashDispatcher = new SlashCommandDispatcher(this, replRefs, commandRegistry, commandContext,
-            skillsSupplier != null ? skillsSupplier : List::of, skillHookRegistrar);
-        // Conversation / session lifecycle (resume / replay / rewind / summarize).
-        // permissionGate is passed as a Supplier for uniformity with the other controllers.
-        sessionController = new SessionController(
-            gui, screen, queryEngine, commandContext, messagePanel,
-            messageHistory, collapser, inputPanel,
-            () -> permissionGate, sessionLifecycle,
-            conversationReset,
-            () -> {
-                if (sessionTopicTitleCoordinator != null) {
-                    sessionTopicTitleCoordinator.resetForNewSession();
-                }
-            },
-            () -> {
-                if (sessionTopicTitleCoordinator != null) {
-                    sessionTopicTitleCoordinator.markExistingSession();
-                }
-            },
-            title -> {
-                if (terminalController != null) terminalController.setTitle(title);
-            }, sessionId -> {
-                if (interactionCoordinator != null) interactionCoordinator.cancelSession(sessionId);
-            }, this::renderFreshConversationWelcome, this::publishActiveSession,
-            interactiveSessions, featureRuntime.invokedSkills(),
-            () -> exitController.requestShutdown("prompt_input_exit", 0));
-        sessionController.setKeybindingsStore(keybindingsStore);
-        sessionController.setModelChanged(this::setModel);
-        transcriptController = new TranscriptController(
-            gui, screen, messagePanel, spinnerComponent, inputPanel,
-            messageHistory, collapser, featureRuntime.taskRegistry(), interactiveSessions);
-        transcriptController.setKeybindingsStore(keybindingsStore);
-        transcriptController.setAgentTranscriptResolver(agentId -> {
-            // Web-gateway headless sessions record their own project's main
-            // transcript; resolve those first so viewing one reads it live.
-            Path headless = interactiveSessions.headlessTranscriptPath(agentId);
-            if (headless != null) return headless;
-            return interactiveSessions.agentTranscriptPath(System.getProperty("user.dir"),
-                queryEngine.conversation().getSessionId(), agentId);
-        });
-        localAgentInputRouter = new LocalAgentInputRouter(
-            featureRuntime.taskRegistry(),
-            (agentId, prompt, context, userInitiated) -> {
-                Tool<?, ?> registered = toolRegistry.get("Agent").orElse(null);
-                if (!(registered instanceof AgentTool agentTool)) {
-                    throw new IllegalStateException("Agent tool is unavailable");
-                }
-                new AgentContinuationService(agentTool.subAgentFactory())
-                    .resume(agentId, prompt, context, userInitiated);
-            },
-            this::currentAgentToolExecutionContext,
-            transcriptController::appendLocalAgentUserMessage,
-            failure -> messagePanel.appendLine("  " + failure, LanternaTheme.toolError()));
-        tasksDialog.setOnViewAgent(this::viewAgentTask);
-        tasksDialog.setOnViewWorkflowRoute((task, returnToTasks) ->
-            openWorkflowsDialog(task.id(), returnToTasks));
-
-        // the persistent vertical main+local-agent list inside the prompt footer,
-        // before the permanent Collaboration row. InputPanel merges it with the
-        // optional background-task pill as one tasks selection state.
-        coordinatorTaskPanel = new CoordinatorTaskPanel();
-        CoordinatorNavigationController coordinatorNavigation =
-            new CoordinatorNavigationController(featureRuntime.taskRegistry());
-        inputPanel.setTaskRegistry(featureRuntime.taskRegistry());
-        inputPanel.setWorkflowRunStore(featureRuntime.workflowRuns());
-        inputPanel.setCoordinatorNavigation(
-            coordinatorNavigation, coordinatorTaskPanel,
-            featureRuntime.taskRegistry()::resolveAgentName);
-        messageActionsController = new MessageActionsController(
-            terminal, screen, messagePanel, inputPanel,
-            sessionController::editMessageFromActions);
-        // Turn lifecycle — headless TurnEngine (stream loop + queue + interrupt/rewind/cleanup)
-        // driving a LanternaSessionSink (all Lanterna rendering). The engine owns turnInFlight +
-        // the queue; the screen reads them via turnEngine.isInFlight()/enqueue()/countQueued().
-        turnView = new LanternaSessionSink(
-            r -> gui.getGUIThread().invokeLater(r),
-            messagePanel, inputPanel, spinnerComponent, terminalController,
-            dispatcher, collapser, messageHistory, queryEngine,
-            this::executeStatusLineCommand, () -> model, () -> btwFeature.readUseCount(),
-            compactWarnings, tipSupplier, () -> {
-                featureRuntime.loopWakeups().onTurnIdle();
-                if (cronScheduler != null) cronScheduler.checkNow();
-                if (idlePromptNotifier != null) idlePromptNotifier.turnCompleted();
-                if (awaySummaryTrigger != null) awaySummaryTrigger.turnCompleted();
-            },
-            tokens -> pokemonFeature.addExperience(tokens));
-        sessionController.setRewindStateReset(turnView::resetBackgroundWaitForRewind);
-        sessionEvents = new SessionEventHub(turnView,
-            failure -> log.warn("Session Link observer failed", failure));
-        // The end-of-turn row reports what is still running in the background.
-        turnView.setTaskRegistry(featureRuntime.taskRegistry());
-        turnView.setTaskBoardLoadingListener(taskBoardFeature::setLoading);
-        turnView.setTaskBoardOwnersChangedListener(taskBoardFeature::refreshProjection);
-
-
-        // what the user typed.
-        turnView.setInterruptSalvage(restoredInput -> {
-            if (StringUtils.isNotBlank(restoredInput)) {
-                promptHistory.addEntry(restoredInput, queryEngine.conversation().getSessionId(),
-                    System.getProperty("user.dir"), historyProjectRoot, Map.of());
-            }
-        });
-        autoModeEntryWarning = AutoModeEntryWarningController.standard(
-            this::appendPersistentSystemMessage);
-        ConversationOps conversationOps =
-            new ConversationOps() {
-                @Override public void dropLastPromptHistoryEntry() { promptHistory.removeLastEntry(); }
-                @Override public UserMessage rewindBeforeLastRealUser() {
-                    return sessionController.rewindToBeforeLastRealUserMessage();
-                }
-                @Override public String restoredInput(UserMessage message) {
-                    return SessionController.restoredInput(message).text();
-                }
-            };
-        turnEngine = new TurnEngine(
-            queryEngine, () -> permissionGate, sessionEvents, conversationOps,
-            this::executeQueuedCommands,
-            r -> gui.getGUIThread().invokeLater(r),
-            r -> Thread.ofVirtual().name("api-query").start(r),
-            s -> lastSubmittedInput = s,
-            awakeGuard,
-            hookConfiguration::clearSessionHooks,
-
-            // empty (don't clobber in-flight typing) and the user is not viewing a
-            // teammate's transcript (don't rewind the main conversation behind their back).
-            () -> inputPanel.getText().isEmpty(),
-            () -> ViewedTeammateHolder.instance().isViewing());
-        sessionController.setRewindInterruptRequired(
-            () -> turnEngine != null && turnEngine.isInFlight());
-        sessionController.setRewindDeferrer(turnEngine::runWhenIdle);
-        sessionController.setAsyncRewindDeferrer(turnEngine::runWhenIdleAsync);
-        turnEngine.setInputQueueListener(commands ->
-            gui.getGUIThread().invokeLater(() -> inputPanel.setQueuedCommands(commands)));
-        submissionCoordinator = new ReplSubmissionCoordinator(
-            inputPanel, promptHistory, commandRegistry, commandContext, immediateAdapter,
-            bashModeExecutor, slashDispatcher, turnEngine, this::executeQuery,
-            this::executeRemoteQuery,
-            this::renderAndQueue, () -> queryEngine.conversation().getSessionId(), historyProjectRoot);
-        // MCP browser backend orchestration (reconnect / enable / disable / view tools).
-        // The sink lets the controller write notifications + breadcrumbs into the message
-        // area without reaching back into this screen.
-        ReplTranscriptSink transcriptSink = new ReplTranscriptSink() {
-            @Override public void system(String text) { postSystemMessage(text); }
-            @Override public void line(String text, TextColor color) { appendLine(text, color); }
-            @Override public void breadcrumb(String commandLabel) {
-                appendLine("", TextColor.ANSI.DEFAULT);
-                messagePanel.appendMixed(
-                    ChipSegments.of(" ❯ " + commandLabel,
-                        LanternaTheme.inputText(),
-                        LanternaTheme.claude(),
-                        LanternaTheme.userQueryBg()));
-            }
-        };
-        btwFeature = new BtwFeature(
-            gui, screen, inputPanel, transcriptSink, toolRegistry, queryEngine, commandContext,
-            this::currentAgentToolExecutionContext);
-        PreferencesFeature preferencesFeature = new PreferencesFeature(
-            gui, inputPanel,
             () -> screen != null ? screen.getTerminalSize().getRows() : 40,
-            queryEngine, commandRegistry, commandContext,
-            doctor, outputStyles, this::setThemeScheme, transcriptSink, customModels);
-        preferencesFeature.setBuiltInModelFamiliesVisible(showBuiltInModelFamilies);
-        preferencesFeature.setKeybindingsStore(keybindingsStore);
-        preferencesFeature.setEffortChanged(this::executeStatusLineCommandImmediately);
-        hotUiReadiness = preferencesFeature.startHotUiPreparation();
-        PermissionsFeature permissionsFeature = new PermissionsFeature(
-            gui, inputPanel, commandContext, permissionGate, transcriptSink);
-        permissionsFeature.setKeybindingsStore(keybindingsStore);
-        AgentsFeature agentsFeature = new AgentsFeature(
-            gui, inputPanel, memoryCatalog, commandContext,
-            () -> toolRegistry != null
-                ? toolRegistry.getAll().stream().map(Tool::name).toList()
-                : toolNames,
-            transcriptSink,
-            submissionCoordinator::handleQuery,
-            featureRuntime.taskRegistry(),
-            this::viewAgentTask);
-        agentsFeature.setKeybindingsStore(keybindingsStore);
-        SandboxFeature sandboxFeature = new SandboxFeature(gui, inputPanel, transcriptSink);
-        MemoryFeature memoryFeature = new MemoryFeature(gui, screen, memoryCatalog, transcriptSink);
-        memoryFeature.setKeybindingsStore(keybindingsStore);
-        pokemonFeature = new PokemonFeature(
-            gui, screen, messagePanel, inputPanel, welcomePanel, welcomeBlock,
-            () -> model, transcriptSink);
-        commandUi.install(
-            preferencesFeature, permissionsFeature, agentsFeature, sandboxFeature,
-            memoryFeature, sessionController);
-        mcpController = new MCPController(gui, inputPanel, transcriptSink,
-            mcpManagement, keybindingsStore);
-        // Bridge background-task (bash / subagent) terminal transitions into the session message
-        // queue as <task-notification> messages.
+            () -> screen != null ? screen.getTerminalSize().getColumns() : 80,
+            queryEngine, commandRegistry, commandContext, wiring, this,
+            dispatcher, collapser, presentationSnapshots, messageHistory, promptHistory,
+            historyProjectRoot, directorySuggestionService,
+            sessionHostPublisher, sessionTopicTitleCoordinator, terminalController,
+            lastSubmittedInput, verbose);
+        adopt(new ReplComposer(ctx, new ComposerHost(), scene).compose());
+        // Terminal handoff is a screen-lifecycle concern, so the editor launcher is built here.
+        externalEditor = new PromptExternalEditor(screen, ctx.guiInvoker(), inputPanel,
+            new PromptExternalEditor.TerminalHandoff() {
+                @Override public void beforeHandoff() { disableMouseBeforeHandoff(); }
+                @Override public void afterHandoff() { restoreMouseAfterHandoff(); }
+            });
+        // Post-composition observers that need the finished graph: the prompt's outward action
+        // port (reads suggestionController / sessionController) and the plugin-hint listener.
+        inputPanel.setActions(new ReplInputActions());
+        installPluginHintListener();
+    }
 
-        // enqueue*Notification — see TaskNotificationBridge / TaskNotificationBuilder.
-        new TaskNotificationBridge(queryEngine.conversation().getMessageQueue()).register();
-        // …and let any such arrival wake an idle REPL.
-        turnEngine.bindIdleQueueWakeup(this::isLongRunningCommandInFlight);
-        // Expose the session queue to background bash tasks so the stall
-        // watchdog can enqueue an interactive-prompt notification. matches
-        // the HookEngine.setMessageQueue wiring at the CLI root.
-        featureRuntime.taskRegistry().setMessageQueue(queryEngine.conversation().getMessageQueue());
-        // Hooks browser: snapshot loading + settings hot-reload subscription. toolNames /
-        // Tool names are mutable; the application hook port is stable for the session.
-        hooksController = new HooksController(gui, inputPanel, transcriptSink,
-            () -> toolNames, hookConfiguration, keybindingsStore);
-        // Inline overlays polled by onInput, in priority order. Mutually exclusive —
-        // opening one suppresses the others (see InlineOverlay).
-        scene.registerAll(preferencesFeature.overlays());
-        scene.registerAll(permissionsFeature.overlays());
-        scene.registerAll(agentsFeature.overlays());
-        scene.registerAll(sandboxFeature.overlays());
-        scene.register(toolApprovalInteraction.questionView());
-        scene.register(toolApprovalInteraction.refusalView());
-        scene.register(lspRecommendationDialog);
-        scene.register(pluginHintMenu);
+    private void adopt(ReplGraph graph) {
+        var widgets = graph.widgets();
+        var features = graph.features();
+        var controllers = graph.controllers();
+        var engine = graph.engine();
+        mainWindow = graph.mainWindow();
+        messagePanel = widgets.messagePanel();
+        spinnerComponent = widgets.spinnerComponent();
+        inputPanel = widgets.inputPanel();
+        projectPanel = widgets.projectPanel();
+        lspRecommendationDialog = widgets.lspRecommendationDialog();
+        pluginHintMenu = widgets.pluginHintMenu();
+        thinkingToggleDialog = widgets.thinkingToggleDialog();
+        collaborationPickerDialog = widgets.collaborationPickerDialog();
+        feishuSetupDialog = widgets.feishuSetupDialog();
+        taskBoardFeature = features.taskBoard();
+        bypassPermissionsStartupGate = features.bypassPermissionsGate();
+        sessionController = features.session();
+        exitController = features.exit();
+        projectPanelController = controllers.projectPanel();
+        startupGateController = controllers.startupGate();
+        interruptActions = controllers.interrupt();
+        selectionController = controllers.selection();
+        transcriptController = controllers.transcript();
+        localAgentInputRouter = controllers.localAgentInput();
+        messageActionsController = controllers.messageActions();
+        autoModeEntryWarning = controllers.autoModeEntryWarning();
+        suggestionController = controllers.suggestion();
+        statusLineController = controllers.statusLine();
+        cronScheduler = controllers.cronScheduler();
+        welcome = controllers.welcome();
+        webGateway = features.webGateway();
+        turnView = engine.turnView();
+        turnEngine = engine.turnEngine();
+        submissionCoordinator = engine.submission();
+        hotUiReadiness = engine.hotUiReadiness();
+    }
 
-        // Surface tool-emitted plugin hints (Claude Code hints protocol) as an
-        // inline install prompt. The listener fires on whatever thread recorded
-        // the hint (a BashTool turn thread); it marshals to the GUI thread here.
+    /**
+     * Surface tool-emitted plugin hints (Claude Code hints protocol) as an inline install
+     * prompt. The listener fires on whatever thread recorded the hint (a BashTool turn thread);
+     * it marshals to the GUI thread here.
+     */
+    private void installPluginHintListener() {
         ClaudeCodeHintStore.getInstance().setListener(hint -> {
-            if (gui == null) {
-                return;
-            }
+            if (gui == null) return;
             gui.getGUIThread().invokeLater(
                 () -> showPluginHintMenu(hint, (response, _) -> handlePluginHintResponse(hint, response)));
         });
-        scene.register(exportDialog);
-        scene.register(thinkingToggleDialog);
-        scene.register(collaborationPickerDialog);
-        scene.register(feishuSetupDialog);
-        scene.register(hooksController.overlay());
-        scene.register(goalDialog);
-        scene.register(btwFeature.overlay());
-        scene.register(copyPicker);
-        scene.register(diffDialog);
-        scene.register(helpPanel);
-        scene.register(projectPanel);
-        scene.register(pluginSettingsPanel);
-        scene.register(mcpController.overlay());
-        scene.register(exitController.overlay());
-        scene.register(tagRemovalDialog);
-        scene.register(pokemonFeature.overlay());
-        scene.register(memoryFeature.overlay());
-        scene.register(sessionController.overlay());
-        scene.register(doctorDialog);
-        scene.register(skillsDialog);
-        scene.register(tasksDialog);
-        scene.register(workflowsDialog);
-        scene.register(statsDialog);
-        scene.register(trustDialog);
-        scene.register(managedSettingsDialog);
-        scene.register(bypassPermissionsStartupGate.overlay());
-        scene.register(externalIncludesDialog);
-
-        // ── Root: SmartLayout — messagePanel sized by content, input pinned right below ──
-        // Order matters: spinner / permissionPanel / effortSlider / taskListPanel
-        // / exportDialog / hooksController.view() / input flow together beneath the message stream. Each
-        // collapses to (0,0) when idle so the layout hands those rows back to MessagePanel.
-        scene.mount(
-            messagePanel,
-            spinnerComponent,
-            toolApprovalInteraction.leaderView(),
-            preferencesFeature.effortView(),
-            toolApprovalInteraction.questionView(),
-            toolApprovalInteraction.refusalView(),
-            trustDialog,
-            managedSettingsDialog,
-            bypassPermissionsStartupGate.view(),
-            sandboxFeature.view(),
-            externalIncludesDialog,
-            lspRecommendationDialog,
-            preferencesFeature.modelView(),
-            preferencesFeature.customModelView(),
-            taskBoardFeature.view(),
-            thinkingToggleDialog,
-            collaborationPickerDialog,
-            feishuSetupDialog,
-            exportDialog,
-            hooksController.view(),
-            goalDialog,
-            btwFeature.view(),
-            preferencesFeature.themeView(),
-            copyPicker,
-            diffDialog,
-            helpPanel,
-            projectPanel,
-            pluginSettingsPanel,
-            permissionsFeature.addDirectoryView(),
-            preferencesFeature.settingsView(),
-            permissionsFeature.rulesView(),
-            agentsFeature.view(),
-            mcpController.view(),
-            exitController.view(),
-            tagRemovalDialog,
-            pokemonFeature.view(),
-            memoryFeature.view(),
-            sessionController.view(),
-            doctorDialog,
-            skillsDialog,
-            tasksDialog,
-            workflowsDialog,
-            statsDialog,
-
-            // the live spinner/tool zone and the prompt divider.
-            new EmptySpace(new TerminalSize(0, 1)),
-            inputPanel);
-
-        dispatcher.setToolTagLookup(request -> toolRegistry.resolveToolUseTag(
-            request.toolName(), request.inputJson(), new ToolUseRenderContext(
-                request.toolUseId(), request.toolUseResult(), request.progressMessages(),
-                queryEngine.configuration().getConfig().model())));
-
-        // ── Per-tool inline header (e.g.
-        // CollapsedReadSearchContent as a normal message-panel line — independent
-        // while toolUseConfirmQueue is non-empty (see permission callback below).
-        dispatcher.setInlineHeaderLookup((toolName, argsJson) -> {
-            if (Strings.CS.equals("Bash", toolName)) {
-                if (StringUtils.isBlank(argsJson)) return Optional.empty();
-                try {
-                    JsonNode root = JsonUtils.getMapper().readTree(argsJson);
-                    JsonNode cmd  = root.get("command");
-                    if (cmd == null || !cmd.isTextual()) return Optional.empty();
-                    String c = cmd.asText().strip();
-                    if (c.isEmpty()) return Optional.empty();
-                    return Optional.of("$ " + c);
-                } catch (Exception _) {
-                    return Optional.empty();
-                }
-            }
-            if (Strings.CS.equals("LSP", toolName)) {
-                if (StringUtils.isBlank(argsJson)) return Optional.empty();
-                try {
-                    JsonNode root = JsonUtils.getMapper().readTree(argsJson);
-                    return LspToolUseSummary.format(root);
-                } catch (Exception _) {
-                    return Optional.empty();
-                }
-            }
-            return Optional.empty();
-        });
-
-        // ── Transparent-wrapper resolution (per message) ──────────────────
-
-        // Resolved lazily via ToolRegistry so dynamically-registered (MCP) tools are
-        // honored; drives LanternaMessageDispatcher's transparent header suppression.
-        dispatcher.setTransparentWrapperLookup(
-            name -> toolRegistry.get(name).map(Tool::isTransparentWrapper).orElse(false));
-
-        // ── Main window: full screen, no decorations, no shadow ───────────
-        // NO_POST_RENDERING is critical — without it Lanterna's default
-        // WindowShadowRenderer paints a 1-2 col right/bottom shadow (black
-        // bg + bold SGR) that user terminals render as a stray yellow /
-        // gray border every time the GUI thread re-paints (e.g. on mouse
-        // focus shifts). NO_DECORATIONS alone only skips the title border.
-        // Scroll keys (PageUp / PageDown / Ctrl+Home / Ctrl+End / mouse wheel),
-        // mouse selection, Ctrl+Shift+C copy and Ctrl+C interrupt are handled at
-        // the window level — before the focused InputPanel sees them — so they
-        // work in every mode (normal input, vim, message-actions, etc.). The
-        // routing lives in WindowInputRouter; handleCtrlC stays here because it
-        // reads live turn/input state and is shared with the SIGINT handler.
-        mainWindow = scene.attach(gui, new WindowInputRouter(
-            scene.overlays(), messagePanel, selection, selectionController,
-            this::handleCtrlC, keybindingsStore, taskBoardFeature::refreshProjection));
-        // InputPanel is mounted before the root is attached, so Lanterna never
-        // invokes its Component#onAdded callback. Start the background-task
-        // footer refresh explicitly once the live scene exists; otherwise
-        // Agent/Bash tasks are present in TaskRegistry but the status pill is
-        // never repainted until an unrelated key changes the footer.
-        inputPanel.startTaskPillRefresh();
-
-        // ── Input callbacks ──────────────────────────────────────────────── Stable config/data
-        // injected directly; behaviors go through the single InputActions port wired via
-        // setActions(...) below.
-        inputPanel.setHasMessages(() -> !queryEngine.conversation().getMessages().isEmpty());
-        inputPanel.setPromptHistory(promptHistory);
-        inputPanel.setLiveHistorySupplier(transcriptController::viewedPromptHistory);
-        // Wire session + project context so history is filtered correctly
-        inputPanel.setHistoryContext(
-            queryEngine.conversation().getSessionId(),
-            historyProjectRoot);
-        // Image paste and Session Link collaboration changes share the GUI
-        // invoker installed before the collaboration controller was bound.
-        boolean[] promptBatchActive = new boolean[1];
-        boolean[] settingsBatchActive = new boolean[1];
-        gui.wireInputBatch(() -> {
-            settingsBatchActive[0] = preferencesFeature.isSettingsActive();
-            promptBatchActive[0] = !settingsBatchActive[0]
-                && !scene.overlays().hasActiveOverlay();
-            if (settingsBatchActive[0]) preferencesFeature.beginInputBatch();
-            if (promptBatchActive[0]) inputPanel.beginGuiInputBatch();
-        }, () -> {
-            try {
-                if (settingsBatchActive[0]) preferencesFeature.endInputBatch();
-            } finally {
-                if (promptBatchActive[0]) inputPanel.endGuiInputBatch();
-                settingsBatchActive[0] = false;
-                promptBatchActive[0] = false;
-            }
-        });
-        gui.wirePlainTextBatch((focused, text) -> {
-            if (scene.overlays().routePlainText(text)) return true;
-            return gui.getActiveWindow() == mainWindow
-                && inputPanel.handleGuiTextBatch(focused, text);
-        });
-        gui.wireBackspaceBatch((focused, count) -> {
-            if (scene.overlays().routeRepeatedKey(new KeyStroke(KeyType.BACKSPACE), count)) {
-                return true;
-            }
-            return gui.getActiveWindow() == mainWindow
-                && inputPanel.handleGuiBackspaceBatch(focused, count);
-        });
-        gui.wireInlineOverlayInput(scene.overlays()::routeDirect);
-
-        if (StringUtils.isNotBlank(initialSessionName)) {
-            inputPanel.setAgentName(initialSessionName);
-        }
-        toolApprovalInteraction.install();
-
-        // Transcript search navigation is owned by TranscriptController; the main
-        // InputPanel never sees those keys while the overlay is open.
-
-        // Live query → slash-command + @-file/dir typeahead.
-        suggestionController = new SuggestionController(
-            gui, inputPanel, commandRegistry, slashDispatcher,
-            fileSuggestionService, directorySuggestionService,
-            screen.getTerminalSize().getColumns(),
-            skillsSupplier != null ? skillsSupplier : List::of);
-
-        // ── Outward action / notification port ──────────────────────────────
-        // Every REPL action/notification InputPanel fires goes through this single
-        // InputActions instance (replaces ~19 individual setOnXxx callbacks). A new
-        // key feature adds a method on InputActions, NOT a new onXxx field + setter.
-        // Wired here (after suggestionController) because queryChanged reaches it.
-        inputPanel.setActions(new ReplInputActions());
-
-        // Fill horizontal divider lines in input panel
-        int termW = screen.getTerminalSize().getColumns();
-        inputPanel.setWidth(termW);
-
-        // Drives the user's statusLine command; renders its (ANSI-colored,
-        // possibly multi-line) output into the InputPanel footer. Refreshed on
-        // each assistant message (including tool-loop API rounds), turn-complete,
-        // permission-mode, and vim-mode changes, plus once now.
-        statusLineController = new StatusLineController(
-            statusLine,
-            this::statusLineIngredients,
-            () -> queryEngine.conversation().getMessages(),
-            r -> gui.getGUIThread().invokeLater(r),
-            (text, padding) -> inputPanel.setStatusLine(text, padding),
-            () -> inputPanel.clearStatusLine(),
-            UiSettings::isClaudeHudEnabled,
-            () -> Math.max(1, screen.getTerminalSize().getColumns() - 4),
-            this::statusLineEffort);
-        statusLineController.scheduleInitialUpdate();
-
-        if (CronFeatureGate.system().cronEnabled()) {
-            ScheduledTaskInteractionRouter scheduledTaskRouter =
-                new ScheduledTaskInteractionRouter(
-                    featureRuntime.taskRegistry()::injectUserMessageToActiveTeammate,
-                    CronStore::removeById,
-                    this::handleLeadScheduledTask);
-            cronScheduler = new CronScheduler(
-                () -> turnEngine.isInFlight(),
-                scheduledTaskRouter::route,
-                () -> queryEngine.conversation().getSessionId()
-            );
-            Thread.ofVirtual().name("cron-startup").start(cronScheduler::start);
-        }
-        // The first frame publishes one complete, immutable scene graph.
-        // Dialogs may change visibility/data later, but no component or input
-        // route may be attached after this point.
-        scene.seal();
     }
 
-    private void handleLeadScheduledTask(CronScheduler.FiredTask task) {
-        gui.getGUIThread().invokeLater(() -> {
-            ZonedDateTime now = ZonedDateTime.now();
-            String displayTime = now.format(
-                DateTimeFormatter.ofPattern("MMM d h:mm", Locale.US))
-                + now.format(DateTimeFormatter.ofPattern("a", Locale.US))
-                    .toLowerCase(Locale.US);
-            String label = Strings.CS.equals("loop", task.kind())
-                ? "Claude resuming /loop wakeup (" + displayTime + ")"
-                : "Running scheduled task (" + displayTime + ")";
-            SystemMessage fireMsg = MessageFactory.createScheduledTaskFireMessage(label);
-            queryEngine.conversation().appendTranscriptMessage(fireMsg);
-            dispatcher.dispatch(new SDKMessage.System(fireMsg), messagePanel);
-            queryEngine.conversation().getMessageQueue().enqueuePendingNotification(
-                QueuedCommand.modelScheduled(
-                    task.resolvedPrompt(), task.prompt(), "cron", null, task.model()));
-            turnEngine.drainIfIdle();
-        });
+    /** The runtime behaviour the composed graph reaches back into this screen for. */
+    private final class ComposerHost implements ReplComposer.Host {
+        @Override public void stop() { LanternaReplScreen.this.stop(); }
+        @Override public void suspendForJobControl() { LanternaReplScreen.this.suspendForJobControl(); }
+        @Override public void resumeAfterJobControl() { LanternaReplScreen.this.resumeAfterJobControl(); }
+        @Override public void modelChanged(String model) { setModel(model); }
+        @Override public String currentModel() { return model; }
+        @Override public List<String> toolNames() { return toolNames; }
+        @Override public void setThemeScheme(String schemeName) {
+            LanternaReplScreen.this.setThemeScheme(schemeName);
+        }
+        @Override public void turnCompleted() {
+            if (idlePromptNotifier != null) idlePromptNotifier.turnCompleted();
+            if (awaySummaryTrigger != null) awaySummaryTrigger.turnCompleted();
+        }
+        @Override public void userInteracted(String input) { noteUserInteraction(input); }
     }
 
 
     /**
      * The single outward action/notification port {@link InputPanel} fires into —
-     * extracted from an inline anonymous class in {@link #buildLayout} to a named
+     * extracted from an inline anonymous class in the former layout builder to a named
      * (non-static) inner class so the wiring block stays readable. Every method is a
      * thin delegate to a screen behavior; a new REPL key feature adds a method on
      * {@link InputActions} + a delegate here, never a new {@code onXxx} field.
@@ -2607,12 +1219,16 @@ public class LanternaReplScreen implements SlashHost {
             try { screen.refresh(RefreshType.COMPLETE); }
             catch (Exception _) { /* non-fatal */ }
         }
-        @Override public void externalEditor() { openExternalEditor(); }
+        @Override public void externalEditor() { externalEditor.open(); }
         @Override public void openAgents() { commandUi.openAgents(); }
         @Override public void stash() {
             UiSettings.ensureGlobalBooleanAsync("hasUsedStash", true);
         }
-        @Override public void undo() { undoLastMessage(); }
+        @Override public void undo() {
+            if (sessionController.undoLastSubmission(lastSubmittedInput.get(), promptHistory)) {
+                lastSubmittedInput.set(null);
+            }
+        }
         @Override public boolean openHistorySearch() {
             if (gui == null || inputPanel == null) return false;
             String initialQuery = inputPanel.getText();
@@ -2668,10 +1284,10 @@ public class LanternaReplScreen implements SlashHost {
 
             if (statusLineController != null) statusLineController.scheduleUpdate();
         }
-        @Override public void openTasksDialog() { LanternaReplScreen.this.openTasksDialog(); }
+        @Override public void openTasksDialog() { commandUi.openTasks(); }
         @Override public void toggleProjectPanel() { LanternaReplScreen.this.toggleProjectPanel(); }
         @Override public void openWorkflowDialog(String taskId) {
-            LanternaReplScreen.this.openWorkflowsDialog(taskId, false);
+            commandUi.openWorkflows(taskId, false);
         }
         @Override public void openCollaborationPicker() {
             if (collaborationPickerDialog == null
@@ -2755,10 +1371,14 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     private void handleInput(String input) {
+        noteUserInteraction(input);
+        submissionCoordinator.handleInput(input);
+    }
+
+    private void noteUserInteraction(String input) {
         if (idlePromptNotifier != null && StringUtils.isNotBlank(input)) {
             idlePromptNotifier.userInteracted();
         }
-        submissionCoordinator.handleInput(input);
     }
 
 
@@ -2786,226 +1406,12 @@ public class LanternaReplScreen implements SlashHost {
             () -> turnEngine != null && turnEngine.isInFlight());
     }
 
-    private void renderFreshConversationWelcome() {
-        int terminalWidth = screen != null
-            ? screen.getTerminalSize().getColumns() : 100;
-        welcomeBlock.set(welcomePanel.show(messagePanel, terminalWidth, model));
-    }
-
-    /**
-     * Feeds the gateway URL into the welcome block's web quick-entry row
-     * after the gateway finishes starting (or clears it after a warmup
-     * failure leaves the gateway absent). Runs on the GUI thread; a
-     * whole-block re-render happens only when the row is newly appearing,
-     * otherwise the existing row is updated in place.
-     */
-    private void refreshWelcomeWebEntry(String url) {
-        Runnable repaint = () -> {
-            LogoPanel.WelcomeBlock block = welcomeBlock.get();
-            if (messagePanel == null || block == null) return;
-            int terminalWidth = screen != null
-                ? screen.getTerminalSize().getColumns() : 100;
-            welcomeBlock.set(welcomePanel.updateWebLine(
-                messagePanel, block, terminalWidth, model, url));
-        };
-        if (gui != null) gui.getGUIThread().invokeLater(repaint);
-        else repaint.run();
-    }
-
-    private void publishActiveSession() {
-        publishActiveSession(null, true);
-    }
-
-    /** Startup overload consuming the already-scanned immutable transcript metadata. */
-    private void publishActiveSession(String preparedTitle) {
-        publishActiveSession(preparedTitle, false);
-    }
-
-    private void publishActiveSession(String preparedTitle, boolean refreshTitleInBackground) {
-        if (sessionHostRegistry == null || sessionEvents == null || submissionCoordinator == null) return;
-        String sessionId = queryEngine.conversation().getSessionId();
-        long titleGeneration = sessionHostTitleGeneration.incrementAndGet();
-        boolean newBinding = !Objects.equals(publishedHostSessionId, sessionId);
-        if (newBinding) {
-            boolean firstPublication = publishedHostSessionId == null;
-            // The hub intentionally survives /new and /resume so all endpoint
-            // subscriptions remain attached. Its replay prefix does not: those
-            // events belong to the previously active logical session and must
-            // never seed the newly bound IM thread.
-            sessionEvents.resetReplay();
-            publishedHostSessionId = sessionId;
-            String effectiveTitle = StringUtils.trimToNull(preparedTitle);
-            if (effectiveTitle == null && firstPublication) {
-                effectiveTitle = initialSessionName;
-            }
-            publishedHostSessionTitle = StringUtils.defaultString(effectiveTitle);
-        }
-        sessionHostRegistry.activateLocal(buildHostSession(sessionId));
-        sessionHostReady.complete(null);
-        if (newBinding && refreshTitleInBackground) {
-            refreshSessionHostTitle(sessionId, titleGeneration);
-        }
-    }
-
-    private void refreshSessionHostTitle(String sessionId, long generation) {
-        Thread.ofVirtual().name("session-host-title-" + sessionId).start(() -> {
-            String title;
-            try {
-                title = interactiveSessions.readCustomTitle(
-                    commandContext.session().workingDirectory(), sessionId);
-            } catch (RuntimeException failure) {
-                log.debug("Session Host title refresh failed: {}", failure.toString());
-                return;
-            }
-            if (generation != sessionHostTitleGeneration.get()
-                    || !Objects.equals(publishedHostSessionId, sessionId)) return;
-            publishedHostSessionTitle = StringUtils.defaultString(StringUtils.trimToNull(title));
-            sessionHostRegistry.refreshLocal(buildHostSession(sessionId));
-        });
-    }
-
     /** Completes once the semantic event hub and native submission path are ready. */
-    public CompletableFuture<Void> sessionHostReady() { return sessionHostReady; }
-
-    private SessionHostSession buildHostSession(String sessionId) {
-        String workDir = commandContext.session().workingDirectory();
-        SessionHostInfo info = new SessionHostInfo(sessionId, workDir, publishedHostSessionTitle,
-            queryEngine.conversation().getMessages().size(), Instant.now(), "");
-        return new SessionHostSession(
-            info, sessionEvents, submission -> submitRemote(sessionId, submission),
-            new SessionHostModelController() {
-                @Override public SessionHostModelState get() {
-                    return currentSessionModelState(sessionId);
-                }
-
-                @Override public SessionHostModelState set(String selected) {
-                    return setSessionModel(sessionId, selected);
-                }
-            },
-            new SessionHostEffortController() {
-                @Override public SessionHostEffortState get() {
-                    return currentSessionEffortState(sessionId);
-                }
-
-                @Override public SessionHostEffortState set(String selected) {
-                    return setSessionEffort(sessionId, selected);
-                }
-            },
-            instructions -> {
-                requireActiveHostSession(sessionId);
-                return slashDispatcher.dispatchSessionHostCompact(instructions)
-                    .thenApply(result -> new SessionHostCompactResult(result.output()));
-            });
-    }
-
-    private SessionHostModelState currentSessionModelState(String expectedSessionId) {
-        requireActiveHostSession(expectedSessionId);
-        String current = queryEngine.configuration().getConfig().modelPreference();
-        List<CustomModelConfig> custom = customModels != null ? customModels.list() : List.of();
-        return new SessionHostModelState(current == null ? "default" : current,
-            SessionHostModelOptions.build(current, queryEngine.configuration().getConfig()::isModelAllowed,
-                custom, showBuiltInModelFamilies));
-    }
-
-    private SessionHostModelState setSessionModel(String expectedSessionId, String selected) {
-        requireActiveHostSession(expectedSessionId);
-        SessionHostModelState available = currentSessionModelState(expectedSessionId);
-        if (available.models().stream().noneMatch(option -> selected.equals(option.name()))) {
-            throw new IllegalArgumentException("model is not available for this session");
-        }
-        String preference = Strings.CS.equals("default", selected) ? null : selected;
-        queryEngine.configuration().setModel(preference);
-        // Session Host model changes match SDK set_model: update only this
-        // QuerySession/session. Reusing applyModelSelection() here wrote
-        // ~/on and made sibling PTY/Feishu sessions drift.
-        setModel(queryEngine.configuration().getConfig().model());
-        return currentSessionModelState(expectedSessionId);
-    }
-
-    private SessionHostEffortState currentSessionEffortState(String expectedSessionId) {
-        requireActiveHostSession(expectedSessionId);
-        String model = queryEngine.configuration().getConfig().model();
-        if (!EffortHelpers.modelSupportsEffort(model)) {
-            return new SessionHostEffortState("auto", "", List.of());
-        }
-        String configured = queryEngine.configuration().getConfig().effortValue();
-        String current = StringUtils.isBlank(configured) ? "auto" : configured;
-        String effective = EffortHelpers.getDisplayedEffortLevel(model, configured);
-        List<String> choices = new ArrayList<>();
-        choices.add("auto");
-        choices.addAll(EffortHelpers.supportedEffortLevels(model));
-        return new SessionHostEffortState(current, effective, choices);
-    }
-
-    private SessionHostEffortState setSessionEffort(String expectedSessionId, String selected) {
-        requireActiveHostSession(expectedSessionId);
-        SessionHostEffortState available = currentSessionEffortState(expectedSessionId);
-        if (!available.efforts().contains(selected)) {
-            throw new IllegalArgumentException("effort is not available for this session");
-        }
-        String configured = Strings.CS.equals("auto", selected) ? null : selected;
-        queryEngine.configuration().getConfig().setEffortValue(configured);
-        SessionHostEffortState updated = currentSessionEffortState(expectedSessionId);
-        showRemoteEffortNotification(expectedSessionId, configured, updated);
-        return updated;
-    }
-
-    private void showRemoteEffortNotification(
-            String sessionId, String configured, SessionHostEffortState state) {
-        String text = EffortHelpers.getEffortNotificationText(
-            configured, queryEngine.configuration().getConfig().model());
-        if (text != null) {
-            gui.getGUIThread().invokeLater(() -> inputPanel.showTransientHint(text, 12_000));
-        }
-        String channel = collaborationController == null
-            ? "" : collaborationController.selection(sessionId).channel();
-        postSystemMessage(RemoteSessionControlFeedback.effortChanged(state, channel));
-        if (statusLineController != null) statusLineController.scheduleUpdate();
-    }
-
-    private void requireActiveHostSession(String expectedSessionId) {
-        if (!queryEngine.conversation().getSessionId().equals(expectedSessionId)) {
-            throw new IllegalStateException("session is no longer active");
-        }
-    }
-
-    private CompletableFuture<Void> submitRemote(
-            String expectedSessionId, SessionHostSubmission submission) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        gui.getGUIThread().invokeLater(() -> {
-            try {
-                if (!queryEngine.conversation().getSessionId().equals(expectedSessionId)) {
-                    throw new IllegalStateException("session is no longer active");
-                }
-                // Shared assembly with the headless path: image chips as
-                // [Image #N] refs, file attachments persisted then referenced
-                // as Attached file: lines.
-                RemoteSubmissionPrompt assembled = RemoteSubmissionPrompt.assemble(
-                    submission, file -> persistRemoteAttachment(
-                        expectedSessionId, submission.messageId(), file).toString());
-                submissionCoordinator.handleRemoteQuery(
-                    assembled.prompt(), assembled.pasted());
-                result.complete(null);
-            } catch (RuntimeException failure) {
-                result.completeExceptionally(failure);
-            }
-        });
-        return result;
-    }
-
-    private Path persistRemoteAttachment(
-            String sessionId, String messageId, SessionHostSubmission.Attachment attachment) {
-        return RemoteAttachmentStore.persist(commandContext.session().workingDirectory(),
-            sessionId, messageId, attachment);
-    }
+    public CompletableFuture<Void> sessionHostReady() { return sessionHostPublisher.ready(); }
 
     private void handleStartupInput(String input) {
-        routingInteractiveStartupPrompt = true;
-        try {
-            handleInput(input);
-        } finally {
-            routingInteractiveStartupPrompt = false;
-        }
+        noteUserInteraction(input);
+        submissionCoordinator.handleStartupInput(input);
     }
 
     /**
@@ -3036,237 +1442,30 @@ public class LanternaReplScreen implements SlashHost {
         if (statusLineController != null) statusLineController.scheduleUpdate();
     }
 
-    /**
-     * Drain a batch of {@link QueuedCommand}s from the in-flight queue.
-     */
-    private void executeQueuedCommands(List<QueuedCommand> batch) {
-        if (batch.isEmpty()) return;
-        var transcript = queryEngine.execution().getTranscriptSink();
-        if (transcript != null) {
-            transcript.recordQueueOperation(queryEngine.conversation().getSessionId(), "dequeue", null);
-        }
-        QueuedCommand cmd = batch.getFirst();
-        String text = QueuedCommandMapper.envelope(cmd);
-        // skipSlashCommands: treat as plain text even if starts with '/'.
-        // Covers inputs that must bypass local slash-command routing.
-        if (!cmd.skipSlashCommands() && text != null && Strings.CS.startsWith(text, "/")) {
-        // Re-route through slash dispatch.
+    // Turn construction (typed / remote / slash-expanded / prompt command / queue drain /
+    // plan continuation) is owned by ReplSubmissionCoordinator; SlashHost only forwards.
 
-            // alone), so there is nothing left in `batch` to lose here.
-            slashDispatcher.dispatch(text);
-            return;
-        }
-        // matches ReplSubmissionCoordinator.handleInput/handleRemoteQuery's blank-input
-        // guard for human-typed submissions: a queued command must never reach
-        // turnEngine.submit() with neither text nor a pasted image. Without this, a
-        // malformed task-notification or an orphaned-permission command that (contrary
-        // to the assumption below) reached this UI-edge drain with its payload already
-        // consumed elsewhere would submit an empty user turn — which serializes to a
-        // wire message with an empty text content block. Real incident: that empty block
-        // survived into a tool_result-heavy turn and downstream strict backends rejected
-        // it with "message content cannot be empty".
-        if (QueuedCommandMapper.isBlankQueuedCommand(cmd, text)) {
-            log.warn("executeQueuedCommands: dropping queued command with blank text and no "
-                + "pasted image (mode={}, originKind={})", cmd.mode(), cmd.originKind());
-            return;
-        }
-        // mode == "orphaned-permission" / "task-notification": route as plain query.
-        // isMeta: passed through — the message will be sent to the model but
-        // the UI does not currently filter meta messages differently.
-        // bridgeOrigin is retained only as legacy queue provenance; no bridge
-        // command filter exists after the bridge subsystem removal.
-        //
-        // NOTE: a *payload-bearing* orphaned-permission command (from the SDK control
-        // broker, cli module) is consumed by the engine's in-loop drain
-        // (QueryHelpers.drainQueuedCommands → OrphanedPermissionExecutor), never here.
-        // The UI edge drain only ever sees a payload-less orphaned-permission, which the
-        // UI mode never enqueues in the first place — so routing it as a plain query is a
-        // harmless fallback, not a behavior change.
-        UserInput input = QueuedCommandMapper.applyQueuedCommandProvenance(
-            UserInput.builder(text, text)
-            .pasted(cmd.pastedContents())
-            .permissionMode(inputPanel.getPermissionMode())
-            .build(), cmd);
-        input = withStartupPromptProvenance(input);
-        if (batch.size() > 1) {
-            input = input.withAdditionalUserMessages(batch.stream().skip(1)
-                .map(QueuedCommandMapper::envelope)
-                .filter(StringUtils::isNotEmpty)
-                .map(MessageContent::ofText)
-                .toList());
-        }
-        if (sessionTopicTitleCoordinator != null
-                && !Strings.CS.equals("task-notification", cmd.mode())) {
-            sessionTopicTitleCoordinator.onUserQuery(text, false);
-        }
-        turnView.prepareFirstTurnTranscriptMetadata(input);
-        turnEngine.submit(input);
-    }
-
-    /**
-     * Add a command to the live runtime queue. The prompt's reactive queue
-     * projection renders from {@link TurnEngine#setInputQueueListener}; nothing
-     * is appended to transcript history here.
-     *
-     * @param cmd         the command to queue for later execution
-     * @param displayText text to show in the dim preview line (may differ from
-     *                    cmd.text() for skill invocations)
-     */
     @Override
     public void renderAndQueue(QueuedCommand cmd, String displayText) {
-        QueuedCommand queued = cmd;
-        if (cmd.preExpansionValue() == null && displayText != null
-                && !displayText.equals(cmd.text())) {
-            queued = new QueuedCommand(
-                cmd.text(), cmd.pastedContents(), cmd.mode(), cmd.priority(), cmd.isMeta(),
-                cmd.originKind(), cmd.skipSlashCommands(), cmd.bridgeOrigin(), displayText,
-                cmd.workload(), cmd.agentId(), cmd.orphanedPermission(), cmd.taskId(),
-                cmd.modelScheduledOrigin());
-        }
-        var transcript = queryEngine.execution().getTranscriptSink();
-        if (transcript != null) {
-            transcript.recordQueueOperation(
-                queryEngine.conversation().getSessionId(), "enqueue", queued.text());
-        }
-        turnEngine.enqueue(queued);
+        submissionCoordinator.renderAndQueue(cmd, displayText);
     }
-
-    private void executeQuery(String userInput, Map<Integer, PastedContent> pasted) {
-        executeQuery(userInput, userInput, pasted);
-    }
-
-    private void executeRemoteQuery(String userInput, Map<Integer, PastedContent> pasted) {
-        UserInput input = withStartupPromptProvenance(UserInput.of(
-            userInput, userInput, pasted, inputPanel.getPermissionMode(), false))
-            .withInputOrigin("remote");
-        if (sessionTopicTitleCoordinator != null) {
-            sessionTopicTitleCoordinator.onUserQuery(userInput, false);
-        }
-        turnView.prepareFirstTurnTranscriptMetadata(input);
-        turnEngine.submit(input);
-    }
-
-    /**
-     * Execute a query with separate display text and actual query content.
-     */
-    @Override
-    public void executeQuery(String displayText, String queryContent,
-                              Map<Integer, PastedContent> pasted) {
-        UserInput input = withStartupPromptProvenance(UserInput.of(
-            displayText, queryContent, pasted, inputPanel.getPermissionMode(), false));
-        if (sessionTopicTitleCoordinator != null) {
-            sessionTopicTitleCoordinator.onUserQuery(queryContent, false);
-        }
-        turnView.prepareFirstTurnTranscriptMetadata(input);
-        turnEngine.submit(input);
-    }
-
 
     @Override
     public void executeQuery(String displayText, String queryContent,
-                              Map<Integer, PastedContent> pasted, boolean isSlash) {
-        UserInput input = withStartupPromptProvenance(UserInput.of(
-            displayText, queryContent, pasted, inputPanel.getPermissionMode(), isSlash));
-        if (sessionTopicTitleCoordinator != null) {
-            sessionTopicTitleCoordinator.onUserQuery(queryContent, isSlash);
-        }
-        turnView.prepareFirstTurnTranscriptMetadata(input);
-        turnEngine.submit(input);
+                             Map<Integer, PastedContent> pasted) {
+        submissionCoordinator.executeQuery(displayText, queryContent, pasted);
     }
 
-    /**
-     * Structured prompt-command path. Unlike the legacy string overload this
-     * retains MCP image/document blocks and installs command-scoped hooks,
-     * permissions and model overrides before the turn starts.
-     */
+    @Override
+    public void executeQuery(String displayText, String queryContent,
+                             Map<Integer, PastedContent> pasted, boolean isSlash) {
+        submissionCoordinator.executeQuery(displayText, queryContent, pasted, isSlash);
+    }
+
     @Override
     public void executePrompt(String displayText, PromptInvocation invocation,
                               Map<Integer, PastedContent> pasted) {
-        HookDispatcher.HookOutcome expansionOutcome =
-            PromptInvocationAdapter.installTurnScopedState(
-            invocation,
-            displayText,
-            PromptInvocationAdapter.commandNameFromDisplay(displayText),
-            queryEngine.execution().getHookDispatcher(),
-            (commandName, logicalPath, content) -> featureRuntime.invokedSkills()
-                .record(null, commandName, logicalPath, content));
-        if (!expansionOutcome.proceed() || expansionOutcome.preventContinuation()) {
-            String reason = expansionOutcome.hasBlockingErrors()
-                ? expansionOutcome.blockingErrors().getFirst()
-                : expansionOutcome.stopReason();
-            postSystemMessage(StringUtils.isNotBlank(reason)
-                ? "Prompt expansion blocked by hook: " + reason
-                : "Prompt expansion blocked by hook");
-            queryEngine.execution().getHookDispatcher().clearInvocationHooks();
-            return;
-        }
-        UserInput input = PromptInvocationAdapter.applyExpansionOutcome(
-            PromptInvocationAdapter.toUserInput(
-                displayText, invocation, pasted, inputPanel.getPermissionMode()),
-            expansionOutcome);
-        input = withStartupPromptProvenance(input);
-        if (sessionTopicTitleCoordinator != null) {
-            sessionTopicTitleCoordinator.onUserQuery(invocation.textContent(), true);
-        }
-        turnView.prepareFirstTurnTranscriptMetadata(input);
-        turnEngine.submit(input);
-    }
-
-    private UserInput withStartupPromptProvenance(UserInput input) {
-        UserInput routed = routingInteractiveStartupPrompt
-            ? input.asInteractiveStartupPrompt() : input;
-        lastSubmittedInputWasInteractiveStartupPrompt = routed.interactiveStartupPrompt();
-        return routed;
-    }
-
-
-    private void acceptPlanWithClearedContext(PermissionDialog.PlanClearApproval approval) {
-        if (approval == null || StringUtils.isBlank(approval.plan())) return;
-        String previousSessionId = queryEngine.conversation().getSessionId();
-        Path previousTranscript = StringUtils.isNotBlank(previousSessionId)
-            && interactiveSessions != null
-            ? interactiveSessions.sessionFile(System.getProperty("user.dir"), previousSessionId)
-            : null;
-        gui.getGUIThread().invokeLater(() -> {
-            sessionController.clearConversation();
-            permissionGate.applyUpdates(approval.permissionUpdates());
-            String mode = permissionGate.currentMode().kind().wireValue();
-            inputPanel.setPermissionMode(mode);
-            permissionGate.markPlanModeExited();
-            boolean hasAgentTool = AgentTeamsEnabled.isEnabled()
-                && queryEngine.configuration().getConfig().tools().contains("Agent");
-            String prompt = buildClearedContextPlanPrompt(
-                approval.plan(), previousTranscript, hasAgentTool, approval.feedback());
-            UserInput continuation = UserInput.of(
-                    prompt, prompt, Map.of(), mode)
-                .withQuerySource("auto-continuation")
-                .withPlanContent(approval.plan());
-            turnView.prepareFirstTurnTranscriptMetadata(continuation);
-            turnEngine.submit(continuation);
-        });
-    }
-
-    static String buildClearedContextPlanPrompt(String plan, Path previousTranscript) {
-        return buildClearedContextPlanPrompt(plan, previousTranscript, false, null);
-    }
-
-    static String buildClearedContextPlanPrompt(
-            String plan, Path previousTranscript, boolean hasAgentTool, String feedback) {
-        String transcriptHint = previousTranscript == null ? ""
-            : "\nIf you need specific details from before exiting plan mode (like exact code snippets, "
-                + "error messages, or content you generated), read the full transcript at: "
-                + previousTranscript;
-        String teamHint = hasAgentTool
-            ? """
-                
-                If this plan can be broken down into multiple independent tasks, consider spawning \
-                named teammates with the Agent tool (pass a `name`) to parallelize the work."""
-            : "";
-        String normalizedFeedback = StringUtils.trimToNull(feedback);
-        String feedbackSuffix = normalizedFeedback == null ? ""
-            : "\nUser feedback on this plan: " + normalizedFeedback;
-        return "Implement the following plan:\n" + plan
-            + transcriptHint + teamHint + feedbackSuffix;
+        submissionCoordinator.executePrompt(displayText, invocation, pasted);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -3289,93 +1488,16 @@ public class LanternaReplScreen implements SlashHost {
         }
     }
 
-    /**
-     * {@code /web}: waits for the web gateway to be running — joining an
-     * in-flight start (startup warmup or an earlier {@code /web}) rather than
-     * starting a second binding — then opens the token-embedded URL in the
-     * system browser and surfaces the URL as a transcript line (the copyable
-     * fallback when no browser can be spawned). The URL is the only place the
-     * token is displayed; it never goes to logs.
-     */
-    public void startWebGateway() {
-        if (gatewaySupervisor == null) {
-            postSystemMessage("Web gateway is not available in this session.");
-            return;
-        }
-        Thread.ofVirtual().name("web-gateway-start").start(() -> {
-            GatewaySupervisorPort.Started started;
-            try {
-                started = gatewaySupervisor.start();
-            } catch (RuntimeException failure) {
-                log.warn("[LANTERNA] Web gateway failed to start", failure);
-                postSystemMessage("Web gateway failed to start: " + failure.getMessage());
-                return;
-            }
-            openWebGatewayInBrowser(started.url());
-            refreshWelcomeWebEntry(started.url());
-            postSystemMessage("Web gateway: " + started.url());
-        });
-    }
-
-    /** Opens the gateway URL with the platform browser; posts a hint on failure. */
-    private void openWebGatewayInBrowser(String url) {
-        boolean opened = plugins != null && plugins.openExternalUrl(url);
-        if (!opened) {
-            postSystemMessage("Could not open a browser — open the URL manually.");
-        }
-    }
-
-    /**
-     * Eagerly starts the web gateway in the background at REPL startup so the
-     * welcome block can surface its quick-entry row almost immediately. The
-     * start is shared with {@code /web} (single-flight): if the user invokes
-     * {@code /web} while the warmup is still binding, both await the same
-     * start. A warmup failure is silent — it must not disturb the first
-     * frame; {@code /web} remains the explicit retry path.
-     */
-    private void warmUpWebGateway() {
-        if (gatewaySupervisor == null) return;
-        gatewaySupervisor.startAsync()
-            .whenComplete((started, failure) -> {
-                if (started != null) {
-                    log.info("[LANTERNA] Web gateway warmed up: {}",
-                        LogoPanel.webOrigin(started.url()));
-                } else if (failure != null) {
-                    log.debug("Web gateway warmup failed: {}", failure.toString());
-                }
-                refreshWelcomeWebEntry(started != null ? started.url() : null);
-            });
-    }
-
     /** Applies a SessionStart hook title through the live terminal/session-host path. */
     public void applyHookSessionTitle(String title) {
         if (StringUtils.isBlank(title)) return;
         Runnable apply = () -> {
-            sessionHostTitleGeneration.incrementAndGet();
-            publishedHostSessionTitle = title;
             if (inputPanel != null) inputPanel.setAgentName(title);
             if (terminalController != null) terminalController.setTitle(title);
-            if (sessionHostRegistry != null) {
-                sessionHostRegistry.refreshLocal(
-                    buildHostSession(queryEngine.conversation().getSessionId()));
-            }
+            sessionHostPublisher.applyTitle(title);
         };
         if (gui == null) apply.run();
         else gui.getGUIThread().invokeLater(apply);
-    }
-
-    /** Adds one real system message to state, JSONL, history, and the visible transcript. */
-    private void appendPersistentSystemMessage(SystemMessage message) {
-        if (message == null) return;
-        Runnable append = () -> {
-            turnView.prepareStartupSystemTranscriptMetadata(inputPanel.getPermissionMode());
-            queryEngine.conversation().appendTranscriptMessage(message);
-            SDKMessage.System sdk = new SDKMessage.System(message);
-            messageHistory.record(sdk);
-            dispatcher.dispatch(sdk, messagePanel);
-        };
-        if (gui == null) append.run();
-        else gui.getGUIThread().invokeLater(append);
     }
 
     /**
@@ -3486,181 +1608,9 @@ public class LanternaReplScreen implements SlashHost {
     }
 
 
-    private void undoLastMessage() {
-        // Get the last submitted input
-        String lastInput = lastSubmittedInput;
-        if (StringUtils.isEmpty(lastInput)) {
-            messagePanel.appendLine("  [Nothing to undo]", LanternaTheme.welcomeDim());
-            try { screen.refresh(); } catch (Exception _) {}
-            return;
-        }
-
-        // Rewind the conversation by removing the last message pair
-        var mutableMessages = queryEngine.conversation().getMessages();
-        if (mutableMessages != null && !mutableMessages.isEmpty()) {
-            int lastIdx = mutableMessages.size() - 1;
-            var lastMsg = mutableMessages.get(lastIdx);
-            if (lastMsg instanceof AssistantMessage) {
-                mutableMessages.remove(lastIdx);
-            } else if (lastIdx > 0 && mutableMessages.get(lastIdx - 1) instanceof AssistantMessage) {
-                mutableMessages.remove(lastIdx);     // remove user message
-                mutableMessages.remove(lastIdx - 1); // remove assistant message
-            } else {
-                mutableMessages.remove(lastIdx); // just remove the last message
-            }
-        }
-
-        // Remove from prompt history
-        promptHistory.removeLastEntry();
-
-        // Restore the input text
-        inputPanel.setText(lastInput);
-        lastSubmittedInput = null;
-
-        // Clear the message panel and re-render
-        messagePanel.clear();
-        messagePanel.appendLine("  [Undone — edit and resubmit]", LanternaTheme.welcomeDim());
-
-        try { screen.refresh(RefreshType.COMPLETE); } catch (Exception _) {}
-    }
-
-    /**
-     * Triggers a (debounced) refresh of the custom status line via {@link
-     * com.claudecode.ui.lanterna.statusline.StatusLineController}.
-     */
-    private void executeStatusLineCommand() {
-        if (statusLineController != null) statusLineController.scheduleUpdate();
-    }
-
     /** Refreshes model-sensitive HUD state without the ordinary interaction debounce. */
     private void executeStatusLineCommandImmediately() {
         if (statusLineController != null) statusLineController.scheduleInitialUpdate();
-    }
-
-    /**
-     * Assembles the live {@code StatusLineCommandInput} ingredients from the current REPL state.
-     */
-    private StatusLineInputBuilder.Ingredients statusLineIngredients() {
-        String sid = queryEngine.conversation().getSessionId();
-        String cwd = System.getProperty("user.dir");
-        String sessionName = (StringUtils.isNotBlank(sid))
-            ? interactiveSessions.readCustomTitle(cwd, sid) : null;
-        String transcript = (StringUtils.isNotBlank(sid))
-            ? interactiveSessions.sessionFile(cwd, sid).toString() : "";
-        List<String> addedDirs = permissionGate != null
-            ? permissionGate.currentContext().additionalDirs().keySet().stream().map(Path::toString).toList()
-            : List.of();
-        String outputStyle = UiSettings.readStringFromSettings("outputStyle");
-
-        // an opusplan setting shows Opus while plan mode is active.
-        String runtimeModel = statusLineRuntimeModel();
-        Long contextWindow = customModels != null ? customModels.contextWindow(runtimeModel) : null;
-        return new StatusLineInputBuilder.Ingredients(
-            sid, sessionName, transcript, cwd, cwd, addedDirs,
-            runtimeModel, outputStyle,
-            inputPanel.getVimMode(),
-            VersionCommand.readVersion(), contextWindow,
-            queryEngine.execution().getSessionMetrics());
-    }
-
-    private String statusLineRuntimeModel() {
-        PermissionModeKind permMode = permissionGate != null
-            ? permissionGate.currentMode().kind() : null;
-        return ModelNames.runtimeMainLoopModel(
-            queryEngine.configuration().getConfig().model(), permMode, false);
-    }
-
-    /** Effective effort sent by the session, or {@code auto} for an unknown custom endpoint. */
-    private String statusLineEffort() {
-        String runtimeModel = statusLineRuntimeModel();
-        if (!EffortHelpers.modelSupportsEffort(runtimeModel)) return null;
-        String configured = queryEngine.configuration().getEffortOverride() != null
-            ? queryEngine.configuration().getEffortOverride() : queryEngine.configuration().getConfig().effortValue();
-        String applied = EffortHelpers.resolveAppliedEffort(
-            runtimeModel, configured, queryEngine.configuration().getConfig().isCustomModel(runtimeModel));
-        return applied != null ? applied : "auto";
-    }
-
-    /**
-     * Open the user's external editor ($VISUAL or $EDITOR) to compose a longer message.
-     */
-    private void openExternalEditor() {
-        Thread.ofVirtual().name("external-editor").start(() -> {
-            Path tmpFile = null;
-            boolean screenStopped = false;
-            String editedContent = null;
-            try {
-                // Detect editor: $VISUAL > $EDITOR > platform fallback.
-                String editor = SubprocessEnvironment.get("VISUAL");
-                if (StringUtils.isEmpty(editor)) {
-                    editor = SubprocessEnvironment.get("EDITOR");
-                }
-                if (StringUtils.isEmpty(editor)) {
-                    editor = ExternalEditorDefaults.defaultCommand();
-                }
-                ExternalEditorCommand command = ExternalEditorCommand.resolve(editor);
-
-                // Write current input to a temp file
-                String currentInput = inputPanel.getText();
-                tmpFile = FileUtils.createTempFile("claude-code-input", ".md");
-                Files.writeString(tmpFile, currentInput);
-
-                // Stop the screen to give the editor full terminal control
-
-                // child inherits stdio. A queued stop plus a fixed sleep can
-                // launch the editor while Lanterna still owns the terminal.
-                disableMouseBeforeHandoff();
-                screen.stopScreen();
-                screenStopped = true;
-
-                // from the shared resolver before waitFor() returns.
-                ProcessBuilder pb = new ProcessBuilder(command.argvFor(tmpFile)).inheritIO();
-                Process p = pb.start();
-                int exitCode = p.waitFor();
-                if (exitCode != 0) {
-                    log.info("[LANTERNA] External editor '{}' exited with code {}", editor, exitCode);
-                }
-
-                // Read the edited content
-                editedContent = Files.readString(tmpFile);
-
-                // Strip trailing newline (editors often add one)
-                if (Strings.CS.endsWith(editedContent, "\n")) {
-                    editedContent = editedContent.substring(0, editedContent.length() - 1);
-                }
-            } catch (Exception e) {
-                log.warn("[LANTERNA] External editor failed", e);
-            } finally {
-                try {
-                    if (tmpFile != null) Files.deleteIfExists(tmpFile);
-                } catch (IOException cleanupFailure) {
-                    log.debug("[LANTERNA] External editor temp-file cleanup failed: {}",
-                        cleanupFailure.getMessage());
-                }
-                if (screenStopped) {
-                    final String finalContent = editedContent;
-                    try {
-                        gui.getGUIThread().invokeLater(() -> {
-                            try {
-                                screen.startScreen();
-                                restoreMouseAfterHandoff();
-                                if (finalContent != null) inputPanel.setText(finalContent);
-                                screen.refresh(RefreshType.COMPLETE);
-                            } catch (Exception restoreFailure) {
-                                log.warn("[LANTERNA] Failed to restore screen after external editor",
-                                    restoreFailure);
-                            }
-                        });
-                    } catch (RuntimeException schedulingFailure) {
-                        log.warn("[LANTERNA] Could not schedule screen restore", schedulingFailure);
-                        try {
-                            screen.startScreen();
-                            restoreMouseAfterHandoff();
-                        } catch (Exception _) {}
-                    }
-                }
-            }
-        });
     }
 
     // ── Session lifecycle delegates → SessionController ───────────────────
@@ -3686,58 +1636,14 @@ public class LanternaReplScreen implements SlashHost {
         startupResumeSearchQuery = searchQuery;
     }
 
-    /** Runs the same full restore pipeline as the interactive session picker. */
-    public void resumeSession(ResumeRequest request) {
-        sessionController.resume(request);
-    }
-
     /** Native Session Host create/resume command; safe to call from a virtual thread. */
     public CompletableFuture<SessionHostSession> activateHostSession(SessionOpenRequest request) {
-        if (request == null) return CompletableFuture.failedFuture(
-            new IllegalArgumentException("session request is required"));
-        String requested = request.requestedSessionId();
-        if (StringUtils.isBlank(requested)) {
-            CompletableFuture<SessionHostSession> result = new CompletableFuture<>();
-            gui.getGUIThread().invokeLater(() -> {
-                try {
-                    sessionController.clearConversation();
-                    result.complete(currentHostSession());
-                } catch (RuntimeException failure) {
-                    result.completeExceptionally(failure);
-                }
-            });
-            return result;
-        }
-        if (requested.equals(queryEngine.conversation().getSessionId())) {
-            return CompletableFuture.completedFuture(currentHostSession());
-        }
-        String searchCwd = StringUtils.isBlank(request.workDir())
-            ? commandContext.session().workingDirectory() : request.workDir();
-        return CompletableFuture.supplyAsync(() -> interactiveSessions
-                .findExactSession(searchCwd, requested)
-                .orElseThrow(() -> new IllegalArgumentException(
-                    "session not found: " + requested)))
-            .thenCompose(located -> sessionController.resumeAsync(new ResumeRequest(
-                located.id(), located.transcriptPath(), located.projectPath(),
-                ResumeRequest.Entrypoint.SLASH_COMMAND_SESSION_ID)).toCompletableFuture())
-            .thenApply(_ -> currentHostSession());
+        return sessionHostPublisher.activateHostSession(request);
     }
 
     /** Snapshot for the CLI-owned registry/list adapter. */
     public SessionHostSession currentHostSession() {
-        if (sessionEvents == null || submissionCoordinator == null) {
-            throw new IllegalStateException("Session Host is not ready");
-        }
-        return buildHostSession(queryEngine.conversation().getSessionId());
-    }
-
-    /**
-     * {@code /rewind} entry — wired into
-     * {@link com.claudecode.commands.CommandPresentationPorts#openMessageSelector}.
-     * Delegates to {@link SessionController#openMessageSelector()}.
-     */
-    public void openMessageSelector() {
-        sessionController.openMessageSelector();
+        return sessionHostPublisher.currentHostSession();
     }
 
     // ── SlashHost command port ───────────────────────────────────────────

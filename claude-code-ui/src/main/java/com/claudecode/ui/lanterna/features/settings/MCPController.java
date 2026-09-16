@@ -6,7 +6,10 @@ import com.claudecode.runtime.mcp.McpManagementPort.Action;
 import com.claudecode.runtime.mcp.McpManagementPort.Server;
 import com.claudecode.ui.lanterna.dialog.MCPSettingsDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import java.util.List;
+import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
@@ -20,7 +23,7 @@ import org.apache.commons.lang3.StringUtils;
  * {@link MCPSettingsDialog} instance and its scene registration surface, so callers no longer
  * hold the dialog field directly. Extracted from {@code LanternaReplScreen}.
  */
-public final class MCPController {
+public final class MCPController implements ReplCommandUiBridge.Mcp, ReplFeature {
 
     private final WindowBasedTextGUI gui;
     private final MCPSettingsDialog dialog;
@@ -41,13 +44,16 @@ public final class MCPController {
         this.management = management != null ? management : McpManagementPort.none();
     }
 
-    public InlineOverlay overlay() {
-        return dialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(dialog);
     }
 
     public Component view() {
         return dialog;
     }
+
+    @Override
+    public void openMcp() { open(); }
 
     public void open() {
         if (gui == null || dialog == null) return;

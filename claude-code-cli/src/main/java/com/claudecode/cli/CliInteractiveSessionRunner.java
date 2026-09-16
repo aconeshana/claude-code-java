@@ -349,10 +349,7 @@ final class CliInteractiveSessionRunner {
                     }
                 };
                 engine.execution().setPostCompactCallback(postCompact);
-                engine.execution().setOnCompactProgress(event -> {
-                    LanternaReplScreen s = screenRef.get();
-                    if (s != null) s.handleCompactProgress(event);
-                });
+                engine.execution().setOnCompactProgress(commandUi::compactProgress);
 
                 // /model: register a ModelCommand with a live current-model
                 // supplier (dynamic "(currently X)" description) — overwrites the
@@ -457,22 +454,13 @@ final class CliInteractiveSessionRunner {
                         .btwDialogLauncher(btwLauncher)
                         .sessionColorSetter(colorSetter)
                         .pokemonSetter(pokemonSetter)
-                        .pokemonStatusPresenter(pokemon -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.showWelcomePokemon(pokemon);
-                        })
-                        .pokemonHatchLauncher(request -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openPokemonHatchDialog(request);
-                        })
+                        .pokemonStatusPresenter(commandUi::showWelcomePokemon)
+                        .pokemonHatchLauncher(commandUi::openPokemonHatch)
                         .effortValueSetter(effortSetter)
                         .effortValueSupplier(effortGetter)
                         .effortDialogLauncher(effortLauncher)
                         .exportDialogLauncher(exportLauncher)
-                        .hooksDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openHooksDialog();
-                        })
+                        .hooksDialogLauncher(commandUi::openHooks)
                         .sandboxDialogLauncher(commandUi::openSandbox)
                         .titleGenerator(titleGenerator)
                         .postCompactCallback(manualPostCompact)
@@ -484,23 +472,14 @@ final class CliInteractiveSessionRunner {
                         .goalGate(CliRuntimeAdapters.newGoalGate(
                             interactiveCwd, printMode || noInteractive))
                         .messageAppender(engine.conversation()::appendTranscriptMessage)
-                        .goalDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openGoalDialog();
-                        })
+                        .goalDialogLauncher(commandUi::openGoal)
                         .sessionIdSwitcher(commandUi::switchActiveSession)
                         .resetSessionCost(commandUi::resetSessionCost)
-                        .onCompactProgress(event -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.handleCompactProgress(event);
-                        })
+                        .onCompactProgress(commandUi::compactProgress)
                         .verboseSupplier(() -> verbose)
                         .memoryDialogLauncher(commandUi::openMemoryDialog)
                         .openEditor(commandUi::openFileInEditor)
-                        .doctorDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openDoctorDialog();
-                        })
+                        .doctorDialogLauncher(commandUi::openDoctor)
                         .apiBaseUrlSupplier(() -> resolvedBaseUrl)
                         .statusRuntimePropertiesSupplier(() ->
                             CliRuntimeAdapters.statusRuntimeProperties(
@@ -534,60 +513,22 @@ final class CliInteractiveSessionRunner {
                         .mcpStatusSupplier(() -> mcpRuntime.clientRuntime().connectionSummary())
                         .permissionsDialogLauncher(permissionsLauncher)
                         .agentsDialogLauncher(agentsLauncher)
-                        .resumeLauncher(request -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.resumeSession(request);
-                        })
+                        .resumeLauncher(commandUi::resumeSession)
                         .contextDataCollector(contextDataCollector)
-                        .contextVisualizerLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.showContextVisualization();
-                        })
-                        .copyPickerLauncher((fullText, codeBlocks, skipPicker) -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openCopyPicker(fullText, codeBlocks, skipPicker);
-                        })
+                        .contextVisualizerLauncher(commandUi::showContextVisualization)
+                        .copyPickerLauncher(commandUi::openCopyPicker)
                         .copyApplyFromDialog((text, filename, saveAlways, writeOnly) ->
                             CopyCommand.applyCopy(text, filename, saveAlways, writeOnly,
                                 settingsManagement.preferences()))
-                        .diffDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openDiffDialog();
-                        })
-                        .helpDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openHelpPanel();
-                        })
-                        .pluginDialogLauncher(args -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openPluginPanel(args);
-                        })
-                        .skillsDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openSkillsDialog();
-                        })
-// /stats opens the interactive stats panel.
-                        .statsDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openStatsDialog();
-                        })
-                        .tagRemovalLauncher(request -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openTagRemovalDialog(request);
-                        })
-                        .gatewayLauncher(_ -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.startWebGateway();
-                        })
-// /tasks (alias /bashes) opens the interactive background-tasks panel.
-                        .tasksDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openTasksDialog();
-                        })
-                        .workflowsDialogLauncher(() -> {
-                            LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.openWorkflowsDialog();
-                        })
+                        .diffDialogLauncher(commandUi::openDiff)
+                        .helpDialogLauncher(commandUi::openHelp)
+                        .pluginDialogLauncher(commandUi::openPluginPanel)
+                        .skillsDialogLauncher(commandUi::openSkills)
+                        .statsDialogLauncher(commandUi::openStats)
+                        .tagRemovalLauncher(commandUi::openTagRemoval)
+                        .gatewayLauncher(_ -> commandUi.startWebGateway())
+                        .tasksDialogLauncher(commandUi::openTasks)
+                        .workflowsDialogLauncher(commandUi::openWorkflows)
                         .build();
                 var permissionExplainer = sideQuery != null
                     ? new PermissionExplainerService(sideQuery, resolvedModel) : null;
@@ -659,7 +600,6 @@ final class CliInteractiveSessionRunner {
                 }
                 lanternaRepl.setModel(resolvedModel);
                 lanternaRepl.setVerbose(verbose);
-                lanternaRepl.setContextDataCollector(contextDataCollector);
                 // Bind the progress sink to the REPL (engine config was built earlier,
                 // so the sink is late-bound via setScreen).
                 progressSink.setScreen(lanternaRepl);
@@ -676,7 +616,7 @@ final class CliInteractiveSessionRunner {
                 });
 // Register /mcp now that the client manager exists (see ReplWiring).
                 McpCommand mcpCmd = new McpCommand(mcpManagement);
-                mcpCmd.setDialogLauncher(lanternaRepl::openMcpDialog);
+                mcpCmd.setDialogLauncher(commandUi::openMcp);
                 cmdRegistry.registerBuiltIn(mcpCmd);
                 lanternaRepl.setToolNames(toolRegistry.getAll().stream()
                     .map(Tool::name)

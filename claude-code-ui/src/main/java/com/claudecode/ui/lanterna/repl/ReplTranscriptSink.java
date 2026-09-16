@@ -2,19 +2,12 @@ package com.claudecode.ui.lanterna.repl;
 
 import com.googlecode.lanterna.TextColor;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+/**
+ * Transcript write port shared by every REPL feature: dim system lines, colored lines, and the
+ * {@code " ❯ /cmd"} slash-command breadcrumb chip. Features write through this port instead of
+ * reaching back into the screen; the production implementation is
+ * {@link MessagePanelTranscriptSink}.
+ */
 public interface ReplTranscriptSink {
 
     /**

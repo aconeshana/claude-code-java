@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 import com.claudecode.ui.lanterna.input.ExternalEditorLauncher;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
@@ -28,7 +29,7 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
  * the pause-Lanterna/resume external-editor boundary shared with {@code /plan open} and the agents
  * wizard.
  */
-public final class MemoryFeature implements ReplCommandUiBridge.Memory {
+public final class MemoryFeature implements ReplCommandUiBridge.Memory, ReplFeature {
 
     private static final Logger log = Logger.getLogger(MemoryFeature.class.getName());
 
@@ -63,7 +64,7 @@ public final class MemoryFeature implements ReplCommandUiBridge.Memory {
 
     public Component view() { return memoryDialog; }
 
-    public InlineOverlay overlay() { return memoryDialog; }
+    @Override public List<InlineOverlay> overlays() { return List.of(memoryDialog); }
 
     public void setKeybindingsStore(UserKeybindingsStore store) {
         memoryDialog.setKeybindingsStore(store);

@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 
 import com.claudecode.ui.lanterna.input.InputPanel;
 import org.apache.commons.lang3.StringUtils;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
@@ -22,7 +23,7 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
 /**
  * Permission-rule and workspace-directory feature.
  */
-public final class PermissionsFeature implements ReplCommandUiBridge.Permissions {
+public final class PermissionsFeature implements ReplCommandUiBridge.Permissions, ReplFeature {
 
     private record ChangeLine(String text, TextColor color) {}
 
@@ -69,7 +70,7 @@ public final class PermissionsFeature implements ReplCommandUiBridge.Permissions
         }
     }
 
-    public List<InlineOverlay> overlays() {
+    @Override public List<InlineOverlay> overlays() {
         return List.of(addDirDialog, permissionsPanel);
     }
 

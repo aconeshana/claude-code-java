@@ -17,6 +17,11 @@ import com.claudecode.runtime.turn.TurnAwakeGuard;
 
 /**
  * Application use-case ports consumed by one interactive REPL session.
+ *
+ * <p>Optional ports are normalized to their inert implementation here, so every consumer can
+ * treat each component as non-null. Ports without an inert implementation ({@code sessions},
+ * {@code hooks}, {@code sessionLifecycle}, {@code doctor}, {@code plugins}) are passed through
+ * unchanged.
  */
 public record ReplApplicationPorts(
     ReplCommandUiBridge commandUi,
@@ -36,4 +41,19 @@ public record ReplApplicationPorts(
     TurnAwakeGuard awakeGuard,
     TaskBoardPort taskBoard,
     ProjectCatalogPort projects
-) {}
+) {
+    public ReplApplicationPorts {
+        if (commandUi == null) commandUi = new ReplCommandUiBridge();
+        if (mcp == null) mcp = McpManagementPort.none();
+        if (compactWarnings == null) compactWarnings = CompactWarningProvider.none();
+        if (conversationReset == null) conversationReset = ConversationResetPort.noop();
+        if (memory == null) memory = MemoryCatalog.empty();
+        if (outputStyles == null) outputStyles = OutputStyleCatalog.builtIns();
+        if (statusLine == null) statusLine = StatusLinePort.disabled();
+        if (startupTrust == null) startupTrust = StartupTrustPort.trustAll();
+        if (shutdown == null) shutdown = ShutdownPort.noop();
+        if (awakeGuard == null) awakeGuard = TurnAwakeGuard.noop();
+        if (taskBoard == null) taskBoard = TaskBoardPort.none();
+        if (projects == null) projects = ProjectCatalogPort.none();
+    }
+}

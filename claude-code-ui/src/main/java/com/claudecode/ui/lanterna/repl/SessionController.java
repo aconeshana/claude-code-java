@@ -19,6 +19,7 @@ import com.claudecode.core.engine.ThinkingClearLatch;
 import com.claudecode.core.git.GitUtils;
 import com.claudecode.core.imagestore.ImageStore;
 import com.claudecode.core.io.PathUtils;
+import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.HumanTurns;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
@@ -40,6 +41,7 @@ import com.claudecode.runtime.session.ConversationResetPort;
 import com.claudecode.runtime.session.PreparedSessionResume;
 import com.claudecode.runtime.session.SessionLifecycle;
 import com.claudecode.runtime.session.SessionResumeRequest;
+import com.claudecode.runtime.turn.ConversationOps;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.tools.skills.InvokedSkillRegistry;
 import com.claudecode.core.state.CwdState;
@@ -70,7 +72,9 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.input.PromptHistory;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessageCollapser;
@@ -85,7 +89,7 @@ import com.googlecode.lanterna.gui2.Component;
  * partial-compact summarization. Owns the {@link MessageSelectorDialog} instance and its scene
  * registration surface. Extracted from {@code LanternaReplScreen}.
  */
-public final class SessionController implements ReplCommandUiBridge.Session {
+public final class SessionController implements ReplCommandUiBridge.Session, ReplFeature {
 
     private final WindowBasedTextGUI gui;
     private final Screen screen;
@@ -252,8 +256,8 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         }
     }
 
-    InlineOverlay overlay() {
-        return messageSelectorDialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(messageSelectorDialog);
     }
 
     Component view() {
@@ -558,7 +562,8 @@ public final class SessionController implements ReplCommandUiBridge.Session {
      * Full transcript I/O stays off the Lanterna GUI thread; all engine/panel
      * mutations are marshalled back in one ordered callback.
      */
-    void resume(ResumeRequest request) {
+    @Override
+    public void resume(ResumeRequest request) {
         resume(request, () -> { });
     }
 
@@ -740,7 +745,9 @@ public final class SessionController implements ReplCommandUiBridge.Session {
     record RestoredSessionBadge(String name, String color) {}
 
 
-    void openMessageSelector() {
+    /** {@code /rewind} entry: marshals the MessageSelector overlay onto the GUI thread. */
+    @Override
+    public void openMessageSelector() {
         if (gui == null) return;
         gui.getGUIThread().invokeLater(this::showMessageSelector);
     }
@@ -1341,6 +1348,64 @@ public final class SessionController implements ReplCommandUiBridge.Session {
         messageHistory.clear();
         messagePanel.clear();
         replayLoadedMessages(visible);
+    }
+
+    /**
+     * {@code /undo}: drops the last user/assistant pair from the live conversation, pops the
+     * prompt-history entry, and restores {@code lastInput} into the prompt for editing.
+     *
+     * @return true when something was undone; false (with a transcript hint) when there was no
+     *         submitted input to restore
+     */
+    boolean undoLastSubmission(String lastInput, PromptHistory history) {
+        if (StringUtils.isEmpty(lastInput)) {
+            messagePanel.appendLine("  [Nothing to undo]", LanternaTheme.welcomeDim());
+            try { screen.refresh(); } catch (Exception _) { /* non-fatal */ }
+            return false;
+        }
+        var messages = queryEngine.conversation().getMessages();
+        if (messages != null && !messages.isEmpty()) {
+            int lastIdx = messages.size() - 1;
+            if (messages.get(lastIdx) instanceof AssistantMessage) {
+                messages.remove(lastIdx);
+            } else if (lastIdx > 0 && messages.get(lastIdx - 1) instanceof AssistantMessage) {
+                messages.remove(lastIdx);     // user message
+                messages.remove(lastIdx - 1); // assistant message
+            } else {
+                messages.remove(lastIdx);
+            }
+        }
+        history.removeLastEntry();
+        inputPanel.setText(lastInput);
+        messagePanel.clear();
+        messagePanel.appendLine("  [Undone — edit and resubmit]", LanternaTheme.welcomeDim());
+        try { screen.refresh(RefreshType.COMPLETE); } catch (Exception _) { /* non-fatal */ }
+        return true;
+    }
+
+    /**
+     * The {@link ConversationOps} adapter the turn engine uses for Esc-Esc / interrupt rewinds:
+     * pops the prompt-history entry, rewinds through {@link #rewindToBeforeLastRealUserMessage()},
+     * and restores the typed source text (not the wire text) into the prompt.
+     */
+    ConversationOps conversationOps(PromptHistory promptHistory) {
+        return new TurnEngineConversationOps(promptHistory);
+    }
+
+    private final class TurnEngineConversationOps implements ConversationOps {
+        private final PromptHistory promptHistory;
+
+        private TurnEngineConversationOps(PromptHistory promptHistory) {
+            this.promptHistory = promptHistory;
+        }
+
+        @Override public void dropLastPromptHistoryEntry() { promptHistory.removeLastEntry(); }
+        @Override public UserMessage rewindBeforeLastRealUser() {
+            return rewindToBeforeLastRealUserMessage();
+        }
+        @Override public String restoredInput(UserMessage message) {
+            return SessionController.restoredInput(message).text();
+        }
     }
 
     /**

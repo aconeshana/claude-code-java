@@ -7,15 +7,24 @@ claude-code-ui/src/main/java/com/claudecode/ui/.
 
 | Component | Path | Responsibility |
 |---|---|---|
-| LanternaReplScreen | lanterna/repl/LanternaReplScreen.java | REPL orchestration and lifecycle |
+| LanternaReplScreen | lanterna/repl/LanternaReplScreen.java | Terminal/GUI lifecycle, SlashHost port, runtime setters |
+| ReplComposer | lanterna/repl/ReplComposer.java | Composition root: builds every widget, feature, controller and the turn engine from a ReplContext |
+| ReplContext / ReplGraph | lanterna/repl/ReplContext.java, ReplGraph.java | Composer input (pre-scene collaborators) and immutable output (grouped object graph) |
+| ReplSceneLayout | lanterna/repl/ReplSceneLayout.java | The single overlay-registration and z-order mount declaration |
 | ReplScene | lanterna/repl/ReplScene.java | Component stack, full-screen shell, and overlays |
+| ReplCommandUiBridge | lanterna/repl/ReplCommandUiBridge.java | Typed capability bridge that slash commands use to reach feature UIs |
 | WindowInputRouter | lanterna/input/WindowInputRouter.java | Window-level key, scroll, and selection routing |
 | Ansi | Ansi.java | ANSI capabilities, OSC support, and style helpers |
 | LanternaTheme | lanterna/theme/LanternaTheme.java | Active theme and color-level resolution |
 | Themes | lanterna/theme/Themes.java | Dark, light, ANSI, and daltonized palettes |
 
-LanternaReplScreen wires the session collaborators and feature slices. It does
-not own every feature's state and is not the command implementation facade.
+LanternaReplScreen owns the terminal and GUI-thread lifecycle and the SlashHost port; it hands
+scene construction to ReplComposer and adopts the resulting ReplGraph. The composed graph reaches
+back into the screen only through the narrow `ReplComposer.Host` port. Features implement
+`ReplFeature` to contribute their inline overlays and a `ReplCommandUiBridge` capability to expose
+their launchers; the CLI binds slash commands to the bridge, never to the screen.
+`ReplFeatureArchitectureTest` and `ReplSceneOrderSnapshotTest` pin these boundaries and the mount
+order.
 
 ## Input
 

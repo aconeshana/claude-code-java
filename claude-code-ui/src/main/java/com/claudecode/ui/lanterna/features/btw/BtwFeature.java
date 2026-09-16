@@ -3,7 +3,6 @@ package com.claudecode.ui.lanterna.features.btw;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.impl.git.BranchCommand;
 import com.claudecode.core.config.EnvUtils;
-import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
@@ -20,7 +19,9 @@ import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.agent.AgentTool;
 import com.claudecode.ui.lanterna.dialog.BtwSideQuestionDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
@@ -41,7 +42,7 @@ import org.apache.commons.lang3.Strings;
  * branching a new session from it ({@link BranchCommand}). Extracted from
  * {@code LanternaReplScreen}.
  */
-public final class BtwFeature {
+public final class BtwFeature implements ReplCommandUiBridge.Btw, ReplFeature {
 
     private final WindowBasedTextGUI gui;
     private final Screen screen;
@@ -74,8 +75,8 @@ public final class BtwFeature {
         this.dialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
     }
 
-    public InlineOverlay overlay() {
-        return dialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(dialog);
     }
 
     public Component view() {
@@ -86,6 +87,7 @@ public final class BtwFeature {
         return UiSettings.readGlobalInt("btwUseCount", 0);
     }
 
+    @Override
     public void open(String question, Function<String, String> sideQuestionRunner) {
         if (gui == null || dialog == null || sideQuestionRunner == null) return;
         gui.getGUIThread().invokeLater(() -> {

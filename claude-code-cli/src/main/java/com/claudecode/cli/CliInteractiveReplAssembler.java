@@ -52,28 +52,19 @@ final class CliInteractiveReplAssembler {
             Function<String, String> sideQuestionRunner) {
         AtomicReference<LanternaReplScreen> screenRef = new AtomicReference<>();
         ReplCommandUiBridge commandUi = new ReplCommandUiBridge();
-        Consumer<String> btwLauncher = question -> {
-            LanternaReplScreen screen = screenRef.get();
-            if (screen != null) screen.openBtwDialog(question, sideQuestionRunner);
-        };
+        Consumer<String> btwLauncher = question -> commandUi.openBtw(question, sideQuestionRunner);
         Consumer<String> colorSetter = name -> {
             LanternaReplScreen screen = screenRef.get();
             if (screen != null) screen.setSessionColor(name);
         };
-        Consumer<PokemonProfile> pokemonSetter = pokemon -> {
-            LanternaReplScreen screen = screenRef.get();
-            if (screen != null) screen.setWelcomePokemon(pokemon);
-        };
+        Consumer<PokemonProfile> pokemonSetter = commandUi::setWelcomePokemon;
         Consumer<String> effortSetter = level -> {
             engine.configuration().getConfig().setEffortValue(level);
             commandUi.showEffortNotification(level);
         };
         Supplier<String> effortGetter = () -> engine.configuration().getConfig().effortValue();
         Runnable effortLauncher = commandUi::openEffort;
-        Consumer<String> exportLauncher = content -> {
-            LanternaReplScreen screen = screenRef.get();
-            if (screen != null) screen.openExportDialog(content);
-        };
+        Consumer<String> exportLauncher = commandUi::openExport;
         Consumer<String> themeLauncher = commandUi::openTheme;
         BiFunction<CommandContext, String, CommandResult> themeApplyFromDialog =
             new ThemeCommand()::applyFromDialog;
@@ -103,10 +94,7 @@ final class CliInteractiveReplAssembler {
                 LanternaReplScreen screen = screenRef.get();
                 if (screen != null) screen.refreshClaudeHud();
             });
-        Runnable rewindLauncher = () -> {
-            LanternaReplScreen screen = screenRef.get();
-            if (screen != null) screen.openMessageSelector();
-        };
+        Runnable rewindLauncher = commandUi::openMessageSelector;
         return new Bindings(screenRef, commandUi, btwLauncher, colorSetter, pokemonSetter, effortSetter,
             effortGetter, effortLauncher, exportLauncher, themeLauncher, themeApplyFromDialog,
             configLauncher, statusLauncher, usageLauncher, permissionsLauncher, agentsLauncher,

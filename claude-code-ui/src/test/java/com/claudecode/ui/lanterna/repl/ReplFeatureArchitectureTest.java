@@ -19,22 +19,69 @@ class ReplFeatureArchitectureTest {
         "src/main/java/com/claudecode/ui/lanterna/features/settings/UiSettings.java");
     private static final Path POKEMON_FEATURE = Path.of(
         "src/main/java/com/claudecode/ui/lanterna/features/pokemon/PokemonFeature.java");
+    private static final Path SESSION_HOST_PUBLISHER = Path.of(
+        "src/main/java/com/claudecode/ui/lanterna/repl/SessionHostPublisher.java");
+    private static final Path COMPOSER = Path.of(
+        "src/main/java/com/claudecode/ui/lanterna/repl/ReplComposer.java");
+    private static final Path LAYOUT = Path.of(
+        "src/main/java/com/claudecode/ui/lanterna/repl/ReplSceneLayout.java");
 
     @Test
     void screenDependsOnFeatureFacadesInsteadOfConcreteFeatureViews() throws IOException {
-        String source = Files.readString(SCREEN);
+        String source = Files.readString(SCREEN) + Files.readString(COMPOSER);
 
         for (String forbidden : List.of(
                 "EffortSliderDialog", "ModelPickerDialog", "ThemePickerDialog",
                 "SettingsTabContainer", "PermissionsPanel", "AgentsPanel",
                 "AddDirDialog", "SandboxSettingsDialog", "ReplSettingsController",
                 "MemorySelectorDialog", "HooksConfigMenuDialog", "MCPSettingsDialog",
-                "BypassPermissionsModeDialog", "WorktreeExitDialog", "MessageSelectorDialog")) {
+                "BypassPermissionsModeDialog", "WorktreeExitDialog", "MessageSelectorDialog",
+                // Phase 2: dialogs owned by ConversationToolsFeature / DiagnosticsFeature /
+                // BackgroundTasksFeature / PluginsFeature / GoalFeature.
+                "ExportDialog", "CopyPickerDialog", "DiffDialog", "HelpPanel", "TagRemovalDialog",
+                "DoctorDialog", "SkillsDialog", "StatsDialog", "BackgroundTasksDialog",
+                "WorkflowsDialog", "PluginSettingsPanel", "GoalDialog")) {
             assertFalse(Strings.CS.contains(source, forbidden),
-                () -> "LanternaReplScreen must not own concrete feature view: " + forbidden);
+                () -> "the composition root must not own a concrete feature view: " + forbidden);
         }
-        assertTrue(Strings.CS.contains(source, "ReplCommandUiBridge"),
-            "the screen should install typed feature capabilities into the command UI bridge");
+        assertTrue(Strings.CS.contains(Files.readString(COMPOSER),
+                "application.commandUi().install(new ReplCommandUiBridge.Capabilities("),
+            "the composer should install typed feature capabilities into the command UI bridge");
+    }
+
+    @Test
+    void screenDelegatesCompositionToReplComposer() throws IOException {
+        String source = Files.readString(SCREEN);
+
+        assertTrue(Strings.CS.contains(source, "new ReplComposer(ctx, new ComposerHost(), scene).compose()"));
+        for (String forbidden : List.of(
+                "scene.mount(", "scene.register(", "scene.registerAll(", "scene.attach(", "scene.seal(",
+                "new SessionController(", "new TurnEngine(", "new LanternaSessionSink(",
+                "new ReplSubmissionCoordinator(", "new SlashCommandDispatcher(",
+                "new ToolApprovalInteraction(", "new StatusLineController(", "new InputPanel(",
+                "new MessagePanel(", "dispatcher.setInlineHeaderLookup(", "dispatcher.setToolTagLookup(")) {
+            assertFalse(Strings.CS.contains(source, forbidden),
+                () -> "scene construction and wiring belong to ReplComposer: " + forbidden);
+        }
+        // The Host port is the only way the graph reaches back into the screen; keep it narrow.
+        String composer = Files.readString(COMPOSER);
+        int start = composer.indexOf("interface Host {");
+        int end = composer.indexOf("\n    }", start);
+        assertTrue(start >= 0 && end > start);
+        long hostMethods = composer.substring(start, end).lines()
+            .filter(line -> Strings.CS.endsWith(line.strip(), ");")).count();
+        assertTrue(hostMethods <= 12,
+            "ReplComposer.Host grew to " + hostMethods + " methods; move behaviour into a feature instead");
+        assertFalse(Strings.CS.contains(composer, "LanternaReplScreen"),
+            "ReplComposer must depend on Host/ReplContext, never on the screen class");
+    }
+
+    @Test
+    void sceneLayoutIsTheOnlyMountSite() throws IOException {
+        String layout = Files.readString(LAYOUT);
+        assertTrue(Strings.CS.contains(layout, "scene.mount("));
+        assertFalse(Strings.CS.contains(Files.readString(COMPOSER), "scene.mount("),
+            "z-order is declared once, in ReplSceneLayout");
     }
 
     @Test
@@ -45,9 +92,39 @@ class ReplFeatureArchitectureTest {
                 "openSandboxSettingsDialog", "openEffortDialog", "openModelPicker",
                 "openThemeDialog", "openConfigDialog", "openStatusDialog",
                 "openUsageDialog", "openPermissionsDialog", "openAgentsDialog",
-                "openAddDirDialog")) {
+                "openAddDirDialog",
+                "openHelpPanel", "openDiffDialog", "openExportDialog", "openCopyPicker",
+                "showContextVisualization", "openTagRemovalDialog", "openDoctorDialog",
+                "openStatsDialog", "openSkillsDialog", "openHooksDialog", "openMcpDialog",
+                "openTasksDialog", "openWorkflowsDialog", "openPluginPanel", "openGoalDialog",
+                "handleCompactProgress", "openBtwDialog", "openPokemonHatchDialog",
+                "setWelcomePokemon", "showWelcomePokemon", "resumeSession", "openMessageSelector")) {
             assertFalse(Strings.CS.contains(source, "\n    public void " + launcher + "("),
                 () -> "command launchers should bind to feature capabilities, not LRS: " + launcher);
+        }
+    }
+
+    @Test
+    void featureFacadesImplementTheirBridgeCapability() throws IOException {
+        for (var entry : List.of(
+                List.of("features/conversation/ConversationToolsFeature.java", "ReplCommandUiBridge.Conversation"),
+                List.of("features/diagnostics/DiagnosticsFeature.java", "ReplCommandUiBridge.Diagnostics"),
+                List.of("features/tasks/BackgroundTasksFeature.java", "ReplCommandUiBridge.Tasks"),
+                List.of("features/plugins/PluginsFeature.java", "ReplCommandUiBridge.Plugins"),
+                List.of("features/goal/GoalFeature.java", "ReplCommandUiBridge.Goal"),
+                List.of("features/pokemon/PokemonFeature.java", "ReplCommandUiBridge.Pokemon"),
+                List.of("features/btw/BtwFeature.java", "ReplCommandUiBridge.Btw"),
+                List.of("features/settings/HooksController.java", "ReplCommandUiBridge.Hooks"),
+                List.of("features/settings/MCPController.java", "ReplCommandUiBridge.Mcp"),
+                List.of("repl/SessionController.java", "ReplCommandUiBridge.Session"),
+                List.of("repl/CompactProgressPresenter.java", "ReplCommandUiBridge.Compact"))) {
+            String file = entry.getFirst();
+            String capability = entry.getLast();
+            String source = Files.readString(
+                Path.of("src/main/java/com/claudecode/ui/lanterna/" + file));
+            assertTrue(Strings.CS.contains(source, "implements " + capability)
+                    || Strings.CS.contains(source, ", " + capability),
+                () -> file + " must expose its launchers through " + capability);
         }
     }
 
@@ -93,10 +170,10 @@ class ReplFeatureArchitectureTest {
 
     @Test
     void customModelEditorIsMountedAlongsideModelPicker() throws IOException {
-        String source = Files.readString(SCREEN);
+        String source = Files.readString(LAYOUT);
 
         assertTrue(Strings.CS.contains(source,
-            "preferencesFeature.modelView(),\n            preferencesFeature.customModelView(),"),
+            "preferences.modelView(),\n            preferences.customModelView(),"),
             "an overlay that is registered for input must also be mounted to render");
     }
 
@@ -140,9 +217,9 @@ class ReplFeatureArchitectureTest {
 
     @Test
     void completedTurnImmediatelyChecksDueScheduledTasks() throws IOException {
-        String source = Files.readString(SCREEN);
-        int idle = source.indexOf("featureRuntime.loopWakeups().onTurnIdle();");
-        int callbackEnd = source.indexOf("},\n            tokens -> pokemonFeature.addExperience", idle);
+        String source = Files.readString(COMPOSER);
+        int idle = source.indexOf("runtime.loopWakeups().onTurnIdle();");
+        int callbackEnd = source.indexOf("},\n            tokens -> pokemonRef[0].addExperience", idle);
         assertTrue(idle >= 0 && callbackEnd > idle);
 
         String idleCallback = source.substring(idle, callbackEnd);
@@ -168,7 +245,7 @@ class ReplFeatureArchitectureTest {
     void screenDelegatesBtwExchangeOwnership() throws IOException {
         String source = Files.readString(SCREEN);
 
-        assertTrue(Strings.CS.contains(source, "BtwFeature"));
+        assertTrue(Strings.CS.contains(Files.readString(COMPOSER), "new BtwFeature("));
         for (String forbidden : List.of(
                 "private void forkBtwExchange(", "private void spawnBtwForkAgent(",
                 "private void branchBtwExchange(")) {
@@ -179,7 +256,7 @@ class ReplFeatureArchitectureTest {
 
     @Test
     void sessionHostModelChangeDoesNotPersistTheUserDefault() throws IOException {
-        String source = Files.readString(SCREEN);
+        String source = Files.readString(SESSION_HOST_PUBLISHER);
         int start = source.indexOf("private SessionHostModelState setSessionModel(");
         int end = source.indexOf("private SessionHostEffortState currentSessionEffortState(", start);
         assertTrue(start >= 0 && end > start);
@@ -188,10 +265,28 @@ class ReplFeatureArchitectureTest {
         assertTrue(Strings.CS.contains(method,
             "queryEngine.configuration().setModel(preference)"));
         assertTrue(Strings.CS.contains(method,
-            "setModel(queryEngine.configuration().getConfig().model())"));
+            "feedback.modelChanged(queryEngine.configuration().getConfig().model())"));
         assertFalse(method.matches("(?s).*\\n\\s*applyModelSelection\\(.*"),
             "Feishu/Session Host model.set must remain session-scoped");
         assertFalse(method.matches("(?s).*\\n\\s*saveModelSetting\\(.*"),
             "remote model changes must not rewrite ~/.claude/settings.json");
+    }
+
+    @Test
+    void screenDelegatesSessionHostPublication() throws IOException {
+        String source = Files.readString(SCREEN);
+
+        assertTrue(Strings.CS.contains(source, "SessionHostPublisher"));
+        for (String forbidden : List.of(
+                "private void publishActiveSession(", "private SessionHostSession buildHostSession(",
+                "private SessionHostModelState", "private SessionHostEffortState",
+                "SessionHostRegistry", "RemoteSubmissionPrompt", "RemoteAttachmentStore")) {
+            assertFalse(Strings.CS.contains(source, forbidden),
+                () -> "Session Host publication and remote control belong to SessionHostPublisher: "
+                    + forbidden);
+        }
+        assertFalse(Strings.CS.contains(Files.readString(SESSION_HOST_PUBLISHER),
+            "com.googlecode.lanterna"),
+            "SessionHostPublisher must stay free of Lanterna dependencies");
     }
 }

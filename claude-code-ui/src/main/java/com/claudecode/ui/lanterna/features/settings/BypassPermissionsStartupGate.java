@@ -2,13 +2,15 @@ package com.claudecode.ui.lanterna.features.settings;
 
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.ui.lanterna.dialog.BypassPermissionsModeDialog;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import java.util.List;
 import com.googlecode.lanterna.gui2.Component;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 
 
-public final class BypassPermissionsStartupGate {
+public final class BypassPermissionsStartupGate implements ReplFeature {
 
     public interface View {
         void prompt(Runnable onAccept, Runnable onDecline, Runnable onEscape);
@@ -54,8 +56,8 @@ public final class BypassPermissionsStartupGate {
         this.view = view;
     }
 
-    public InlineOverlay overlay() {
-        return dialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(dialog);
     }
 
     public Component view() {

@@ -140,6 +140,28 @@ class CliArchitectureTest {
             "initializeInteractiveMcp = () -> interactiveMcpConfig.thenAccept");
     }
 
+    @Test
+    void slashCommandDialogLaunchersBindToTheCommandUiBridge() throws Exception {
+        String runner = Files.readString(Path.of(
+            "src/main/java/com/claudecode/cli/CliInteractiveSessionRunner.java"));
+        String assembler = Files.readString(Path.of(
+            "src/main/java/com/claudecode/cli/CliInteractiveReplAssembler.java"));
+
+        // Dialog launchers must not deref the late-bound screen; the bridge is null-safe before
+        // the scene exists and is the only command → UI path for feature dialogs.
+        for (String launcher : List.of(
+                "s.open", "s.show", "s.handleCompactProgress", "s.resumeSession",
+                "s.startWebGateway", "screen.open", "screen.show", "screen.setWelcomePokemon")) {
+            assertFalse(Strings.CS.contains(runner, "if (s != null) " + launcher)
+                    || Strings.CS.contains(assembler, "if (screen != null) " + launcher),
+                () -> "feature dialogs are reached through ReplCommandUiBridge, not the screen: "
+                    + launcher);
+        }
+        assertTrue(Strings.CS.contains(runner, "commandUi::openMcp"));
+        assertTrue(Strings.CS.contains(runner, ".tasksDialogLauncher(commandUi::openTasks)"));
+        assertTrue(Strings.CS.contains(runner, ".gatewayLauncher(_ -> commandUi.startWebGateway())"));
+    }
+
     private static void assertInOrder(String source, String... fragments) {
         int previous = -1;
         for (String fragment : fragments) {

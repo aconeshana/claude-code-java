@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.features.settings;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.hooks.HookConfigurationPort;
 import com.claudecode.runtime.hooks.HookConfigurationSnapshot;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.claudecode.ui.lanterna.dialog.HooksConfigMenuDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 
 /**
@@ -21,7 +23,7 @@ import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
  * behavioron from another terminal through {@link HookConfigurationPort}. Owns the dialog instance
  * and its scene registration surface. Extracted from {@code LanternaReplScreen}.
  */
-public final class HooksController {
+public final class HooksController implements ReplCommandUiBridge.Hooks, ReplFeature {
 
     private static final Logger log = LoggerFactory.getLogger(HooksController.class);
 
@@ -47,13 +49,16 @@ public final class HooksController {
         this.hookConfiguration = Objects.requireNonNull(hookConfiguration, "hookConfiguration");
     }
 
-    public InlineOverlay overlay() {
-        return dialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(dialog);
     }
 
     public Component view() {
         return dialog;
     }
+
+    @Override
+    public void openHooks() { open(); }
 
     /**
      * Opens the inline hooks configuration browser. Loads hooks from all settings sources,

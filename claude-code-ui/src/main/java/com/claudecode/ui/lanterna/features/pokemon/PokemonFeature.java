@@ -10,7 +10,10 @@ import com.claudecode.ui.lanterna.components.WelcomeBlockHolder;
 import com.claudecode.ui.lanterna.dialog.PokemonHatchDialog;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import java.util.List;
+import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.googlecode.lanterna.gui2.Component;
@@ -26,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * experience/evolution bookkeeping. Extracted from {@code LanternaReplScreen}, which still owns
  * the {@link WelcomeBlockHolder} shared with the model-line and web-gateway-line writers.
  */
-public final class PokemonFeature {
+public final class PokemonFeature implements ReplCommandUiBridge.Pokemon, ReplFeature {
 
     private static final Logger log = LoggerFactory.getLogger(PokemonFeature.class);
 
@@ -69,14 +72,15 @@ public final class PokemonFeature {
         }
     }
 
-    public InlineOverlay overlay() {
-        return hatchDialog;
+    @Override public List<InlineOverlay> overlays() {
+        return List.of(hatchDialog);
     }
 
     public Component view() {
         return hatchDialog;
     }
 
+    @Override
     public void openHatchDialog(CommandContext.PokemonHatchRequest request) {
         if (gui == null || request == null) return;
         gui.getGUIThread().invokeLater(() -> hatchDialog.show(request, result -> {
@@ -88,6 +92,7 @@ public final class PokemonFeature {
     }
 
     /** Live-applies a newly hatched Pokémon and renders its Buddy-style detail card. */
+    @Override
     public void setWelcomePokemon(PokemonProfile pokemon) {
         synchronized (experienceLock) {
             experienceState = pokemon;
@@ -108,6 +113,7 @@ public final class PokemonFeature {
     }
 
     /** Renders the current Pokémon card without replacing welcome state. */
+    @Override
     public void showWelcomePokemon(PokemonProfile pokemon) {
         Runnable show = () -> {
             if (messagePanel == null || pokemon == null) return;
