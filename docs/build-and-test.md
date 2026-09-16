@@ -115,6 +115,21 @@ absent — the resulting JAR or binary then falls back to a plain notice page at
 `pnpm`/Node via `pnpm/action-setup` and `actions/setup-node` before the build
 steps so release artifacts always carry the real UI.
 
+**Tailwind (scoped to `webui/vendor/dsh-context/`).** The context-insight
+surfaces (Context tab, `/context` modal, Context Dashboard) are vendored from
+[dsh-context](https://github.com/bowenliang123/dsh-context), whose components
+use Tailwind utility classes. `tailwindcss@4` runs through the
+`@tailwindcss/vite` plugin with automatic source detection **off**:
+`vendor/dsh-context/styles/tailwind.css` declares `@source "../client"` and
+`@tailwind utilities source(none)`, ships no preflight and no default theme
+(only a hand-picked `@theme static` palette). Utility classes are therefore
+emitted for the vendored tree only; app code keeps its CSS modules and the
+`--dsw-*` tokens untouched. The vendored tree is a separate `@dsh-context`
+alias in `vite.config.ts`/`tsconfig.json`. Its backing gateway routes are
+`GET /api/session/context/{timeline,detail,content,overview}` (see
+`openapi.yaml`); they deliberately emit dsh-context's camelCase wire shape,
+documented in `webui/UPSTREAM.md`.
+
 Native-image resource inclusion for `webui/**` is declared as a single glob in
 `claude-code-app/src/main/resources/META-INF/native-image/com.claudecode/claude-code-app/reachability-metadata.json`,
 following the same pattern used for the bundled ripgrep binaries.

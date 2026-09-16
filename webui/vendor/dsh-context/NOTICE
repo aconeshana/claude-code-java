@@ -1,0 +1,11 @@
+dsh-context
+Copyright (c) the dsh-context authors (https://github.com/bowenliang123/dsh-context)
+
+Licensed under the Apache License, Version 2.0. See LICENSE in this directory.
+
+This directory contains a modified copy of the dsh-context client
+(src/shared/*, src/client/*): the cordis plugin shell, session-projection
+bindings, harness remotes, and the models.dev price fetch were removed or
+replaced; data arrives from the claude-code-java gateway instead. Every file
+that departs from upstream carries a "claude-code-java" note at the change.
+See webui/UPSTREAM.md for the per-file Kept/Cut ledger.

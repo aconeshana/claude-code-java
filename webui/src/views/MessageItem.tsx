@@ -10,6 +10,8 @@ import { markdownLabels } from './labels'
 import { DeliverablesRow } from './DeliverablesRow'
 import { ReasoningRow } from './ReasoningRow'
 import { ToolCallRow } from './ToolCallRow'
+import { useSessions } from '../store/sessions'
+import { ContextJumpButton } from './context/ContextJumpButton'
 import { MessageIconActions } from '../../vendor/dsh-stats-pills/MessageIconActions'
 import { TurnTimePanel, TurnUsagePanel } from '../../vendor/dsh-stats-pills/TurnUsagePanel'
 import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
@@ -18,8 +20,9 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * One transcript row: the user bubble (right-aligned, vendored dsh shape)
  * or the assistant stack (thinking disclosure + markdown + tool call rows)
  * plus the vendored dsh chrome rows — copy actions with a date-aware clock
- * under every user bubble, and the full turn-tail icon row (copy + usage
- * pills + trailing clock) on the settled turn's last assistant row.
+ * under every user bubble, and the full turn-tail icon row (copy + the
+ * vendored dsh-context Chat→Context jump + usage pills + trailing clock) on
+ * the settled turn's last assistant row.
  */
 export function MessageItem({ message }: { message: MessageState }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
@@ -53,6 +56,7 @@ function AssistantItem({ message, t }: {
     () => message.textBlocks.join('\n\n'),
     [message.textBlocks],
   )
+  const sessionId = useSessions((state) => state.selectedSessionId)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
@@ -89,6 +93,7 @@ function AssistantItem({ message, t }: {
           className={turnTailCss.actions}
           usageAction={(
             <>
+              <ContextJumpButton sessionId={sessionId} time={message.time} turn={message.turn} />
               {message.turnUsage !== undefined && (
                 <TurnUsagePanel usage={message.turnUsage} t={t} />
               )}

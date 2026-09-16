@@ -19,8 +19,9 @@
     "paths": {
       "@vendor/*": ["./vendor/*"],
       "@primitives": ["./vendor/ui-primitives/index.ts"],
-      "@chat-styles/*": ["./vendor/chat-styles/*"]
+      "@chat-styles/*": ["./vendor/chat-styles/*"],
+      "@dsh-context/*": ["./vendor/dsh-context/*"]
     }
   },
-  "include": ["src", "vendor/ui-primitives", "vendor/ui-primitives/css-modules.d.ts"]
+  "include": ["src", "vendor/ui-primitives", "vendor/ui-primitives/css-modules.d.ts", "vendor/dsh-context"]
 }

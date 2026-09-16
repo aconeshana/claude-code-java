@@ -1,0 +1,63 @@
+/*
+ * Tailwind v4 entry for the vendored dsh-context tree (upstream
+ * client/styles/tailwind.css, adapted for the claude-code-java webui build).
+ *
+ * Compiled by @tailwindcss/vite. Deliberate deviations from a stock setup,
+ * all for cohabitation with the app's own CSS-modules + `--dsw-*` chrome:
+ * - No preflight and no theme import: a reset would re-skin the app. The
+ *   palette below is the hand-picked SUBSET the dsh cards consume (chart and
+ *   accent colors as standard Tailwind tokens, `static` so plain var() reads
+ *   in the sibling sheets and inline styles see them).
+ * - `--spacing: 4px` instead of 0.25rem: the plugin's spacing values are px.
+ * - Automatic source detection is OFF (`source(none)`); only this vendored
+ *   directory is scanned, so no utility class outside vendor/dsh-context is
+ *   ever emitted and app markup cannot accidentally pick one up.
+ * - Utilities compile UNLAYERED so an unlayered app rule of equal
+ *   specificity still wins ties, exactly as upstream relies on.
+ */
+@theme static {
+  --spacing: 4px;
+  /*
+   * The plugin's accent palette as standard Tailwind color tokens, values
+   * lifted verbatim from this pinned tailwindcss's theme.css. `static` is
+   * load-bearing: the sibling sheets and the TS color fields consume these
+   * via plain var()/inline styles — never a compiled utility — and Tailwind's
+   * used-only emission would never see them. dsh itself defines no
+   * `--color-*` variables, so the canonical names stay collision-free.
+   */
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-orange-500: oklch(70.5% 0.213 47.604);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-indigo-500: oklch(58.5% 0.233 277.117);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-purple-500: oklch(62.7% 0.265 303.9);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-neutral-500: oklch(55.6% 0 none);
+  /*
+   * The plugin's entrance/state animations as theme tokens — keyframes live
+   * here and emit only when their animate-* utility is used. Entrance delays
+   * ride the element-scoped --lc-i stagger slot inside the shorthand; the
+   * donut sweep omits its 100% keyframe on purpose (CSS lands on the
+   * element's own stroke-dasharray) and runs once on mount, so hover-driven
+   * re-renders never restart it.
+   */
+  --animate-lc-donut-in: lc-donut-in 0.45s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 50ms) backwards;
+  --animate-lc-stacked-in: lc-stacked-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 40ms) backwards;
+  --animate-lc-bar-in: lc-bar-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 15ms) backwards;
+  --animate-lc-agent-flow: lc-agent-flow 0.9s linear infinite;
+  --animate-lc-agent-glow: lc-agent-glow 1.8s ease-in-out infinite;
+  @keyframes lc-donut-in { from { stroke-dasharray: 0 100; } }
+  @keyframes lc-stacked-in { from { transform: scaleX(0); } }
+  @keyframes lc-bar-in { from { transform: scaleY(0); } }
+  @keyframes lc-agent-flow { to { stroke-dashoffset: -9; } }
+  @keyframes lc-agent-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+}
+
+/* The vendored client sources — the only place utility class lists appear. */
+@source "../client";
+
+@tailwind utilities source(none);

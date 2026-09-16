@@ -84,6 +84,30 @@ public interface GatewaySessionContextPort {
         }
     }
 
+    /**
+     * One model-visible tool definition as the request header carries it,
+     * for the context browser's tool-schema rows. {@code source} names the
+     * provider the way dsh-context's attribution chips do: {@code builtin}
+     * for first-party tools, {@code mcp:<server>} for MCP proxies.
+     */
+    record HeaderTool(String name, String description, Object inputSchema, String source) {}
+
+    /**
+     * The request header content in force for a session: the system prompt
+     * as the ordered parts the prompt assembler emits, plus every tool
+     * definition the model sees. Served on demand only (the content is
+     * large; the timeline wire carries token prices, never the text).
+     */
+    record HeaderContent(List<String> systemPromptParts, List<HeaderTool> tools) {
+        public HeaderContent {
+            systemPromptParts = List.copyOf(systemPromptParts == null ? List.of() : systemPromptParts);
+            tools = List.copyOf(tools == null ? List.of() : tools);
+        }
+    }
+
+    /** One live (attached) session the context dashboard can list. */
+    record LiveSession(String id, String title, String cwd, java.time.Instant updatedAt) {}
+
     /** Result of one selection change: the refreshed state, or a rejection. */
     record SelectionResult(ModelSelection selection, String error) {
 
@@ -142,6 +166,26 @@ public interface GatewaySessionContextPort {
      */
     default Optional<SessionMetricsSnapshot> metrics(String sessionId) {
         return Optional.empty();
+    }
+
+    /**
+     * The request header content (system prompt parts + tool definitions)
+     * the addressed live session sends with its next request, for the
+     * context browser's System and Tools sections. Empty for sessions
+     * without a live engine (transcript-only ids), whose header cannot be
+     * reconstructed.
+     */
+    default Optional<HeaderContent> headerContent(String sessionId) {
+        return Optional.empty();
+    }
+
+    /**
+     * Every session with a live engine in this process — the active TUI
+     * session plus the open headless sessions — for the context dashboard's
+     * cross-session overview. Never lists transcript-only sessions.
+     */
+    default List<LiveSession> liveSessions() {
+        return List.of();
     }
 
     /**

@@ -8,11 +8,23 @@ import css from '@chat-styles/ConversationRoot.module.css'
  * (--dsh-chat-content-width etc.) that every vendored chat style resolves
  * against, so this component must stay the owner of that class.
  */
-export function ConversationRoot({ title, subtitle, transcript, composer }: {
+export type ConversationView = 'chat' | 'context'
+
+export function ConversationRoot({ title, subtitle, transcript, composer, view, onView, context, tabLabels }: {
   title: string
   subtitle?: string | undefined
   transcript: ReactNode
   composer: ReactNode
+  /**
+   * The active face of the column (dsh's `conversation.view` tab ring:
+   * Chat beside the vendored dsh-context Context tab). Omitted = chat only,
+   * no tab strip.
+   */
+  view?: ConversationView | undefined
+  onView?: ((view: ConversationView) => void) | undefined
+  /** The Context tab's body (rendered in place of the transcript + composer). */
+  context?: ReactNode
+  tabLabels?: { chat: string; context: string } | undefined
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLDivElement>(null)
@@ -40,7 +52,8 @@ export function ConversationRoot({ title, subtitle, transcript, composer }: {
     })
     observer.observe(seat)
     return () => { observer.disconnect() }
-  }, [])
+    // The composer seat remounts when the Context tab hands the column back.
+  }, [view])
 
   return (
     <div ref={rootRef} className={css.root}>
@@ -53,9 +66,33 @@ export function ConversationRoot({ title, subtitle, transcript, composer }: {
             </nav>
           </div>
         </div>
+        {view != null && onView != null && (
+          <div className={css.tabs} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'chat'}
+              className={`${css.tab} ${view === 'chat' ? css.tabActive : ''}`}
+              onClick={() => { onView('chat') }}
+            >{tabLabels?.chat ?? 'Chat'}</button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'context'}
+              className={`${css.tab} ${view === 'context' ? css.tabActive : ''}`}
+              onClick={() => { onView('context') }}
+            >{tabLabels?.context ?? 'Context'}</button>
+          </div>
+        )}
       </div>
-      {transcript}
-      <div ref={composerRef}>{composer}</div>
+      {view === 'context'
+        ? <div className={css.viewArea}>{context}</div>
+        : (
+          <>
+            {transcript}
+            <div ref={composerRef}>{composer}</div>
+          </>
+        )}
     </div>
   )
 }

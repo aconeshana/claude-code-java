@@ -11,6 +11,7 @@ import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { ProjectRowItem, SessionNodeItem } from './SessionRows'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
+import { ContextDashboardButton } from './context/ContextDashboard'
 
 /** Session rows visible per project before the local overflow control (upstream's COLLAPSED_SESSION_LIMIT). */
 const COLLAPSED_SESSION_LIMIT = 5
@@ -43,12 +44,13 @@ const NOW_TICK_MS = 30_000
  * (add/rename/delete/pick flow), session rename/fork/archive menus, and
  * drag-and-drop ordering (both rows and workspace groups). The refresh
  * affordance in the section header is this port's own (upstream's list is
- * live-pushed; ours is a request/response catalog). The sidebar foot stays
- * Settings-only per the vendored `SidebarRoot.module.css` `.footArea`
- * structure (`.footerActions` seat left empty): the scheduled-task surface
- * moved into the settings dialog as its own nav section (see
- * SchedulePanel.tsx) — upstream's own schedule surface is a read-only
- * conversation-header catalog, so no foot trigger corresponds to it.
+ * live-pushed; ours is a request/response catalog). The sidebar foot's
+ * `.footerActions` seat (vendored `SidebarRoot.module.css` `.footArea`) holds
+ * the vendored dsh-context Context Dashboard entry (ContextDashboard.tsx);
+ * Settings sits below it. The scheduled-task surface moved into the settings
+ * dialog as its own nav section (see SchedulePanel.tsx) — upstream's own
+ * schedule surface is a read-only conversation-header catalog, so no foot
+ * trigger corresponds to it.
  */
 export function Sidebar() {
   const projects = useSessions((state) => state.projects)
@@ -182,6 +184,9 @@ export function Sidebar() {
         </div>
       </div>
       <div className={css.footArea}>
+        <div className={css.footerActions}>
+          <ContextDashboardButton />
+        </div>
         <div className={css.settingsArea}>
           <div className={triggerCss.triggerRow}>
             <button

@@ -3,9 +3,13 @@ import { submitTurn } from './api/client'
 import { subscribeMirror, type MirrorConnection } from './api/events'
 import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
 import type { UserContentBlock } from './api/types'
+import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
+import { useTranslate } from './i18n/useTranslate'
 import { useApprovals } from './store/approvals'
 import { useAuth } from './store/auth'
+import { useContextTimeline } from './store/contextTimeline'
 import { useConversations } from './store/conversations'
+import { useConversationView } from './store/conversationView'
 import { useSessions } from './store/sessions'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
@@ -13,6 +17,9 @@ import { ChatView } from './views/ChatView'
 import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
 import { Sidebar } from './views/Sidebar'
+import { ContextDashboard } from './views/context/ContextDashboard'
+import { ContextModal } from './views/context/ContextModal'
+import { ContextView } from './views/context/ContextView'
 
 /**
  * App shell: sidebar + conversation column over the vendored dsh layout,
@@ -39,6 +46,7 @@ export function App() {
     const connection: MirrorConnection = subscribeMirror((frame) => {
       useConversations.getState().applyFrame(frame)
       useApprovals.getState().applyFrame(frame)
+      useContextTimeline.getState().applyFrame(frame)
     }, setConnected)
 
     // Session switches from the TUI side surface as activated frames; keep
@@ -65,6 +73,19 @@ export function App() {
     })
   }, [selectedId])
 
+  // Chat | Context tab ring (per session) and the `/context` modal: the
+  // vendored dsh-context surfaces. `/context` is a client-side command, it
+  // never becomes a turn.
+  const view = useConversationView((state) => state.views[selectedId ?? ''] ?? 'chat')
+  const setView = useConversationView((state) => state.setView)
+  const [contextModalOpen, setContextModalOpen] = useState(false)
+  const onClientCommand = useCallback((command: string): boolean => {
+    if (command !== '/context') return false
+    setContextModalOpen(true)
+    return true
+  }, [])
+  const contextT = useTranslate(CONTEXT_NS, contextDicts)
+
   if (token == null) {
     return <MissingToken />
   }
@@ -74,6 +95,10 @@ export function App() {
       <ConversationRoot
         title={selectedId == null ? 'Claude Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
+        view={view}
+        onView={(next) => { setView(selectedId, next) }}
+        tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
+        context={<ContextView sessionId={selectedId} />}
         transcript={<ChatView conversation={conversation} />}
         composer={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -96,10 +121,17 @@ export function App() {
               placeholder={selectedId == null ? '先在侧栏选择一个会话' : '输入消息，Enter 发送'}
               onSubmit={onSubmit}
               sessionId={selectedId}
+              onClientCommand={onClientCommand}
             />
           </div>
         }
       />
+      <ContextModal
+        sessionId={selectedId}
+        open={contextModalOpen}
+        onClose={() => { setContextModalOpen(false) }}
+      />
+      <ContextDashboard />
     </AppFrame>
   )
 }

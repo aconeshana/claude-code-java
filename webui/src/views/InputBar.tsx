@@ -77,13 +77,19 @@ import css from '@chat-styles/InputBar.module.css'
  * edge. 'steer' has no backend turn-injection route in this gateway, so it
  * falls through to today's immediate-send behavior.
  */
-export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId }: {
+export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onClientCommand }: {
   disabled: boolean
   busy: boolean
   placeholder: string
   onSubmit: (content: string | readonly UserContentBlock[]) => void
   /** The conversation this composer addresses; the model seat and meter follow it. */
   sessionId?: string | null
+  /**
+   * Client-side slash commands (dsh-context's `/context` registers on the
+   * harness slash source and never reaches the model): the trimmed draft
+   * is offered here first; `true` = handled, the draft clears, no turn.
+   */
+  onClientCommand?: ((command: string) => boolean) | undefined
 }) {
   const [attachments, setAttachments] = useState<readonly DraftAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -298,6 +304,11 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId }: {
   const submit = useCallback((): void => {
     if (disabled || !hasSubmittableContent(draftText, attachments)) return
     const text = draftText.trim()
+    if (attachments.length === 0 && onClientCommand?.(text) === true) {
+      setDraftText('')
+      editorRef.current?.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined)
+      return
+    }
     const content = attachments.length === 0
       ? text
       : buildContentBlocks(text, attachments)
@@ -312,7 +323,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId }: {
       return
     }
     onSubmit(content)
-  }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, sessionId])
+  }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, sessionId, onClientCommand])
 
   const onChange = useCallback((state: EditorState) => {
     state.read(() => {

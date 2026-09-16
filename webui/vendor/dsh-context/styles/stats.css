@@ -1,0 +1,95 @@
+/*
+ * The head band's stat cards — the context/plugin row and the token/timing
+ * donut row: the context card's count grid with the cost cell's styled tip,
+ * the composition overview's big number, and the cards' shared anatomy
+ * — section heading, donut, slice list, plugin-info rows.
+ */
+.lc-stat { background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 6px 6px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* The 5-cell stats grid shares a half-width head-row card with a sibling, so its cells are moderate: tighter padding plus a corner-pinned '?' (out of the label's line) keep the longest labels on one line. */
+.lc-stats .lc-stat { padding: 6px 3px; }
+.lc-stats .lc-stat-q { position: absolute; top: 3px; right: 4px; margin: 0; }
+.lc-stat-label { color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-stat-value { color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.lc-stat-sub { color: var(--dsw-alias-label-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/*
+ Stats cell tooltip (cost cell): styled DOM bubble because native `title` can't hold the multi-row price breakdown; a '?' signals the affordance and hovering anywhere on the cell reveals the bubble below (the cell is the tip's position frame). Chrome rides the shared `.lc-tip`; the reveal and the badge's brighten ride `group-hover/tip` variants (`group/tip` on the cell).
+ */
+.lc-stat-tipped { position: relative; }
+.lc-stat-q { display: inline-block; margin-left: 4px; width: 11px; height: 11px; line-height: 11px; border-radius: 50%; text-align: center; font-size: 9px; font-weight: 700; font-style: normal; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); cursor: help; transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-stat-tip { top: calc(100% + 6px); left: 0; max-width: 280px; line-height: 1.5; font-weight: 400; }
+.lc-stat-tip-prices { display: block; margin-top: 5px; border-top: 1px dashed var(--dsw-alias-border-l1); padding-top: 5px; }
+.lc-stat-tip-head { display: block; font-weight: 600; }
+.lc-stat-tip-row { display: block; margin-top: 2px; }
+.lc-stat-tip-model { color: var(--dsw-alias-label-primary); }
+.lc-card-sub { font-weight: 400; color: var(--dsw-alias-label-secondary); font-size: 12px; margin-left: auto; }
+.lc-overview-num { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.lc-overview-num > b { font-size: 20px; }
+.lc-overview-num span { color: var(--dsw-alias-label-secondary); }
+.lc-overview-pct { margin-left: auto; font-size: 11px; }
+.lc-overview-pct b { font-size: 20px; color: var(--dsw-alias-label-primary); margin-right: 4px; }
+/*
+ ---- Stats cards' shared anatomy: a small section heading, the donut+list
+ row, and the token card's cost line (the '.lc-tip' bubble pattern). ----
+ */
+.lc-stat-head { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); margin: 12px 0 8px; }
+/* The ring hugs the left edge; the legend fills the rest of the card with its quantity and share columns
+   right-aligned. The donut cards stretch the donut+legend row over their full height (`flex: 1` below), so
+   the head row's extra space sits around the chart instead of pooling under it; the row's own flex layout
+   and its 320px/240px folds ride utilities on the elements (statsTokens.tsx / statsTiming.tsx /
+   sliceList.tsx / donut.tsx). */
+.lc-col-donut { display: flex; flex-direction: column; }
+.lc-col-donut .lc-donut-row { flex: 1; }
+.lc-donut { position: relative; flex: none; }
+.lc-donut svg { display: block; }
+.lc-donut-track { stroke: color-mix(in srgb, var(--color-neutral-500) 18%, transparent); }
+/* The legend row ↔ segment hover link: hovering either side dims the ring's
+   other slices to 0.35 (the stacked bars' idiom) while the active one stays
+   solid; the center figures stay at rest. */
+.lc-donut-seg { transition: opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+/* The entrance sweep rides the `animate-lc-donut-in` utility (theme token: 0.45s sweep, staggered by the
+   element's --lc-i slot, `motion-reduce:animate-none` for the reduced-motion guard). */
+.lc-donut-dim .lc-donut-seg { opacity: 0.35; }
+.lc-donut-dim .lc-donut-seg-on { opacity: 1; }
+.lc-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; pointer-events: none; text-align: center; padding: 0 7px; box-sizing: border-box; }
+.lc-donut-center b { line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.lc-donut-center span { color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+/*
+ The slice rows — the donut's legend with numbers, no bars, two tiers per
+ row: the primary line pairs the color dot + name with the bold share
+ closing a fixed right column, and the secondary line drops the absolute
+ quantity (plus a qualifier like the call count) under the name in muted
+ small print. The name takes the whole primary line and only ellipsizes as
+ a last resort; a zero-figure row dims — the ring already carries the share.
+ The rows flow into as many ≥160px columns as the card offers (the
+ composition legend's own auto-fill idiom): one in a narrow pane, two on a
+ classic 1280px viewport where the row halves are ~456px, more on ultrawide
+ — so the classic size reads in the same paired order as the composition
+ card below.
+ */
+.lc-sl { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 20px; min-width: 0; overflow: hidden; }
+/* The pill tint spreads 6px past the text column (negative margins) so the
+   hovered row reads as one lit surface without shifting the columns. */
+.lc-sl-row { display: flex; flex-direction: column; gap: 1px; font-size: 12px; min-width: 0; border-radius: 6px; padding: 1px 6px; margin: 0 -6px; transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-sl-row-on { background: var(--dsw-alias-interactive-bg-hover); }
+.lc-sl-row-dim { opacity: 0.55; }
+.lc-sl-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lc-sl-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+.lc-sl-label { flex: 1 1 auto; min-width: 0; line-height: 1.25; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-sl-pct { flex: none; min-width: 34px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lc-sl-sub { margin-left: 14px; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-pi-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+/* The settings-entry row is a button wearing the link-row chrome — reset the button chrome the shared row style doesn't cover. */
+.lc-pi-row-btn { appearance: none; border: 0; background: none; font: inherit; color: inherit; text-align: left; padding: 0; cursor: pointer; width: 100%; }
+.lc-pi-row { display: flex; flex-direction: row; justify-content: space-between; align-items: baseline; gap: 12px; min-width: 0; text-decoration: none; color: inherit; }
+.lc-pi-hint { text-decoration: none; }
+.lc-pi-update { color: var(--dsw-alias-state-warn-primary); font-size: 11px; margin-left: 6px; white-space: nowrap; }
+.lc-pi-label { flex: none; color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/*
+ min-width: 0 lets the value shrink inside the flex row and truncate with
+ an ellipsis; without it a narrow card pushes the value over the label.
+ */
+.lc-pi-value { min-width: 0; color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.lc-pi-row-btn .lc-pi-value { font-weight: 400; }
+/* The stats grid's cell count is intrinsic (`repeat(auto-fit, minmax(108px,1fr))` on the element, see
+   statsContext.tsx); the donut row's 320px gap fold and 240px stack still ride
+   `@max-[…]/lc-card` utilities — statsTokens.tsx / statsTiming.tsx / sliceList.tsx / donut.tsx. */

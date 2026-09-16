@@ -97,6 +97,7 @@ import com.claudecode.ui.lanterna.repl.ReplStartupReadiness;
 import com.claudecode.ui.lanterna.repl.ReplWiring;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -383,7 +384,8 @@ final class CliInteractiveSessionRunner {
                     gatewayModels(customModelCatalog),
                     gatewayCommands(cmdRegistry),
                     gatewaySessionContext(sessionHostRuntime.registry(), engine,
-                        headlessSessions, interactiveCwd, contextDataCollector));
+                        headlessSessions, interactiveCwd, contextDataCollector,
+                        toolRegistry::getContextAnalysisToolDefinitions));
                 DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                     permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
                 CliSettingsManagementAdapter settingsManagement =
@@ -822,6 +824,21 @@ final class CliInteractiveSessionRunner {
             SessionHostRegistry registry, QuerySession engine,
             GatewayHeadlessSessions headless, String mainCwd,
             Supplier<ContextData> contextDataCollector) {
+        return gatewaySessionContext(registry, engine, headless, mainCwd,
+            contextDataCollector, null);
+    }
+
+    /**
+     * Full form: {@code toolDefinitions} is the live registry's
+     * model-visible tool list (the same {@code getContextAnalysisToolDefinitions}
+     * feed the /context analyzer reads), backing the context browser's tool
+     * schema rows. Null leaves the header content without tools.
+     */
+    static GatewaySessionContextPort gatewaySessionContext(
+            SessionHostRegistry registry, QuerySession engine,
+            GatewayHeadlessSessions headless, String mainCwd,
+            Supplier<ContextData> contextDataCollector,
+            Supplier<List<StreamingClient.StreamRequest.ToolDef>> toolDefinitions) {
         // The /context analyzer counts tokens with real count-tokens API
         // calls (each with retries); the gateway's meter GET must never
         // block on that. The breakdown rides a background single-flight
@@ -910,6 +927,56 @@ final class CliInteractiveSessionRunner {
                 } catch (RuntimeException _) {
                     return Optional.empty();
                 }
+            }
+
+            @Override public Optional<HeaderContent> headerContent(String sessionId) {
+                // The header is reconstructible only for a live engine: the
+                // base system prompt parts the assembler emits (no CLAUDE.md —
+                // memory rides the message stream as injections) plus the
+                // registry's model-visible tools. MCP proxies are attributed
+                // by their mcp__<server>__<tool> name so the browser can chip
+                // them per server, matching dsh-context's tool attribution.
+                return metricsEngine(sessionId).map(live -> {
+                    List<String> parts;
+                    try {
+                        parts = live.configuration().assembleSystemPromptParts(null);
+                    } catch (RuntimeException _) {
+                        parts = List.of();
+                    }
+                    List<HeaderTool> tools = new ArrayList<>();
+                    if (toolDefinitions != null) {
+                        for (StreamingClient.StreamRequest.ToolDef def : toolDefinitions.get()) {
+                            tools.add(new HeaderTool(def.name(), def.description(),
+                                def.inputSchema(), toolSource(def.name())));
+                        }
+                    }
+                    return new HeaderContent(parts, tools);
+                });
+            }
+
+            @Override public List<LiveSession> liveSessions() {
+                // Live = has an engine in this process: the TUI's active
+                // session (by its published id, the same id the sidebar
+                // routes) and every open headless session. Transcript-only
+                // ids are never listed — the dashboard aggregates ledgers,
+                // and only live sessions own one.
+                List<LiveSession> live = new ArrayList<>();
+                active().ifPresent(session -> live.add(new LiveSession(
+                    session.info().id(), session.info().summary(),
+                    session.info().workDir(), session.info().modifiedAt())));
+                if (headless != null) {
+                    for (GatewayHeadlessSessions.SessionListing listing : headless.list()) {
+                        if (live.stream().anyMatch(row ->
+                                Strings.CS.equals(row.id(), listing.sessionId()))) {
+                            continue;
+                        }
+                        String title = headless.find(listing.sessionId())
+                            .map(session -> session.info().summary()).orElse("");
+                        live.add(new LiveSession(listing.sessionId(), title,
+                            listing.projectPath(), listing.openedAt()));
+                    }
+                }
+                return List.copyOf(live);
             }
 
             @Override public Optional<SessionMetricsSnapshot> metrics(String sessionId) {
@@ -1013,6 +1080,18 @@ final class CliInteractiveSessionRunner {
                     efforts == null ? List.of() : efforts.efforts());
             }
         };
+    }
+
+    /**
+     * The context browser's tool attribution: MCP proxies are named
+     * {@code mcp__<server>__<tool>} by the registry, everything else is a
+     * first-party built-in.
+     */
+    private static String toolSource(String toolName) {
+        if (toolName == null || !toolName.startsWith("mcp__")) return "builtin";
+        String rest = toolName.substring("mcp__".length());
+        int split = rest.indexOf("__");
+        return "mcp:" + (split > 0 ? rest.substring(0, split) : rest);
     }
 
     /**

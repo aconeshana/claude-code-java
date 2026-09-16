@@ -23,6 +23,8 @@ import { useTranslate } from '../i18n/useTranslate'
 import { SETTINGS_NS, settingsDicts } from '../i18n/dictionaries/settings'
 import type { PermissionBehaviorKind, SettingsTier } from '../api/types'
 import localCss from './SettingsPanel.module.css'
+import { ContextSettingsSection } from './context/ContextSettingsSection'
+import { ContextIcon } from '@dsh-context/client/icon'
 import { ModelsSection } from './ModelsSection'
 import { ScheduleSection } from './SchedulePanel'
 
@@ -54,7 +56,7 @@ import { ScheduleSection } from './SchedulePanel'
  * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'schedule'
+type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'schedule' | 'context'
 
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
@@ -62,6 +64,7 @@ const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'directories', label: '目录', icon: <IconFolderOpenOutline16 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
+  { id: 'context', label: '上下文', icon: <ContextIcon className={css.navIcon} size={16} /> },
 ]
 
 const TIERS: readonly SettingsTier[] = ['user', 'project', 'local']
@@ -294,6 +297,8 @@ export function SettingsPanel({ open, onClose }: {
                 <ModelsSection />
               </div>
             )}
+
+            {activeSection === 'context' && <ContextSettingsSection />}
 
             {activeSection === 'schedule' && (
               <div className={sectionCss.section}>

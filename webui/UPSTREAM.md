@@ -16,6 +16,7 @@ cordis/Typert RPC).
 | `vendor/dsh-composer-menu/` | `packages/client/ui-input-trigger/` + `ui-commands/` | The composer "+" menu — see the section below |
 | `vendor/dsh-stats-pills/` | `packages/client/ui-chat/` | The composer session-stat pills + the turn-tail usage/time pills — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
+| `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
 
 ### `vendor/dsh-composer-menu/` — the composer "+" menu
 
@@ -447,6 +448,82 @@ no access to and are out of scope entirely.
   split-on-`;`-then-first-`:` rule), so the two surfaces feel identical even
   though neither ports the other's code.
 
+### `vendor/dsh-context/` — context insight (Context tab, `/context`, Dashboard, jump)
+
+Vendored from [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context)
+(Apache-2.0, **not** deepseek-harness), pinned at commit
+`c463620b71426ea9b19ceb9f5c85b2ee55ab04c8` (package version `0.53.0`,
+2026-09-16). The directory carries its own `LICENSE` and `NOTICE`. It is a
+DeepSeek Harness plugin whose host half (`src/host/*`, an event-driven
+projection fold) is **re-implemented in Java** (`claude-code-gateway`
+`ContextTimelineFold` / `ContextTimelineLedger` / `GatewayContextTimelineHandler`)
+and whose client half is vendored here minus the cordis plugin shell.
+
+**Wire-shape exception.** The four new gateway routes
+(`GET /api/session/context/{timeline,detail,content,overview}`) emit
+dsh-context's `shared/types.ts` camelCase records (`ContextTimeline`,
+`ContextTimelineDetail`, `ContextHeaders`, `ContextActivity`) verbatim so
+`assemble.ts`, `categories.ts`, `headline.ts`, and the `DetailStore` run
+unmodified. This is a deliberate exception to the gateway's snake_case
+convention, recorded in the handler Javadoc and `openapi.yaml`. Two
+extensions ride the detail payload: `agents: AgentRecord[]` (this session's
+`Task`/`Agent` tool calls — our subagents are in-session calls, not child
+sessions) and `headers: ContextHeaders` (one GET serves both). The existing
+`GET /api/session/context` is untouched; `client/adapters.ts` maps it to
+dsh's `ContextPressure` / `ContextBreakdown` / `TokenUsage`.
+
+**Data source: live sessions only.** The ledger folds the process's active
+TUI session and open headless sessions; a cold session yields `timeline:
+null` and the tab shows the `shell.cold` note. The Dashboard lists only
+those live sessions.
+
+**Tailwind, scoped.** dsh-context's JSX is utility-class heavy, so
+`tailwindcss@4` + `@tailwindcss/vite` compile **only** `vendor/dsh-context/**`
+(`styles/tailwind.css`: `source(none)` + `@source "../client"`, no preflight,
+no theme import — a hand-picked `@theme static` palette). No app markup can
+pick up a utility class.
+
+| File here | Upstream source | Notes |
+|-----------|-----------------|-------|
+| `shared/{types,estimate,fileOps,imageTokens,days,providers}.ts` | `src/shared/*` | Kept verbatim except `types.ts`: the cordis `declare module` augmentations are cut; `AgentRecord` and `ContextTimelineDetail.agents`/`.headers` are added (the claude-code-java extensions above). `shared/version.ts` is not vendored (no baseline gate). |
+| `client/{categories,headline,assemble,brief,callSummary,format,dna,fileActivity,viewkit,i18n,icon,overscroll}.ts(x)` | same names | Pure helpers, kept verbatim (primitive imports repointed to `@primitives`). `i18n.ts` keys are re-exported through `src/i18n/dictionaries/context.ts` (ns `dsh-context`) with the shell's own `shell.*` keys appended. |
+| `client/narrow.ts` | `src/client/services.ts` (extract) | Only the narrowing/sanitizing half (`asRecord`, `numOf`, `objectsOf`, `timelineOf`, `headersOf`, `detailOf`, `activityOf`, `ConversationNodeLike`…). Cut: `ClientCtx`, slots, remotes, `SessionsFace`, `useProjection` bindings. |
+| `client/timelineSource.ts` | same | `DetailStore` rev cursor kept; `makeDetailFetcher` (harness remote) is cut and the fetcher is injected (`src/store/contextTimeline.ts` supplies `GET /detail`). `detailOf` also lifts `agents` and `headers`. |
+| `client/overview.ts` | same | The pure pipeline (`filterRows`/`sortRows`/`pageOf`/`kpisOf`/`aggregateDays`/`relativeTime`) kept; `rowsOfSnapshot` and the workspace grouping (`sessionGroupsOf`/`groupCountsOf`/`inGroup`/`archivedSetOf`) are replaced by `rowsOfOverview` over the `/overview` payload. |
+| `client/agentTree.ts` | same | Layout half kept; the data half now consumes `AgentRecord[]` (`agentForestOf(agents, currentId, self)`, `subagentCostOf(agents)`) instead of the harness session list + `agentHeads`. |
+| `client/cost.ts` | same | Verbatim plus one lookup patch: Anthropic dated snapshot ids (`claude-sonnet-4-5-20250929`) strip the `-YYYYMMDD` suffix before the price-book lookup. |
+| `client/modelPrices.ts` | same | The models.dev fetch is replaced by a static Anthropic list-price table; unknown models render no cost cell. |
+| `client/settings.ts` | same | `ctx.settingsScope` persistence replaced by `localStorage` (`dsh-context.settings`); `attach`/binder faces cut. `SettingsField` names are unchanged. |
+| `client/workspacePath.ts` | `@deepseek-ai/dsh-util-workspace-path` | 2-function shim (`workspaceTitleOf`, `fileAddressFor`). |
+| `client/adapters.ts` | new | `pressureOf` / `breakdownOf` / `usageOf`: the existing `/api/session/context` answer → dsh's meter types. |
+| `client/components/{stackedBar,donut,sliceList,trendChart,requestDetail,browser,currentComposition,fileCard,statsTokens,statsTiming,events,richText,images,heatmap,overviewCard,detailNote,fetchOnMiss,escapeClose,errorBoundary,nodes}.tsx` | same | Pure-props cards, kept verbatim apart from `@primitives` imports and `exactOptionalPropertyTypes` widening (`?: T \| undefined`, function-typed optionals parenthesized). |
+| `client/components/agentGraph.tsx` | same | Props take `agents: AgentRecord[]`; the `useSessionsSnapshot`/`refreshSubagents`/session-switch plumbing is cut (open/keyOpen only pin the inspector). |
+| `client/components/statsContext.tsx` | same | `subUsage` arrives as a prop (from `subagentCostOf(detail.agents)`) instead of the cordis subagent cost fold. |
+| `styles/*.css` | `src/client/styles/*.css` | Verbatim; `tailwind.css` re-authored as described above. Imported once from `vendor/dsh-context/index.ts` in upstream cascade order. |
+| **not vendored** | `contextView.tsx`, `contextModal.tsx`, `contextJump.tsx`, `overviewPanel.tsx`, `overviewButton.tsx`, `settingsCard.tsx`, `pluginInfo.tsx`, `upgradeGate.tsx`, `services.ts`, `command.ts`, `sidebar.ts`, `placement.ts`, `historyPage.ts`, `latestVersion.ts`, `meta.ts`, `agentHeads.ts`, `dockMeasure.ts`, `settingsJump.ts`, `modalStore.ts`, `viewFocus.ts`, `overviewStore.ts` | Cordis plugin shell, slot registrations, harness remotes, module stores. Re-assembled in `src/views/context/*` (`ContextView`, `ContextModal`, `ContextDashboard`, `ContextJumpButton`, `ContextSettingsSection`, `jump.ts`) over zustand stores (`src/store/{contextTimeline,contextOverview,conversationView}.ts`). |
+
+**Cut points / deviations (deliberate):**
+- **`/context` is a client-side command.** `InputBar` offers the trimmed draft
+  to `onClientCommand`; `/context` opens the modal and never becomes a turn,
+  exactly as dsh's slash-source registration does. No `TokenSpan` consume
+  guard (our composer clears the draft itself).
+- **Chat→Context jump resolves by time/turn.** dsh reads the request seq off
+  its conversation-node seat; our chat rows carry the transcript timestamp
+  and 1-based turn, so the relay carries those and `jump.ts` resolves the
+  seq against the request ledger (exact seq → nearest time within 60s →
+  last request of the turn → tab switch without a pin).
+- **Agent Network is a one-level family.** Nodes are this session's
+  `Task`/`Agent` tool calls settled from their `toolUseResult`; the ring is
+  the subagent's own billed input/output split. No cross-session navigation.
+- **No placement / right-sidebar surface, no Settings fold-out card.** The
+  Context preferences render as rows of the host Settings dialog
+  (`ContextSettingsSection`, "上下文" nav section); `defaultPlacement` is
+  kept in storage but not offered.
+- **No models.dev pricing, no DeepSeek peak/off-peak, no PTC `run_code`
+  nested fileOps, no plugin-info / upgrade-gate cards.**
+- **Dashboard has no workspace group chips** (no `useWorkspaces` seat); a card
+  click selects the session through `useSessions.select`.
+
 ## Local modifications
 
 Keep this list complete; each entry needs a reason.
@@ -463,6 +540,11 @@ Keep this list complete; each entry needs a reason.
 3. Vendored files must not be edited in place except through a recorded
    entry here. Prefer adapting at the app layer (extra `className`,
    wrapper) over patching vendored code.
+4. `vendor/dsh-context/**` — every file that departs from upstream carries a
+   `claude-code-java` note at the change; the per-file table in the
+   `vendor/dsh-context/` section above is the ledger. Refresh from
+   `https://raw.githubusercontent.com/bowenliang123/dsh-context/<commit>/src/<path>`
+   (a different upstream from the deepseek-harness pin above).
 
 ## Refresh procedure
 

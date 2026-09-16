@@ -1,0 +1,136 @@
+/*
+ * Shared base for every plugin surface: the Context tab's root/card chrome,
+ * the `.lc-gran` segmented toggle, list-column anatomy, empty/error states,
+ * and the composer-hiding rule. Imported FIRST of the plugin's sheets —
+ * later component sheets re-tint the shared chrome at equal specificity
+ * (e.g. the file card's purpose chips over `.lc-gran-btn:hover`), so this
+ * order is load-bearing.
+ */
+.lc-root { padding: 16px 20px 32px; overflow-y: auto; height: 100%; box-sizing: border-box; color: var(--dsw-alias-label-primary); font-size: 13px; }
+/*
+ Right Sidebar panel (dsh 0.1.5-rc.1+): the dockkit pane body scrolls and
+ its `.pane` clips overflow — so the tab root drops its own scroller and lets
+ the pane own both. The body draws NO padding of its own (dockkit leaves each
+ tab its own insets), so the root keeps a 12px frame on all four sides — the
+ harness's own body inset — instead of the wide shared chrome. Scoped by the
+ panel's own markers, which exist only inside the right column (the open panel
+ and the float host that carries a tab dragged out of it); the conversation tab
+ and the /context modal are unaffected.
+ */
+[data-sidebar-right-open] .lc-root,
+[data-sidebar-right-float-host] .lc-root { height: auto; overflow: visible; padding: 12px; }
+/* The Context tab chip's emblem: held at its drawn size in the title's flex
+   line (dockkit's `.tabTitle`; the files chip's own titleIcon idiom). */
+.lc-title-icon { flex: none; }
+/*
+ The chip's close control is OUT of flow over the title's last 14px, and an
+ active/hovered chip fades the 16px before it (dockkit `.tabTitle`'s mask) so
+ the text dies away under the close. The shipped files chip stays readable
+ only because its short label ends before that zone; our icon plus a longer
+ label runs into it. This gutter makes the fade land past the text: 30px is
+ the mask's own lead-in (`calc(100% - 30px)`), the one dockkit chrome
+ constant this touches — re-check it if that mask ever moves.
+ */
+.lc-title-label { padding-right: 30px; }
+/*
+ Border roles: l2 (0.1 black ≈ #E5E5E5 on white) draws the VISIBLE edges —
+ cards and controls, matching dsh's own Button/Input chrome; l1 stays for
+ hairline dividers and passive chips, where a stronger line is just noise.
+ */
+.lc-card { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+/*
+ The Context tab runs the card rhythm at HALF the shared chrome — padding
+ inside each card, and the gaps between cards (the `.lc-cols` row gap + row
+ margin, and the stacked-column cards' bottom margin) all halved. This block
+ must sit BEFORE the `.lc-cols`/`.lc-col` margin-zeroing rules below so their
+ equal-or-higher specificity keeps row children at 0 while column-stacked
+ cards take the halved margin. The /context modal sits outside `.lc-root` and
+ keeps the shared values (and its cards stay non-containers).
+
+ Every tab card is ALSO the `lc-card` query container: card-internal reflows
+ (the donut cards in stats.css, the events/file rows' two-line anatomy) key
+ off the card's own width, not the viewport — the pane depends on the shell's
+ sidebar state. Inline-size containment is safe: every card's width comes
+ from its flex row, never from its contents; the one fixed-position overlay
+ (the image lightbox) portals to <body>, so the layout-containment fixed-CB
+ trap cannot catch it. Border-box is load-bearing on the narrow pane: cards
+ carry the `min-w-[min(360px,100%)]` floor while riding this sheet's padding,
+ and the plugin ships no preflight reset — a content-box card reads the floor
+ as its content width and overflows its row by its own chrome (issue #65).
+ */
+.lc-root .lc-card { box-sizing: border-box; padding: 7px 8px; margin-bottom: 7px; container: lc-card / inline-size; }
+.lc-root .lc-cols { gap: 7px; margin-bottom: 7px; }
+/* Wraps under width pressure: toggle groups/kind chips in a header drop to
+   their own line instead of spilling past the card edge. */
+.lc-card-title { font-weight: 600; margin-bottom: 10px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lc-card-title-text { flex: none; white-space: nowrap; }
+.lc-gran, .lc-kinds { margin-left: auto; display: flex; gap: 2px; background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 1px; }
+/* A title carrying TWO toggle groups wraps them so the auto-margin push happens once — two bare .lc-gran siblings would split the free space and drift apart. */
+.lc-trend-ctl { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.lc-trend-ctl .lc-gran { margin-left: 0; }
+/* The trend card's adaptive switch rides the title text's right — a single-button group whose auto margin is
+   neutralized so it stays adjacent (the browser card's DNA toggle idiom). */
+.lc-trend-adaptive { margin-left: 0; flex: none; }
+.lc-gran-btn { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1; padding: 3px 8px; border-radius: 5px; cursor: pointer; font-family: inherit; transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-gran-btn:hover { color: var(--dsw-alias-label-primary); }
+.lc-gran-on, .lc-gran-on:hover { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); }
+/* The events card's kind filters carry their per-kind event tally: a tabular
+   count set off from the label, dimmed while the chip is off and inherited
+   (slightly translucent) on the lit chip. */
+.lc-kind-n { margin-left: 4px; font-variant-numeric: tabular-nums; opacity: 0.65; }
+.lc-gran-on .lc-kind-n { opacity: 0.85; }
+/*
+ Shared tooltip-bubble chrome: pair `.lc-tip` with the owner's own tip class,
+ then position locally (top/bottom anchor, width cap, whitespace); the reveal
+ rides a `group-hover/tip` variant on the owner. The component sheets carry
+ the four shippers (.lc-stat-tip / .lc-brief-tip / .lc-fa-meta-tip / .lc-bar-tip);
+ a new tip never re-declares this chrome.
+ */
+.lc-tip { position: absolute; z-index: 6; width: max-content; background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: var(--dsw-alias-label-primary); box-shadow: var(--dsw-shadow-lv3, 0 2px 8px rgba(0, 0, 0, 0.18)); pointer-events: none; opacity: 0; transition: opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-events, .lc-fa-list { display: flex; flex-direction: column; gap: 2px; height: 320px; overflow-y: auto; }
+/*
+ The row owns the 14px vertical rhythm (lc-cols gap); cards drop their own bottom margin (incl. the last in a column) so every section boundary measures exactly one 14px whichever way the flex wraps.
+ */
+.lc-cols { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.lc-cols > .lc-card { margin-bottom: 0; }
+.lc-col > .lc-card:last-child { margin-bottom: 0; }
+.lc-col-browser { display: flex; flex-direction: column; }
+.lc-col-browser > .lc-card { flex: 1; }
+/*
+ Head band: TWO rows of two EQUAL-width cards — the session's shape beside
+ the plugin card (context / plugin), then the two donut cards together
+ (token / timing). The rows are `.lc-cols` flex-wrap rows and the cards ride
+ the shared column idiom (`flex-1 min-w-[min(360px,100%)]` in the
+ components): equal `flex: 1` halves each row exactly and the min-width
+ floor is the fold — below 2 x 360px + gap of row width (a half under
+ ~360px, where the donut cards' ring+legend single-line and the count grid
+ both start to cramp, issue #48) the pair wraps onto full-width lines. Cards
+ under that end of the band sit under their own lc-card reflows (stats.css:
+ the ring stacks over its legend, the cell grid folds), so the two-card
+ line is the trade this floor buys. Engines without container queries keep
+ the wide two-across layout. The right Sidebar's panel renders only the
+ donut row (it drops the context stats / plugin info row — see
+ contextView.tsx); the same wrap then stacks the pair in the narrow pane.
+ */
+/* The context card's cell grid stretches to the plugin card's height, so the row reads as one level band. */
+.lc-head > .lc-card:has(.lc-stats) { display: flex; flex-direction: column; }
+.lc-head .lc-stats { flex: 1; align-content: stretch; }
+.lc-head .lc-stat { justify-content: center; }
+.lc-empty { color: var(--dsw-alias-label-secondary); padding: 18px 0; text-align: center; }
+.lc-error { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; }
+.lc-error-msg { font-family: var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; padding: 4px 8px; max-width: 100%; overflow-wrap: anywhere; }
+.lc-error-retry { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; padding: 4px 14px; border-radius: 6px; cursor: pointer; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-foot { color: var(--dsw-alias-label-secondary); font-size: 12px; margin-top: 4px; }
+[data-conversation-scroll]:has(.lc-root) > [data-composer-seat]:not(:has([data-approval-key], [data-question-key], [data-plan-review-key])) { display: none; }
+/*
+ The shell's transcript-width drag handles are FOLLOWING SIBLINGS of the shared scroller (children of
+ the skeleton body, dsh ConversationRoot), not its descendants — a descendant combinator here silently
+ matches nothing (issue #50), hence the `~`. While a plugin surface owns the ring, the strips
+ (z-index 8, full-height col-resize) glow and drag straight through the Context tab's full-bleed pane,
+ and hover above the /context modal's mask (the modal rides the composer seat's z-index 7 stacking
+ context). Hide them while `.lc-root` (the tab) or `.lc-modal-backdrop` (the modal, on any tab) is
+ mounted; switching back to Chat or closing the modal unmounts both and restores the handles. The
+ harness's own opt-out, `data-conversation-composer-overlay`, would also re-home scrolling into the
+ pane, so the strips are neutralized here instead.
+ */
+[data-conversation-scroll]:has(.lc-root, .lc-modal-backdrop) ~ [data-width-handle] { display: none; }

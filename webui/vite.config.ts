@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath } from 'node:url'
 
 // The gateway serves the built bundle at /webui/ (classpath resources), so
@@ -14,12 +15,18 @@ export default defineConfig({
   build: {
     outDir: 'dist/webui',
   },
-  plugins: [react()],
+  // Tailwind v4 serves ONLY the vendored dsh-context tree: its entry sheet
+  // (vendor/dsh-context/styles/tailwind.css) disables automatic source
+  // detection and @source's its own directory, ships no preflight, and
+  // declares the palette subset the dsh cards consume. App code and the
+  // other vendored trees stay on CSS modules + --dsw-* tokens.
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@vendor': fileURLToPath(new URL('./vendor', import.meta.url)),
       '@primitives': fileURLToPath(new URL('./vendor/ui-primitives/index.ts', import.meta.url)),
       '@chat-styles': fileURLToPath(new URL('./vendor/chat-styles', import.meta.url)),
+      '@dsh-context': fileURLToPath(new URL('./vendor/dsh-context', import.meta.url)),
     },
   },
   server: {

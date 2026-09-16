@@ -201,6 +201,59 @@ export function fetchSessionContext(sessionId?: string | null): Promise<SessionC
 }
 
 /**
+ * The dsh-context timeline routes (GatewayContextTimelineHandler). These
+ * answer the vendored dsh-context `shared/types.ts` camelCase shapes — an
+ * intentional exception to the gateway's snake_case wire so the vendored
+ * client narrows them verbatim — hence `unknown` here: the narrowing lives
+ * in vendor/dsh-context/client/narrow.ts, not in these types.
+ */
+function contextQuery(sessionId: string | null | undefined, extra: Record<string, string | number | undefined> = {}): string {
+  const params = new URLSearchParams()
+  if (sessionId != null && sessionId !== '') params.set('session_id', sessionId)
+  for (const [key, value] of Object.entries(extra)) {
+    if (value !== undefined) params.set(key, String(value))
+  }
+  const query = params.toString()
+  return query === '' ? '' : `?${query}`
+}
+
+/** GET /api/session/context/timeline → `{ timeline: ContextTimeline | null }` (null = cold session). */
+export async function fetchContextTimeline(sessionId?: string | null): Promise<unknown> {
+  const body = await requestJson<{ timeline: unknown }>('GET', `/api/session/context/timeline${contextQuery(sessionId)}`)
+  return body.timeline ?? null
+}
+
+/** GET /api/session/context/detail → `{ detail: ContextTimelineDetail | null }`. */
+export async function fetchContextDetail(sessionId?: string | null): Promise<unknown> {
+  const body = await requestJson<{ detail: unknown }>('GET', `/api/session/context/detail${contextQuery(sessionId)}`)
+  return body.detail ?? null
+}
+
+/**
+ * GET /api/session/context/content: one surface node's stored text
+ * (`seq=`), the system prompt (`kind=system`), every tool definition
+ * (`kind=tools`), or one tool's definition (`kind=tool&name=`). Resolves null on 404 (the ledger no longer holds it).
+ */
+export async function fetchContextContent(
+  sessionId: string | null | undefined,
+  target: { seq: number } | { kind: 'system' } | { kind: 'tools' } | { kind: 'tool'; name: string },
+): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await requestJson<{ content: Record<string, unknown> }>(
+      'GET', `/api/session/context/content${contextQuery(sessionId, target)}`)
+    return body.content ?? null
+  } catch (failure) {
+    if (failure instanceof ApiError && failure.status === 404) return null
+    throw failure
+  }
+}
+
+/** GET /api/session/context/overview → every live session's head + activity. */
+export function fetchContextOverview(): Promise<unknown> {
+  return requestJson('GET', '/api/session/context/overview')
+}
+
+/**
  * POST /api/session/context: applies one model or effort selection to the
  * addressed session and answers with the refreshed selection. Exactly one
  * of `model` / `effort` must be present.

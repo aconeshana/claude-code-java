@@ -528,6 +528,119 @@ paths:
               schema: { $ref: '#/components/schemas/SessionContext' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/context/timeline:
+    get:
+      tags: [Sessions]
+      summary: One live session's context-timeline head (dsh-context wire shape)
+      description: |
+        The slim head of the gateway's per-session context ledger — the
+        current heuristic composition, the retained-window counts, the
+        newest request's billing anchor, cost/timing totals, and the
+        `detailRev` cursor an open Context tab refetches the detail on.
+        Emits the camelCase `ContextTimeline` structure of dsh-context's
+        `shared/types.ts` (an intentional exception to this API's
+        snake_case convention, so the vendored webui helpers consume it
+        unchanged; see webui/UPSTREAM.md). Only live sessions (the active
+        TUI session and open headless sessions) own a ledger — any other id
+        answers `timeline: null`.
+      parameters:
+        - $ref: '#/components/parameters/ContextSessionId'
+      responses:
+        '200':
+          description: The head, or null for a cold session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timeline:
+                    allOf: [ { $ref: '#/components/schemas/ContextTimelineHead' } ]
+                    nullable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/context/detail:
+    get:
+      tags: [Sessions]
+      summary: One live session's context-timeline detail collections
+      description: |
+        The heavy collections behind the head: per-request records, context
+        events, the served surface window, the removed-node archive with
+        `gone` stamps, the file-operation log, the request-header epoch
+        metadata, and this product's `agents[]` extension (the session's
+        Task/Agent tool calls). `rev` mirrors the head's `detailRev` at the
+        same fold cut (latest-wins cursor). Shape: dsh-context
+        `ContextTimelineDetail` plus `headers` (`ContextHeaders`) and
+        `agents`.
+      parameters:
+        - $ref: '#/components/parameters/ContextSessionId'
+      responses:
+        '200':
+          description: The detail payload, or null for a cold session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    allOf: [ { $ref: '#/components/schemas/ContextTimelineDetail' } ]
+                    nullable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/context/content:
+    get:
+      tags: [Sessions]
+      summary: One surface node's stored content, the system prompt, or one tool definition
+      description: |
+        On-demand content the timeline wire deliberately omits: a node's
+        bounded text by `seq`, the live system prompt (`kind=system`, joined
+        and as assembler parts), one tool's description and JSON schema
+        (`kind=tool&name=`), or every tool definition at once (`kind=tools`,
+        the browser's header epoch). Bounded like the mirror's result excerpts
+        (20k chars, truncation marker).
+      parameters:
+        - $ref: '#/components/parameters/ContextSessionId'
+        - name: seq
+          in: query
+          required: false
+          schema: { type: integer }
+          description: The surface node's fold sequence number
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [system, tool, tools] }
+          description: Header content instead of a node
+        - name: name
+          in: query
+          required: false
+          schema: { type: string }
+          description: The tool name for kind=tool
+      responses:
+        '200':
+          description: The content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/session/context/overview:
+    get:
+      tags: [Sessions]
+      summary: Every live session's context head and daily activity ledger
+      description: |
+        The Context Dashboard's aggregate: one row per live session (the
+        active TUI session and every open headless session) with its
+        timeline head, per-local-day activity ledger (dsh-context
+        `ContextActivity`), run state, and title/cwd. Transcript-only
+        sessions are never listed.
+      responses:
+        '200':
+          description: The live sessions' heads and activity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContextOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/models/{name}:
     delete:
       tags: [Models]
@@ -885,6 +998,81 @@ components:
         commands:
           type: array
           items: { $ref: '#/components/schemas/CommandEntry' }
+    ContextTimelineHead:
+      type: object
+      description: |
+        dsh-context `ContextTimeline` (shared/types.ts), camelCase on the
+        wire: `current` composition, `counts`, `last`, `detailRev`, `cost`,
+        `timing`, `systems`, plus this product's `running` flag. The
+        collections (`requests`, `events`, `nodes`, `archive`) are always
+        empty here — they ride the detail route.
+      additionalProperties: true
+      required: [ok, current, detailRev]
+      properties:
+        ok: { type: boolean }
+        model: { type: string }
+        provider: { type: string }
+        contextWindow: { type: integer }
+        current:
+          type: object
+          properties:
+            system: { type: integer }
+            tools: { type: integer }
+            user: { type: integer }
+            inject: { type: integer }
+            skill: { type: integer }
+            assistant: { type: integer }
+            tool: { type: integer }
+            total: { type: integer }
+        counts:
+          type: object
+          properties:
+            turns: { type: integer }
+            steps: { type: integer }
+            injects: { type: integer }
+            compactions: { type: integer }
+            prunes: { type: integer }
+        detailRev: { type: integer }
+        running: { type: boolean }
+    ContextTimelineDetail:
+      type: object
+      description: |
+        dsh-context `ContextTimelineDetail` plus `headers` (`ContextHeaders`)
+        and this product's `agents[]` (Task/Agent tool calls of the session).
+      additionalProperties: true
+      required: [rev, requests, events, nodes, droppedNodes, archive]
+      properties:
+        rev: { type: integer }
+        head: { $ref: '#/components/schemas/ContextTimelineHead' }
+        requests: { type: array, items: { type: object, additionalProperties: true } }
+        events: { type: array, items: { type: object, additionalProperties: true } }
+        nodes: { type: array, items: { type: object, additionalProperties: true } }
+        droppedNodes: { type: integer }
+        archive: { type: array, items: { type: object, additionalProperties: true } }
+        fileOps: { type: array, items: { type: object, additionalProperties: true } }
+        headers: { type: object, additionalProperties: true }
+        agents: { type: array, items: { type: object, additionalProperties: true } }
+    ContextOverview:
+      type: object
+      required: [sessions, time]
+      properties:
+        time: { type: integer, description: Server epoch milliseconds }
+        sessions:
+          type: array
+          items:
+            type: object
+            required: [id, running, timeline, activity]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              cwd: { type: string }
+              running: { type: boolean }
+              updatedAt: { type: integer }
+              timeline: { $ref: '#/components/schemas/ContextTimelineHead' }
+              activity:
+                type: object
+                description: dsh-context `ContextActivity` — `days[YYYY-MM-DD] = {tokens, requests}`
+                additionalProperties: true
     SessionContext:
       type: object
       properties:
@@ -1079,6 +1267,13 @@ components:
           type: boolean
           nullable: true
           description: Absent keeps the existing flag, false marks the endpoint text-only
+  parameters:
+    ContextSessionId:
+      name: session_id
+      in: query
+      required: false
+      schema: { type: string }
+      description: The live session to address; absent means the active TUI session
   responses:
     InvalidRequest:
       description: Malformed request

@@ -83,6 +83,8 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayModelsHandler modelsApi;
     private final GatewayCommandsHandler commandsApi;
     private final GatewaySessionContextHandler sessionContextApi;
+    private final ContextTimelineLedger contextTimeline;
+    private final GatewayContextTimelineHandler contextTimelineApi;
     private final AtomicBoolean started = new AtomicBoolean();
     private volatile HttpServer server;
 
@@ -156,6 +158,11 @@ public final class GatewayServer implements AutoCloseable {
         this.registry = registry;
         this.headless = headless;
         this.mirror = new MirrorHub(registry);
+        // The context-timeline ledger follows the same sessions the mirror
+        // does: it must observe every hub message so compaction's in-place
+        // rewrite of the live rows is archived before they are gone.
+        this.contextTimeline = new ContextTimelineLedger(registry, sessionContext);
+        this.contextTimelineApi = new GatewayContextTimelineHandler(contextTimeline);
         // One in-flight guard shared by every protocol face: the busy error is
         // per session, and concurrent headless sessions must not block each
         // other through per-handler state.
@@ -184,9 +191,11 @@ public final class GatewayServer implements AutoCloseable {
             new GatewaySessionsHandler.Lifecycle() {
                 @Override public void onOpened(SessionHostSession session) {
                     mirror.attachSession(session);
+                    contextTimeline.attach(session);
                 }
                 @Override public void onClosed(String sessionId) {
                     mirror.detachSession(sessionId);
+                    contextTimeline.forget(sessionId);
                 }
             });
         this.catalog = Objects.requireNonNull(catalog, "catalog");
@@ -220,6 +229,7 @@ public final class GatewayServer implements AutoCloseable {
                     .map(SessionHostRegistry.ActivationResult::session)
                     .ifPresent(session -> {
                         mirror.attach(session);
+                        contextTimeline.attach(session);
                         // The activation notice mirrors the IM link's
                         // session.activated frame: a reconnecting web client
                         // learns the switch point from the journal ring.
@@ -229,6 +239,8 @@ public final class GatewayServer implements AutoCloseable {
             }
         });
         mirror.attachCurrent();
+        registry.currentActivation().map(SessionHostRegistry.ActivationResult::session)
+            .ifPresent(contextTimeline::attach);
     }
 
     /** Binds the port and starts serving; returns once the socket is live. */
@@ -265,6 +277,7 @@ public final class GatewayServer implements AutoCloseable {
         server = null;
         if (snapshot != null) snapshot.stop(0);
         mirror.detach();
+        contextTimeline.close();
         sessionsApi.closeAll();
     }
 
@@ -468,6 +481,27 @@ public final class GatewayServer implements AutoCloseable {
             }
             try (exchange) {
                 commandsApi.handleGet(exchange);
+            }
+            return;
+        }
+        if (get && Strings.CS.startsWith(path, "/api/session/context/")) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            String face = path.substring("/api/session/context/".length());
+            try (exchange) {
+                switch (face) {
+                    case "timeline" -> contextTimelineApi.handleTimeline(exchange);
+                    case "detail" -> contextTimelineApi.handleDetail(exchange);
+                    case "content" -> contextTimelineApi.handleContent(exchange);
+                    case "overview" -> contextTimelineApi.handleOverview(exchange);
+                    default -> respondJson(exchange, NOT_FOUND, errorBody("not_found",
+                        "unknown context face: " + face));
+                }
             }
             return;
         }

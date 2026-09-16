@@ -1,0 +1,157 @@
+/*
+ * The Context Insights panel: the sidebar-foot entry button (stacked above
+ * Settings by the harness's own foot layout) and the frame-wide overlay
+ * panel it opens — a 3:7 body of insight column (KPI 2×3 block over the
+ * activity heatmap) beside the session column (search, chips, card grid).
+ * The backdrop is the `lc-ov` query container (it spans the viewport, and
+ * the card sizes off the viewport too), so the column fold keys off the
+ * viewport width; on the folded width the card itself scrolls in normal
+ * flow. Inline-size containment is safe here: the backdrop IS the viewport
+ * rectangle, so the heat cells' fixed-position Tooltip bubbles keep their
+ * viewport coordinates.
+ */
+
+/* ---- the sidebar-foot entry ---- */
+/* Geometry mirrors the harness's own Settings trigger (ui-settings-general's
+   .trigger): the 42px row, 12px radius, 14px/22px label, and its shared hover
+   fill, so the plugin entry reads as a native foot control, not a visitor. */
+.lc-ov-entry { position: relative; display: flex; align-items: center; gap: 8px; width: calc(100% + 4px); height: 42px; box-sizing: border-box; margin: 0 -2px; border: 0; padding: 0 10px 0 8px; overflow: hidden; background: transparent; border-radius: 12px; color: var(--dsw-alias-label-primary); font-family: inherit; font-size: 14px; line-height: 22px; cursor: pointer; }
+.lc-ov-entry:hover { background: var(--dsw-alias-interactive-bg-hover); }
+/* The collapsed rail takes the native foot controls' 36x36 circle, icon only. */
+.lc-ov-entry-rail { flex: none; justify-content: center; gap: 0; width: 36px; height: 36px; margin: 0; padding: 0; border-radius: 50%; }
+.lc-ov-entry-icon { flex: none; }
+.lc-ov-entry-label { flex: 1 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The running-sessions badge: the footer's one live fact, pinned to the icon's corner in both column widths. */
+.lc-ov-badge { position: absolute; top: 1px; right: 4px; min-width: 15px; height: 15px; box-sizing: border-box; border-radius: 999px; background: var(--color-green-500); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0 4px; pointer-events: none; }
+
+/* ---- the overlay chrome ---- */
+/* The backdrop carries the `lc-ov` container: it spans the viewport exactly,
+   so queries against it track the card's own sizing basis (the card is
+   min(1120px, 100vw - 32px)) without making the card unable to query itself. */
+.lc-ov-backdrop { position: fixed; inset: 0; z-index: 200; background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.45)); display: flex; align-items: center; justify-content: center; container: lc-ov / inline-size; }
+/* The card is a flex column capped at its max-height: the body fills the
+   rest and each column scrolls its own overflow, so browsing sessions never
+   scrolls the insight column out of view. On the folded width the card
+   scrolls whole (see the container query at the body). */
+.lc-ov-card { display: flex; flex-direction: column; width: min(1120px, calc(100vw - 32px)); max-height: min(86vh, 900px); overflow: hidden; box-sizing: border-box; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3, 0 12px 32px rgba(0, 0, 0, 0.4)); padding: 16px 18px 18px; color: var(--dsw-alias-label-primary); font-size: 13px; }
+.lc-ov-head { flex: none; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.lc-ov-head-icon { flex: none; }
+.lc-ov-title { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.lc-ov-head .lc-modal-close { margin-left: 0; flex: none; }
+
+/* ---- the body: a 3:7 column pair — the insight column (KPI 2×3 over the
+   heat) beside the session column; under width pressure it folds to one
+   full-width column and the whole card scrolls in normal flow (no capped
+   inner scrollers to overlap). ---- */
+.lc-ov-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 7fr); gap: 10px; }
+/* Each column owns its scrollbar (the harness 8px bar): `scrollbar-gutter:
+   stable` holds the bar's track so cards never reflow by its width when a
+   column gains or loses it, and the right padding keeps the thumb clear of
+   the card edges instead of riding on them. */
+.lc-ov-left { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 8px; display: flex; flex-direction: column; gap: 10px; }
+.lc-ov-right { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 8px; }
+@container lc-ov (max-width: 932px) {
+  .lc-ov-card { overflow-y: auto; }
+  .lc-ov-body { display: block; }
+  .lc-ov-left { margin-bottom: 12px; }
+  .lc-ov-left, .lc-ov-right { overflow: visible; min-height: auto; padding-right: 0; }
+  .lc-ov-heat-card { flex: none; }
+}
+/* border-box keeps the card tracks true outer widths: under the harness's
+   content-box default the padding quietly adds ~30px per card. */
+.lc-ov-left > .lc-card { margin-bottom: 0; min-width: 0; box-sizing: border-box; }
+.lc-ov-kpis { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, 1fr); gap: 10px; }
+.lc-ov-kpi { align-items: center; padding: 10px 8px; }
+.lc-ov-kpi .lc-stat-value { font-size: 20px; }
+/* The heat card absorbs the insight column's leftover height (the grid
+   centers inside it) but never shrinks below its own grid. */
+.lc-ov-heat-card { flex: 1 0 auto; display: flex; flex-direction: column; }
+
+/*
+ * The activity heatmap: fixed-size square cells (8 week columns ≈ a 200px
+ * block) centered in the card, so the card's height follows the 7 cell rows
+ * instead of the cells stretching to the card's width — the compact
+ * GitHub-widget read. Monday-first, four depth steps.
+ */
+.lc-heat { display: flex; gap: 4px; flex: 1; align-items: center; justify-content: center; }
+.lc-heat-wds { display: flex; flex-direction: column; gap: 3px; }
+.lc-heat-wd { flex: none; width: 10px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--dsw-alias-label-secondary); text-align: center; }
+.lc-heat-cols { display: flex; gap: 3px; }
+.lc-heat-col { display: flex; flex-direction: column; gap: 3px; }
+.lc-heat-cell { width: 20px; height: 20px; box-sizing: border-box; border: 0; border-radius: 20%; padding: 0; background: var(--dsw-alias-bg-layer-2); cursor: default; }
+button.lc-heat-cell { cursor: pointer; }
+button.lc-heat-cell:hover { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-blue-500) 70%, transparent); }
+.lc-heat-future { background: transparent; }
+/* A day with no billed activity keeps a visible gray floor (layer-2 is the card's own white in the light theme). */
+.lc-heat-0 { background: color-mix(in srgb, var(--dsw-alias-label-secondary) 16%, transparent); }
+.lc-heat-1 { background: color-mix(in srgb, var(--color-blue-500) 28%, transparent); }
+.lc-heat-2 { background: color-mix(in srgb, var(--color-blue-500) 50%, transparent); }
+.lc-heat-3 { background: color-mix(in srgb, var(--color-blue-500) 72%, transparent); }
+.lc-heat-4 { background: color-mix(in srgb, var(--color-blue-500) 92%, transparent); }
+/* The pinned day (the grid filter's source) keeps a solid ring in both themes. */
+.lc-heat-on { box-shadow: 0 0 0 1.5px var(--color-blue-500); }
+
+/* ---- the session list head: title, count, day chip, search, sort ---- */
+.lc-ov-list-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.lc-ov-list-title { font-weight: 600; white-space: nowrap; }
+.lc-ov-list-count { color: var(--dsw-alias-label-secondary); font-size: 11px; font-variant-numeric: tabular-nums; background: var(--dsw-alias-bg-layer-2); border-radius: 8px; padding: 1px 7px; }
+.lc-ov-day-chip { border: 1px solid color-mix(in srgb, var(--color-blue-500) 45%, transparent); color: var(--color-blue-500); background: color-mix(in srgb, var(--color-blue-500) 10%, transparent); border-radius: 999px; font-size: 11px; line-height: 1.4; padding: 1px 10px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.lc-ov-search { flex: 1 1 150px; min-width: 110px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12px; color: var(--dsw-alias-label-primary); outline: none; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-ov-search:focus { border-color: var(--dsw-alias-label-secondary); }
+.lc-ov-search::placeholder { color: var(--dsw-alias-label-secondary); }
+
+/* ---- the group filter chips (workspace groups + the ungrouped bucket) ---- */
+.lc-ov-groups { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 10px; }
+.lc-ov-chip { display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-secondary); border-radius: 999px; font: inherit; font-size: 11px; line-height: 1.5; padding: 2px 10px; cursor: pointer; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-ov-chip:hover { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-secondary); }
+.lc-ov-chip-on, .lc-ov-chip-on:hover { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
+.lc-ov-chip-n { font-variant-numeric: tabular-nums; opacity: 0.65; font-size: 10px; }
+.lc-ov-chip-on .lc-ov-chip-n { opacity: 0.85; }
+
+/* ---- the session card grid (3 columns at the panel's full width; auto-fill folds 3→2→1 under width pressure) ---- */
+.lc-ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+/* The grid track sizes every row to its tallest card, so a wrapped title stretches its whole row uniformly. */
+.lc-ov-session { display: flex; flex-direction: column; gap: 6px; text-align: left; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-ov-session:hover { border-color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
+.lc-ov-session-current { border-color: color-mix(in srgb, var(--color-blue-500) 65%, transparent); }
+.lc-ov-session-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.lc-ov-running { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-green-500); }
+/* The title wraps (2-line clamp keeps one long title from ballooning its row); the full text stays on the tooltip. */
+.lc-ov-session-title { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.lc-ov-current { flex: none; font-size: 10px; line-height: 1.5; color: var(--color-blue-500); border: 1px solid color-mix(in srgb, var(--color-blue-500) 45%, transparent); border-radius: 4px; padding: 0 4px; }
+.lc-ov-session-times { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.lc-ov-session-time { color: var(--dsw-alias-label-secondary); font-size: 11px; white-space: nowrap; }
+.lc-ov-session-created { color: var(--dsw-alias-label-secondary); font-size: 10px; line-height: 1.4; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* The breadcrumb row: workspace group / project pill (the full path stays on the row's tooltip). */
+.lc-ov-session-crumb { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; }
+.lc-ov-crumb-group { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+.lc-ov-crumb-sep { flex: none; opacity: 0.55; }
+/* The project pill's fill mixes the label gray instead of layer-2: layer-2 is
+   the card's own white in the light theme (the heat grid's lesson), which
+   would leave the pill invisible on the card. */
+.lc-ov-crumb-project { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 10px; line-height: 1.6; color: var(--dsw-alias-label-primary); background: color-mix(in srgb, var(--dsw-alias-label-secondary) 16%, transparent); border-radius: 999px; padding: 0 8px; }
+.lc-ov-session-body { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.lc-ov-mini-stats { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+/* Definition-list rows: label and value pull to opposite card edges, so the
+   figures read as a right-hand column mirroring the header's right-aligned
+   times instead of clustering beside the donut. */
+.lc-ov-mini-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 11px; }
+.lc-ov-mini-label { flex: none; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.lc-ov-mini-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lc-ov-session-empty { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.5; padding: 6px 0; }
+/* The last-user-message footer: a hairline-ruled caption anchoring the card's
+   tail — the label names the line, the message text follows in the primary
+   label color (the fold already bounds it; the full text stays on the tip).
+   The auto top margin pins it to the bottom edge when a taller sibling
+   stretches the row; the rule (not a bubble or a quote glyph) keeps it quiet
+   next to the donut row and survives both themes via the border token. */
+.lc-ov-session-preview { display: flex; align-items: baseline; gap: 6px; margin-top: auto; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 60%, transparent); min-width: 0; }
+.lc-ov-session-preview-label { flex: none; color: var(--dsw-alias-label-secondary); font-size: 10px; }
+.lc-ov-session-preview-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-primary); font-size: 11px; line-height: 1.5; }
+
+/* ---- the grid pager: one row under the card grid, only when it spans pages ---- */
+.lc-ov-pager { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.lc-ov-pager-btn { flex: none; width: 26px; height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-primary); border-radius: 6px; font: inherit; line-height: 1; cursor: pointer; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.lc-ov-pager-btn:hover:enabled { border-color: var(--dsw-alias-label-secondary); }
+.lc-ov-pager-btn:disabled { opacity: 0.4; cursor: default; }
+.lc-ov-pager-n { color: var(--dsw-alias-label-secondary); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
