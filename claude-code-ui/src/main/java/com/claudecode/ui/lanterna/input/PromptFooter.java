@@ -97,11 +97,11 @@ final class PromptFooter {
             }
             @Override public void showInterruptedHint() {
                 host.showTemporaryHint("Interrupted teammate turn (Esc)",
-                    LanternaTheme.welcomeDim(), InputPanel.HINT_TIMEOUT_MS);
+                    LanternaTheme.welcomeDim(), PromptTextBox.HINT_TIMEOUT_MS);
             }
             @Override public void showPermissionModeHint(PermissionMode mode) {
                 host.showTemporaryHint("Teammate mode → " + mode.title(),
-                    LanternaTheme.colorFor(mode), InputPanel.HINT_TIMEOUT_MS);
+                    LanternaTheme.colorFor(mode), PromptTextBox.HINT_TIMEOUT_MS);
             }
             @Override public void teammateViewChanged() {
                 InputActions actions = host.actions();

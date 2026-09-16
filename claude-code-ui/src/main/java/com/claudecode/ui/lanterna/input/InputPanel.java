@@ -3,19 +3,15 @@ package com.claudecode.ui.lanterna.input;
 import com.claudecode.core.constants.Figures;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.message.PastedContent;
-import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.turn.QueuedInputDraft;
 import com.claudecode.tools.tasks.TaskRegistry;
-import com.claudecode.tools.tasks.TaskStatus;
-import com.claudecode.tools.tasks.TaskType;
 import com.claudecode.tools.workflows.WorkflowRunStore;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox.Highlight;
-import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.CursorStyle;
@@ -31,50 +27,56 @@ import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.TextBox;
-import com.googlecode.lanterna.input.FocusEventKeyStroke;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.MouseAction;
-import com.googlecode.lanterna.input.PasteKeyStroke;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * Input area for the Lanterna prompt component stack.
+ * Input area for the Lanterna prompt component stack: the composition root that mounts the
+ * prompt widgets (queued preview, dividers, {@code ❯} pointer + {@link PromptTextBox},
+ * suggestions, status line, hint row, footer) and refreshes them from {@link PromptState}.
+ *
+ * <p>It owns no key routing itself. Keys go to {@link PromptTextBox}; the footer selection to
+ * {@link PromptFooter}; hints to {@link PromptHintBar}; chips, paste, vim and suggestions to
+ * their {@code Prompt*} collaborators. What this class keeps is the public REPL-facing API,
+ * the {@code *Host} adapters those collaborators call back through, mode/colour/hint refresh,
+ * history-entry application, the queued-command preview and the query-change scheduler.
+ *
+ * <ul>
+ *   <li>{@code src/components/PromptInput/PromptInput.tsx} — component layout order (queued
+ *       commands, top border, mode indicator + text input, bottom border, suggestions, footer)
+ *       and the {@code onInputChange} / {@code setPastedContents} notifications.</li>
+ *   <li>{@code src/components/PromptInput/PromptInputModeIndicator.tsx} — the {@code ❯} /
+ *       {@code !} pointer, dim while loading, bash colour in bash mode.</li>
+ *   <li>{@code src/components/PromptInput/PromptInputQueuedCommands.tsx} — the italic queued
+ *       prompt preview above the border.</li>
+ *   <li>{@code src/components/PromptInput/PromptInput.tsx} history application — recalled
+ *       entries restore their pasted contents and keep their mode with the prefix stripped.</li>
+ * </ul>
  */
 public class InputPanel extends Panel {
-
-    private static final Logger log = LoggerFactory.getLogger(InputPanel.class);
-    /** High-volume key protocol tracing is opt-in even when general DEBUG is enabled. */
-    private static final boolean KEY_DIAGNOSTICS =
-        Boolean.getBoolean("claude.ui.keyDiagnostics");
 
     private static final int PROMPT_INPUT_COLUMN_OVERHEAD = 3;
 
     public enum Mode { NORMAL, BASH }
 
-    private Mode   mode         = Mode.NORMAL;
-
-    private Mode   modeOverride = null;
+    /** Mode, text snapshot, REPL flags and draft undo shared with the key pipeline. */
+    private final PromptState state = new PromptState();
     private String permMode;
 
     private BooleanSupplier bypassPermissionsModeAvailable = () -> true;
-
-    private BooleanSupplier leftArrowOpensAgents =
-        () -> UiSettings.readGlobalBoolean("leftArrowOpensAgents", true);
 
     // Vim mode state
     /** Vim keybinding bridge; owns the state machine, the INSERT label and the re-entrancy fence. */
@@ -82,14 +84,7 @@ public class InputPanel extends Panel {
 
     // Child components
     private final Label  promptLabel;
-    private final TextBox textBox;
-    /**
-     * Last value delivered by Lanterna's text-change listener. Keeping this
-     * immutable String snapshot avoids rebuilding the whole multi-line value
-     * several times for every key (undo, mode detection, chip pruning,
-     * typeahead, highlights, and ghost text all consume the same value).
-     */
-    private String currentText = "";
+    private final PromptTextBox textBox;
     /**
      * Cached visual row count, including.
      */
@@ -103,14 +98,6 @@ public class InputPanel extends Panel {
     private HighlightedTextBox.Highlight historySearchHighlight;
     /** Exact-command argument hint painted inline after the caret, never in the footer. */
     private volatile String argumentHint;
-    /**
-     * Pure Emacs/readline editing layer (cursor/word motion + kill/yank ring).
-     * Constructed inside {@link PromptTextBox}'s instance initializer, so it can
-     * capture that class's {@code super.handleKeyStroke} for faithful
-     * cross-row caret motion. Only invoked from key dispatch, so the assignment
-     * ordering (before {@code textBoxRef.set}) is irrelevant.
-     */
-    private ReadlineEngine engine;
     /** Hint row labels + status line; owns hint priority and temporary notifications. */
     private final PromptHintBar hintBar;
     /** Established prompt hint/tasks row; coordinator rows are mounted after it. */
@@ -134,7 +121,6 @@ public class InputPanel extends Panel {
     /** Plain lines retained for deterministic headless tests and change-gated rerenders. */
     private List<String> queuedPreviewLines = List.of();
 
-
     /**
      * The single outward port for every REPL action / notification this panel
      * fires — submit, cancel, overlay toggles, permission-mode change,
@@ -146,35 +132,8 @@ public class InputPanel extends Panel {
      */
     private InputActions actions;
 
-    private BooleanSupplier hasMessages;
-
-    /**
-     * Opt-in keybinding store (gate on). When non-null and enabled, matched
-     * Chat/Global keys are routed through {@link #dispatchViaResolver} instead of
-     * the hardcoded readline switch below. Null in headless / when customization
-     * is disabled, so the existing dispatch is unchanged.
-     */
+    /** Opt-in keybinding store, kept here only for the history-search shortcut hint. */
     private UserKeybindingsStore keybindingsStore;
-    /** Shared resolver bridge owns pending-chord state and timeout semantics. */
-    private final ContextKeybindingDispatcher keybindingDispatcher =
-        new ContextKeybindingDispatcher();
-
-    // ── Push-to-talk hold detection (terminal auto-repeat accumulator) ──
-    // A terminal has no distinct key-release events, so a sustained hold
-    // surfaces as a stream of repeated single-character KeyStroke events.
-    // Faithful to the 197 bundle (voice handler: qYo=120ms reset window,
-    // zRf=5 hold threshold), we accumulate consecutive space events within
-    // the reset window and only classify the burst as a HOLD once it crosses
-    // the threshold; an ordinary single tap (accumulation never reaching the
-    // floor) is a plain space.
-    private static final long PTT_RESET_WINDOW_MS = 120;
-    private static final int PTT_HOLD_THRESHOLD = 5;
-    private int pttAccumulated;
-    private long pttLastEventMs;
-
-    private static final long KILL_AGENTS_CONFIRM_WINDOW_MS = 3000;
-    private long lastKillAgentsPressMs;
-
 
     // Images are inserted as [Image #N] chips in the textBox; orphaned chips
     // (deleted by the user) are pruned on every text change.
@@ -183,8 +142,6 @@ public class InputPanel extends Panel {
     {
         chips = new PromptChipEditor(new ChipHost(), pastedContent);
     }
-    /** Draft-only undo history; never rewinds QuerySession conversation state. */
-    private final DraftUndoBuffer draftUndo = new DraftUndoBuffer(50);
 
     /** Editor access and prompt actions for the vim bridge. */
     private final class VimHost implements PromptVimAdapter.Host {
@@ -193,8 +150,8 @@ public class InputPanel extends Panel {
         @Override public void setTextRaw(String text) { textBox.setText(text); }
         @Override public void moveCaretTo(int offset) { InputPanel.this.moveCaretTo(offset); }
         @Override public TextBox.Result forwardToEditor(KeyStroke key) { return textBox.handleKeyStroke(key); }
-        @Override public TextBox.Result historyUp() { return ((PromptTextBox) textBox).rl_historyUp(); }
-        @Override public TextBox.Result historyDown() { return ((PromptTextBox) textBox).rl_historyDown(); }
+        @Override public TextBox.Result historyUp() { return textBox.rl_historyUp(); }
+        @Override public TextBox.Result historyDown() { return textBox.rl_historyDown(); }
         @Override public boolean chipBackspace() {
             if (!chips.backspace()) return false;
             chips.pruneOrphanedImages();
@@ -209,7 +166,7 @@ public class InputPanel extends Panel {
         @Override public void submit(String text) {
             resetMode();
             if (!StringUtils.isBlank(text) && actions != null) {
-                actions.submit(prependModePrefix(text));
+                actions.submit(state.prependModePrefix(text));
             }
         }
         @Override public void cancel() { if (actions != null) actions.cancel(); }
@@ -241,7 +198,7 @@ public class InputPanel extends Panel {
         }
         @Override public void refreshHint() { updateHint(); }
         @Override public void submitDeferred() {
-            ((PromptTextBox) textBox).tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
+            textBox.submit();
         }
     }
 
@@ -252,20 +209,16 @@ public class InputPanel extends Panel {
         @Override public void setTextRaw(String text) { textBox.setText(text); }
         @Override public void moveCaretTo(int offset) { InputPanel.this.moveCaretTo(offset); }
         @Override public void textEdited() { updateMode(); fireQueryChange(); }
-        @Override public void recordUndoSnapshot() { draftUndo.record(captureDraftSnapshot()); }
+        @Override public void recordUndoSnapshot() { state.draftUndo().record(captureDraftSnapshot()); }
         @Override public void pastedContentsChanged() { firePastedContentsChange(); }
     }
-    /** Monotonic suppression token observed by nested PromptTextBox key dispatches. */
-    private long draftUndoSuppressionGeneration;
 
-    private StashedPrompt stashedPrompt;
     // Defaults to an unshared identity so a bare `new InputPanel` (tests,
     // any caller that doesn't wire a session) keeps working; real wiring
     // replaces this via wireSessionIdentity with the SAME instance the
     // QuerySession/HookEngine use, so a single switchToSession call is
     // visible here too without a separate setSessionId sync step.
     private SessionIdentity sessionIdentity = SessionIdentity.newRandom();
-
 
     /** Scheduler onto the Lanterna GUI thread — set by LanternaReplScreen. */
     private Consumer<Runnable> guiInvoker;
@@ -277,18 +230,13 @@ public class InputPanel extends Panel {
     private boolean queryChangeScheduled;
     /** Invalidates a queued query callback when a batch publishes synchronously. */
     private long queryChangeGeneration;
-    /** Nesting guard owned by the GUI host's terminal-drain cycle. */
-    private int guiInputBatchDepth;
-
-    private boolean messageActionsActive = false;
-    private String messageActionsHint = "";
 
     // ── History navigation state ───────────────────────────────────────────── ── History
     // navigation (Up/Down/Ctrl+R) — extracted to InputHistoryController ──.
     private final InputHistoryController historyController =
         new InputHistoryController(new InputEditingSurface() {
             @Override public String currentText() { return textBox.getText(); }
-            @Override public Mode currentModeOverride() { return modeOverride; }
+            @Override public Mode currentModeOverride() { return state.modeOverride(); }
             @Override public Map<Integer, PastedContent> snapshotPasted() {
                 return pastedContent.snapshot();
             }
@@ -299,7 +247,7 @@ public class InputPanel extends Panel {
             @Override public void restoreDraft(String text, Mode mode,
                                                Map<Integer, PastedContent> pasted,
                                                boolean cursorToStart) {
-                modeOverride = mode;
+                state.setModeOverride(mode);
                 textBox.setText(text);
                 TextBoxOffsetAdapter.setOffset(textBox, cursorToStart ? 0 : text.length());
                 restorePastedContents(pasted);
@@ -311,7 +259,7 @@ public class InputPanel extends Panel {
             @Override public void restoreSearchDraft(String text, Mode mode,
                                                      Map<Integer, PastedContent> pasted,
                                                      int cursorOffset) {
-                modeOverride = mode;
+                state.setModeOverride(mode);
                 textBox.setText(text);
                 restorePastedContents(pasted);
                 moveCaretTo(Math.min(cursorOffset, text.length()));
@@ -357,38 +305,18 @@ public class InputPanel extends Panel {
     }
 
     private DraftUndoBuffer.Snapshot captureDraftSnapshot() {
-        return new DraftUndoBuffer.Snapshot(
-            currentText, caretCol(), pastedContent.snapshot(), modeOverride);
+        return state.draftSnapshot(caretCol(), pastedContent.snapshot());
     }
 
-    private void suppressDraftUndoRecording() {
-        draftUndoSuppressionGeneration++;
-    }
-
-
-
-    private static final long DOUBLE_PRESS_TIMEOUT_MS = 800;
     private static final ScheduledExecutorService ESC_SCHEDULER =
         Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "esc-timeout");
             t.setDaemon(true);
             return t;
         });
-    private boolean           escOnce         = false;
-    private ScheduledFuture<?> escTimer        = null;
-    // True when input was EMPTY on the first Esc (double-Esc → MessageSelector vs. clear).
-    private boolean           escEmptyFirst   = false;
-    // Whether a query is in flight — set by LanternaReplScreen.
-    private volatile boolean  isLoading       = false;
     /** Clipboard/bracketed paste classification, pending-paste gate and deferred submit. */
     private final PromptPasteHandler paste =
         new PromptPasteHandler(new PasteHost(), pastedContent);
-    // Whether transcript mode is active — set by LanternaReplScreen.
-    // When true, Ctrl+E fires actions.transcriptShowAll() instead of engine.end().
-    private volatile boolean  isTranscriptMode = false;
-
-    // ── Temporary hint notification state ───────────────────────────────────.
-    static final long HINT_TIMEOUT_MS = 1000;
 
     /**
      * When true, the panel reports {@code (0,0)} preferred size so its host layout collapses it.
@@ -426,13 +354,15 @@ public class InputPanel extends Panel {
 
         // Inline highlights painted over the input text.
 
-
         // ultrareview, buddy, tokenBudget, slackChannel, btw); add more
         // suppliers as their commands are implemented.
         Supplier<List<Highlight>> highlightSupplier = () -> currentHighlights;
-        textBox = new PromptTextBox(new TerminalSize(80, 1),
-                                    TextBox.Style.MULTI_LINE,
-                                    highlightSupplier);
+        hintBar = new PromptHintBar(ESC_SCHEDULER, this::updateHint);
+        footer = new PromptFooter(new FooterHost());
+        textBox = new PromptTextBox(new TerminalSize(80, 1), highlightSupplier,
+            new PromptHost(), state, ESC_SCHEDULER,
+            new PromptTextBox.Collaborators(
+                pastedContent, chips, paste, vim, suggestions, historyController, footer));
         // Keep the TextBox's explicitPreferredSize.rows in lock-step with the
         // current lineCount so the wrapping SmartLayout gives us the right
         // vertical slice after Shift+Enter (add row), Backspace-merge (remove
@@ -444,7 +374,7 @@ public class InputPanel extends Panel {
         // and never consults renderer.getPreferredSize() again — so the field
         // is permanently 1-row tall unless we refresh it ourselves.
         textBox.setTextChangeListener((newText, byUser) -> {
-            currentText = newText == null ? "" : newText;
+            state.setText(newText);
             refreshInputHighlights();
             // A genuine keystroke edit (typing / backspacing) detaches the line from the history
             // cursor, so the slash/@ suggestion dropdown resumes — WITHOUT tearing down the
@@ -476,18 +406,14 @@ public class InputPanel extends Panel {
         promptRow.addComponent(textBox,
             LinearLayout.createLayoutData(LinearLayout.Alignment.FILL, LinearLayout.GrowPolicy.CAN_GROW));
 
-
-
         // Inline ghost text — dim argument hint shown at the caret for commands that
         // have a progressive argument contract.
 
         // tracks the latest selected suggestion + current input.
-        ((HighlightedTextBox) textBox).setGhostTextSupplier(this::inlineGhostText);
-        ((HighlightedTextBox) textBox).setVisualLayoutSupplier(
+        textBox.setGhostTextSupplier(this::inlineGhostText);
+        textBox.setVisualLayoutSupplier(
             () -> textLayout, this::caretCol);
 
-        hintBar = new PromptHintBar(ESC_SCHEDULER, this::updateHint);
-        footer = new PromptFooter(new FooterHost());
         hintRow = new Panel(new LinearLayout(Direction.HORIZONTAL));
         // ≡ is the leftmost footer control, so it is also the first keyboard
         // stop (↓/→ walk the footer left→right).
@@ -545,1331 +471,36 @@ public class InputPanel extends Panel {
         }
     }
 
-    /**
-     * The multi-line prompt text box — extracted from an inline anonymous
-     * {@link HighlightedTextBox} subclass to a named (non-static) inner class
-     * so its ordered {@link #handleKeyStroke} protocol (readline shortcuts,
-     * vim dispatch, chip-aware editing, history, suggestions, paste handling)
-     * has a readable class boundary instead of living inside an anonymous
-     * initializer.
-     *
-     * <p>Non-static on purpose: {@code handleKeyStroke} and its {@code rl_*}
-     * helpers read and mutate {@link InputPanel}'s private state directly
-     * ({@code actions}, {@code historyController}, {@code pastedContent},
-     * {@code modeOverride}, {@code escOnce}, {@code isLoading}, …) — the same
-     * reasoning as {@code LanternaReplScreen.ReplInputActions}. Promoting this
-     * to a standalone top-level class would require threading every one of
-     * those fields through explicit ports for no behavioral gain.
-     */
-    private final class PromptTextBox extends HighlightedTextBox {
-
-        PromptTextBox(TerminalSize preferredSize, TextBox.Style style,
-                      Supplier<List<Highlight>> highlightSupplier) {
-            super(preferredSize, style, highlightSupplier);
+    /** Panel actions the key pipeline needs beyond its injected collaborators. */
+    private final class PromptHost implements PromptTextBox.Host {
+        @Override public int caretCol() { return InputPanel.this.caretCol(); }
+        @Override public PromptTextLayout textLayout() { return textLayout; }
+        @Override public int terminalRows() { return InputPanel.this.terminalRows(); }
+        @Override public void setText(String text) { InputPanel.this.setText(text); }
+        @Override public void fireQueryChange() { InputPanel.this.fireQueryChange(); }
+        @Override public void deliverQueryChangeImmediately() {
+            InputPanel.this.deliverQueryChangeImmediately();
         }
-
-        {
-            engine = new ReadlineEngine(
-                this,
-                super::handleKeyStroke,
-                InputPanel.this::fireQueryChange);
+        @Override public void pastedContentsChanged() { firePastedContentsChange(); }
+        @Override public void updateMode() { InputPanel.this.updateMode(); }
+        @Override public void resetMode() { InputPanel.this.resetMode(); }
+        @Override public void resetHistory() { InputPanel.this.resetHistory(); }
+        @Override public void refreshHint() { updateHint(); }
+        @Override public void showTemporaryHint(String text, TextColor color, long timeoutMs) {
+            InputPanel.this.showTemporaryHint(text, color, timeoutMs);
         }
-
-        @Override
-        public Result handleKeyStroke(KeyStroke key) {
-            if (key.getKeyType() != KeyType.ENTER) paste.cancelDeferredSubmit();
-            if (pendingBatchEnter && key.getKeyType() != KeyType.ENTER) {
-                // Input followed the swallowed ENTER inside the same batch, so
-                // the ENTER was a paste newline — materialize the line split
-                // right before this keystroke applies. Batched text runs
-                // materialize it in bufferPlainText instead (they bypass this
-                // method).
-                pendingBatchEnter = false;
-                super.handleKeyStroke(new KeyStroke(KeyType.ENTER));
-            }
-            if (guiInputBatchDepth > 0
-                    && key.getKeyType() == KeyType.CHARACTER
-                    && key.getCharacter() != null
-                    && !Character.isISOControl(key.getCharacter())
-                    && !key.isCtrlDown() && !key.isAltDown()) {
-                plainInputCharsThisBatch++;
-            }
-            if (guiInputBatchDepth > 0) {
-                if (canBufferPlainCharacter(key)) {
-                    flushBufferedBackspaces(false);
-                    bufferPlainCharacter(key.getCharacter());
-                    return Result.HANDLED;
-                }
-                if (canBufferPlainBackspace(key)) {
-                    flushBufferedPlainInput(false);
-                    bufferPlainBackspace();
-                    return Result.HANDLED;
-                }
-                // A navigation/submit key may follow buffered edits in the
-                // same terminal poll. Commit them before taking the snapshot
-                // for that distinct action.
-                flushBufferedPlainInput(true);
-                flushBufferedBackspaces(true);
-            }
-            String textBefore = currentText;
-            int cursorBefore = caretCol();
-            Mode modeBefore = modeOverride;
-            Map<Integer, PastedContent> pastedBefore = pastedContent.isEmpty()
-                ? Map.of() : pastedContent.snapshot();
-            long suppressionAtEntry = draftUndoSuppressionGeneration;
-            Result result = handleKeyStrokeRouted(key);
-            if (suppressionAtEntry == draftUndoSuppressionGeneration) {
-                boolean textChanged = !textBefore.equals(currentText);
-                boolean modeChanged = modeBefore != modeOverride;
-                boolean pastedChanged =
-                    (!pastedBefore.isEmpty() || !pastedContent.isEmpty()) && !pastedBefore.equals(
-                        pastedContent.snapshot());
-
-                // navigation, and coalesces rapid typing for one second.
-                if (textChanged || modeChanged || pastedChanged) {
-                    draftUndo.recordDebounced(new DraftUndoBuffer.Snapshot(
-                        textBefore, cursorBefore, pastedBefore, modeBefore));
-                }
-            }
-            return result;
+        @Override public void cancelTemporaryHint() { hintBar.cancelTemporary(); }
+        @Override public void cyclePermissionMode() { InputPanel.this.cyclePermissionMode(); }
+        @Override public boolean popEditableQueuedCommands() {
+            return InputPanel.this.popEditableQueuedCommands();
         }
-
-        private Result handleKeyStrokeRouted(KeyStroke key) {
-            // [DIAG] per-keystroke key-protocol probe (debug-level). Enable by setting
-            // this class to DEBUG in logback to diagnose key encoding / Shift+Enter
-            // issues or unrecognised key bindings (e.g. Ctrl+V arriving as plain 'v'
-            // instead of ctrlDown=true) — supersedes the old dedicated
-            // {@code -Danthropic.debug}/{@code ANTHROPIC_DEBUG}-gated CHARACTER-only log.
-            if (KEY_DIAGNOSTICS && log.isDebugEnabled()) {
-                KeyType kt = key.getKeyType();
-                String charInfo = (kt == KeyType.CHARACTER && key.getCharacter() != null)
-                    ? String.format("'%c'/0x%02x", key.getCharacter(), (int) key.getCharacter())
-                    : "n/a";
-                log.debug("[key-diag] type={} char={} shift={} ctrl={} alt={} class={}",
-                    kt, charInfo,
-                    key.isShiftDown(), key.isCtrlDown(), key.isAltDown(),
-                    key.getClass().getSimpleName());
-            }
-            if (KEY_DIAGNOSTICS && log.isDebugEnabled()
-                    && key.getKeyType() == KeyType.ARROW_UP
-                    && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
-                log.debug("[key-up] handleKeyStroke ARROW_UP, row={}, lineCount={}, isSearching={}, suggVisible={}, vim={}",
-                    getCaretPosition().getRow(), getLineCount(), historyController.isSearching(), suggestions.isVisible(), vim.isEnabled());
-            }
-            // Re-entrancy fence: if vim is forwarding a key via
-            // textBox.handleKeyStroke(key) we must NOT re-route through
-            // handleVimKey — that would recurse on the same key. Send
-            // it straight to the Lanterna TextBox parent.
-            if (vim.isForwarding()) {
-                return super.handleKeyStroke(key);
-            }
-            // DEC 1004 focus events — route to MessagePanel.setFocused via callback.
-
-            if (key.getKeyType() == KeyType.FOCUS_EVENT && key instanceof FocusEventKeyStroke fek) {
-                if (actions != null) actions.focusChanged(fek.isFocused());
-                return Result.HANDLED;
-            }
-            // Mouse events — let them bubble to the window listener which
-            // routes scrolls to messagePanel. We must NOT consume here:
-            // InputPanel is the focused component so events arrive here
-            // first, and returning HANDLED would short-circuit the
-            // window-level handler in LanternaReplScreen.
-            if (key instanceof MouseAction) {
-                return Result.UNHANDLED;
-            }
-            if (canUsePlainCharacterFastPath(key)) {
-                // The established PromptInput sends ordinary text directly to its
-                // input buffer. Avoid walking every modal/readline/navigation
-                // stage when none of those states can own this character.
-                KillRing.INSTANCE.resetAccumulation();
-                KillRing.INSTANCE.resetYankState();
-                return handleDefaultTextBoxKeyStroke(key);
-            }
-            // Ordered pre-editor protocol. A non-null result terminates routing;
-            // null means only that the next stage must see the same keystroke.
-            // Keep these stages in this order: their precedence is observable UI
-            // behavior, not an implementation detail.
-            Result preEditorResult = tryHandleMessageActionsKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleTeammateKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleFooterKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleHistorySearchKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandlePasteOrModeCycleKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleAutocompleteKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleConfiguredKeybindingKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            preEditorResult = tryHandleEmptyPromptAgentsKeyStroke(key);
-            if (preEditorResult != null) return preEditorResult;
-            Result editorResult = tryExitBashModeAtInputStart(key);
-            if (editorResult != null) return editorResult;
-            if (vim.isEnabled()) {
-                // Ctrl/Alt modifier combos bypass vim and use the
-                // readline path. claude-code's global bindings (Ctrl+V
-                // imagePaste, Ctrl+A home, Ctrl+P history, Ctrl+R search,
-                // Alt+B/F word-wise nav) take priority over vim semantics
-                // even inside INSERT mode — keystrokeToChar would have
-                // dropped the ctrl flag and inserted a literal 'v' for
-                // Ctrl+V. Plain (unmodified) keys still go through vim
-                // so hjkl, escape→NORMAL, etc. work as expected.
-                if (!key.isCtrlDown() && !key.isAltDown()) {
-                    return vim.handleKey(key);
-                }
-            }
-            editorResult = tryHandleReadlineKeyStroke(key);
-            if (editorResult != null) return editorResult;
-            editorResult = tryHandleChipEditingKeyStroke(key);
-            if (editorResult != null) return editorResult;
-            editorResult = tryHandlePromptNavigationKeyStroke(key);
-            if (editorResult != null) return editorResult;
-
-            editorResult = tryHandleSubmitKeyStroke(key);
-            if (editorResult != null) return editorResult;
-            editorResult = tryHandleEscapeKeyStroke(key);
-            if (editorResult != null) return editorResult;
-            resetDoubleEscapeGateAfterNonEscapeKey();
-            insertLazySpaceAfterChip(key);
-            editorResult = tryEnterBashMode(key);
-            if (editorResult != null) return editorResult;
-            return handleDefaultTextBoxKeyStroke(key);
-        }
-
-        private boolean canUsePlainCharacterFastPath(KeyStroke key) {
-            if (key.getKeyType() != KeyType.CHARACTER
-                    || key.getCharacter() == null
-                    || Character.isISOControl(key.getCharacter())
-                    || key.isCtrlDown()
-                    || key.isAltDown()) {
-                return false;
-            }
-            return canUsePlainCharacterFastPath(key.getCharacter());
-        }
-
-        private boolean canUsePlainCharacterFastPath(char character) {
-            if (Character.isISOControl(character) || !plainInputStateAllowsDirectEdit()) {
-                return false;
-            }
-            return character != '!'
-                || !textBox.getText().isEmpty()
-                || modeOverride != null;
-        }
-
-        private boolean plainInputStateAllowsDirectEdit() {
-            return !suggestions.isVisible() && plainInputStateAllowsBatch();
-        }
-
-        private boolean plainInputStateAllowsBatch() {
-            return !messageActionsActive
-                && !footer.capturesPlainInput()
-                && !historyController.isSearching()
-                && !customKeybindingsEnabled()
-                && !vim.isEnabled()
-                && !escOnce
-                && pastedContent.isEmpty();
-        }
-
-        private final StringBuilder bufferedPlainInput = new StringBuilder();
-        private DraftUndoBuffer.Snapshot bufferedInputStart;
-        private int bufferedBackspaces;
-        private int bufferedBackspaceCaret;
-        private DraftUndoBuffer.Snapshot bufferedBackspaceStart;
-        /**
-         * Printable characters seen during the current GUI input batch (one PTY
-         * drain). A batch that carries plain characters before a plain ENTER
-         * may be an unbracketed-paste flood (tmux {@code paste-buffer}, CRLF
-         * clipboards) — the twin of Ink receiving the whole flood as one stdin
-         * chunk — so such an ENTER's meaning is deferred: see
-         * {@link #pendingBatchEnter}.
-         */
-        private int plainInputCharsThisBatch;
-
-        /**
-         * A plain ENTER swallowed earlier in this batch, whose meaning is still
-         * unresolved. If further input follows in the same batch the ENTER was
-         * a paste newline (materialized as a line split just in time); if the
-         * batch ends with the ENTER still pending, it was a terminal one-line
-         * submit and the batch end performs it. This matches official 197,
-         * which discriminates a paste by what the stdin chunk contains, not by
-         * which drain delivered it.
-         */
-        private boolean pendingBatchEnter;
-
-        /**
-         * Prompt text and caret at the start of this batch. Everything the batch
-         * inserts lands contiguously at {@code batchStartCaret}, so the batch's
-         * own text — the only thing a paste-flood fold may consume — is the
-         * delta between then and the batch end.
-         */
-        private int batchStartCaret;
-        private int batchStartLength;
-
-        private boolean canBufferPlainCharacter(KeyStroke key) {
-            if (key.getKeyType() != KeyType.CHARACTER
-                    || key.getCharacter() == null
-                    || Character.isISOControl(key.getCharacter())
-                    || key.isCtrlDown() || key.isAltDown()) {
-                return false;
-            }
-            if (key.getCharacter() == '!' && !bufferedPlainInput.isEmpty()) {
-                return canUsePlainCharacterFastPath('a');
-            }
-            return canUsePlainCharacterFastPath(key.getCharacter());
-        }
-
-        private void bufferPlainCharacter(char character) {
-            if (bufferedPlainInput.isEmpty()) bufferedInputStart = captureDraftSnapshot();
-            bufferedPlainInput.append(character);
-        }
-
-        private boolean bufferPlainText(String text) {
-            if (text == null || text.length() < 2 || !plainInputStateAllowsBatch()) return false;
-            boolean hasBufferedPrefix = !bufferedPlainInput.isEmpty()
-                || !textBox.getText().isEmpty() || modeOverride != null;
-            for (int index = 0; index < text.length(); index++) {
-                char character = text.charAt(index);
-                if (Character.isISOControl(character)
-                        || character == '!' && !hasBufferedPrefix) return false;
-                hasBufferedPrefix = true;
-            }
-            // This run bypasses handleKeyStroke, so it must materialize a pending
-            // swallowed ENTER itself — text following an ENTER inside the same batch
-            // proves a paste flood, and the ENTER becomes a newline ahead of this text.
-            if (pendingBatchEnter) {
-                pendingBatchEnter = false;
-                bufferedPlainInput.append('\n');
-            }
-            if (bufferedPlainInput.isEmpty()) bufferedInputStart = captureDraftSnapshot();
-            bufferedPlainInput.append(text);
-            plainInputCharsThisBatch += text.length();
-            return true;
-        }
-
-        private void flushBufferedPlainInput(boolean publishImmediately) {
-            if (bufferedPlainInput.isEmpty()) return;
-            String insertion = bufferedPlainInput.toString();
-            bufferedPlainInput.setLength(0);
-            int caret = caretCol();
-            String before = currentText;
-            String merged = before.substring(0, caret) + insertion + before.substring(caret);
-            ((HighlightedTextBox) textBox).setTextPreservingViewport(merged);
-            TextBoxOffsetAdapter.setOffset(textBox, caret + insertion.length());
-            if (historyController.hasHistoryCursor()) historyController.onUserEdit();
-            KillRing.INSTANCE.resetAccumulation();
-            KillRing.INSTANCE.resetYankState();
-            if (bufferedInputStart != null) {
-                draftUndo.recordDebounced(bufferedInputStart);
-                bufferedInputStart = null;
-            }
-            if (publishImmediately) deliverQueryChangeImmediately();
-            else fireQueryChange();
-        }
-
-        /**
-         * The text this batch inserted, or {@code ""} when it cannot be
-         * recovered. Everything a batch inserts lands contiguously at
-         * {@link #batchStartCaret}, so the run is the length delta ending at
-         * the caret. A caret that no longer sits at the end of that run means
-         * the batch also moved it (arrow keys, mouse) — folding a guess would
-         * be wrong, so report nothing to fold.
-         */
-        private String batchText() {
-            int inserted = currentText.length() - batchStartLength;
-            if (inserted <= 0) return "";
-            int caret = caretCol();
-            if (caret != batchStartCaret + inserted) return "";
-            return currentText.substring(batchStartCaret, caret);
-        }
-
-        /**
-         * Folds one GUI input batch's text into a {@code [Pasted text #N +X
-         * lines]} chip — the same end state the bracketed path produces.
-         *
-         * <p>Only this batch's own text is judged, because official folds per
-         * stdin chunk: a long prompt typed one drain at a time never clears the
-         * threshold, whereas a genuine flood arrives in a single batch. A flood
-         * too large for one drain folds once per drain, which is what official
-         * 2.1.236 does too. Only the batch's own text is replaced, so anything
-         * typed before the flood survives.
-         *
-         * @return true when the batch was folded into a chip
-         */
-        private boolean foldUnbracketedPasteFloodIntoChip(String batchText) {
-            return foldUnbracketedPasteFloodIntoChip(batchText, "");
-        }
-
-        /**
-         * @param trailing batch text that was never inserted — the newline of an
-         *     ENTER the batch swallowed. Official folds a whole stdin chunk,
-         *     terminator included, so it counts toward the chip's content and
-         *     line count.
-         */
-        private boolean foldUnbracketedPasteFloodIntoChip(String batchText, String trailing) {
-            if (batchText.isEmpty()) return false;
-            String stripped = PromptPasteTextPolicy.normalize(batchText + trailing);
-            int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-            if (!PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, terminalRows())) {
-                return false;
-            }
-            int pasteId = pastedContent.nextId();
-            pastedContent.put(PastedContent.text(pasteId, stripped));
-            int caret = caretCol();
-            int start = caret - batchText.length();
-            InputPanel.this.setText(
-                currentText.substring(0, start) + currentText.substring(caret));
-            TextBoxOffsetAdapter.setOffset(textBox, start);
-            chips.insertAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
-            firePastedContentsChange();
-            return true;
-        }
-
-        private boolean canBufferPlainBackspace(KeyStroke key) {
-            if (key.getKeyType() != KeyType.BACKSPACE
-                    || key.isShiftDown() || key.isCtrlDown() || key.isAltDown()) {
-                return false;
-            }
-            return canBufferPlainBackspaces(1);
-        }
-
-        private boolean canBufferPlainBackspaces(int count) {
-            if (count < 1
-                    || messageActionsActive
-                    || footer.capturesPlainInput()
-                    || historyController.isSearching()
-                    || customKeybindingsEnabled()
-                    || vim.isEnabled()
-                    || escOnce
-                    || !pastedContent.isEmpty()
-                    || modeOverride != null
-                    || currentText.indexOf('\n') >= 0) {
-                return false;
-            }
-            int caret = bufferedBackspaces == 0 ? caretCol() : bufferedBackspaceCaret;
-            int end = caret - bufferedBackspaces;
-            int start = end - count;
-            if (start < 0) return false;
-            for (int index = start; index < end; index++) {
-                if (Character.isSurrogate(currentText.charAt(index))) return false;
-            }
-            return true;
-        }
-
-        private void bufferPlainBackspace() {
-            bufferPlainBackspaces(1);
-        }
-
-        private void bufferPlainBackspaces(int count) {
-            if (bufferedBackspaces == 0) {
-                bufferedBackspaceCaret = caretCol();
-                bufferedBackspaceStart = captureDraftSnapshot();
-            }
-            bufferedBackspaces += count;
-        }
-
-        private void flushBufferedBackspaces(boolean publishImmediately) {
-            if (bufferedBackspaces == 0) return;
-            int count = bufferedBackspaces;
-            bufferedBackspaces = 0;
-            int caret = bufferedBackspaceCaret;
-            bufferedBackspaceCaret = 0;
-            int start = Math.max(0, caret - count);
-            String before = currentText;
-            textBox.setText(before.substring(0, start) + before.substring(caret));
-            TextBoxOffsetAdapter.setOffset(textBox, start);
-            if (historyController.hasHistoryCursor()) historyController.onUserEdit();
-            KillRing.INSTANCE.resetAccumulation();
-            KillRing.INSTANCE.resetYankState();
-            if (bufferedBackspaceStart != null) {
-                draftUndo.recordDebounced(bufferedBackspaceStart);
-                bufferedBackspaceStart = null;
-            }
-            if (publishImmediately) deliverQueryChangeImmediately();
-            else fireQueryChange();
-        }
-
-        /**
-         * Message-actions overlay is the first modal key surface after terminal
-         * focus/mouse events. It consumes every key while active.
-         */
-        private Result tryHandleMessageActionsKeyStroke(KeyStroke key) {
-            if (!messageActionsActive) return null;
-            if (customKeybindingsEnabled()) {
-                Result resolved = dispatchViaResolver(key,
-                    List.of("MessageActions", "Global"),
-                    this::dispatchMessageActionsAction);
-                if (resolved != null) return resolved;
-            }
-            if (key.getKeyType() == KeyType.ESCAPE) {
-                if (actions != null) actions.messageActionsEscape();
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.CHARACTER
-                    && key.getCharacter() != null && key.getCharacter() == 'c'
-                    && key.isCtrlDown()) {
-                if (actions != null) actions.messageActionsForceExit();
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.ARROW_UP
-                    || (key.getKeyType() == KeyType.CHARACTER
-                        && key.getCharacter() == 'k')) {
-                if (actions != null) actions.messageActionsPrev();
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.ARROW_DOWN
-                    || (key.getKeyType() == KeyType.CHARACTER
-                        && key.getCharacter() == 'j')) {
-                if (actions != null) actions.messageActionsNext();
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.CHARACTER) {
-                char ch = key.getCharacter();
-                if (ch == 'c') {
-                    if (actions != null) actions.messageActionsCopy();
-                    return Result.HANDLED;
-                }
-                if (ch == 'p') {
-                    if (actions != null) actions.messageActionsCopyPrimaryInput();
-                    return Result.HANDLED;
-                }
-                if (ch == '\n' || ch == '\r') {
-                    if (actions != null) actions.messageActionsEdit();
-                    return Result.HANDLED;
-                }
-            }
-            if (key.getKeyType() == KeyType.ENTER) {
-                if (actions != null) actions.messageActionsEdit();
-                return Result.HANDLED;
-            }
-            // Other keys are consumed but ignored in message actions mode.
-            return Result.HANDLED;
-        }
-
-        /**
-         * Teammate navigation owns only its navigation keys; all other keys fall
-         * through to the footer and editor stages below.
-         */
-        private Result tryHandleTeammateKeyStroke(KeyStroke key) {
-            return footer.handleTeammateKey(key);
-        }
-
-        /**
-         * While a footer stop owns focus, Footer/Global bindings precede the
-         * footer's native navigation. A null result deliberately falls through
-         * to global Ctrl/Alt handling.
-         */
-        private Result tryHandleFooterKeyStroke(KeyStroke key) {
-            if (!footer.isAnySelected()) return null;
-            if (customKeybindingsEnabled()) {
-                Result resolved = dispatchViaResolver(key,
-                    List.of("Footer", "Chat", "Global"),
-                    this::dispatchFooterOrChatAction);
-                if (resolved != null) return resolved;
-            }
-            return footer.handleSelectedKey(key);
-        }
-
-        /** History search is an overlay, so its resolver and native handler run before paste or text editing. */
-        private Result tryHandleHistorySearchKeyStroke(KeyStroke key) {
-            if (!historyController.isSearching()) return null;
-            if (customKeybindingsEnabled()) {
-                Result resolved = dispatchViaResolver(key,
-                    List.of("HistorySearch", "Global"),
-                    this::dispatchHistorySearchOrGlobalAction);
-                if (resolved != null) return resolved;
-            }
-            Result result = historyController.handleSearchKey(key);
-            if (result != null) return result;
-            // If not consumed, fall through to normal handling.
-            historyController.exitSearch();
-            return null;
-        }
-
-        /**
-         * Bracketed paste precedes mode cycling because a paste event must never
-         * be interpreted as ordinary printable input.
-         */
-        private Result tryHandlePasteOrModeCycleKeyStroke(KeyStroke key) {
-            // Bracketed paste — terminal wrapped the paste with \e[200~ ... \e[201~
-            // and Lanterna's BracketedPastePattern decoded it into a
-            // PasteKeyStroke carrying the verbatim text. Preferred over Ctrl+V
-            // clipboard probing because the terminal knows what the user actually
-            // pasted without us shelling out to pbpaste/xclip.
-            if (key.getKeyType() == KeyType.PASTE && key instanceof PasteKeyStroke pks) {
-                paste.handleBracketedPaste(pks.getPastedText());
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.REVERSE_TAB
-                    || (key.getKeyType() == KeyType.TAB && key.isShiftDown())
-                    || (key.getKeyType() == KeyType.TAB && key.isAltDown())) {
-
-                // Shift+Tab cycles its permission mode rather than the leader's.
-                if (footer.taskNavigation().isViewing()) {
-                    footer.cycleViewedTeammatePermissionMode();
-                } else {
-                    cyclePermissionMode();
-                }
-                return Result.HANDLED;
-            }
-            return null;
-        }
-
-        /** Autocomplete consumes its navigation and Escape before normal bindings or request cancellation. */
-        private Result tryHandleAutocompleteKeyStroke(KeyStroke key) {
-            if (!suggestions.isVisible()) return null;
-            if (customKeybindingsEnabled()) {
-                Result resolved = dispatchViaResolver(key,
-                    List.of("Chat", "Autocomplete", "Global"),
-                    this::dispatchAutocompleteOrChatAction);
-                if (resolved != null) return resolved;
-            }
-            return suggestions.handleKey(key);
-        }
-
-        /**
-         * Resolver-driven Chat/Global dispatch is opt-in and deliberately leaves
-         * Enter/Escape to their stateful native handlers below.
-         */
-        private Result tryHandleConfiguredKeybindingKeyStroke(KeyStroke key) {
-            // Matched Chat/Global keys use user overrides; unmatched keys retain
-            // the readline fallback. Bash typing bypasses the resolver entirely.
-            if (modeOverride == Mode.BASH) return null;
-            if (!customKeybindingsEnabled()
-                    && !keybindingDispatcher.hasPendingChord()
-                    && !startsDefaultControlChord(key)) {
-                return null;
-            }
-            return dispatchViaResolver(key);
-        }
-
-        private Result tryHandleEmptyPromptAgentsKeyStroke(KeyStroke key) {
-            if (key.getKeyType() != KeyType.ARROW_LEFT
-                    || key.isCtrlDown() || key.isAltDown() || key.isShiftDown()
-                    || isLoading || modeOverride != null || footer.taskNavigation().isViewing()
-                    || !currentText.isEmpty() || !pastedContent.isEmpty()
-                    || !leftArrowOpensAgents.getAsBoolean() || actions == null) {
-                return null;
-            }
-            actions.openAgents();
-            return Result.HANDLED;
-        }
-
-        private boolean startsDefaultControlChord(KeyStroke key) {
-            return key.getKeyType() == KeyType.CHARACTER
-                && key.isCtrlDown() && !key.isAltDown()
-                && key.getCharacter() != null
-                && Character.toLowerCase(key.getCharacter()) == 'x';
-        }
-
-        private boolean customKeybindingsEnabled() {
-            return keybindingsStore != null && keybindingsStore.isEnabled();
-        }
-
-        /**
-         * At the start of an empty bash-mode input, destructive/editing keys
-         * return to prompt mode. Escape intentionally returns null after that
-         * transition so the normal double-Escape protocol still runs.
-         */
-        private Result tryExitBashModeAtInputStart(KeyStroke key) {
-            if (modeOverride != Mode.BASH || caretCol() != 0) return null;
-            KeyType keyType = key.getKeyType();
-            boolean ctrlU = key.isCtrlDown() && !key.isAltDown()
-                && key.getCharacter() != null
-                && Character.toLowerCase(key.getCharacter()) == 'u';
-            if (keyType == KeyType.BACKSPACE || keyType == KeyType.DELETE || ctrlU) {
-                resetMode();
-                fireQueryChange();
-                return Result.HANDLED;
-            }
-            if (keyType == KeyType.ESCAPE) {
-                resetMode();
-                // Fall through to the normal Escape handling below.
-            }
-            return null;
-        }
-
-        /**
-         * Readline/Emacs shortcuts match useTextInput's Ctrl/Meta mapping.
-         * The kill/yank reset side effects deliberately run for every key that
-         * reaches this phase, including a key with no matching shortcut.
-         */
-        private Result tryHandleReadlineKeyStroke(KeyStroke key) {
-            if (!ReadlineEngine.isKillKey(key)) KillRing.INSTANCE.resetAccumulation();
-            if (!ReadlineEngine.isYankKey(key)) KillRing.INSTANCE.resetYankState();
-            if (key.getKeyType() == KeyType.CHARACTER) {
-                char ch = key.getCharacter();
-
-                // Ctrl+letter dispatch — Lanterna decodes the terminal raw
-                // control byte into a CHARACTER KeyStroke with ctrlDown=true.
-                if (key.isCtrlDown() && !key.isAltDown()) {
-                    Result ctrlResult = switch (Character.toLowerCase(ch)) {
-                        case 'a' -> engine.home();            // Ctrl+A
-                        case 'b' -> actions.backgroundForegroundTasks()
-                            ? Result.HANDLED : engine.left(); // Ctrl+B: task priority, then readline
-                        case 'd' -> rl_ctrlD();               // Ctrl+D
-                        case 'e' -> rl_ctrlE();               // Ctrl+E
-                        case 'f' -> engine.right();           // Ctrl+F
-                        case 'k' -> engine.killToEnd();       // Ctrl+K
-                        case 'n' -> rl_historyDown();         // Ctrl+N
-                        case 'p' -> rl_historyUp();           // Ctrl+P
-                        case 'u' -> engine.killToStart();     // Ctrl+U
-                        case 'w' -> engine.killWordBefore();  // Ctrl+W
-                        case 'y' -> engine.yank();            // Ctrl+Y
-                        case 'v' -> rl_imagePaste();          // Ctrl+V
-                        case 'l' -> rl_redrawScreen();        // Ctrl+L
-                        case 'o' -> rl_toggleTranscript();    // Ctrl+O
-                        case 'g' -> rl_externalEditor();      // Ctrl+G
-                        case 's' -> rl_stash();               // Ctrl+S
-                        case '_' -> { rl_undo(); yield Result.HANDLED; } // Ctrl+_
-                        case 'r' -> rl_historySearch();       // Ctrl+R
-                        case 't' -> {
-                            if (actions != null) actions.toggleTodos();
-                            yield Result.HANDLED;
-                        }
-                        default -> null;
-                    };
-                    if (ctrlResult != null) return ctrlResult;
-                }
-
-                // Alt+X: Lanterna sets isAltDown for ESC-prefixed sequences.
-                if (key.isAltDown()) {
-                    Result altResult = switch (ch) {
-                        case 'b', 'B' -> engine.prevWord();
-                        case 'f', 'F' -> engine.nextWord();
-                        case 'd', 'D' -> engine.killWordAfter();
-                        case 'y', 'Y' -> engine.yankPop();
-                        case 't', 'T' -> {
-                            if (actions != null) actions.toggleThinking();
-                            yield Result.HANDLED;
-                        }
-                        case 'p', 'P' -> {
-                            if (actions != null) actions.openModelPicker();
-                            yield Result.HANDLED;
-                        }
-                        case 'o', 'O' -> {
-                            if (actions != null) actions.toggleFastMode();
-                            yield Result.HANDLED;
-                        }
-                        default -> null;
-                    };
-                    if (altResult != null) return altResult;
-                }
-            }
-
-            // Some terminals send modifier-arrow sequences instead of Alt+B/F.
-            if (key.getKeyType() == KeyType.ARROW_LEFT && (key.isCtrlDown() || key.isAltDown())) {
-                return engine.prevWord();
-            }
-            if (key.getKeyType() == KeyType.ARROW_RIGHT && (key.isCtrlDown() || key.isAltDown())) {
-                return engine.nextWord();
-            }
-            if (key.getKeyType() == KeyType.BACKSPACE && key.isAltDown()) {
-                return engine.killWordBefore();
-            }
-            if (key.getKeyType() == KeyType.DELETE && key.isAltDown()) {
-                return engine.killWordAfter();
-            }
-            return null;
-        }
-
-        /**
-         * Image and pasted-text chips are atomic cursor tokens. This stage runs
-         * after modifier readline shortcuts but before ordinary arrow/history
-         * routing, matching the compatibility Cursor token semantics.
-         */
-        private Result tryHandleChipEditingKeyStroke(KeyStroke key) {
-            if (key.getKeyType() == KeyType.ARROW_LEFT
-                    && !key.isCtrlDown() && !key.isAltDown()
-                    && chips.hopLeft()) {
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.ARROW_RIGHT
-                    && !key.isCtrlDown() && !key.isAltDown()
-                    && chips.hopRight()) {
-                return Result.HANDLED;
-            }
-
-            if (key.getKeyType() == KeyType.BACKSPACE
-                    && !key.isCtrlDown() && !key.isAltDown()
-                    && chips.backspace()) {
-                chips.pruneOrphanedImages();
-                return Result.HANDLED;
-            }
-
-            if (key.getKeyType() == KeyType.DELETE
-                    && !key.isCtrlDown() && !key.isAltDown()
-                    && chips.delete()) {
-                chips.pruneOrphanedImages();
-                return Result.HANDLED;
-            }
-            return null;
-        }
-
-        /**
-         * Shift arrows activate overlay/task navigation; plain vertical arrows
-         * first move within multiline text and only then fall back to history.
-         */
-        private Result tryHandlePromptNavigationKeyStroke(KeyStroke key) {
-            if (key.getKeyType() == KeyType.ARROW_UP && key.isShiftDown()
-                    && !key.isCtrlDown() && !key.isAltDown()) {
-                if (footer.taskNavigation().hasRunningTeammates()) {
-                    footer.handleTeammateShiftSelection(-1);
-                } else if (actions != null) {
-                    actions.toggleMessageActions();
-                }
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.ARROW_DOWN && key.isShiftDown()
-                    && !key.isCtrlDown() && !key.isAltDown()) {
-                footer.handleTeammateShiftSelection(1);
-                return Result.HANDLED;
-            }
-            if (key.getKeyType() == KeyType.ARROW_UP
-                    && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
-                return rl_historyUp();
-            }
-            if (key.getKeyType() == KeyType.ARROW_DOWN
-                    && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
-                return rl_historyDown();
-            }
-            return null;
-        }
-
-        /** Handles Shift/Alt Enter newline insertion and the ordinary submit flow. */
-        private Result tryHandleSubmitKeyStroke(KeyStroke key) {
-            // Forward a real unmodified ENTER so Lanterna's MULTI_LINE TextBox
-            // performs its split-line-at-caret path instead of inserting a glyph.
-            if (key.getKeyType() == KeyType.ENTER
-                    && (key.isShiftDown() || key.isAltDown())) {
-                if (KEY_DIAGNOSTICS && log.isDebugEnabled()) {
-                    log.debug("[key-diag] Shift/Alt+Enter branch entered — forwarding ENTER (multi-line split)");
-                    log.debug("[key-diag] BEFORE split: lineCount={} text=[{}] caret={}",
-                        getLineCount(), getText().replace("\n", "\\n"), getCaretPosition());
-                }
-                Result result = super.handleKeyStroke(new KeyStroke(KeyType.ENTER));
-                if (KEY_DIAGNOSTICS && log.isDebugEnabled()) {
-                    log.debug("[key-diag] AFTER split: lineCount={} text=[{}] caret={} result={}",
-                        getLineCount(), getText().replace("\n", "\\n"), getCaretPosition(), result);
-                }
-                return result;
-            }
-            if (key.getKeyType() != KeyType.ENTER || key.isShiftDown()) return null;
-            if (paste.deferSubmitIfPending()) return Result.HANDLED;
-            if (guiInputBatchDepth > 0 && plainInputCharsThisBatch > 0) {
-                // Unbracketed paste flood: this ENTER shares one PTY drain with
-                // pasted text (tmux paste-buffer turns \n into \r; CRLF
-                // clipboards send raw \r), so it may be a paste newline rather
-                // than a submit — official 197 discriminates by what the stdin
-                // chunk contains, not by which drain delivered it. Swallow it
-                // for now: further input in this batch materializes it as a
-                // line split (paste newline); the batch end submits it instead
-                // when nothing followed (a terminal one-line submit — the TTY
-                // driver coalesces those for fast typists and scripted drivers
-                // alike).
-                pendingBatchEnter = true;
-                return Result.HANDLED;
-            }
-
-            String text = getText();
-            if (KEY_DIAGNOSTICS && log.isDebugEnabled()) {
-                log.debug("[key-diag] Enter submit branch: lineCount={} text=[{}]",
-                    getLineCount(), text.replace("\n", "\\n"));
-            }
-            String submitText = prependModePrefix(text.trim());
-            if (footer.taskNavigation().isViewing()) {
-                footer.taskNavigation().injectViewed(submitText);
-                suppressDraftUndoRecording();
-                draftUndo.clear();
-                setText("");
-                pastedContent.clear();
-                firePastedContentsChange();
-                resetMode();
-                return Result.HANDLED;
-            }
-            // Image-only input is intentionally submit-able.
-            if ((!StringUtils.isBlank(submitText) || !pastedContent.isEmpty()) && actions != null) {
-                actions.submit(submitText);
-                suppressDraftUndoRecording();
-                draftUndo.clear();
-                setText("");
-                pastedContent.clear();
-                firePastedContentsChange();
-                resetMode();
-            }
-            return Result.HANDLED;
-        }
-
-        /**
-         * Escape priority: loading cancel, idle non-empty double-clear, then
-         * idle empty double-open-selector. Returning null is reserved solely
-         * for a non-Escape key.
-         */
-        private Result tryHandleEscapeKeyStroke(KeyStroke key) {
-            if (key.getKeyType() != KeyType.ESCAPE) return null;
-            if (isLoading) {
-                if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-                hintBar.cancelTemporary();
-                escOnce = false;
-                escEmptyFirst = false;
-                if (actions != null) actions.cancel();
-                return Result.HANDLED;
-            }
-
-            // Original priority: recover queued human prompts before either
-            // non-empty double-clear or empty double-Esc message selection.
-            if (popEditableQueuedCommands()) return Result.HANDLED;
-
-            String text = getText();
-            if (!StringUtils.isBlank(text)) {
-                escEmptyFirst = false;
-                if (!escOnce) {
-                    escOnce = true;
-                    if (escTimer != null) escTimer.cancel(false);
-                    escTimer = ESC_SCHEDULER.schedule(() -> {
-                        escOnce = false;
-                        escEmptyFirst = false;
-                        escTimer = null;
-                    }, DOUBLE_PRESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-                    showTemporaryHint("Esc again to clear", LanternaTheme.welcomeDim(), HINT_TIMEOUT_MS);
-                } else {
-                    if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-                    hintBar.cancelTemporary();
-                    escOnce = false;
-
-                    historyController.addEntry(text, System.getProperty("user.dir"));
-                    setText("");
-                    hideSuggestions();
-                    resetMode();
-                    resetHistory();
-                    updateHint();
-                    fireQueryChange();
-                }
-                return Result.HANDLED;
-            }
-
-            if (!escOnce || !escEmptyFirst) {
-                if (hasMessages != null && !hasMessages.getAsBoolean()) return Result.HANDLED;
-                escOnce = true;
-                escEmptyFirst = true;
-                if (escTimer != null) escTimer.cancel(false);
-                escTimer = ESC_SCHEDULER.schedule(() -> {
-                    escOnce = false;
-                    escEmptyFirst = false;
-                    escTimer = null;
-                }, DOUBLE_PRESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            } else {
-                if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-                escOnce = false;
-                escEmptyFirst = false;
-                if (actions != null) actions.showMessageSelector();
-            }
-            return Result.HANDLED;
-        }
-
-        /** Any non-Escape key cancels a pending double-Escape gate. */
-        private void resetDoubleEscapeGateAfterNonEscapeKey() {
-            if (!escOnce) return;
-            escOnce = false;
-            if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-        }
-
-        /** Inserts the deferred separator after an image chip before forwarding printable input. */
-        private void insertLazySpaceAfterChip(KeyStroke key) {
-            boolean isPrintable = key.getKeyType() == KeyType.CHARACTER
-                && key.getCharacter() != null
-                && key.getCharacter() != ' '
-                && !key.isCtrlDown() && !key.isAltDown();
-            if (pastedContent.consumeLazySpace(isPrintable)) {
-                super.handleKeyStroke(new KeyStroke(' ', false, false));
-            }
-        }
-
-        /** Enters bash mode when an unmodified leading {@code !} is typed. */
-        private Result tryEnterBashMode(KeyStroke key) {
-            if (key.getKeyType() != KeyType.CHARACTER
-                    || key.getCharacter() == null
-                    || key.getCharacter() != '!'
-                    || key.isCtrlDown()
-                    || key.isAltDown()
-                    || !textBox.getText().isEmpty()
-                    || modeOverride != null) {
-                return null;
-            }
-            modeOverride = Mode.BASH;
-            updateMode();
-            fireQueryChange();
-            return Result.HANDLED;
-        }
-
-        /** Final TextBox fallback, including the panel's mode/query notifications. */
-        private Result handleDefaultTextBoxKeyStroke(KeyStroke key) {
-            Result result = super.handleKeyStroke(key);
-            // Ordinary plain-character input is already guaranteed NORMAL by
-            // canUsePlainCharacterFastPath(). Avoid re-reading the complete
-            // prompt merely to prove the mode did not change on every byte of
-            // a PTY burst. All fallback keys retain the full mode transition.
-            if (!canUsePlainCharacterFastPath(key)) updateMode();
-            fireQueryChange();
-            return result;
-        }
-
-        // ── Readline helpers ────────────────────────────────────────────
-        // Pure cursor/word/kill-yank editing lives in ReadlineEngine (see
-        // the `engine` field). The methods below stay in the panel because
-        // they depend on panel state (transcript / EOF / history / overlay
-        // actions) — they delegate to the engine only for editing.
-
-        /** Ctrl+E: end-of-line (default) or transcript show-all when in transcript mode. */
-        private Result rl_ctrlE() {
-            if (isTranscriptMode && actions != null) {
-                actions.transcriptShowAll();
-                return Result.HANDLED;
-            }
-            return engine.end();
-        }
-        private Result rl_historyUp() {
-            int caret = caretCol();
-            int moved = textLayout.moveVertically(caret, -1);
-            if (moved != caret) {
-                TextBoxOffsetAdapter.setOffset(textBox, moved);
-                fireQueryChange();
-                return Result.HANDLED;
-            }
-            if (popEditableQueuedCommands()) return Result.HANDLED;
-            return historyController.up();
-        }
-        private Result rl_historyDown() {
-            int caret = caretCol();
-            int moved = textLayout.moveVertically(caret, 1);
-            if (moved != caret) {
-                TextBoxOffsetAdapter.setOffset(textBox, moved);
-                fireQueryChange();
-                return Result.HANDLED;
-            }
-            return historyDownOrEnterFooter();
-        }
-
-        /**
-         * Ctrl+L — redraw screen (clears visual artifacts).
-         */
-        private Result rl_redrawScreen() {
-            if (actions != null) actions.redrawScreen();
-            return Result.HANDLED;
-        }
-
-        /**
-         * Ctrl+O — toggle transcript mode.
-         */
-        private Result rl_toggleTranscript() {
-            if (actions != null) actions.toggleTranscript();
-            return Result.HANDLED;
-        }
-
-        /**
-         * Ctrl+G — open external editor.
-         */
-        private Result rl_externalEditor() {
-            if (actions != null) actions.externalEditor();
-            return Result.HANDLED;
-        }
-
-        /**
-         * Ctrl+S — push/pop the current prompt.
-         */
-        private Result rl_stash() {
-            String input = getText();
-            if (input.trim().isEmpty() && stashedPrompt != null) {
-                suppressDraftUndoRecording();
-                StashedPrompt restored = stashedPrompt;
-                stashedPrompt = null;
-                textBox.setText(restored.text());
-                moveCaretTo(Math.min(restored.cursorOffset(), restored.text().length()));
-                restorePastedContents(restored.pastedContents());
-                updateMode();
-                fireQueryChange();
-                invalidate();
-            } else if (!input.trim().isEmpty()) {
-                suppressDraftUndoRecording();
-                stashedPrompt = new StashedPrompt(input, caretCol(),
-                    pastedContent.snapshot());
-                textBox.setText("");
-                moveCaretTo(0);
-                restorePastedContents(Map.of());
-                updateMode();
-                fireQueryChange();
-                invalidate();
-                if (actions != null) actions.stash();
-            }
-            return Result.HANDLED;
-        }
-
-        /**
-         * Ctrl+_ — restore the previous prompt draft.
-         */
-        private void rl_undo() {
-            DraftUndoBuffer.Snapshot previous = draftUndo.undo();
-            if (previous == null) return;
-            suppressDraftUndoRecording();
-            modeOverride = previous.modeOverride();
-            textBox.setText(previous.text());
-            TextBoxOffsetAdapter.setOffset(textBox, previous.cursorOffset());
-            restorePastedContents(previous.pastedContents());
-            updateMode();
-            fireQueryChange();
-            invalidate();
-        }
-
-
-        private Result rl_historySearch() {
-            if (actions != null && actions.openHistorySearch()) {
-                return Result.HANDLED;
-            }
-            return historyController.toggleSearch();
-        }
-
-        private Result rl_ctrlD() {
-            String text = getText();
-            if (text.isEmpty()) {
-
-                // Ctrl+D through the double-press exit gate. Request
-                // cancellation is owned by Ctrl+C/Escape, not EOF.
-                if (actions != null) {
-                    actions.exitOnEmptyEof();
-                }
-            } else {
-                // Delete char under cursor
-                super.handleKeyStroke(new KeyStroke(KeyType.DELETE, false, false));
-                fireQueryChange();
-            }
-            return Result.HANDLED;
-        }
-
-        /** Ctrl+V — unified clipboard paste. */
-        private Result rl_imagePaste() {
-            paste.handleClipboardPaste();
-            return Result.HANDLED;
-        }
-
-        // ── Resolver-driven dispatch (opt-in keybinding customization) ──
-
-        /**
-         * Resolve {@code key} against the user keybinding store (Chat + Global contexts) and fire the
-         * matched action.
-         */
-        private Result dispatchViaResolver(KeyStroke key) {
-            return dispatchViaResolver(key, List.of("Chat", "Global"),
-                this::dispatchChatAction);
-        }
-
-        /**
-         * Resolve one key against an explicit active-context set. The dispatcher
-         * owns chord state; this prompt-specific bridge only maps a resolved
-         * action back to its UI policy and preserves deliberate fall-through for
-         * submit/cancel.
-         */
-        private Result dispatchViaResolver(KeyStroke key, List<String> contexts,
-                                           Function<String, Boolean> dispatcher) {
-            ContextKeybindingDispatcher.Result resolved =
-                keybindingDispatcher.resolve(contexts, key);
-            return switch (resolved) {
-                case ContextKeybindingDispatcher.Result.Action(String action) -> {
-                    // voice:pushToTalk needs the accumulated burst state to
-                    // distinguish a sustained hold (terminal auto-repeat) from a
-                    // single tap before forwarding to the reserved voice port.
-                    if (Strings.CS.equals(action, "voice:pushToTalk")) {
-                        yield voicePushToTalk();
-                    }
-                    yield Boolean.TRUE.equals(dispatcher.apply(action)) ? Result.HANDLED : null;
-                }
-                case ContextKeybindingDispatcher.Result.Consumed() -> Result.HANDLED;
-                case ContextKeybindingDispatcher.Result.None() -> null;
-            };
-        }
-
-        /**
-         * Push-to-talk fast path for the bound {@code voice:pushToTalk} action.
-         * <p>
-         * A terminal has no distinct key-release events, so a held space
-         * surfaces as a stream of repeated single-space events which we
-         * accumulate across the {@link #PTT_RESET_WINDOW_MS} burst window (see
-         * the reserved-voice state above). Once the accumulation crosses
-         * {@link #PTT_HOLD_THRESHOLD} the burst is classified as a HOLD; a
-         * single tap stays short of the floor and is a plain space. We forward
-         * the classification to the (currently no-op) voice port, which
-         * consumes the key only while recording is active; otherwise — and for
-         * taps — the space falls through to the input so normal typing is
-         * unaffected.
-         */
-        private Result voicePushToTalk() {
-            boolean held = accumulatePushToTalk();
-            boolean consume = actions != null && actions.handlePushToTalk(held);
-            return consume ? Result.HANDLED : null;
-        }
-
-        private boolean accumulatePushToTalk() {
-            long now = System.currentTimeMillis();
-            if (now - pttLastEventMs > PTT_RESET_WINDOW_MS) {
-                // The previous burst decayed; this is the first event of a new one.
-                pttAccumulated = 0;
-            }
-            pttAccumulated++;
-            pttLastEventMs = now;
-            return pttAccumulated >= PTT_HOLD_THRESHOLD;
-        }
-
-        private boolean dispatchAutocompleteOrChatAction(String action) {
-            return switch (action) {
-                case "autocomplete:previous" -> { suggestions.moveUp(); yield true; }
-                case "autocomplete:next" -> { suggestions.moveDown(); yield true; }
-                case "autocomplete:accept" -> { suggestions.accept(); yield true; }
-                case "autocomplete:dismiss" -> { hideSuggestions(); yield true; }
-                default -> dispatchChatAction(action);
-            };
-        }
-
-        private boolean dispatchFooterOrChatAction(String action) {
-            if (Strings.CS.startsWith(action, "footer:")) {
-                return footer.dispatchFooterAction(action);
-            }
-            return dispatchChatAction(action);
-        }
-
-        private boolean dispatchHistorySearchOrGlobalAction(String action) {
-            if (Strings.CS.startsWith(action, "historySearch:")) {
-                boolean consumed = historyController.handleSearchAction(action);
-                if (!consumed && Strings.CS.equals("historySearch:execute", action)) {
-                    // The action means execute regardless of which physical key
-                    // the user bound to it. Re-enter after clearing search state
-                    // with a canonical Enter so the normal submit path runs.
-                    PromptTextBox.this.handleKeyStroke(new KeyStroke(KeyType.ENTER));
-                    return true;
-                }
-                return consumed;
-            }
-            return dispatchChatAction(action);
-        }
-
-        private boolean dispatchMessageActionsAction(String action) {
-            switch (action) {
-                case "messageActions:prev" -> {
-                    if (actions != null) actions.messageActionsPrev();
-                }
-                case "messageActions:next" -> {
-                    if (actions != null) actions.messageActionsNext();
-                }
-                case "messageActions:prevUser" -> {
-                    if (actions != null) actions.messageActionsPrevUser();
-                }
-                case "messageActions:nextUser" -> {
-                    if (actions != null) actions.messageActionsNextUser();
-                }
-                case "messageActions:top" -> {
-                    if (actions != null) actions.messageActionsTop();
-                }
-                case "messageActions:bottom" -> {
-                    if (actions != null) actions.messageActionsBottom();
-                }
-                case "messageActions:escape" -> {
-                    if (actions != null) actions.messageActionsEscape();
-                }
-                case "messageActions:ctrlc" -> {
-                    if (actions != null) actions.messageActionsForceExit();
-                }
-                case "messageActions:enter" -> {
-                    if (actions != null) actions.messageActionsEdit();
-                }
-                case "messageActions:c" -> {
-                    if (actions != null) actions.messageActionsCopy();
-                }
-                case "messageActions:p" -> {
-                    if (actions != null) actions.messageActionsCopyPrimaryInput();
-                }
-                default -> { return false; }
-            }
-            return true;
-        }
-
-        /**
-         * Fire a resolved Chat/Global action. Returns {@code true} if the key was
-         * consumed. Enter/Escape ({@code chat:submit}/{@code chat:cancel}) are
-         * intentionally NOT consumed here — they are returned so the existing
-         * submit/cancel logic (teammate injection, image-only submit, double-press
-         * timers) runs. Every other known action routes to the same method the
-         * hardcoded switch would have called, so default behaviour is unchanged;
-         * unknown actions are consumed (no-op) so they don't leak into typed input.
-         */
-        private boolean dispatchChatAction(String action) {
-            switch (action) {
-                case "chat:submit", "chat:cancel" -> { return false; }
-                case "history:previous"      -> { rl_historyUp(); return true; }
-                case "history:next"          -> { rl_historyDown(); return true; }
-                case "chat:undo"             -> { rl_undo(); return true; }
-                case "chat:externalEditor"   -> { rl_externalEditor(); return true; }
-                case "chat:stash"            -> { rl_stash(); return true; }
-                case "chat:imagePaste"       -> { rl_imagePaste(); return true; }
-                case "app:redraw"            -> { rl_redrawScreen(); return true; }
-                case "app:toggleTranscript"  -> { rl_toggleTranscript(); return true; }
-                case "app:toggleTodos"       -> { if (actions != null) actions.toggleTodos(); return true; }
-                case "chat:thinkingToggle"   -> { if (actions != null) actions.toggleThinking(); return true; }
-                case "chat:modelPicker"      -> { if (actions != null) actions.openModelPicker(); return true; }
-                case "app:exit"              -> { rl_ctrlD(); return true; }
-                case "history:search"        -> { rl_historySearch(); return true; }
-                case "chat:cycleMode"        -> { cyclePermissionMode(); return true; }
-                case "chat:killAgents"       -> { handleKillAgents(); return true; }
-                case "chat:fastMode" -> {
-                    if (actions != null) actions.toggleFastMode();
-                    return true;
-                }
-                case "app:toggleTeammatePreview" -> {
-                    log.debug("[keybindings] no-op for unsupported action: {}", action);
-                    return true;
-                }
-                default -> {
-                    log.debug("[keybindings] unsupported action: {}", action);
-                    return true;
-                }
-            }
-        }
-
-
-        private void handleKillAgents() {
-            boolean hasRunningAgents = footer.taskNavigation().registry().listBackground().stream()
-                .anyMatch(t -> t.type() == TaskType.LOCAL_AGENT
-                    && t.status() == TaskStatus.RUNNING);
-            if (!hasRunningAgents) {
-                lastKillAgentsPressMs = 0;
-                showTemporaryHint("No background agents running",
-                    LanternaTheme.welcomeDim(), 2000);
-                return;
-            }
-
-            long now = System.currentTimeMillis();
-            if (lastKillAgentsPressMs != 0
-                    && now - lastKillAgentsPressMs <= KILL_AGENTS_CONFIRM_WINDOW_MS) {
-                lastKillAgentsPressMs = 0;
-                if (actions != null) actions.killBackgroundAgents();
-                return;
-            }
-
-            lastKillAgentsPressMs = now;
-            String shortcut = keybindingsStore.currentResolver()
-                .getBindingDisplayText("chat:killAgents", "Chat");
-            if (StringUtils.isBlank(shortcut)) shortcut = "ctrl+x ctrl+k";
-            showTemporaryHint("Press " + shortcut + " again to stop background agents",
-                LanternaTheme.welcomeDim(), KILL_AGENTS_CONFIRM_WINDOW_MS);
-        }
-
     }
-
 
     // ── Layout ──────────────────────────────────────────────────────────────
 
-
     private void refreshInputHighlights() {
         List<HighlightedTextBox.Highlight> next = new ArrayList<>();
-        List<BtwTriggers.Trigger> btwTriggers = BtwTriggers.find(currentText);
+        List<BtwTriggers.Trigger> btwTriggers = BtwTriggers.find(state.text());
         if (!btwTriggers.isEmpty()) {
             next.add(new HighlightedTextBox.Highlight(
                 btwTriggers.getFirst().start(), btwTriggers.getFirst().end(),
@@ -1877,15 +508,14 @@ public class InputPanel extends Panel {
         }
         if (historySearchHighlight != null
                 && historySearchHighlight.start() >= 0
-                && historySearchHighlight.end() <= currentText.length()) {
+                && historySearchHighlight.end() <= state.text().length()) {
             next.add(historySearchHighlight);
         }
         currentHighlights = List.copyOf(next);
     }
 
-
     private void refreshTextLayout() {
-        PromptTextLayout next = PromptTextLayout.create(currentText, inputContentColumns);
+        PromptTextLayout next = PromptTextLayout.create(state.text(), inputContentColumns);
         int rows = next.lineCount();
         textLayout = next;
         if (rows != currentTextRows) {
@@ -1965,12 +595,15 @@ public class InputPanel extends Panel {
     }
 
     /** Wire the single outward action/notification port (replaces ~19 {@code setOnXxx} setters). */
-    public void setActions(InputActions actions) { this.actions = actions; }
+    public void setActions(InputActions actions) {
+        this.actions = actions;
+        textBox.setActions(actions);
+    }
 
     /** Installs the opt-in keybinding resolver. Null when customization is disabled. */
     public void setKeybindingsStore(UserKeybindingsStore store) {
         this.keybindingsStore = store;
-        keybindingDispatcher.setStore(store);
+        textBox.setKeybindingsStore(store);
     }
 
     /**
@@ -1982,12 +615,10 @@ public class InputPanel extends Panel {
         if (textBox != null) textBox.takeFocus();
     }
 
-    public void setHasMessages(BooleanSupplier supplier) { this.hasMessages = supplier; }
+    public void setHasMessages(BooleanSupplier supplier) { state.setHasMessages(supplier); }
 
     public void setIsLoading(boolean loading) {
-        boolean changed = this.isLoading != loading;
-        this.isLoading = loading;
-        if (changed) {
+        if (state.setLoading(loading)) {
             updatePromptColor();
             updateHint();
             invalidate();
@@ -2004,87 +635,36 @@ public class InputPanel extends Panel {
 
     /** Starts one terminal-read input batch; called only by the GUI host. */
     public void beginGuiInputBatch() {
-        if (guiInputBatchDepth == 0) {
-            PromptTextBox prompt = (PromptTextBox) textBox;
-            prompt.plainInputCharsThisBatch = 0;
-            prompt.pendingBatchEnter = false;
-            prompt.batchStartCaret = caretCol();
-            prompt.batchStartLength = currentText.length();
-        }
-        guiInputBatchDepth++;
+        textBox.beginGuiInputBatch();
     }
 
     /** Accepts a decoded printable run when the prompt is the active input owner. */
     public boolean handleGuiTextBatch(Interactable focused, String text) {
-        if (guiInputBatchDepth == 0
-                || focused != textBox
-                || textBox.getInputFilter() != null) {
+        if (!textBox.isInGuiInputBatch() || focused != textBox || textBox.getInputFilter() != null) {
             return false;
         }
-        return ((PromptTextBox) textBox).bufferPlainText(text);
+        return textBox.bufferPlainText(text);
     }
 
     boolean handleGuiTextBatchForTest(String text) {
-        return guiInputBatchDepth > 0
-            && ((PromptTextBox) textBox).bufferPlainText(text);
+        return textBox.isInGuiInputBatch() && textBox.bufferPlainText(text);
     }
 
     /** Accepts a decoded Backspace run when the prompt is the active input owner. */
     public boolean handleGuiBackspaceBatch(Interactable focused, int count) {
-        if (guiInputBatchDepth == 0 || focused != textBox || textBox.getInputFilter() != null) {
+        if (!textBox.isInGuiInputBatch() || focused != textBox || textBox.getInputFilter() != null) {
             return false;
         }
-        PromptTextBox prompt = (PromptTextBox) textBox;
-        if (!prompt.canBufferPlainBackspaces(count)) return false;
-        prompt.flushBufferedPlainInput(false);
-        prompt.bufferPlainBackspaces(count);
-        return true;
+        return textBox.bufferGuiBackspaces(count);
     }
 
     boolean handleGuiBackspaceBatchForTest(int count) {
-        PromptTextBox prompt = (PromptTextBox) textBox;
-        if (guiInputBatchDepth == 0 || !prompt.canBufferPlainBackspaces(count)) return false;
-        prompt.flushBufferedPlainInput(false);
-        prompt.bufferPlainBackspaces(count);
-        return true;
+        return textBox.isInGuiInputBatch() && textBox.bufferGuiBackspaces(count);
     }
 
     /** Publishes the final prompt state after Lanterna drains the PTY queue. */
     public void endGuiInputBatch() {
-        if (guiInputBatchDepth == 0) return;
-        if (guiInputBatchDepth == 1) {
-            // Replace or close an already-visible dropdown before the first
-            // input frame so it can never be paired with a newer prompt. When
-            // no dropdown exists yet, commit the prompt first and let the same
-            // GUI cycle build/show new suggestions afterwards; this preserves
-            // immediate echo for a whole `/config` terminal write. File
-            // discovery remains asynchronous inside SuggestionController.
-            boolean replaceVisibleSuggestions = suggestions.isVisible();
-            PromptTextBox prompt = (PromptTextBox) textBox;
-            if (prompt.pendingBatchEnter) {
-                // The batch ended right after the swallowed ENTER — nothing
-                // followed it. Official folds a whole stdin chunk including its
-                // trailing newline, so a batch that is a flood folds and the
-                // swallowed ENTER goes into the chip; anything smaller was a
-                // terminal one-line submit, so commit and submit it.
-                prompt.pendingBatchEnter = false;
-                prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
-                prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
-                prompt.plainInputCharsThisBatch = 0;
-                if (!prompt.foldUnbracketedPasteFloodIntoChip(prompt.batchText(), "\n")) {
-                    prompt.tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
-                }
-                guiInputBatchDepth--;
-                return;
-            }
-            prompt.flushBufferedPlainInput(replaceVisibleSuggestions);
-            prompt.flushBufferedBackspaces(replaceVisibleSuggestions);
-            if (prompt.plainInputCharsThisBatch > 0) {
-                prompt.plainInputCharsThisBatch = 0;
-                prompt.foldUnbracketedPasteFloodIntoChip(prompt.batchText());
-            }
-        }
-        guiInputBatchDepth--;
+        textBox.endGuiInputBatch();
     }
 
     /**
@@ -2127,7 +707,6 @@ public class InputPanel extends Panel {
         }
     }
 
-
     /** Package-private for {@code InputPanel*} tests (was exposed via {@code caretOffsetForTest()}). */
     int caretCol() {
         try {
@@ -2137,7 +716,7 @@ public class InputPanel extends Panel {
                 // every key; the row-local column is already the absolute
                 // UTF-16 offset in this geometry.
                 return Math.max(0, Math.min(
-                    textBox.getCaretPosition().getColumn(), currentText.length()));
+                    textBox.getCaretPosition().getColumn(), state.text().length()));
             }
             return TextBoxOffsetAdapter.offset(textBox);
         } catch (Exception _) {
@@ -2153,7 +732,6 @@ public class InputPanel extends Panel {
         // input event chain entirely.
         TextBoxOffsetAdapter.setOffset(textBox, col);
     }
-
 
     public void setVimEnabled(boolean enabled) {
         vim.setEnabled(enabled);
@@ -2195,9 +773,8 @@ public class InputPanel extends Panel {
         QueuedInputDraft restored = actions.popEditableQueuedCommands(getText(), caretCol());
         if (restored == null) return false;
 
-        suppressDraftUndoRecording();
-        mode = Mode.NORMAL;
-        modeOverride = null;
+        state.suppressUndoRecording();
+        state.resetMode();
         textBox.setText(restored.text());
         moveCaretTo(Math.min(restored.cursorOffset(), restored.text().length()));
         restored.pastedContents().values().forEach(pastedContent::put);
@@ -2241,7 +818,7 @@ public class InputPanel extends Panel {
 
     /** Current displayed input mode; bash text itself intentionally omits the leading {@code !}. */
     public boolean isBashMode() {
-        return mode == Mode.BASH;
+        return state.isBashMode();
     }
 
     /**
@@ -2255,7 +832,7 @@ public class InputPanel extends Panel {
     private String inlineGhostText() {
         String hint = argumentHint;
         if (StringUtils.isEmpty(hint)) return null;
-        return Strings.CS.endsWith(currentText, " ") ? hint : " " + hint;
+        return Strings.CS.endsWith(state.text(), " ") ? hint : " " + hint;
     }
 
     String inlineGhostTextForTest() {
@@ -2263,7 +840,6 @@ public class InputPanel extends Panel {
     }
 
     public void cyclePermissionMode() {
-
 
         // can stay strict — see PermissionMode.fromString / PermissionGate.parseMode.
         permMode = PermissionModeCycle.next(
@@ -2285,7 +861,6 @@ public class InputPanel extends Panel {
     /** Returns the current permission mode (e.g. "bypass", "auto", "plan"). */
     public String getPermissionMode() { return this.permMode; }
 
-
     public String getVimMode() {
         return vim.modeName();
     }
@@ -2296,7 +871,7 @@ public class InputPanel extends Panel {
         updateHint();
     }
 
-    public String getText() { return currentText; }
+    public String getText() { return state.text(); }
 
     /**
      * Live terminal height, used by the paste chip thresholds: official derives
@@ -2341,7 +916,7 @@ public class InputPanel extends Panel {
      */
     public void setRestoredText(String text) {
         if (text == null) return;
-        modeOverride = InputModes.overrideFromPrefix(text);
+        state.setModeOverride(InputModes.overrideFromPrefix(text));
         PromptChipEditor.Truncation truncated = chips.truncateForInput(InputModes.stripPrefix(text));
         textBox.setText(truncated.text());
         if (truncated.applied()) {
@@ -2387,8 +962,8 @@ public class InputPanel extends Panel {
      */
     public void resetHistory() {
         historyController.reset();
-        escOnce           = false;
-        modeOverride      = null;  // clear any mode from history entry
+        textBox.resetDoubleEscapeGate();
+        state.setModeOverride(null);
 
         hintBar.cancelTemporary();
         updateHint();
@@ -2404,12 +979,11 @@ public class InputPanel extends Panel {
     private void applyHistoryEntry(PromptHistory.Entry entry, boolean cursorToStart) {
         String display = entry.display();
         // Strip mode prefix BEFORE checking for newlines — the prefix is
-        // single-char and matters for modeOverride, but the mode char '!'
+        // single-char and matters for state.modeOverride(), but the mode char '!'
         // is never a newline itself.
         Mode entryMode = InputModes.overrideFromPrefix(display);
         String body = InputModes.stripPrefix(display);
-        modeOverride = entryMode;
-        // Restore FIRST: restorePastedContents() clears the whole map, which would
+        state.setModeOverride(entryMode);
         // drop a truncation chip registered before it (and it also advances the id
         // sequence past the entry's own chips so the new id can't collide).
 
@@ -2441,13 +1015,6 @@ public class InputPanel extends Panel {
         firePastedContentsChange();
     }
 
-    private record StashedPrompt(
-        String text,
-        int cursorOffset,
-        Map<Integer, PastedContent> pastedContents
-    ) {}
-
-
     private void fireQueryChange() {
 
         // PromptInput useEffect([input, setPastedContents]).
@@ -2455,7 +1022,7 @@ public class InputPanel extends Panel {
         if (actions == null) return;
 
         Consumer<Runnable> invoker = guiInvoker;
-        if (invoker == null || (guiInputBatchDepth == 0 && isOnGuiThread())) {
+        if (invoker == null || (!textBox.isInGuiInputBatch() && isOnGuiThread())) {
             deliverQueryChange();
             return;
         }
@@ -2483,69 +1050,38 @@ public class InputPanel extends Panel {
 
     private void deliverQueryChange() {
         InputActions currentActions = actions;
-        if (currentActions != null) currentActions.queryChanged(currentText, caretCol());
+        if (currentActions != null) currentActions.queryChanged(state.text(), caretCol());
     }
 
     /** Notify InputPanel when transcript mode is active (gates Ctrl+E routing). */
     public void setTranscriptMode(boolean active) {
-        this.isTranscriptMode = active;
+        state.setTranscriptMode(active);
     }
 
     /** Set message actions active state (intercepts keys for navigation). */
     public void setMessageActionsActive(boolean active) {
-        this.messageActionsActive = active;
-        if (!active) messageActionsHint = "";
+        state.setMessageActionsActive(active);
         updateHint();
     }
 
     /** Update the action list shown in the pinned footer while browsing messages. */
     public void setMessageActionsHint(String hint) {
-        messageActionsHint = hint == null ? "" : hint;
-        if (messageActionsActive) updateHint();
+        state.setMessageActionsHint(hint);
+        if (state.isMessageActionsActive()) updateHint();
     }
 
     // ── Mode ─────────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the text to pass to {@code actions.submit}, prepending the mode prefix when {@link
-     * #modeOverride} is active (text shown in box has no prefix).
-     */
-    private String prependModePrefix(String text) {
-        return InputModes.prependPrefix(text, modeOverride);
-    }
-
     private void updateMode() {
-        String text = vim.isEnabled() ? vim.buffer() : currentText;
-        if (modeOverride == null && mode == Mode.NORMAL
-                && (text.isEmpty() || text.charAt(0) != '!')) {
-            return;
-        }
-        Mode prefixMode = InputModes.fromPrefix(text);
-        Mode newMode;
-        if (modeOverride != null) {
-            // modeOverride is set when a history entry had its prefix stripped.
-
-            // until resetMode (Escape) or submit. The text in the box has no prefix.
-            // Only clear override if user explicitly types a new mode prefix at position 0.
-            if (prefixMode != Mode.NORMAL) {
-                modeOverride = null;  // user typed "!" naturally → text-based detection takes over
-                newMode = prefixMode;
-            } else {
-                newMode = modeOverride;  // keep override regardless of text content
-            }
-        } else {
-            newMode = prefixMode;
-        }
-        if (newMode != mode) {
-            mode = newMode;
+        String text = vim.isEnabled() ? vim.buffer() : state.text();
+        if (state.recomputeMode(text)) {
             updatePromptColor();
             updateHint();
         }
     }
 
     private void resetMode() {
-        mode = Mode.NORMAL;
-        modeOverride = null;
+        state.resetMode();
         updatePromptColor();
         updateHint();
     }
@@ -2561,18 +1097,18 @@ public class InputPanel extends Panel {
      * dividers.
      */
     private void updatePromptColor() {
-        dividers.setBashMode(mode == Mode.BASH);
+        dividers.setBashMode(state.isBashMode());
         TextColor color;
-        if (isLoading) {
+        if (state.isLoading()) {
             color = LanternaTheme.welcomeDim();  // dimColor=true wins
-        } else if (mode == Mode.BASH) {
+        } else if (state.isBashMode()) {
             color = LanternaTheme.bashBorder();
         } else {
             color = null;  // Use the terminal's default foreground.
         }
         promptLabel.setForegroundColor(color);
         // Update prompt symbol: bash uses "! ", others use "❯ "
-        promptLabel.setText(mode == Mode.BASH ? "! " : Figures.POINTER + " ");
+        promptLabel.setText(state.isBashMode() ? "! " : Figures.POINTER + " ");
     }
 
     /**
@@ -2590,17 +1126,6 @@ public class InputPanel extends Panel {
      */
     private void showTemporaryHint(String text, TextColor color, long timeoutMs) {
         hintBar.showTemporary(text, color, timeoutMs);
-    }
-
-    private TextBox.Result historyDownOrEnterFooter() {
-        if (historyController.atBottom()) {
-            // The ≡ projects button is the leftmost footer control, so the
-            // first ↓ from the prompt selects it; the next ↓/→ resumes the
-            // released chain via selectFirstFooterStopAfterProjectsButton().
-            footer.enterFromPrompt();
-            return TextBox.Result.HANDLED;
-        }
-        return historyController.down();
     }
 
     /** Whether the subagent coordinator panel currently owns keyboard focus. */
@@ -2666,12 +1191,11 @@ public class InputPanel extends Panel {
             return false;
         }
 
-
         if (historyController.isSearching()) return true;
 
         clearFooterSelection();
         textBox.takeFocus();
-        if (currentText.isEmpty()) return true;
+        if (state.text().isEmpty()) return true;
 
         int localColumn = screenColumn - origin.getColumn();
         int localRow = screenRow - origin.getRow();
@@ -2739,7 +1263,7 @@ public class InputPanel extends Panel {
     String hintTextForTest() { return hintBar.mainText(); }
     String leaderHintTextForTest() { return hintBar.combinedText(); }
     void setLeftArrowOpensAgentsForTest(BooleanSupplier enabled) {
-        leftArrowOpensAgents = enabled != null ? enabled : () -> true;
+        state.setLeftArrowOpensAgents(enabled);
         updateHint();
     }
     boolean isHistorySearchingForTest() { return historyController.isSearching(); }
@@ -2752,9 +1276,9 @@ public class InputPanel extends Panel {
     PromptTextLayout.Position visualCaretPositionForTest() {
         return textLayout.positionAt(caretCol());
     }
-    Mode modeForTest() { return mode; }
+    Mode modeForTest() { return state.mode(); }
     boolean plainCharacterFastPathForTest(KeyStroke key) {
-        return ((PromptTextBox) textBox).canUsePlainCharacterFastPath(key);
+        return textBox.canUsePlainCharacterFastPath(key);
     }
     public void setTaskRegistry(TaskRegistry registry) {
         footer.setTaskRegistry(registry);
@@ -2828,11 +1352,11 @@ public class InputPanel extends Panel {
     private void updateHint() {
         hintBar.render(new PromptHintBar.Context(
             paste.isPending(),
-            messageActionsActive,
-            messageActionsHint,
+            state.isMessageActionsActive(),
+            state.messageActionsHint(),
             permMode,
-            isLoading,
-            leftArrowOpensAgents.getAsBoolean()), footer);
+            state.isLoading(),
+            state.leftArrowOpensAgents()), footer);
         footer.refreshTasksPill();
         vim.refreshLabel();
     }

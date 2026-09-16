@@ -30,7 +30,9 @@ order.
 
 | Component | Path | Responsibility |
 |---|---|---|
-| InputPanel | lanterna/input/InputPanel.java | Prompt text box, mode detection, key pipeline, and composition of the collaborators below |
+| InputPanel | lanterna/input/InputPanel.java | Composition root: mounts the prompt widgets, exposes the REPL-facing API, and refreshes the view from PromptState |
+| PromptState | lanterna/input/PromptState.java | Shared draft state: displayed mode and history override, text snapshot, loading/transcript/message-actions flags, draft undo buffer |
+| PromptTextBox | lanterna/input/PromptTextBox.java | The text box and its ordered key pipeline, readline actions, resolver-driven dispatch, double-Escape gate, and GUI input batching |
 | PromptFooter | lanterna/input/PromptFooter.java | Single footer selection and its keyboard/mouse protocol over ProjectsButton, TasksPill, WorkflowFooter, CoordinatorFooter, and CollaborationPill |
 | PromptHintBar | lanterna/input/PromptHintBar.java | Hint row priority, temporary notifications, and the status line |
 | PromptDividers | lanterna/input/PromptDividers.java | Top/bottom rules, session badge, history label, and border color |
