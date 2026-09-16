@@ -30,7 +30,14 @@ order.
 
 | Component | Path | Responsibility |
 |---|---|---|
-| InputPanel | lanterna/input/InputPanel.java | Prompt composition, key routing, image chips, and footer |
+| InputPanel | lanterna/input/InputPanel.java | Prompt text box, mode detection, key pipeline, and composition of the collaborators below |
+| PromptFooter | lanterna/input/PromptFooter.java | Single footer selection and its keyboard/mouse protocol over ProjectsButton, TasksPill, WorkflowFooter, CoordinatorFooter, and CollaborationPill |
+| PromptHintBar | lanterna/input/PromptHintBar.java | Hint row priority, temporary notifications, and the status line |
+| PromptDividers | lanterna/input/PromptDividers.java | Top/bottom rules, session badge, history label, and border color |
+| PromptChipEditor | lanterna/input/PromptChipEditor.java | Atomic `[Image #N]` / pasted-text chip insertion, hopping, deletion, and pruning |
+| PromptPasteHandler | lanterna/input/PromptPasteHandler.java | Bracketed and Ctrl+V paste classification, pending-paste state, deferred submit |
+| PromptSuggestionBridge | lanterna/input/PromptSuggestionBridge.java | Suggestion dropdown context, accept keys, and `@token` / shell-token splice rules |
+| PromptVimAdapter | lanterna/input/PromptVimAdapter.java | Vim key translation, buffer mirroring, INSERT label, and cursor shape |
 | ReadlineEngine | lanterna/input/ReadlineEngine.java | Cursor movement and readline editing |
 | InputHistoryController | lanterna/input/InputHistoryController.java | History navigation and draft restoration |
 | PromptPastedContentController | lanterna/input/PromptPastedContentController.java | Paste identity, lazy spaces, and pasted-image handling |

@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.googlecode.lanterna.gui2.Container;
 import com.googlecode.lanterna.gui2.Panel;
-import java.lang.reflect.Field;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
 
@@ -62,9 +61,7 @@ class InputPanelLifecycleTest {
         }
     }
 
-    private static ScheduledFuture<?> refreshFuture(InputPanel panel) throws Exception {
-        Field field = InputPanel.class.getDeclaredField("pillRefreshFuture");
-        field.setAccessible(true);
-        return (ScheduledFuture<?>) field.get(panel);
+    private static ScheduledFuture<?> refreshFuture(InputPanel panel) {
+        return panel.footerRefreshFutureForTest();
     }
 }

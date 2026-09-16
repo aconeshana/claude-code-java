@@ -1,35 +1,23 @@
 package com.claudecode.ui.lanterna.input;
 
-import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.constants.Figures;
 import com.claudecode.core.engine.SessionIdentity;
-import com.claudecode.core.imagestore.ImageStore;
 import com.claudecode.core.message.PastedContent;
-import com.claudecode.core.paste.ImagePaste;
-import com.claudecode.core.paste.InputPasteTruncation;
 import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
-import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.turn.QueuedInputDraft;
-import com.claudecode.tools.tasks.InProcessTeammateTask;
 import com.claudecode.tools.tasks.TaskRegistry;
-import com.claudecode.tools.tasks.TaskState;
 import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskType;
-import com.claudecode.tools.workflows.WorkflowRun;
 import com.claudecode.tools.workflows.WorkflowRunStore;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox.Highlight;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
-import com.claudecode.ui.lanterna.status.StatusLineComponent;
 import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
-import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
-import com.claudecode.ui.vim.VimMode;
-import com.claudecode.ui.vim.VimStateMachine;
 import com.googlecode.lanterna.CursorStyle;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
@@ -48,29 +36,17 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.PasteKeyStroke;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -101,8 +77,8 @@ public class InputPanel extends Panel {
         () -> UiSettings.readGlobalBoolean("leftArrowOpensAgents", true);
 
     // Vim mode state
-    private boolean          vimEnabled = false;
-    private final VimStateMachine vim    = new VimStateMachine();
+    /** Vim keybinding bridge; owns the state machine, the INSERT label and the re-entrancy fence. */
+    private final PromptVimAdapter vim = new PromptVimAdapter(new VimHost());
 
     // Child components
     private final Label  promptLabel;
@@ -114,9 +90,9 @@ public class InputPanel extends Panel {
      * typeahead, highlights, and ghost text all consume the same value).
      */
     private String currentText = "";
-/**
- * Cached visual row count, including.
- */
+    /**
+     * Cached visual row count, including.
+     */
     private int currentTextRows = 1;
     /** Width of the editable content region before PromptTextLayout reserves its cursor cell. */
     private int inputContentColumns = 80 - PROMPT_INPUT_COLUMN_OVERHEAD;
@@ -135,156 +111,29 @@ public class InputPanel extends Panel {
      * ordering (before {@code textBoxRef.set}) is irrelevant.
      */
     private ReadlineEngine engine;
-    private final Label  hintMainLabel;
-    private final Label  hintSuffixLabel;
-    private final Label  vimModeLabel;
-/** established prompt hint/tasks row; coordinator rows are mounted after it. */
+    /** Hint row labels + status line; owns hint priority and temporary notifications. */
+    private final PromptHintBar hintBar;
+    /** Established prompt hint/tasks row; coordinator rows are mounted after it. */
     private final Panel hintRow;
-    /** Collaboration footer group, always the final visual row. */
-    private final Panel collaborationRow;
-
-
-    /** The pill text ("1 shell"); dim, SGR.REVERSE while selected. Empty = hidden. */
-    private final Label tasksPillLabel;
-    /** Dynamic multi-agent pill row; the single summary pill is inserted here when needed. */
-    private final Panel tasksPillsPanel;
-    /** Optional original-only attention CTA next to the ordinary task pill. */
-    private final Label tasksHintLabel;
-    /** Permanent keyboard-focusable footer entry for one optional IM channel. */
-    @Explanation("Permanent per-session IM collaboration footer control")
-    private final Label collaborationPillLabel;
     /**
-     * ≡ project-drawer button — leftmost footer stop (its spatial position).
-     * A Java-side extension with no 197 counterpart. Selected via keyboard
-     * (first ↓ from empty input), clicked, Enter toggles the drawer;
-     * {@code projectsButtonActive} mirrors the drawer's open state.
+     * Every keyboard-selectable control below the text box (≡ button, tasks
+     * pill, coordinator rows, workflow rows, Collaboration) and the single
+     * selection walking between them.
      */
-    private final Label projectsButtonLabel;
-    private boolean projectsButtonSelected;
-    private boolean projectsButtonActive;
-    private boolean projectsButtonMousePressed;
-    private boolean projectsButtonMouseHovered;
-    private volatile SessionCollaborationController collaborationController;
-    private AutoCloseable collaborationSubscription;
-    private boolean collaborationPillSelected;
-    /** Footer and teammate state machine; this panel only renders its projection. */
-    private final PromptTaskNavigationController taskNavigation =
-        new PromptTaskNavigationController();
-/**
- * Press/release latch for the clickable.
- */
-    private boolean tasksPillMousePressed;
+    private final PromptFooter footer;
 
-    private boolean tasksPillMouseHovered;
-    private final PromptTaskNavigationController.Host taskNavigationHost =
-        new PromptTaskNavigationController.Host() {
-            @Override public void openTasksDialog() {
-                if (actions != null) actions.openTasksDialog();
-            }
-            @Override public void refreshHint() { updateHint(); }
-            @Override public void clearStatusLine() { InputPanel.this.clearTransientStatusLine(); }
-            @Override public void showTeammateStatus(InProcessTeammateTask task) {
-                String name = task.name() == null ? task.getTaskId() : task.name();
-                String preview = task.lastMessagePreview(160).replace("\n", " ");
-                setTransientStatusLine("Viewing @" + name + " — "
-                    + (preview.isEmpty() ? "(idle)" : preview), 0);
-            }
-            @Override public void showInterruptedHint() {
-                showTemporaryHint("Interrupted teammate turn (Esc)",
-                    LanternaTheme.welcomeDim(), HINT_TIMEOUT_MS);
-            }
-            @Override public void showPermissionModeHint(PermissionMode mode) {
-                showTemporaryHint("Teammate mode → " + mode.title(),
-                    LanternaTheme.colorFor(mode), HINT_TIMEOUT_MS);
-            }
-            @Override public void teammateViewChanged() {
-                if (actions != null) actions.teammateViewChanged();
-            }
-            @Override public void setTeammateTreeExpanded(boolean expanded) {
-                taskNavigation.setTeammateTreeExpanded(expanded);
-                if (actions != null) actions.setTeammateTreeExpanded(expanded);
-            }
-            @Override public boolean isTeammateTreeExpanded() {
-                return actions != null && actions.isTeammateTreeExpanded();
-            }
-        };
-    /**
-     * Unified tasks-footer navigation for the optional background pill,
-     * {@code main}, and local-agent rows. Null until wired via
-     * {@link #setCoordinatorNavigation}.
-     */
-    private CoordinatorNavigationController coordinatorNavigation;
-    /** The rendered coordinator panel; refreshed from the tick. Null until wired. */
-    private CoordinatorPanelView coordinatorPanel;
-    /** Lanterna component backing {@link #coordinatorPanel}, when it has one. */
-    private Component coordinatorPanelComponent;
-    /** Content row armed by a CLICK_DOWN on the coordinator panel; -1 = none. */
-    private int coordinatorPressedRow = -1;
+    /** Top/bottom rules with their shared border color and the session-name/history badges. */
+    private final PromptDividers dividers = new PromptDividers();
+    /** Atomic {@code [Image #N]} / pasted-text chip editing over the text box. */
+    private final PromptChipEditor chips;
+    /** Slash/@/bash-path dropdown between the divider and the hint row, plus its accept/fill rules. */
+    private final PromptSuggestionBridge suggestions = new PromptSuggestionBridge(new SuggestionHost());
 
-    private WorkflowRunStore workflowRuns;
-    /** Current-process task projection; persisted workflow history has no footer row. */
-    private TaskRegistry taskRegistry;
-
-    private boolean workflowFooterSelected;
-
-    private int workflowFooterIndex;
-    /** Keeps selection on the same workflow when another row is evicted. */
-    private String selectedWorkflowTaskId;
-    /** Resolves an agent task id to its display name for the coordinator panel. */
-    private Function<String, String> coordinatorNameResolver = _ -> null;
-    private final CoordinatorNavigationController.Host coordinatorNavigationHost =
-        new CoordinatorNavigationController.Host() {
-            @Override public void teammateViewChanged() {
-                if (actions != null) actions.teammateViewChanged();
-            }
-            @Override public void refreshHint() {
-                updateHint();
-                refreshCoordinatorPanel();
-            }
-            @Override public void clearStatusLine() { InputPanel.this.clearTransientStatusLine(); }
-        };
-    /** Periodic pill refresh; runs only while this panel is attached to a GUI. */
-    private ScheduledFuture<?> pillRefreshFuture;
-
-    /**
-     * User-set prompt-bar color from {@code /color}.
-     */
-    private TextColor sessionColor;
-    /** Session name set by {@code /rename}. Shown as a colored badge in the top divider. */
-    private String agentName;
-    private int lastDividerWidth = 80;
-    private final SuggestionPanel suggestionPanel; // between divider and hint
-    private SuggestionContext suggestionContext = SuggestionContext.NONE;
-
-    private enum SuggestionContext { NONE, STANDARD, BASH_PATH }
     /** Reactive queued-input preview above the prompt divider; never enters transcript history. */
     private final Panel queuedPreviewPanel;
     /** Plain lines retained for deterministic headless tests and change-gated rerenders. */
     private List<String> queuedPreviewLines = List.of();
 
-    private final StatusLineComponent statusLineComponent;
-    /** Persistent custom/native HUD state; transient progress must never destroy it. */
-    private String persistentStatusText;
-    private int persistentStatusPadding;
-
-    private boolean persistentStatusVisible;
-    /** Short-lived progress/view text, used only while no persistent HUD is visible. */
-    private String transientStatusText;
-    private int transientStatusPadding;
-    /** Row-panel: left dashes + optional colored badge + trailing dashes. */
-    private final Panel topDividerPanel;
-    /** Left dashes — foreground = bannerColor when banner active, else border color. */
-    private final Label topDividerLeft;
-    /**
-     * Colored badge showing the session name from {@code /rename}.
-     */
-    private final Label topDividerBadge;
-    /**
-     * Trailing {@code ──} after the badge.
-     */
-    private final Label topDividerTrail;
-    private String historyBorderLabel;
-    private final Label  bottomDivider;
 
     /**
      * The single outward port for every REPL action / notification this panel
@@ -331,8 +180,81 @@ public class InputPanel extends Panel {
     // (deleted by the user) are pruned on every text change.
     private final PromptPastedContentController pastedContent =
         new PromptPastedContentController();
+    {
+        chips = new PromptChipEditor(new ChipHost(), pastedContent);
+    }
     /** Draft-only undo history; never rewinds QuerySession conversation state. */
     private final DraftUndoBuffer draftUndo = new DraftUndoBuffer(50);
+
+    /** Editor access and prompt actions for the vim bridge. */
+    private final class VimHost implements PromptVimAdapter.Host {
+        @Override public String text() { return textBox.getText(); }
+        @Override public int caret() { return caretCol(); }
+        @Override public void setTextRaw(String text) { textBox.setText(text); }
+        @Override public void moveCaretTo(int offset) { InputPanel.this.moveCaretTo(offset); }
+        @Override public TextBox.Result forwardToEditor(KeyStroke key) { return textBox.handleKeyStroke(key); }
+        @Override public TextBox.Result historyUp() { return ((PromptTextBox) textBox).rl_historyUp(); }
+        @Override public TextBox.Result historyDown() { return ((PromptTextBox) textBox).rl_historyDown(); }
+        @Override public boolean chipBackspace() {
+            if (!chips.backspace()) return false;
+            chips.pruneOrphanedImages();
+            return true;
+        }
+        @Override public boolean chipDelete() {
+            if (!chips.delete()) return false;
+            chips.pruneOrphanedImages();
+            return true;
+        }
+        @Override public void textEdited() { updateMode(); fireQueryChange(); }
+        @Override public void submit(String text) {
+            resetMode();
+            if (!StringUtils.isBlank(text) && actions != null) {
+                actions.submit(prependModePrefix(text));
+            }
+        }
+        @Override public void cancel() { if (actions != null) actions.cancel(); }
+        @Override public void cursorStyleChanged(CursorStyle style) {
+            if (actions != null) actions.cursorStyleChanged(style);
+        }
+    }
+
+    /** Editor access for suggestion fills. */
+    private final class SuggestionHost implements PromptSuggestionBridge.Host {
+        @Override public String text() { return textBox.getText(); }
+        @Override public int caret() { return caretCol(); }
+        @Override public void apply(PromptSuggestionBridge.Edit edit) {
+            textBox.setText(edit.text());
+            TextBoxOffsetAdapter.setOffset(textBox, edit.caret());
+            updateMode();
+            fireQueryChange();
+        }
+    }
+
+    /** Panel services for the paste flow. */
+    private final class PasteHost implements PromptPasteHandler.Host {
+        @Override public int terminalRows() { return InputPanel.this.terminalRows(); }
+        @Override public Consumer<Runnable> guiInvoker() { return guiInvoker; }
+        @Override public String sessionId() { return sessionIdentity.get(); }
+        @Override public void insertChip(String chip, boolean armLazySpace) {
+            chips.insertAtCursor(chip, armLazySpace);
+            firePastedContentsChange();
+        }
+        @Override public void refreshHint() { updateHint(); }
+        @Override public void submitDeferred() {
+            ((PromptTextBox) textBox).tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
+        }
+    }
+
+    /** Text-box access for the chip editor plus the panel's post-edit notifications. */
+    private final class ChipHost implements PromptChipEditor.Host {
+        @Override public String text() { return textBox.getText(); }
+        @Override public int caret() { return caretCol(); }
+        @Override public void setTextRaw(String text) { textBox.setText(text); }
+        @Override public void moveCaretTo(int offset) { InputPanel.this.moveCaretTo(offset); }
+        @Override public void textEdited() { updateMode(); fireQueryChange(); }
+        @Override public void recordUndoSnapshot() { draftUndo.record(captureDraftSnapshot()); }
+        @Override public void pastedContentsChanged() { firePastedContentsChange(); }
+    }
     /** Monotonic suppression token observed by nested PromptTextBox key dispatches. */
     private long draftUndoSuppressionGeneration;
 
@@ -344,17 +266,6 @@ public class InputPanel extends Panel {
     // visible here too without a separate setSessionId sync step.
     private SessionIdentity sessionIdentity = SessionIdentity.newRandom();
 
-    /**
-     * True while {@link #handleVimKey} is forwarding a key to the underlying
-     * TextBox via {@code textBox.handleKeyStroke(key)}. The textBox is a
-     * {@link PromptTextBox} whose {@code handleKeyStroke} override routes back
-     * here — without this guard the call would re-enter {@code handleVimKey}
-     * for the same key and recurse until {@code StackOverflowError}. Same
-     * pattern as the {@code moveCaretTo} fix (which used
-     * {@code setCaretPosition} to sidestep the keystroke entirely); vim needs
-     * the real key event, so it uses a reentrancy flag instead.
-     */
-    private boolean inVimKeyDispatch = false;
 
     /** Scheduler onto the Lanterna GUI thread — set by LanternaReplScreen. */
     private Consumer<Runnable> guiInvoker;
@@ -417,21 +328,14 @@ public class InputPanel extends Panel {
                 showTemporaryHint(text, color, timeoutMs);
             }
             @Override public void setHistoryLabel(String label) {
-                historyBorderLabel = label;
-                updateTopDivider(lastDividerWidth);
+                dividers.setHistoryLabel(label);
             }
             @Override public String historySearchShortcut() {
                 return KeybindingHints.shortcut(keybindingsStore,
                     "history:search", "Global", "ctrl+r");
             }
             @Override public void setHistorySearchStatus(String query, boolean failedMatch) {
-                if (query != null && hintTimer != null) {
-                    hintTimer.cancel(false);
-                    hintTimer = null;
-                }
-                historySearchStatus = query == null ? null
-                    : (failedMatch ? "no matching prompt: " : "search prompts: ") + query;
-                updateHint();
+                hintBar.setHistorySearchStatus(query, failedMatch);
             }
             @Override public void setHistorySearchHighlight(int start, int length) {
                 historySearchHighlight = length <= 0 ? null
@@ -470,24 +374,21 @@ public class InputPanel extends Panel {
             t.setDaemon(true);
             return t;
         });
-    private static final ExecutorService PASTE_EXECUTOR =
-        Executors.newSingleThreadExecutor(Thread.ofVirtual().name("clipboard-paste").factory());
     private boolean           escOnce         = false;
     private ScheduledFuture<?> escTimer        = null;
     // True when input was EMPTY on the first Esc (double-Esc → MessageSelector vs. clear).
     private boolean           escEmptyFirst   = false;
     // Whether a query is in flight — set by LanternaReplScreen.
     private volatile boolean  isLoading       = false;
-    private final AtomicInteger pendingPastes = new AtomicInteger();
-    private final AtomicBoolean deferredPasteSubmit = new AtomicBoolean();
+    /** Clipboard/bracketed paste classification, pending-paste gate and deferred submit. */
+    private final PromptPasteHandler paste =
+        new PromptPasteHandler(new PasteHost(), pastedContent);
     // Whether transcript mode is active — set by LanternaReplScreen.
     // When true, Ctrl+E fires actions.transcriptShowAll() instead of engine.end().
     private volatile boolean  isTranscriptMode = false;
 
     // ── Temporary hint notification state ───────────────────────────────────.
-    private static final long HINT_TIMEOUT_MS = 1000;
-    private ScheduledFuture<?> hintTimer = null;
-    private String historySearchStatus;
+    static final long HINT_TIMEOUT_MS = 1000;
 
     /**
      * When true, the panel reports {@code (0,0)} preferred size so its host layout collapses it.
@@ -518,18 +419,6 @@ public class InputPanel extends Panel {
             ? "default" : initialPermissionMode;
         setLayoutManager(new LinearLayout(Direction.VERTICAL));
 
-        topDividerLeft = new Label("");
-        topDividerLeft.setForegroundColor(LanternaTheme.divider());
-        topDividerBadge = new Label("");
-        topDividerTrail = new Label("");
-        // Spacing=0 — LinearLayout(HORIZONTAL) defaults to 1, which would
-        // insert a 1-column gap between each label. With three labels that
-        // burns 2 columns of the total width, making the top divider shorter
-        // than the bottom divider (which is a single Label with no gaps).
-        topDividerPanel = new Panel(new LinearLayout(Direction.HORIZONTAL).setSpacing(0));
-        topDividerPanel.addComponent(topDividerLeft);
-        topDividerPanel.addComponent(topDividerBadge);
-        topDividerPanel.addComponent(topDividerTrail);
         queuedPreviewPanel = new Panel(new LinearLayout(Direction.VERTICAL).setSpacing(0));
 
         promptLabel = new Label("❯ ");
@@ -587,11 +476,7 @@ public class InputPanel extends Panel {
         promptRow.addComponent(textBox,
             LinearLayout.createLayoutData(LinearLayout.Alignment.FILL, LinearLayout.GrowPolicy.CAN_GROW));
 
-        bottomDivider = new Label("");
-        bottomDivider.setForegroundColor(LanternaTheme.divider());
 
-        // Suggestion dropdown — lives between the bottom divider and the hint row
-        suggestionPanel = new SuggestionPanel();
 
         // Inline ghost text — dim argument hint shown at the caret for commands that
         // have a progressive argument contract.
@@ -601,35 +486,19 @@ public class InputPanel extends Panel {
         ((HighlightedTextBox) textBox).setVisualLayoutSupplier(
             () -> textLayout, this::caretCol);
 
-        hintMainLabel   = new Label("");
-        hintSuffixLabel = new Label("");
-        tasksPillLabel  = new Label("");
-        tasksPillsPanel  = new Panel(new LinearLayout(Direction.HORIZONTAL).setSpacing(0));
-        tasksHintLabel  = new Label("");
-        collaborationPillLabel = new Label("Collaboration: Off");
-        collaborationPillLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        projectsButtonLabel = new Label("≡ ");
-        projectsButtonLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        vimModeLabel    = new Label("");
-        vimModeLabel.setForegroundColor(LanternaTheme.welcomeDim());
+        hintBar = new PromptHintBar(ESC_SCHEDULER, this::updateHint);
+        footer = new PromptFooter(new FooterHost());
         hintRow = new Panel(new LinearLayout(Direction.HORIZONTAL));
         // ≡ is the leftmost footer control, so it is also the first keyboard
         // stop (↓/→ walk the footer left→right).
-        hintRow.addComponent(projectsButtonLabel);
-        hintRow.addComponent(hintMainLabel);
-        hintRow.addComponent(hintSuffixLabel);
-
-        // PromptInputFooterLeftSide's [modePart][tasksPart][...parts] order
-
-
-        // Both labels are empty (zero-width) when no background tasks exist.
-        hintRow.addComponent(tasksPillsPanel);
-        hintRow.addComponent(tasksHintLabel);
-        hintRow.addComponent(vimModeLabel);
-        collaborationRow = new Panel(new LinearLayout(Direction.HORIZONTAL).setSpacing(0));
-        collaborationRow.addComponent(new Label("  "));
-        collaborationRow.addComponent(collaborationPillLabel);
-        statusLineComponent = new StatusLineComponent();
+        hintRow.addComponent(footer.projectsButtonComponent());
+        hintRow.addComponent(hintBar.mainLabel());
+        hintRow.addComponent(hintBar.suffixLabel());
+        // PromptInputFooterLeftSide's [modePart][tasksPart][...parts] order.
+        // Both task labels are empty (zero-width) when no background tasks exist.
+        hintRow.addComponent(footer.tasksPillsPanel());
+        hintRow.addComponent(footer.tasksHintLabel());
+        hintRow.addComponent(vim.label());
         // Construct before updateHint(): a surviving teammate-view selection
         // may ask the navigation host to clear this component during initial
         // projection (full-suite tests expose the same process-lifetime state
@@ -638,23 +507,42 @@ public class InputPanel extends Panel {
 
         addComponent(queuedPreviewPanel,
             LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
-        addComponent(topDividerPanel);
+        addComponent(dividers.top());
         // FILL so promptRow (and in turn textBox, via its own FILL+CAN_GROW
         // layout data above) actually receives InputPanel's real width from
         // the outer VERTICAL LinearLayout — without it, promptRow is sized to
         // the sum of its children's own preferred widths (promptLabel +
         // textBox's pinned ~80 columns), capped well short of a wide terminal.
         addComponent(promptRow, LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
-        addComponent(bottomDivider);
-        addComponent(suggestionPanel);   // ← below divider, above hint
+        addComponent(dividers.bottom());
+        addComponent(suggestions.component());   // ← below divider, above hint
 
         // left column). FILL so it receives InputPanel's real width for
         // truncation — Alignment.FILL stretches the cross-axis (= width in a
         // VERTICAL layout); see the promptRow note above.
-        addComponent(statusLineComponent,
+        addComponent(hintBar.statusLine(),
             LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
         addComponent(hintRow);
-        addComponent(collaborationRow);
+        addComponent(footer.collaborationRow());
+    }
+
+    /** The footer's view of this panel: action port, hint/status refresh, GUI marshalling. */
+    private final class FooterHost implements PromptFooter.Host {
+        @Override public InputActions actions() { return actions; }
+        @Override public void refreshHint() { updateHint(); }
+        @Override public void clearStatusLine() { clearTransientStatusLine(); }
+        @Override public void setTransientStatusLine(String text, int padding) {
+            InputPanel.this.setTransientStatusLine(text, padding);
+        }
+        @Override public void showTemporaryHint(String text, TextColor color, long timeoutMs) {
+            InputPanel.this.showTemporaryHint(text, color, timeoutMs);
+        }
+        @Override public int footerWidth() { return dividers.width(); }
+        @Override public void runOnGui(Runnable task) {
+            Consumer<Runnable> invoker = guiInvoker;
+            if (invoker == null || isOnGuiThread()) task.run();
+            else invoker.accept(task);
+        }
     }
 
     /**
@@ -687,87 +575,9 @@ public class InputPanel extends Panel {
                 InputPanel.this::fireQueryChange);
         }
 
-        /**
-         * Handle a bracketed-paste payload delivered by the terminal
-         * (Lanterna's BracketedPastePattern decoded the
-         * {@code \e[200~ ... \e[201~} wrapper into a PasteKeyStroke).
-         * <p>
-         * Path matches {@link #rl_imagePaste()} but skips the clipboard
-         * image probe — bracketed paste carries only text. If the user
-         * has an image in their clipboard, the terminal either sends an
-         * empty paste (no-op here) or nothing at all; Ctrl+V remains the
-         * fallback for image paste.
-         */
-        private Result rl_handlePaste(String pastedText) {
-            beginPaste();
-            // Captured on the GUI thread: the paste work below runs off it.
-            final int rows = terminalRows();
-            PASTE_EXECUTOR.execute(() -> {
-                try {
-                // Empty bracketed paste on macOS = user pasted an image with Cmd+V.
-                if (StringUtils.isEmpty(pastedText)) {
-                    ImagePaste.ImageWithDimensions img = ImagePaste.getImageFromClipboard();
-                    if (img != null) {
-                        final int pasteId = pastedContent.nextId();
-                        PastedContent content =
-                            new PastedContent(
-                                pasteId, "image", img.base64(), img.mediaType(),
-                                null, img.dimensions(), null);
-                        pastedContent.put(content);
-                        scheduleChipInsert(PastedRefParser.formatImageRef(pasteId), true);
-                    }
-                    return;
-                }
-
-                // 1. Drag-dropped image path? (VSCode Terminal pastes file paths)
-                ImagePaste.ImageWithDimensions fromPath =
-                    ImagePaste.tryReadImageFromPath(pastedText);
-                if (fromPath != null) {
-                    final int pasteId = pastedContent.nextId();
-                    PastedContent content =
-                        new PastedContent(
-                            pasteId, "image", fromPath.base64(), fromPath.mediaType(),
-                            null, fromPath.dimensions(), ImagePaste.asImageFilePath(pastedText));
-                    ImageStore.cacheImagePath(content, sessionIdentity.get());
-                    pastedContent.put(content);
-                    scheduleChipInsert(
-                        PastedRefParser.formatImageRef(pasteId), true);
-                    return;
-                }
-
-                // 2. Large/multiline text paste → [Pasted text #N +X lines] chip.
-                String stripped = PromptPasteTextPolicy.normalize(pastedText);
-                int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, rows)) {
-                    final int pasteId = pastedContent.nextId();
-                    PastedContent content = PastedContent.text(pasteId, stripped);
-                    pastedContent.put(content);
-                    scheduleChipInsert(PastedRefParser.formatPastedTextRef(pasteId, numLines));
-                    return;
-                }
-
-                // 3. Small single-line text — insert inline at cursor.
-                // Strip newlines: SINGLE_LINE TextBox cannot hold \n and inserting
-                // one would cause Lanterna to fire an ENTER event → premature submit.
-                final String inline = stripped.replace('\n', ' ').stripTrailing();
-                if (!inline.isEmpty() && guiInvoker != null) {
-                    guiInvoker.accept(() -> {
-                        insertChipAtCursor(inline);
-                        firePastedContentsChange();
-                    });
-                }
-                } finally {
-                    completePasteOnGui(null);
-                }
-            });
-            return Result.HANDLED;
-        }
-
         @Override
         public Result handleKeyStroke(KeyStroke key) {
-            if (deferredPasteSubmit.get() && key.getKeyType() != KeyType.ENTER) {
-                deferredPasteSubmit.set(false);
-            }
+            if (key.getKeyType() != KeyType.ENTER) paste.cancelDeferredSubmit();
             if (pendingBatchEnter && key.getKeyType() != KeyType.ENTER) {
                 // Input followed the swallowed ENTER inside the same batch, so
                 // the ENTER was a paste newline — materialize the line split
@@ -844,13 +654,13 @@ public class InputPanel extends Panel {
                     && key.getKeyType() == KeyType.ARROW_UP
                     && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
                 log.debug("[key-up] handleKeyStroke ARROW_UP, row={}, lineCount={}, isSearching={}, suggVisible={}, vim={}",
-                    getCaretPosition().getRow(), getLineCount(), historyController.isSearching(), suggestionPanel.isVisible(), vimEnabled);
+                    getCaretPosition().getRow(), getLineCount(), historyController.isSearching(), suggestions.isVisible(), vim.isEnabled());
             }
             // Re-entrancy fence: if vim is forwarding a key via
             // textBox.handleKeyStroke(key) we must NOT re-route through
             // handleVimKey — that would recurse on the same key. Send
             // it straight to the Lanterna TextBox parent.
-            if (inVimKeyDispatch) {
+            if (vim.isForwarding()) {
                 return super.handleKeyStroke(key);
             }
             // DEC 1004 focus events — route to MessagePanel.setFocused via callback.
@@ -897,7 +707,7 @@ public class InputPanel extends Panel {
             if (preEditorResult != null) return preEditorResult;
             Result editorResult = tryExitBashModeAtInputStart(key);
             if (editorResult != null) return editorResult;
-            if (vimEnabled) {
+            if (vim.isEnabled()) {
                 // Ctrl/Alt modifier combos bypass vim and use the
                 // readline path. claude-code's global bindings (Ctrl+V
                 // imagePaste, Ctrl+A home, Ctrl+P history, Ctrl+R search,
@@ -907,7 +717,7 @@ public class InputPanel extends Panel {
                 // Ctrl+V. Plain (unmodified) keys still go through vim
                 // so hjkl, escape→NORMAL, etc. work as expected.
                 if (!key.isCtrlDown() && !key.isAltDown()) {
-                    return handleVimKey(key);
+                    return vim.handleKey(key);
                 }
             }
             editorResult = tryHandleReadlineKeyStroke(key);
@@ -949,19 +759,15 @@ public class InputPanel extends Panel {
         }
 
         private boolean plainInputStateAllowsDirectEdit() {
-            return !suggestionPanel.isVisible() && plainInputStateAllowsBatch();
+            return !suggestions.isVisible() && plainInputStateAllowsBatch();
         }
 
         private boolean plainInputStateAllowsBatch() {
             return !messageActionsActive
-                && !taskNavigation.isActive()
-                && !taskNavigation.isPillSelected()
-                && !collaborationPillSelected
-                && !workflowFooterSelected
-                && !isCoordinatorPanelSelected()
+                && !footer.capturesPlainInput()
                 && !historyController.isSearching()
                 && !customKeybindingsEnabled()
-                && !vimEnabled
+                && !vim.isEnabled()
                 && !escOnce
                 && pastedContent.isEmpty();
         }
@@ -1115,7 +921,7 @@ public class InputPanel extends Panel {
             InputPanel.this.setText(
                 currentText.substring(0, start) + currentText.substring(caret));
             TextBoxOffsetAdapter.setOffset(textBox, start);
-            insertChipAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
+            chips.insertAtCursor(PastedRefParser.formatPastedTextRef(pasteId, numLines));
             firePastedContentsChange();
             return true;
         }
@@ -1131,14 +937,10 @@ public class InputPanel extends Panel {
         private boolean canBufferPlainBackspaces(int count) {
             if (count < 1
                     || messageActionsActive
-                    || taskNavigation.isActive()
-                    || taskNavigation.isPillSelected()
-                    || collaborationPillSelected
-                    || workflowFooterSelected
-                    || isCoordinatorPanelSelected()
+                    || footer.capturesPlainInput()
                     || historyController.isSearching()
                     || customKeybindingsEnabled()
-                    || vimEnabled
+                    || vim.isEnabled()
                     || escOnce
                     || !pastedContent.isEmpty()
                     || modeOverride != null
@@ -1250,112 +1052,23 @@ public class InputPanel extends Panel {
          * through to the footer and editor stages below.
          */
         private Result tryHandleTeammateKeyStroke(KeyStroke key) {
-            if (!taskNavigation.isActive()) return null;
-            boolean exitingLocalAgentView = key.getKeyType() == KeyType.ESCAPE
-                && coordinatorNavigation != null
-                && coordinatorNavigation.isViewingLocalAgent();
-            Result result = taskNavigation.handleTeammateKey(key, taskNavigationHost);
-            if (result != null && exitingLocalAgentView) clearFooterSelection();
-            return result;
+            return footer.handleTeammateKey(key);
         }
 
         /**
-         * While the tasks pill owns focus, Footer/Global bindings precede the
-         * pill's native navigation. A null result deliberately falls through to
-         * global Ctrl/Alt handling.
+         * While a footer stop owns focus, Footer/Global bindings precede the
+         * footer's native navigation. A null result deliberately falls through
+         * to global Ctrl/Alt handling.
          */
         private Result tryHandleFooterKeyStroke(KeyStroke key) {
-            boolean footerSelected = workflowFooterSelected
-                || isCoordinatorPanelSelected()
-                || projectsButtonSelected
-                || taskNavigation.isPillSelected()
-                || collaborationPillSelected;
-            if (!footerSelected) return null;
+            if (!footer.isAnySelected()) return null;
             if (customKeybindingsEnabled()) {
                 Result resolved = dispatchViaResolver(key,
                     List.of("Footer", "Chat", "Global"),
                     this::dispatchFooterOrChatAction);
                 if (resolved != null) return resolved;
             }
-            return handleSelectedFooterNativeKey(key);
-        }
-
-        private Result handleSelectedFooterNativeKey(KeyStroke key) {
-            KeyStroke normalized = normalizeNativeFooterKey(key);
-            if (projectsButtonSelected) {
-                return handleProjectsButtonKey(normalized);
-            }
-            if (workflowFooterSelected) {
-                Result r = handleWorkflowFooterKey(normalized);
-                if (r != null) return r;
-            }
-            // Subagent coordinator panel owns footer focus independently of the
-            // teammate/bash pill.
-            if (isCoordinatorPanelSelected()) {
-                Result r = handleCoordinatorPanelKey(normalized);
-                if (r != null) return r;
-            }
-            if (!taskNavigation.isPillSelected() && !collaborationPillSelected) return null;
-            if (collaborationPillSelected) {
-                return handleCollaborationPillKey(normalized);
-            }
-            if (normalized.getKeyType() == KeyType.ARROW_DOWN) {
-                if (!visibleWorkflowRuns().isEmpty()) selectCurrentWorkflowFooter();
-                else selectCollaborationFooter();
-                return Result.HANDLED;
-            }
-            if (normalized.getKeyType() == KeyType.ARROW_RIGHT) {
-                if (!visibleWorkflowRuns().isEmpty()) selectCurrentWorkflowFooter();
-                else selectCollaborationFooter();
-                return Result.HANDLED;
-            }
-            if (normalized.getKeyType() == KeyType.ARROW_LEFT) {
-                // ← walks back left — from the tasks pill that is the ≡ button.
-                selectProjectsButton();
-                return Result.HANDLED;
-            }
-            return taskNavigation.handlePillKey(normalized, taskNavigationHost);
-        }
-
-        /**
-         * Keys while the ≡ projects button is selected: ↑/Esc leave the footer,
-         * ↓/→ resume the released pill chain, Enter toggles the drawer.
-         */
-        private Result handleProjectsButtonKey(KeyStroke key) {
-            KeyType type = key.getKeyType();
-            if (type == KeyType.ARROW_UP || type == KeyType.ESCAPE) {
-                clearFooterSelection();
-                updateHint();
-                return Result.HANDLED;
-            }
-            if (type == KeyType.ARROW_DOWN || type == KeyType.ARROW_RIGHT) {
-                selectFirstFooterStopAfterProjectsButton();
-                updateHint();
-                return Result.HANDLED;
-            }
-            if (type == KeyType.ARROW_LEFT) {
-                return Result.HANDLED; // leftmost stop — nowhere further to go
-            }
-            if (type == KeyType.ENTER && !key.isShiftDown()) {
-                projectsButtonSelected = false;
-                refreshFooterPills();
-                updateHint();
-                if (actions != null) actions.toggleProjectPanel();
-                return Result.HANDLED;
-            }
-            return Result.HANDLED; // swallow everything else while footer-focused
-        }
-
-        private KeyStroke normalizeNativeFooterKey(KeyStroke key) {
-            if (key.getKeyType() != KeyType.CHARACTER || key.getCharacter() == null
-                    || !key.isCtrlDown() || key.isAltDown() || key.isShiftDown()) {
-                return key;
-            }
-            return switch (Character.toLowerCase(key.getCharacter())) {
-                case 'p' -> new KeyStroke(KeyType.ARROW_UP);
-                case 'n' -> new KeyStroke(KeyType.ARROW_DOWN);
-                default -> key;
-            };
+            return footer.handleSelectedKey(key);
         }
 
         /** History search is an overlay, so its resolver and native handler run before paste or text editing. */
@@ -1385,15 +1098,16 @@ public class InputPanel extends Panel {
             // clipboard probing because the terminal knows what the user actually
             // pasted without us shelling out to pbpaste/xclip.
             if (key.getKeyType() == KeyType.PASTE && key instanceof PasteKeyStroke pks) {
-                return rl_handlePaste(pks.getPastedText());
+                paste.handleBracketedPaste(pks.getPastedText());
+                return Result.HANDLED;
             }
             if (key.getKeyType() == KeyType.REVERSE_TAB
                     || (key.getKeyType() == KeyType.TAB && key.isShiftDown())
                     || (key.getKeyType() == KeyType.TAB && key.isAltDown())) {
 
                 // Shift+Tab cycles its permission mode rather than the leader's.
-                if (taskNavigation.isViewing()) {
-                    taskNavigation.cycleViewedPermissionMode(taskNavigationHost);
+                if (footer.taskNavigation().isViewing()) {
+                    footer.cycleViewedTeammatePermissionMode();
                 } else {
                     cyclePermissionMode();
                 }
@@ -1404,14 +1118,14 @@ public class InputPanel extends Panel {
 
         /** Autocomplete consumes its navigation and Escape before normal bindings or request cancellation. */
         private Result tryHandleAutocompleteKeyStroke(KeyStroke key) {
-            if (!suggestionPanel.isVisible()) return null;
+            if (!suggestions.isVisible()) return null;
             if (customKeybindingsEnabled()) {
                 Result resolved = dispatchViaResolver(key,
                     List.of("Chat", "Autocomplete", "Global"),
                     this::dispatchAutocompleteOrChatAction);
                 if (resolved != null) return resolved;
             }
-            return handleSuggestionKey(key);
+            return suggestions.handleKey(key);
         }
 
         /**
@@ -1433,7 +1147,7 @@ public class InputPanel extends Panel {
         private Result tryHandleEmptyPromptAgentsKeyStroke(KeyStroke key) {
             if (key.getKeyType() != KeyType.ARROW_LEFT
                     || key.isCtrlDown() || key.isAltDown() || key.isShiftDown()
-                    || isLoading || modeOverride != null || taskNavigation.isViewing()
+                    || isLoading || modeOverride != null || footer.taskNavigation().isViewing()
                     || !currentText.isEmpty() || !pastedContent.isEmpty()
                     || !leftArrowOpensAgents.getAsBoolean() || actions == null) {
                 return null;
@@ -1568,26 +1282,26 @@ public class InputPanel extends Panel {
         private Result tryHandleChipEditingKeyStroke(KeyStroke key) {
             if (key.getKeyType() == KeyType.ARROW_LEFT
                     && !key.isCtrlDown() && !key.isAltDown()
-                    && hopLeftOverChip()) {
+                    && chips.hopLeft()) {
                 return Result.HANDLED;
             }
             if (key.getKeyType() == KeyType.ARROW_RIGHT
                     && !key.isCtrlDown() && !key.isAltDown()
-                    && hopRightOverChip()) {
+                    && chips.hopRight()) {
                 return Result.HANDLED;
             }
 
             if (key.getKeyType() == KeyType.BACKSPACE
                     && !key.isCtrlDown() && !key.isAltDown()
-                    && chipBackspace()) {
-                pruneOrphanedPastedContents();
+                    && chips.backspace()) {
+                chips.pruneOrphanedImages();
                 return Result.HANDLED;
             }
 
             if (key.getKeyType() == KeyType.DELETE
                     && !key.isCtrlDown() && !key.isAltDown()
-                    && chipDelete()) {
-                pruneOrphanedPastedContents();
+                    && chips.delete()) {
+                chips.pruneOrphanedImages();
                 return Result.HANDLED;
             }
             return null;
@@ -1600,8 +1314,8 @@ public class InputPanel extends Panel {
         private Result tryHandlePromptNavigationKeyStroke(KeyStroke key) {
             if (key.getKeyType() == KeyType.ARROW_UP && key.isShiftDown()
                     && !key.isCtrlDown() && !key.isAltDown()) {
-                if (taskNavigation.hasRunningTeammates()) {
-                    taskNavigation.handleShiftSelection(-1, taskNavigationHost);
+                if (footer.taskNavigation().hasRunningTeammates()) {
+                    footer.handleTeammateShiftSelection(-1);
                 } else if (actions != null) {
                     actions.toggleMessageActions();
                 }
@@ -1609,7 +1323,7 @@ public class InputPanel extends Panel {
             }
             if (key.getKeyType() == KeyType.ARROW_DOWN && key.isShiftDown()
                     && !key.isCtrlDown() && !key.isAltDown()) {
-                taskNavigation.handleShiftSelection(1, taskNavigationHost);
+                footer.handleTeammateShiftSelection(1);
                 return Result.HANDLED;
             }
             if (key.getKeyType() == KeyType.ARROW_UP
@@ -1642,10 +1356,7 @@ public class InputPanel extends Panel {
                 return result;
             }
             if (key.getKeyType() != KeyType.ENTER || key.isShiftDown()) return null;
-            if (pendingPastes.get() > 0) {
-                deferredPasteSubmit.set(true);
-                return Result.HANDLED;
-            }
+            if (paste.deferSubmitIfPending()) return Result.HANDLED;
             if (guiInputBatchDepth > 0 && plainInputCharsThisBatch > 0) {
                 // Unbracketed paste flood: this ENTER shares one PTY drain with
                 // pasted text (tmux paste-buffer turns \n into \r; CRLF
@@ -1667,8 +1378,8 @@ public class InputPanel extends Panel {
                     getLineCount(), text.replace("\n", "\\n"));
             }
             String submitText = prependModePrefix(text.trim());
-            if (taskNavigation.isViewing()) {
-                taskNavigation.injectViewed(submitText);
+            if (footer.taskNavigation().isViewing()) {
+                footer.taskNavigation().injectViewed(submitText);
                 suppressDraftUndoRecording();
                 draftUndo.clear();
                 setText("");
@@ -1699,7 +1410,7 @@ public class InputPanel extends Panel {
             if (key.getKeyType() != KeyType.ESCAPE) return null;
             if (isLoading) {
                 if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-                if (hintTimer != null) { hintTimer.cancel(false); hintTimer = null; }
+                hintBar.cancelTemporary();
                 escOnce = false;
                 escEmptyFirst = false;
                 if (actions != null) actions.cancel();
@@ -1724,7 +1435,7 @@ public class InputPanel extends Panel {
                     showTemporaryHint("Esc again to clear", LanternaTheme.welcomeDim(), HINT_TIMEOUT_MS);
                 } else {
                     if (escTimer != null) { escTimer.cancel(false); escTimer = null; }
-                    if (hintTimer != null) { hintTimer.cancel(false); hintTimer = null; }
+                    hintBar.cancelTemporary();
                     escOnce = false;
 
                     historyController.addEntry(text, System.getProperty("user.dir"));
@@ -1935,77 +1646,9 @@ public class InputPanel extends Panel {
             return Result.HANDLED;
         }
 
-        /**
-         * Ctrl+V — unified clipboard paste.
-         */
+        /** Ctrl+V — unified clipboard paste. */
         private Result rl_imagePaste() {
-            beginPaste();
-            // Captured on the GUI thread: the paste work below runs off it.
-            final int rows = terminalRows();
-            PASTE_EXECUTOR.execute(() -> {
-                try {
-                // 1. Clipboard image
-                ImagePaste.ImageWithDimensions img = ImagePaste.getImageFromClipboard();
-                if (img != null) {
-                    final int pasteId = pastedContent.nextId();
-                    PastedContent content =
-                        new PastedContent(
-                            pasteId, "image", img.base64(), img.mediaType(),
-                            null, img.dimensions(), null);
-                    String cachedPath = ImageStore.cacheImagePath(content, sessionIdentity.get());
-                    if (cachedPath != null) {
-                        content = new PastedContent(
-                            pasteId, "image", img.base64(), img.mediaType(),
-                            null, img.dimensions(), cachedPath);
-                    }
-                    pastedContent.put(content);
-                    scheduleChipInsert(PastedRefParser.formatImageRef(pasteId), true);
-                    return;
-                }
-
-                // 2. Clipboard text — drag-dropped image path?
-                String text = ImagePaste.getClipboardText();
-                if (text == null) return;
-                ImagePaste.ImageWithDimensions fromPath = ImagePaste.tryReadImageFromPath(text);
-                if (fromPath != null) {
-                    final int pasteId = pastedContent.nextId();
-                    PastedContent content =
-                        new PastedContent(
-                            pasteId, "image", fromPath.base64(), fromPath.mediaType(),
-                            null, fromPath.dimensions(), ImagePaste.asImageFilePath(text));
-                    ImageStore.cacheImagePath(content, sessionIdentity.get());
-                    pastedContent.put(content);
-                    scheduleChipInsert(
-                        PastedRefParser.formatImageRef(pasteId), true);
-                    return;
-                }
-
-                // 3. Large/multiline text paste → [Pasted text #N +X lines] chip
-                String stripped = PromptPasteTextPolicy.normalize(text);
-                int numLines = PastedRefParser.getPastedTextRefNumLines(stripped);
-                if (PromptPasteTextPolicy.shouldFoldIntoChip(stripped, numLines, rows)) {
-                    final int pasteId = pastedContent.nextId();
-                    PastedContent content = PastedContent.text(pasteId, stripped);
-                    pastedContent.put(content);
-                    scheduleChipInsert(
-                        PastedRefParser
-                            .formatPastedTextRef(pasteId, numLines));
-                    return;
-                }
-
-                // 4. Small single-line text — insert inline at cursor.
-                // Strip newlines: SINGLE_LINE TextBox cannot hold \n.
-                final String inline = stripped.replace('\n', ' ').stripTrailing();
-                if (!inline.isEmpty() && guiInvoker != null) {
-                    guiInvoker.accept(() -> {
-                        insertChipAtCursor(inline);
-                        firePastedContentsChange();
-                    });
-                }
-                } finally {
-                    completePasteOnGui(null);
-                }
-            });
+            paste.handleClipboardPaste();
             return Result.HANDLED;
         }
 
@@ -2078,12 +1721,9 @@ public class InputPanel extends Panel {
 
         private boolean dispatchAutocompleteOrChatAction(String action) {
             return switch (action) {
-                case "autocomplete:previous" -> { suggestionPanel.moveUp(); yield true; }
-                case "autocomplete:next" -> { suggestionPanel.moveDown(); yield true; }
-                case "autocomplete:accept" -> {
-                    acceptSelectedSuggestion();
-                    yield true;
-                }
+                case "autocomplete:previous" -> { suggestions.moveUp(); yield true; }
+                case "autocomplete:next" -> { suggestions.moveDown(); yield true; }
+                case "autocomplete:accept" -> { suggestions.accept(); yield true; }
                 case "autocomplete:dismiss" -> { hideSuggestions(); yield true; }
                 default -> dispatchChatAction(action);
             };
@@ -2091,17 +1731,7 @@ public class InputPanel extends Panel {
 
         private boolean dispatchFooterOrChatAction(String action) {
             if (Strings.CS.startsWith(action, "footer:")) {
-                KeyStroke canonical = switch (action) {
-                    case "footer:up" -> new KeyStroke(KeyType.ARROW_UP);
-                    case "footer:down" -> new KeyStroke(KeyType.ARROW_DOWN);
-                    case "footer:next" -> new KeyStroke(KeyType.ARROW_RIGHT);
-                    case "footer:previous" -> new KeyStroke(KeyType.ARROW_LEFT);
-                    case "footer:openSelected" -> new KeyStroke(KeyType.ENTER);
-                    case "footer:clearSelection" -> new KeyStroke(KeyType.ESCAPE);
-                    case "footer:close" -> new KeyStroke('x', false, false);
-                    default -> null;
-                };
-                return canonical != null && handleSelectedFooterNativeKey(canonical) != null;
+                return footer.dispatchFooterAction(action);
             }
             return dispatchChatAction(action);
         }
@@ -2205,7 +1835,7 @@ public class InputPanel extends Panel {
 
 
         private void handleKillAgents() {
-            boolean hasRunningAgents = taskNavigation.registry().listBackground().stream()
+            boolean hasRunningAgents = footer.taskNavigation().registry().listBackground().stream()
                 .anyMatch(t -> t.type() == TaskType.LOCAL_AGENT
                     && t.status() == TaskStatus.RUNNING);
             if (!hasRunningAgents) {
@@ -2231,23 +1861,6 @@ public class InputPanel extends Panel {
                 LanternaTheme.welcomeDim(), KILL_AGENTS_CONFIRM_WINDOW_MS);
         }
 
-        /**
-         * Schedule chip text insertion + change-notification on the GUI thread.
-         * For image chips pass {@code armLazySpace=true} so a leading space
-         * is auto-inserted before the next non-space printable keystroke.
-         */
-        private void scheduleChipInsert(String chip) {
-            scheduleChipInsert(chip, false);
-        }
-
-        private void scheduleChipInsert(String chip, boolean armLazySpace) {
-            if (guiInvoker != null) {
-                guiInvoker.accept(() -> {
-                    insertChipAtCursor(chip, armLazySpace);
-                    firePastedContentsChange();
-                });
-            }
-        }
     }
 
 
@@ -2294,11 +1907,7 @@ public class InputPanel extends Panel {
     }
 
     public void setWidth(int width) {
-        lastDividerWidth = width;
-        updateTopDivider(width);
-        String line = "─".repeat(Math.max(1, width));
-        bottomDivider.setText(line);
-        updateBorderColor();
+        dividers.setWidth(width);
     }
 
     /**
@@ -2320,88 +1929,14 @@ public class InputPanel extends Panel {
                 inputContentColumns = contentColumns;
                 refreshTextLayout();
             }
-            if (size.getColumns() != lastDividerWidth) setWidth(size.getColumns());
+            if (size.getColumns() != dividers.width()) setWidth(size.getColumns());
         }
         return this;
     }
 
-    /**
-     * Compute the current banner color.
-     */
-    private TextColor bannerColor() {
-        return sessionColor != null ? sessionColor : LanternaTheme.agentCyan();
-    }
-
-    /**
-     * Refresh the top divider.
-     */
-    private void updateTopDivider(int width) {
-        if (StringUtils.isBlank(agentName)) {
-            TextColor borderColor = mode == Mode.BASH
-                ? LanternaTheme.bashBorder()
-                : sessionColor != null ? sessionColor : LanternaTheme.promptBorder();
-            if (StringUtils.isNotBlank(historyBorderLabel)) {
-                String badge = " " + historyBorderLabel + " ";
-                int left = Math.min(2, Math.max(0, width - badge.length()));
-                int trailing = Math.max(0, width - left - badge.length());
-                topDividerLeft.setText("─".repeat(left));
-                topDividerBadge.setText(badge);
-                topDividerBadge.setForegroundColor(LanternaTheme.welcomeDim());
-                topDividerBadge.setBackgroundColor(TextColor.ANSI.DEFAULT);
-                topDividerTrail.setText("─".repeat(trailing));
-                topDividerTrail.setForegroundColor(borderColor);
-                topDividerTrail.setBackgroundColor(TextColor.ANSI.DEFAULT);
-            } else {
-                topDividerLeft.setText("─".repeat(Math.max(1, width)));
-                topDividerBadge.setText("");
-                topDividerBadge.setForegroundColor(TextColor.ANSI.DEFAULT);
-                topDividerBadge.setBackgroundColor(TextColor.ANSI.DEFAULT);
-                topDividerTrail.setText("");
-                topDividerTrail.setForegroundColor(TextColor.ANSI.DEFAULT);
-                topDividerTrail.setBackgroundColor(TextColor.ANSI.DEFAULT);
-            }
-            topDividerLeft.setForegroundColor(borderColor);
-            // Bottom divider must also follow the current border color —
-            // otherwise /color pink flips the top border but the bottom one
-            // stays gray. matches the banner-active branch below.
-            bottomDivider.setForegroundColor(borderColor);
-            bottomDivider.setBackgroundColor(TextColor.ANSI.DEFAULT);
-        } else {
-            TextColor bc = bannerColor();
-            // badge = " NAME " (space-padded); trail = "──" without background
-            String badgeText = " " + agentName + " ";
-            String trail = "──";
-            int dashes = Math.max(0, width - badgeText.length() - trail.length());
-            topDividerLeft.setText(dashes > 0 ? "─".repeat(dashes) : "");
-            topDividerLeft.setForegroundColor(bc);
-            topDividerLeft.setBackgroundColor(TextColor.ANSI.DEFAULT);
-            topDividerBadge.setText(badgeText);
-            topDividerBadge.setForegroundColor(LanternaTheme.inverseText());
-            topDividerBadge.setBackgroundColor(bc);
-            topDividerTrail.setText(trail);
-            topDividerTrail.setForegroundColor(bc);
-            topDividerTrail.setBackgroundColor(TextColor.ANSI.DEFAULT);
-
-            bottomDivider.setForegroundColor(bc);
-            bottomDivider.setBackgroundColor(TextColor.ANSI.DEFAULT);
-        }
-    }
-
-    /**
-     * Set (or clear) the session name shown in the top divider.
-     */
+    /** Set (or clear) the session name shown in the top divider. */
     public void setAgentName(String name) {
-        this.agentName = (StringUtils.isNotBlank(name)) ? name : null;
-        updateTopDivider(lastDividerWidth);
-    }
-
-    /**
-     * Recompute the top/bottom border color.
-     */
-    private void updateBorderColor() {
-        // Delegate entirely to updateTopDivider which handles both banner-active
-        // and no-banner paths including correct bottom-divider color.
-        updateTopDivider(lastDividerWidth);
+        dividers.setSessionName(name);
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
@@ -2411,44 +1946,22 @@ public class InputPanel extends Panel {
      * row, with {@code padding} horizontal inset.
      */
     public void setStatusLine(String text, int padding) {
-        persistentStatusText = text;
-        persistentStatusPadding = padding;
-        renderEffectiveStatusLine();
+        hintBar.setStatusLine(text, padding);
     }
 
     /** Clears the custom status line (collapses to zero height). */
     public void clearStatusLine() {
-        persistentStatusText = null;
-        persistentStatusPadding = 0;
-        renderEffectiveStatusLine();
+        hintBar.clearStatusLine();
     }
 
     /** Shows progress/navigation text without replacing the persistent HUD. */
     public void setTransientStatusLine(String text, int padding) {
-        transientStatusText = text;
-        transientStatusPadding = padding;
-        renderEffectiveStatusLine();
+        hintBar.setTransientStatusLine(text, padding);
     }
 
     /** Clears transient progress/navigation text and restores the persistent HUD. */
     public void clearTransientStatusLine() {
-        transientStatusText = null;
-        transientStatusPadding = 0;
-        renderEffectiveStatusLine();
-    }
-
-    private void renderEffectiveStatusLine() {
-        if (StringUtils.isNotBlank(persistentStatusText)) {
-            statusLineComponent.setStatusText(persistentStatusText, persistentStatusPadding);
-            persistentStatusVisible = true;
-        } else if (StringUtils.isNotBlank(transientStatusText)) {
-            statusLineComponent.setStatusText(transientStatusText, transientStatusPadding);
-            persistentStatusVisible = false;
-        } else {
-            statusLineComponent.clear();
-            persistentStatusVisible = false;
-        }
-        updateHint();
+        hintBar.clearTransientStatusLine();
     }
 
     /** Wire the single outward action/notification port (replaces ~19 {@code setOnXxx} setters). */
@@ -2546,7 +2059,7 @@ public class InputPanel extends Panel {
             // GUI cycle build/show new suggestions afterwards; this preserves
             // immediate echo for a whole `/config` terminal write. File
             // discovery remains asynchronous inside SuggestionController.
-            boolean replaceVisibleSuggestions = suggestionPanel.isVisible();
+            boolean replaceVisibleSuggestions = suggestions.isVisible();
             PromptTextBox prompt = (PromptTextBox) textBox;
             if (prompt.pendingBatchEnter) {
                 // The batch ended right after the swallowed ENTER — nothing
@@ -2588,17 +2101,9 @@ public class InputPanel extends Panel {
      * Apply a user-selected prompt-bar color from {@code /color}.
      */
     public void setSessionColor(String colorName) {
-        if (colorName == null || Strings.CS.equals("default", colorName)) {
-            this.sessionColor = null;
-        } else {
-            this.sessionColor = LanternaTheme.agentColor(colorName);
-            // Unknown name → leave the field null, so we fall back to default.
-        }
-
-        // session color paints the input's TOP/BOTTOM BORDER, not the prompt
-        // pointer. updatePromptColor re-renders ❯ in its mode-only color
-        // (bash/plan/default) — sessionColor no longer touches the pointer.
-        updateBorderColor();
+        // The session color paints the input's TOP/BOTTOM BORDER, not the
+        // prompt pointer: updatePromptColor keeps ❯ in its mode-only color.
+        dividers.setSessionColor(colorName);
         updatePromptColor();
         invalidate();
     }
@@ -2622,103 +2127,6 @@ public class InputPanel extends Panel {
         }
     }
 
-
-    private record InputTruncation(String text, boolean applied) {}
-
-
-    private InputTruncation truncateForInput(String text) {
-        if (text == null) return new InputTruncation("", false);
-        // Take an id only once the length gate passes — nextId increments a counter.
-        if (text.length() <= InputPasteTruncation.TRUNCATION_THRESHOLD) {
-            return new InputTruncation(text, false);
-        }
-        int pasteId = pastedContent.nextId();
-        InputPasteTruncation.Truncated truncated =
-            InputPasteTruncation.maybeTruncateMessageForInput(text, pasteId);
-        pastedContent.put(PastedContent.text(pasteId, truncated.placeholderContent()));
-        firePastedContentsChange();
-        return new InputTruncation(truncated.truncatedText(), true);
-    }
-
-    /**
-     * Insert a chip string at the cursor position, preserving cursor placement at the end of the chip.
-     */
-    private void insertChipAtCursor(String chip) {
-        insertChipAtCursor(chip, false);
-    }
-
-    /**
-     * Insert a chip with optional lazy-space arming.
-     */
-    private void insertChipAtCursor(String chip, boolean armLazySpace) {
-        draftUndo.record(captureDraftSnapshot());
-        String text = textBox.getText();
-        int caretCol = caretCol();
-        // Bound caret (Lanterna can return past-end on empty input)
-        if (caretCol > text.length()) caretCol = text.length();
-
-        String prefix = pastedContent.prefixBeforeChipAndArm(armLazySpace);
-        String newText = text.substring(0, caretCol) + prefix + chip + text.substring(caretCol);
-        int newCaret = caretCol + prefix.length() + chip.length();
-        textBox.setText(newText);
-        // Move cursor to newCaret. Same reason as moveCaretTo: sending HOME
-        // + N×ARROW_RIGHT through handleKeyStroke makes the overridden
-        // routine call hopRightOverChip on every step — fine for plain text
-        // but lethal right after inserting an [Image #N] chip, since the
-        // first ARROW_RIGHT would hop the caret over the chip we just added.
-        TextBoxOffsetAdapter.setOffset(textBox, newCaret);
-        updateMode();
-        fireQueryChange();
-    }
-
-    /**
-     * Prune pastedContents entries whose {@code [Image #N]} chip is no longer present in the input
-     * text.
-     */
-    private void pruneOrphanedImages() {
-        if (pastedContent.isEmpty()) return;
-        String text = currentText;
-        Set<Integer> referenced = new HashSet<>();
-        for (PastedRefParser.Ref ref : PastedRefParser.parseReferences(text)) {
-            referenced.add(ref.id());
-        }
-        boolean changed = false;
-        for (PastedContent c : pastedContent.valuesSnapshot()) {
-            if (c.isImage() && !referenced.contains(c.id())) {
-                pastedContent.remove(c.id());
-                changed = true;
-            }
-        }
-        if (changed) firePastedContentsChange();
-    }
-
-    /** Alias kept for clarity at call sites that prune after chip edits. */
-    private void pruneOrphanedPastedContents() { pruneOrphanedImages(); }
-
-
-    // [Image #N] chips are atomic: the cursor hops over them on left/right,
-    // and backspace/delete remove them whole. Cursor never lands inside.
-
-    private static final Pattern IMAGE_REF_AT_START = Pattern.compile("^\\[Image #\\d+]");
-    private static final Pattern IMAGE_REF_AT_END = Pattern.compile("\\[Image #\\d+]$");
-    /**
-     * Matches a token ref ({@code [Pasted text #N]}, {@code [Image #N]}, {@code [...Truncated text #N
-     * +M lines...]}) immediately before the caret.
-     */
-    private static final Pattern TOKEN_REF_AT_END =
-        Pattern.compile("(^|\\s)\\[(Pasted text #\\d+(?: \\+\\d+ lines)?|Image #\\d+|\\.\\.\\.Truncated text #\\d+ \\+\\d+ lines\\.\\.\\.)]$");
-
-    /** {@code imageRefStartingAt} — chip starts at offset. */
-    private int[] imageRefStartingAt(String text, int offset) {
-        Matcher m = IMAGE_REF_AT_START.matcher(text.substring(offset));
-        return m.find() ? new int[]{offset, offset + m.group().length()} : null;
-    }
-
-    /** {@code imageRefEndingAt} — chip ends at offset. */
-    private int[] imageRefEndingAt(String text, int offset) {
-        Matcher m = IMAGE_REF_AT_END.matcher(text.substring(0, offset));
-        return m.find() ? new int[]{offset - m.group().length(), offset} : null;
-    }
 
     /** Package-private for {@code InputPanel*} tests (was exposed via {@code caretOffsetForTest()}). */
     int caretCol() {
@@ -2747,104 +2155,13 @@ public class InputPanel extends Panel {
     }
 
 
-    private boolean hopLeftOverChip() {
-        String text = textBox.getText();
-        int caret = caretCol();
-        int[] chip = imageRefEndingAt(text, caret);
-        if (chip != null) {
-            moveCaretTo(chip[0]);
-            return true;
-        }
-        return false;
-    }
-
-
-    private boolean hopRightOverChip() {
-        String text = textBox.getText();
-        int caret = caretCol();
-        int[] chip = imageRefStartingAt(text, caret);
-        if (chip != null) {
-            moveCaretTo(chip[1]);
-            return true;
-        }
-        return false;
-    }
-
-
-    private boolean chipBackspace() {
-        String text = textBox.getText();
-        int caret = caretCol();
-
-        // Case 1: cursor at chip.start → delete chip forward (+ trailing space)
-        int[] chipAfter = imageRefStartingAt(text, caret);
-        if (chipAfter != null) {
-            int end = chipAfter[1];
-            if (end < text.length() && text.charAt(end) == ' ') end++;
-            String newText = text.substring(0, caret) + text.substring(end);
-            textBox.setText(newText);
-            moveCaretTo(caret);
-            updateMode(); fireQueryChange();
-            return true;
-        }
-
-        // Case 2: cursor after a pasted/truncated/image ref + next char is ws/EOL
-        if (caret > 0 && (caret >= text.length() || Character.isWhitespace(text.charAt(caret)))) {
-            String before = text.substring(0, caret);
-            Matcher m = TOKEN_REF_AT_END.matcher(before);
-            if (m.find()) {
-                int matchStart = m.start() + m.group(1).length();
-                String newText = text.substring(0, matchStart) + text.substring(caret);
-                textBox.setText(newText);
-                moveCaretTo(matchStart);
-                updateMode(); fireQueryChange();
-                return true;
-            }
-        }
-
-        // Case 3: cursor at chip.end → backspace = left() hops to chip.start,
-        // then delete chip.start.chip.end
-        int[] chipBefore = imageRefEndingAt(text, caret);
-        if (chipBefore != null) {
-            String newText = text.substring(0, chipBefore[0]) + text.substring(chipBefore[1]);
-            textBox.setText(newText);
-            moveCaretTo(chipBefore[0]);
-            updateMode(); fireQueryChange();
-            return true;
-        }
-
-        return false;  // fallback to default char-by-char backspace
-    }
-
-
-    private boolean chipDelete() {
-        String text = textBox.getText();
-        int caret = caretCol();
-        int[] chip = imageRefStartingAt(text, caret);
-        if (chip != null) {
-            String newText = text.substring(0, chip[0]) + text.substring(chip[1]);
-            textBox.setText(newText);
-            moveCaretTo(chip[0]);
-            updateMode(); fireQueryChange();
-            return true;
-        }
-        return false;
-    }
-
     public void setVimEnabled(boolean enabled) {
-        this.vimEnabled = enabled;
-        if (enabled) {
-            vim.reset();
-            updateVimModeLabel();
-        } else {
-            vimModeLabel.setText("");
-        }
+        vim.setEnabled(enabled);
     }
 
     public void setQueuedHint(boolean queued) {
         if (queued) {
-            setHintLabel(hintMainLabel, "");
-            setHintLabel(hintSuffixLabel, "Press up to edit queued messages");
-            hintSuffixLabel.setForegroundColor(LanternaTheme.queuedText());
+            hintBar.showQueuedHint();
         } else {
             updateHint();
         }
@@ -2890,7 +2207,7 @@ public class InputPanel extends Panel {
         firePastedContentsChange();
         fireQueryChange();
         setQueuedHint(false);
-        if (vimEnabled) syncVimBuffer();
+        if (vim.isEnabled()) vim.syncBuffer();
         invalidate();
         return true;
     }
@@ -2901,14 +2218,12 @@ public class InputPanel extends Panel {
      * @param termW    terminal width for column sizing
      */
     public void showSuggestions(List<SuggestionPanel.Suggestion> items, int termW) {
-        suggestionContext = SuggestionContext.STANDARD;
-        suggestionPanel.setSuggestions(items, termW);
+        suggestions.show(items, termW);
     }
 
     /** Show path completions for the current bash token. */
     public void showBashPathSuggestions(List<SuggestionPanel.Suggestion> items, int termW) {
-        suggestionContext = SuggestionContext.BASH_PATH;
-        suggestionPanel.setSuggestions(items, termW);
+        suggestions.showBashPaths(items, termW);
     }
 
     /**
@@ -2916,14 +2231,12 @@ public class InputPanel extends Panel {
      * {@link SuggestionPanel#setSuggestions(List, int, int)}.
      */
     public void showSuggestions(List<SuggestionPanel.Suggestion> items, int termW, int commandColumnWidth) {
-        suggestionContext = SuggestionContext.STANDARD;
-        suggestionPanel.setSuggestions(items, termW, commandColumnWidth);
+        suggestions.show(items, termW, commandColumnWidth);
     }
 
     /** Hide the suggestion dropdown. */
     public void hideSuggestions() {
-        suggestionContext = SuggestionContext.NONE;
-        suggestionPanel.hide();
+        suggestions.hide();
     }
 
     /** Current displayed input mode; bash text itself intentionally omits the leading {@code !}. */
@@ -2974,7 +2287,7 @@ public class InputPanel extends Panel {
 
 
     public String getVimMode() {
-        return vimEnabled ? vim.getMode().name() : null;
+        return vim.modeName();
     }
 
     /** Programmatically set the permission mode and refresh the hint row. */
@@ -3003,7 +2316,7 @@ public class InputPanel extends Panel {
      * Set the input text programmatically (e.g., from external editor).
      */
     public void setText(String text) {
-        InputTruncation truncated = truncateForInput(text);
+        PromptChipEditor.Truncation truncated = chips.truncateForInput(text);
         textBox.setText(truncated.text());
         moveCaretToTextEnd();
         updateMode();
@@ -3029,7 +2342,7 @@ public class InputPanel extends Panel {
     public void setRestoredText(String text) {
         if (text == null) return;
         modeOverride = InputModes.overrideFromPrefix(text);
-        InputTruncation truncated = truncateForInput(InputModes.stripPrefix(text));
+        PromptChipEditor.Truncation truncated = chips.truncateForInput(InputModes.stripPrefix(text));
         textBox.setText(truncated.text());
         if (truncated.applied()) {
             // END only reaches the end of the FIRST line; a truncated value is
@@ -3077,7 +2390,7 @@ public class InputPanel extends Panel {
         escOnce           = false;
         modeOverride      = null;  // clear any mode from history entry
 
-        if (hintTimer != null) { hintTimer.cancel(false); hintTimer = null; }
+        hintBar.cancelTemporary();
         updateHint();
     }
 
@@ -3102,7 +2415,7 @@ public class InputPanel extends Panel {
 
         // directly editable instead of being collapsed into a pasted-text chip.
         restorePastedContents(entry.pastedContents());
-        InputTruncation truncated = truncateForInput(body);
+        PromptChipEditor.Truncation truncated = chips.truncateForInput(body);
         textBox.setText(truncated.text());
         if (truncated.applied()) {
             moveCaretToTextEnd();
@@ -3135,169 +2448,10 @@ public class InputPanel extends Panel {
     ) {}
 
 
-    /**
-     * Handle keys when suggestion panel is visible.
-     * Returns non-null Result when the key was consumed for suggestion navigation.
-     */
-    private TextBox.Result handleSuggestionKey(KeyStroke key) {
-        return switch (key.getKeyType()) {
-            case ARROW_UP -> {
-                suggestionPanel.moveUp();
-                yield TextBox.Result.HANDLED;
-            }
-            case ARROW_DOWN -> {
-                suggestionPanel.moveDown();
-                yield TextBox.Result.HANDLED;
-            }
-            case ENTER -> {
-                if (suggestionContext == SuggestionContext.BASH_PATH) {
-                    hideSuggestions();
-
-                    // Enter; only Tab/autocomplete:accept applies bash-path.
-                    yield null;
-                }
-                SuggestionPanel.Suggestion s = suggestionPanel.acceptSelected();
-                suggestionContext = SuggestionContext.NONE;
-                if (s != null) fillFromSuggestion(s.primary());
-
-                // executeOnReturn=true. The accepted command has already hidden
-                // the panel, so route the same keystroke through the ordinary
-                // submit path instead of requiring a second Enter.
-                // Returning null lets PromptTextBox continue with the same
-                // Enter into its ordinary submit stage. Non-command suggestions
-                // remain accept-only.
-                yield s != null && Strings.CS.startsWith(s.primary(), "/")
-                    ? null
-                    : TextBox.Result.HANDLED;
-            }
-            case TAB -> {
-                acceptSelectedSuggestion();
-                yield TextBox.Result.HANDLED;
-            }
-            case ESCAPE -> {
-                hideSuggestions();
-                yield TextBox.Result.HANDLED;
-            }
-            default -> null; // not consumed — fall through to normal handling
-        };
-    }
-
-    private void acceptSelectedSuggestion() {
-        SuggestionContext context = suggestionContext;
-        SuggestionPanel.Suggestion suggestion = suggestionPanel.acceptSelected();
-        suggestionContext = SuggestionContext.NONE;
-        if (suggestion == null) return;
-        if (context == SuggestionContext.BASH_PATH) {
-            fillBashPathSuggestion(suggestion.primary());
-        } else {
-            fillFromSuggestion(suggestion.primary());
-        }
-    }
-
-    /** Replace only the shell token immediately before the caret. */
-    private void fillBashPathSuggestion(String replacementPath) {
-        String text = textBox.getText();
-        int cursor = Math.min(caretCol(), text.length());
-        int tokenStart = text.substring(0, cursor).lastIndexOf(' ') + 1;
-        boolean directory = Strings.CS.endsWith(replacementPath, "/");
-        String replacement = replacementPath + (directory ? "" : " ");
-        String updated = text.substring(0, tokenStart) + replacement + text.substring(cursor);
-        textBox.setText(updated);
-        TextBoxOffsetAdapter.setOffset(textBox, tokenStart + replacement.length());
-        updateMode();
-        hideSuggestions();
-        fireQueryChange();
-    }
-
-    /**
-     * Replace the input text with the chosen suggestion's primary text.
-     */
-    private void fillFromSuggestion(String primary) {
-        // Strip "* " prefix used to mark skills in suggestion list
-        String clean = Strings.CS.startsWith(primary, "* ") ? primary.substring(2) : primary;
-
-        // ── Command suggestion: replace whole input ───────────────────────
-        if (Strings.CS.startsWith(clean, "/")) {
-            String filled = clean + " ";
-            textBox.setText(filled);
-            textBox.handleKeyStroke(new KeyStroke(KeyType.END, false, false));
-            updateMode();
-            hideSuggestions();
-            fireQueryChange();
-            return;
-        }
-
-        // ── File / directory suggestion: locate @token and replace it ─────.
-
-        // AT_TOKEN_HEAD_RE = /^@[\p{L}\p{N}\p{M}_\-./\\[\]~:]*/u
-        // PATH_CHAR_HEAD_RE = /^[\p{L}\p{N}\p{M}_\-./\\[\]~:]+/u
-
-        // Steps:
-        //  1. Find the last @ before cursor that is preceded by start or whitespace.
-        //  2. Verify the text from @ to cursor matches the token head pattern.
-        //  3. Extend the token to include any path characters AFTER the cursor.
-        //  4. Build replacement: @suggestion (quoted if it has spaces) + trailing space.
-        //  5. Replace [startPos .. startPos+tokenLen] in the full text.
-        //  6. Reposition caret to end of replacement.
-
-        String currentText = textBox.getText();
-        int caretCol = caretCol();
-        String beforeCursor = caretCol <= currentText.length()
-            ? currentText.substring(0, caretCol) : currentText;
-        String afterCursor = caretCol <= currentText.length()
-            ? currentText.substring(caretCol) : "";
-
-        // Find last @ preceded by start-of-string or whitespace
-        int atIdx = -1;
-        for (int i = beforeCursor.length() - 1; i >= 0; i--) {
-            if (beforeCursor.charAt(i) == '@') {
-                if (i == 0 || Character.isWhitespace(beforeCursor.charAt(i - 1))) {
-                    atIdx = i;
-                    break;
-                }
-            }
-        }
-
-        if (atIdx >= 0) {
-            // Token head: everything from @ to cursor
-            String tokenHead = beforeCursor.substring(atIdx); // includes '@'
-            // Token tail: leading path chars after cursor (matches PATH_CHAR_HEAD_RE)
-            Matcher tailM = Pattern
-                .compile("^[\\w\\p{L}\\p{N}\\p{M}_\\-./\\\\()\\[\\]~:]+")
-                .matcher(afterCursor);
-            String tokenTail = tailM.find() ? tailM.group() : "";
-
-            int tokenLen = tokenHead.length() + tokenTail.length();
-
-            // Build replacement value (matches formatReplacementValue)
-            boolean needsQuotes = Strings.CS.contains(clean, " ");
-            String replacement = needsQuotes
-                ? "@\"" + clean + "\" "
-                : "@" + clean + " ";
-
-            String newText = currentText.substring(0, atIdx)
-                + replacement
-                + currentText.substring(atIdx + tokenLen);
-            int newCaret = atIdx + replacement.length();
-
-            textBox.setText(newText);
-            // Reposition caret: Home then ArrowRight × newCaret
-            TextBoxOffsetAdapter.setOffset(textBox, newCaret);
-        } else {
-            // No @ token found — insert as plain text at end
-            textBox.setText(clean + " ");
-            textBox.handleKeyStroke(new KeyStroke(KeyType.END, false, false));
-        }
-
-        updateMode();
-        hideSuggestions();
-        fireQueryChange();
-    }
-
     private void fireQueryChange() {
 
         // PromptInput useEffect([input, setPastedContents]).
-        if (!pastedContent.isEmpty()) pruneOrphanedImages();
+        if (!pastedContent.isEmpty()) chips.pruneOrphanedImages();
         if (actions == null) return;
 
         Consumer<Runnable> invoker = guiInvoker;
@@ -3318,7 +2472,7 @@ public class InputPanel extends Panel {
     private void deliverQueryChangeImmediately() {
         queryChangeScheduled = false;
         queryChangeGeneration++;
-        if (!pastedContent.isEmpty()) pruneOrphanedImages();
+        if (!pastedContent.isEmpty()) chips.pruneOrphanedImages();
         deliverQueryChange();
     }
 
@@ -3330,184 +2484,6 @@ public class InputPanel extends Panel {
     private void deliverQueryChange() {
         InputActions currentActions = actions;
         if (currentActions != null) currentActions.queryChanged(currentText, caretCol());
-    }
-
-    // ── Vim key handling ─────────────────────────────────────────────────────
-
-    private TextBox.Result handleVimKey(KeyStroke key) {
-        VimMode vimMode = vim.getMode();
-
-        // Sync vim's internal cursor & buffer with the textBox before
-        // processing. The textBox can drift out of sync when readline
-        // shortcuts (Ctrl+A, Ctrl+E, arrows in INSERT, paste chip insert)
-        // move the caret without going through vim — without this sync the
-        // next vim.processKey insertion would land at the stale cursor and
-        // appear to overwrite a chip / earlier text.
-        syncVimBuffer();
-        try {
-            int caretCol = caretCol();
-            vim.setCursor(caretCol);
-        } catch (Exception _) {}
-
-        if (vimMode == VimMode.INSERT) {
-            if (key.getKeyType() == KeyType.ARROW_LEFT || key.getKeyType() == KeyType.ARROW_RIGHT) {
-                return dispatchToTextBox(key);
-            }
-
-            // to textInput.onInput → upOrHistoryUp / downOrHistoryDown).
-            // Cannot use dispatchToTextBox here because it re-enters the override with
-            // inVimKeyDispatch=true, which jumps straight to super.handleKeyStroke and
-            // bypasses the history navigation code entirely.
-            if (key.getKeyType() == KeyType.ARROW_UP
-                    && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
-                return ((PromptTextBox) textBox).rl_historyUp();
-            }
-            if (key.getKeyType() == KeyType.ARROW_DOWN
-                    && !key.isShiftDown() && !key.isCtrlDown() && !key.isAltDown()) {
-                return ((PromptTextBox) textBox).rl_historyDown();
-            }
-            // Chip-aware Backspace/Delete: vim.processKey(127) would only
-            // delete one char of "[Image #1]", leaving "[Image #1" garbage in
-            // the buffer. Route to the same chipBackspace/chipDelete path
-            // that the non-vim branch uses, then resync vim's buffer so its
-            // internal state matches the textBox after the chip removal.
-            if (key.getKeyType() == KeyType.BACKSPACE
-                    && !key.isCtrlDown() && !key.isAltDown()) {
-                if (chipBackspace()) {
-                    pruneOrphanedPastedContents();
-                    syncVimBuffer();
-                    try { vim.setCursor(caretCol()); }
-                    catch (Exception _) {}
-                    return TextBox.Result.HANDLED;
-                }
-                return dispatchToTextBox(key);
-            }
-            if (key.getKeyType() == KeyType.DELETE
-                    && !key.isCtrlDown() && !key.isAltDown()) {
-                if (chipDelete()) {
-                    pruneOrphanedPastedContents();
-                    syncVimBuffer();
-                    try { vim.setCursor(caretCol()); }
-                    catch (Exception _) {}
-                    return TextBox.Result.HANDLED;
-                }
-                return dispatchToTextBox(key);
-            }
-        }
-
-        char c = keystrokeToChar(key, vimMode);
-        if (c == 0) {
-            if (vimMode == VimMode.INSERT) {
-                TextBox.Result r = dispatchToTextBox(key);
-                syncVimBuffer();
-                return r;
-            }
-            return TextBox.Result.HANDLED;
-        }
-
-        if (c == '\n' || c == '\r') {
-            // Enter in INSERT: submit. In NORMAL: no-op.
-            if (vimMode == VimMode.INSERT) {
-                String text = vim.getBuffer().trim();
-                vim.reset();
-                textBox.setText("");
-                updateVimModeLabel();
-                resetMode();
-                if (!StringUtils.isBlank(text) && actions != null) {
-                    actions.submit(prependModePrefix(text));
-                }
-            }
-            return TextBox.Result.HANDLED;
-        }
-
-        if (c == 27) {
-            if (vimMode == VimMode.INSERT) {
-                vim.processKey(c);
-                textBox.setText(vim.getBuffer());
-                TextBoxOffsetAdapter.setOffset(textBox, vim.getCursor());
-                updateVimModeLabel();
-                return TextBox.Result.HANDLED;
-            }
-            if (actions != null) actions.cancel();
-            return TextBox.Result.HANDLED;
-        }
-
-        vim.processKey(c);
-        textBox.setText(vim.getBuffer());
-        // Push vim's updated cursor back to the textBox so the caret stays
-        // visually aligned. Without this, setText resets the textBox caret
-        // and successive readline shortcuts work off a stale position.
-        TextBoxOffsetAdapter.setOffset(textBox, vim.getCursor());
-        updateMode();
-        updateVimModeLabel();
-        fireQueryChange();
-        return TextBox.Result.HANDLED;
-    }
-
-    /**
-     * Forward a keystroke to the underlying TextBox while bypassing the
-     * subclass {@code handleKeyStroke} override that routes back through
-     * vim. Sets {@link #inVimKeyDispatch} so the override knows to send the
-     * key straight to Lanterna's parent {@code TextBox#handleKeyStroke}.
-     * Must use try/finally to always clear the flag even if the inner call
-     * throws.
-     */
-    private TextBox.Result dispatchToTextBox(KeyStroke key) {
-        inVimKeyDispatch = true;
-        try {
-            return textBox.handleKeyStroke(key);
-        } finally {
-            inVimKeyDispatch = false;
-        }
-    }
-
-    private void syncVimBuffer() {
-        String boxText = textBox.getText();
-        if (!boxText.equals(vim.getBuffer())) vim.setBuffer(boxText);
-    }
-
-    private static char keystrokeToChar(KeyStroke key, VimMode vimMode) {
-        return switch (key.getKeyType()) {
-            case CHARACTER   -> key.getCharacter();
-            case BACKSPACE, DELETE -> (char) 127;
-            case ESCAPE      -> (char) 27;
-            case ENTER       -> '\n';
-            case ARROW_LEFT   -> vimMode == VimMode.INSERT ? (char) 0 : 'h';
-            case ARROW_RIGHT  -> vimMode == VimMode.INSERT ? (char) 0 : 'l';
-            case ARROW_UP     -> vimMode == VimMode.INSERT ? (char) 0 : 'k';
-            case ARROW_DOWN   -> vimMode == VimMode.INSERT ? (char) 0 : 'j';
-            case HOME        -> vimMode == VimMode.INSERT ? (char) 0 : '0';
-            case END         -> vimMode == VimMode.INSERT ? (char) 0 : '$';
-            default          -> (char) 0;
-        };
-    }
-
-    private void updateVimModeLabel() {
-        if (!vimEnabled) {
-            vimModeLabel.setText("");
-            // Restore default cursor when vim is disabled
-            if (actions != null) {
-                actions.cursorStyleChanged(CursorStyle.DEFAULT);
-            }
-            return;
-        }
-
-        VimMode vm = vim.getMode();
-        if (vm == VimMode.INSERT) {
-            vimModeLabel.setText("  -- INSERT --");
-            vimModeLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        } else {
-            vimModeLabel.setText("");
-        }
-        // Sync cursor shape to Vim mode — DECSCUSR escape sequence emitted
-        // by the Terminal's setCursorStyle default method.
-        if (actions != null) {
-            CursorStyle cs = switch (vm) {
-                case INSERT -> CursorStyle.BLINKING_BAR;
-                case NORMAL -> CursorStyle.STEADY_BLOCK;
-            };
-            actions.cursorStyleChanged(cs);
-        }
     }
 
     /** Notify InputPanel when transcript mode is active (gates Ctrl+E routing). */
@@ -3539,7 +2515,7 @@ public class InputPanel extends Panel {
     }
 
     private void updateMode() {
-        String text = vimEnabled ? vim.getBuffer() : currentText;
+        String text = vim.isEnabled() ? vim.buffer() : currentText;
         if (modeOverride == null && mode == Mode.NORMAL
                 && (text.isEmpty() || text.charAt(0) != '!')) {
             return;
@@ -3574,24 +2550,18 @@ public class InputPanel extends Panel {
         updateHint();
     }
 
+    /**
+     * Repaints the {@code ❯}/{@code !} pointer and tells the dividers which
+     * border color applies.
+     *
+     * <p>The pointer is dim while loading, {@code bashBorder} in bash mode and
+     * otherwise carries no foreground SGR at all so the terminal palette
+     * default shows through. The plan-mode visual cue lives in the footer chip,
+     * never in the pointer, and the {@code /color} session color paints only the
+     * dividers.
+     */
     private void updatePromptColor() {
-
-        //   - bash mode: <Text color="bashBorder" dimColor={isLoading}>! </Text>
-        //   - else:      <Text color={undefined} dimColor={isLoading}>❯ </Text>
-
-        // Notes on the alignment:
-
-        //     prompt-input mode. The plan-state visual cue lives in the footer
-
-        //     not in the ❯ pointer. We previously over-colored ❯ in PLAN.
-
-        //     — NOT a dim grey. We pass null here so Lanterna emits no SGR for
-        //     foreground, letting the terminal palette default through.
-        //   • {@link #sessionColor} (the /color value) does NOT touch the ❯
-
-        //     — see {@link #updateBorderColor}. Teammate-color tinting of ❯
-
-
+        dividers.setBashMode(mode == Mode.BASH);
         TextColor color;
         if (isLoading) {
             color = LanternaTheme.welcomeDim();  // dimColor=true wins
@@ -3619,607 +2589,62 @@ public class InputPanel extends Panel {
      * normal hint.
      */
     private void showTemporaryHint(String text, TextColor color, long timeoutMs) {
-        // Cancel any existing hint timer
-        if (hintTimer != null) { hintTimer.cancel(false); hintTimer = null; }
-        setHintLabel(hintMainLabel, "  " + text);
-        hintMainLabel.setForegroundColor(color);
-        setHintLabel(hintSuffixLabel, "");
-        hintTimer = ESC_SCHEDULER.schedule(() -> {
-            hintTimer = null;
-            updateHint();
-        }, timeoutMs, TimeUnit.MILLISECONDS);
+        hintBar.showTemporary(text, color, timeoutMs);
     }
-
-
-
 
     private TextBox.Result historyDownOrEnterFooter() {
         if (historyController.atBottom()) {
             // The ≡ projects button is the leftmost footer control, so the
             // first ↓ from the prompt selects it; the next ↓/→ resumes the
             // released chain via selectFirstFooterStopAfterProjectsButton().
-            selectProjectsButton();
+            footer.enterFromPrompt();
             return TextBox.Result.HANDLED;
         }
         return historyController.down();
     }
 
-    /**
-     * The released 197 footer entry chain, reached when advancing past the ≡
-     * button: coordinator panel → workflow footer → tasks pill → Collaboration.
-     */
-    private void selectFirstFooterStopAfterProjectsButton() {
-        projectsButtonSelected = false;
-        if (coordinatorNavigation != null && coordinatorNavigation.panelAvailable()) {
-            workflowFooterSelected = false;
-            collaborationPillSelected = false;
-            boolean hasBackgroundPill = taskNavigation.pillAvailable();
-            coordinatorNavigation.selectPanel(hasBackgroundPill);
-            if (hasBackgroundPill) taskNavigation.selectPill();
-            else taskNavigation.deselectPill();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            return;
-        }
-        if (!visibleWorkflowRuns().isEmpty() && !taskNavigation.pillAvailable()) {
-            collaborationPillSelected = false;
-            selectCurrentWorkflowFooter();
-            return;
-        }
-        collaborationPillSelected = !taskNavigation.pillAvailable();
-        if (!collaborationPillSelected) taskNavigation.selectPill();
-        refreshFooterPills();
-    }
-
-    /** Selects the ≡ button as the sole footer selection. */
-    private void selectProjectsButton() {
-        workflowFooterSelected = false;
-        selectedWorkflowTaskId = null;
-        collaborationPillSelected = false;
-        taskNavigation.deselectPill();
-        if (coordinatorNavigation != null) coordinatorNavigation.deselectPanel();
-        projectsButtonSelected = true;
-        refreshCoordinatorPanel();
-        refreshFooterPills();
-        updateHint();
+    /** Whether the subagent coordinator panel currently owns keyboard focus. */
+    boolean isCoordinatorPanelSelected() {
+        return footer.isCoordinatorPanelSelected();
     }
 
     /** Mirrors the project drawer's open state on the ≡ button. */
-    public synchronized void setProjectsButtonActive(boolean active) {
-        if (projectsButtonActive == active) return;
-        projectsButtonActive = active;
-        refreshFooterPills();
+    public void setProjectsButtonActive(boolean active) {
+        footer.setProjectsButtonActive(active);
     }
-
-    /** Whether the subagent coordinator panel currently owns keyboard focus.
-     *  Package-private for {@code InputPanelTasksPillTest} (was exposed via
-     *  {@code isCoordinatorPanelSelectedForTest()}). */
-    boolean isCoordinatorPanelSelected() {
-        return coordinatorNavigation != null && coordinatorNavigation.isPanelSelected();
-    }
-
-
-    private TextBox.Result handleWorkflowFooterKey(KeyStroke key) {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        if (workflows.isEmpty()) {
-            workflowFooterSelected = false;
-            refreshCoordinatorPanel();
-            return null;
-        }
-        workflowFooterIndex = Math.max(0, Math.min(workflowFooterIndex, workflows.size() - 1));
-        KeyType type = key.getKeyType();
-        boolean plain = !key.isCtrlDown() && !key.isAltDown() && !key.isShiftDown();
-        if (type == KeyType.ARROW_UP && plain) {
-            if (workflowFooterIndex > 0) {
-                workflowFooterIndex--;
-                selectedWorkflowTaskId = workflows.get(workflowFooterIndex).taskId();
-            } else {
-                selectFooterBeforeWorkflows(true);
-                return TextBox.Result.HANDLED;
-            }
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_DOWN && plain) {
-            if (workflowFooterIndex < workflows.size() - 1) {
-                workflowFooterIndex++;
-                selectedWorkflowTaskId = workflows.get(workflowFooterIndex).taskId();
-                refreshCoordinatorPanel();
-                updateHint();
-            } else {
-                selectCollaborationFooter();
-            }
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_RIGHT && plain) {
-            selectCollaborationFooter();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_LEFT && plain) {
-            selectFooterBeforeWorkflows(false);
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ENTER && !key.isShiftDown()) {
-            WorkflowRun run = workflows.get(workflowFooterIndex);
-            workflowFooterSelected = false;
-            selectedWorkflowTaskId = null;
-            refreshCoordinatorPanel();
-            if (actions != null) actions.openWorkflowDialog(run.taskId());
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ESCAPE) {
-            workflowFooterSelected = false;
-            selectedWorkflowTaskId = null;
-            refreshCoordinatorPanel();
-            updateHint();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.CHARACTER && key.getCharacter() != null
-                && plain && key.getCharacter() == 'x') {
-            WorkflowRun run = workflows.get(workflowFooterIndex);
-            if (taskRegistry != null) {
-                if (run.status().hasResult()) taskRegistry.dismissWorkflow(run.taskId());
-                else taskRegistry.killWorkflow(run.taskId());
-            }
-            clampWorkflowFooterSelection();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.CHARACTER && key.getCharacter() != null
-                && !key.isCtrlDown() && !key.isAltDown()) {
-            return TextBox.Result.HANDLED;
-        }
-        return null;
-    }
-
-    private void selectWorkflowFooter(int index) {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        if (workflows.isEmpty()) return;
-        workflowFooterSelected = true;
-        workflowFooterIndex = Math.max(0, Math.min(index, workflows.size() - 1));
-        selectedWorkflowTaskId = workflows.get(workflowFooterIndex).taskId();
-        taskNavigation.deselectPill();
-        collaborationPillSelected = false;
-        if (coordinatorNavigation != null) coordinatorNavigation.deselectPanel();
-        refreshCoordinatorPanel();
-        refreshFooterPills();
-        updateHint();
-    }
-
-    private void selectCurrentWorkflowFooter() {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        if (workflows.isEmpty()) return;
-        selectWorkflowFooter(Math.min(workflowFooterIndex, workflows.size() - 1));
-    }
-
-    /** Selects the permanent footer item after tasks/coordinator/workflows. */
-    private void selectCollaborationFooter() {
-        workflowFooterSelected = false;
-        taskNavigation.deselectPill();
-        if (coordinatorNavigation != null) coordinatorNavigation.deselectPanel();
-        collaborationPillSelected = true;
-        refreshCoordinatorPanel();
-        refreshFooterPills();
-        updateHint();
-    }
-
-/**
-     * Moves from Collaboration to the preceding.
-     */
-    private boolean selectFooterBeforeCollaboration() {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        if (!workflows.isEmpty()) {
-            selectWorkflowFooter(Math.min(workflowFooterIndex, workflows.size() - 1));
-            return true;
-        }
-        CoordinatorNavigationController nav = coordinatorNavigation;
-        if (nav != null && nav.panelAvailable()) {
-            collaborationPillSelected = false;
-            boolean hasBackgroundPill = taskNavigation.pillAvailable();
-            nav.selectPanel(hasBackgroundPill);
-            if (hasBackgroundPill) taskNavigation.selectPill();
-            else taskNavigation.deselectPill();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return true;
-        }
-        if (taskNavigation.pillAvailable()) {
-            collaborationPillSelected = false;
-            taskNavigation.selectPill();
-            refreshFooterPills();
-            updateHint();
-            return true;
-        }
-        return false;
-    }
-
-    /** Moves from workflows to the preceding tasks group, if one is visible. */
-    private boolean selectFooterBeforeWorkflows(boolean exitAtStart) {
-        CoordinatorNavigationController nav = coordinatorNavigation;
-        if (nav != null && nav.panelAvailable()) {
-            workflowFooterSelected = false;
-            selectedWorkflowTaskId = null;
-            boolean hasBackgroundPill = taskNavigation.pillAvailable();
-            nav.selectPanel(hasBackgroundPill);
-            if (hasBackgroundPill) taskNavigation.selectPill();
-            else taskNavigation.deselectPill();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return true;
-        }
-        if (taskNavigation.pillAvailable()) {
-            workflowFooterSelected = false;
-            selectedWorkflowTaskId = null;
-            taskNavigation.selectPill();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return true;
-        }
-        if (exitAtStart) {
-            workflowFooterSelected = false;
-            selectedWorkflowTaskId = null;
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            updateHint();
-            return true;
-        }
-        return false;
-    }
-
-    private void clampWorkflowFooterSelection() {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        int count = workflows.size();
-        if (count == 0) {
-            workflowFooterSelected = false;
-            workflowFooterIndex = 0;
-            selectedWorkflowTaskId = null;
-        } else {
-            int retained = selectedWorkflowTaskId == null ? -1
-                : IntStream.range(0, workflows.size())
-                    .filter(index -> selectedWorkflowTaskId.equals(workflows.get(index).taskId()))
-                    .findFirst().orElse(-1);
-            workflowFooterIndex = retained >= 0 ? retained
-                : Math.min(workflowFooterIndex, count - 1);
-            if (workflowFooterSelected) {
-                selectedWorkflowTaskId = workflows.get(workflowFooterIndex).taskId();
-            }
-        }
-    }
-
-    private List<WorkflowRun> visibleWorkflowRuns() {
-        if (workflowRuns == null || taskRegistry == null) return List.of();
-        var byTaskId = workflowRuns.list().stream()
-            .collect(Collectors.toMap(WorkflowRun::taskId,
-                Function.identity(), (left, _) -> left));
-        return taskRegistry.listPanelWorkflowTasks(Instant.now()).stream()
-            .map(task -> byTaskId.get(task.id()))
-            .filter(Objects::nonNull)
-            .toList();
-    }
-
-    /**
- * Footer-context key routing while the subagent coordinator panel owns focus.
-     */
-    private TextBox.Result handleCoordinatorPanelKey(KeyStroke key) {
-        CoordinatorNavigationController nav = coordinatorNavigation;
-        KeyType type = key.getKeyType();
-        boolean plain = !key.isCtrlDown() && !key.isAltDown() && !key.isShiftDown();
-        if (type == KeyType.ARROW_UP && plain) {
-            int minimum = taskNavigation.pillAvailable() ? -1 : 0;
-            if (nav.coordinatorIndex() > minimum) {
-                nav.step(-1, coordinatorNavigationHost);
-                if (nav.coordinatorIndex() < 0) taskNavigation.selectPill();
-                else taskNavigation.deselectPill();
-            } else {
-                nav.deselectPanel();
-                taskNavigation.deselectPill();
-                updateHint();
-            }
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_DOWN && plain) {
-            if (nav.coordinatorIndex() >= nav.panelAgents().size()) {
-                if (!visibleWorkflowRuns().isEmpty()) selectCurrentWorkflowFooter();
-                else selectCollaborationFooter();
-                return TextBox.Result.HANDLED;
-            }
-            nav.step(1, coordinatorNavigationHost);
-            if (nav.coordinatorIndex() >= 0) taskNavigation.deselectPill();
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_RIGHT && plain) {
-            if (!visibleWorkflowRuns().isEmpty()) selectCurrentWorkflowFooter();
-            else selectCollaborationFooter();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_LEFT && plain) {
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ENTER && !key.isShiftDown()) {
-            if (nav.coordinatorIndex() < 0) {
-                nav.deselectPanel();
-                taskNavigation.handlePillAction("footer:openSelected", taskNavigationHost);
-            } else {
-                nav.openSelected(coordinatorNavigationHost);
-            }
-            refreshCoordinatorPanel();
-            refreshFooterPills();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ESCAPE) {
-            if (nav.handleEscape(coordinatorNavigationHost)) {
-                taskNavigation.deselectPill();
-                refreshCoordinatorPanel();
-                refreshFooterPills();
-                return TextBox.Result.HANDLED;
-            }
-            return null;
-        }
-        if (type == KeyType.CHARACTER && key.getCharacter() != null
-                && plain && key.getCharacter() == 'x') {
-            if (nav.coordinatorIndex() > 0 && !nav.isViewingSelectedAgent()) {
-                nav.dismissSelected(coordinatorNavigationHost);
-                refreshCoordinatorPanel();
-                refreshFooterPills();
-                return TextBox.Result.HANDLED;
-            }
-            if (nav.coordinatorIndex() <= 0) {
-                return TextBox.Result.HANDLED;
-            }
-            clearFooterSelection();
-            return null;
-        }
-        if (type == KeyType.CHARACTER && key.getCharacter() != null
-                && !key.isCtrlDown() && !key.isAltDown()) {
-            if (nav.isViewingSelectedAgent()) {
-                clearFooterSelection();
-                return null;
-            }
-            return TextBox.Result.HANDLED;
-        }
-        // Ctrl/Alt combos fall through to global handling.
-        return null;
-    }
-
-    private TextBox.Result handleCollaborationPillKey(KeyStroke key) {
-        KeyType type = key.getKeyType();
-        if (type == KeyType.ARROW_UP) {
-            if (!selectFooterBeforeCollaboration()) {
-                collaborationPillSelected = false;
-                refreshFooterPills();
-            }
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ESCAPE) {
-            collaborationPillSelected = false;
-            refreshFooterPills();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_LEFT) {
-            selectFooterBeforeCollaboration();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_DOWN) {
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ENTER) {
-            collaborationPillSelected = false;
-            refreshFooterPills();
-            if (actions != null) actions.openCollaborationPicker();
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_RIGHT) {
-            return TextBox.Result.HANDLED;
-        }
-        if (type == KeyType.CHARACTER && key.isCtrlDown()
-                && key.getCharacter() != null) {
-            char ch = Character.toLowerCase(key.getCharacter());
-            if (ch == 'p') {
-                if (!selectFooterBeforeCollaboration()) {
-                    collaborationPillSelected = false;
-                    refreshFooterPills();
-                }
-                return TextBox.Result.HANDLED;
-            }
-            if (ch == 'n') {
-                return TextBox.Result.HANDLED;
-            }
-            return null;
-        }
-        if (key.isCtrlDown() || key.isAltDown()) return null;
-        return TextBox.Result.HANDLED;
-    }
-
-    private synchronized void refreshFooterPills() {
-        refreshProjectsButton();
-        refreshTasksPill();
-        String value = collaborationController == null
-            ? "Off" : collaborationController.current().displayValue();
-        setLabelTextIfChanged(collaborationPillLabel,
-            "Collaboration: " + value);
-        if (collaborationPillSelected) collaborationPillLabel.addStyle(SGR.REVERSE);
-        else collaborationPillLabel.removeStyle(SGR.REVERSE);
-    }
-
-    /** ≡ reflects three states: keyboard-selected (REVERSE), drawer-open (accent), idle (dim). */
-    private void refreshProjectsButton() {
-        projectsButtonLabel.setForegroundColor(projectsButtonActive
-            ? LanternaTheme.suggestion() : LanternaTheme.welcomeDim());
-        if (projectsButtonSelected || projectsButtonMouseHovered) {
-            projectsButtonLabel.addStyle(SGR.REVERSE);
-        } else {
-            projectsButtonLabel.removeStyle(SGR.REVERSE);
-        }
-    }
-
-    /**
-     * Recomputes the pill + its trailing hint from the live registry.
-     */
-    synchronized void refreshTasksPill() {
-        taskNavigation.synchronizeTeammateCount();
-        if (coordinatorNavigation != null) {
-            boolean coordinatorWasSelected = coordinatorNavigation.isPanelSelected();
-            coordinatorNavigation.synchronizeBackgroundPill(taskNavigation.pillAvailable());
-            if (coordinatorWasSelected
-                    && !coordinatorNavigation.isPanelSelected()
-                    && taskNavigation.pillAvailable()) {
-                taskNavigation.selectPill();
-            }
-        }
-        if (taskNavigation.isTeammateFooterVisible()) {
-            renderTeammateFooter();
-            setLabelTextIfChanged(tasksHintLabel, "");
-            return;
-        }
-        tasksPillsPanel.removeAllComponents();
-        tasksPillsPanel.addComponent(tasksPillLabel);
-        PromptTaskNavigationController.PillView pill = taskNavigation.pillView();
-        if (pill.label().isEmpty()) {
-            tasksPillLabel.removeStyle(SGR.REVERSE);
-            setLabelTextIfChanged(tasksPillLabel, "");
-            setLabelTextIfChanged(tasksHintLabel, "");
-            return;
-        }
-        tasksPillLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        if (pill.selected() || tasksPillMouseHovered) tasksPillLabel.addStyle(SGR.REVERSE);
-        else tasksPillLabel.removeStyle(SGR.REVERSE);
-        setLabelTextIfChanged(tasksPillLabel, pill.label());
-        tasksHintLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        setLabelTextIfChanged(tasksHintLabel, pill.hint());
-    }
-
 
     public boolean handleTasksPillMouse(MouseAction mouse) {
-        return handleTasksPillMouseForTest(mouse, tasksPillsPanel.getGlobalPosition(),
-            tasksPillsPanel.getSize());
+        Panel pills = footer.tasksPillsPanel();
+        return footer.handleTasksPillMouse(mouse, pills.getGlobalPosition(), pills.getSize());
     }
 
-    /**
-     * Click handling for the footer ≡ button — same press/release latch as the
-     * tasks pill: press inside arms it, release inside activates, release
-     * outside cancels. Java-side extension, no 197 counterpart.
-     */
+    /** Click handling for the footer ≡ button. Java-side extension, no 197 counterpart. */
     public boolean handleProjectsButtonMouse(MouseAction mouse) {
-        return handleProjectsButtonMouseForTest(mouse, projectsButtonLabel.getGlobalPosition(),
-            projectsButtonLabel.getSize());
+        Label button = footer.projectsButtonComponent();
+        return footer.handleProjectsButtonMouse(mouse, button.getGlobalPosition(), button.getSize());
     }
 
     boolean handleProjectsButtonMouseForTest(MouseAction mouse, TerminalPosition origin,
                                              TerminalSize size) {
-        if (mouse == null || origin == null || size == null) {
-            projectsButtonMousePressed = false;
-            projectsButtonMouseHovered = false;
-            return false;
-        }
-        TerminalPosition point = mouse.getPosition();
-        boolean inside = point.getColumn() >= origin.getColumn()
-            && point.getColumn() < origin.getColumn() + size.getColumns()
-            && point.getRow() >= origin.getRow()
-            && point.getRow() < origin.getRow() + size.getRows();
-        return switch (mouse.getActionType()) {
-            case MOVE -> {
-                if (projectsButtonMouseHovered != inside) {
-                    projectsButtonMouseHovered = inside;
-                    refreshProjectsButton();
-                }
-                yield inside;
-            }
-            case CLICK_DOWN -> {
-                if (mouse.getButton() != 1) yield false;
-                projectsButtonMousePressed = inside;
-                yield inside;
-            }
-            case DRAG -> projectsButtonMousePressed;
-            case CLICK_RELEASE -> {
-                if (mouse.getButton() != 1) yield false;
-                boolean activate = projectsButtonMousePressed && inside;
-                boolean consume = projectsButtonMousePressed;
-                projectsButtonMousePressed = false;
-                if (activate) {
-                    projectsButtonSelected = false;
-                    refreshFooterPills();
-                    updateHint();
-                    if (actions != null) actions.toggleProjectPanel();
-                }
-                yield consume;
-            }
-            default -> false;
-        };
+        return footer.handleProjectsButtonMouse(mouse, origin, size);
     }
 
-    /**
-     * Click/hover handling for the {@code main}/subagent coordinator panel rows —
-     * same press/release latch as the tasks pill, but the hit test resolves a
-     * content row (via {@link CoordinatorPanelView#coordinatorIndexForRow}) instead
-     * of a single fixed rect, since the panel is a variable-height row list.
-     */
+    /** Click/hover handling for the {@code main}/subagent coordinator panel rows. */
     public boolean handleCoordinatorPanelMouse(MouseAction mouse) {
-        Component component = coordinatorPanelComponent;
+        Component component = footer.coordinatorComponent();
         if (component == null) return false;
-        return handleCoordinatorPanelMouseForTest(
+        return footer.handleCoordinatorPanelMouse(
             mouse, component.getGlobalPosition(), component.getSize());
     }
 
     boolean handleCoordinatorPanelMouseForTest(MouseAction mouse, TerminalPosition origin,
                                                TerminalSize size) {
-        CoordinatorPanelView panel = coordinatorPanel;
-        CoordinatorNavigationController nav = coordinatorNavigation;
-        if (mouse == null || origin == null || size == null || panel == null || nav == null) {
-            if (panel != null) panel.setHoveredRow(-1);
-            coordinatorPressedRow = -1;
-            return false;
-        }
-        TerminalPosition point = mouse.getPosition();
-        boolean insideCols = point.getColumn() >= origin.getColumn()
-            && point.getColumn() < origin.getColumn() + size.getColumns();
-        int contentRow = point.getRow() - origin.getRow() - 1; // row 0 is the blank margin
-        boolean insideRows = insideCols && contentRow >= 0
-            && point.getRow() < origin.getRow() + size.getRows();
-        int coordinatorIndex = insideRows
-            ? panel.coordinatorIndexForRow(contentRow, size.getColumns()) : -1;
-        boolean inside = insideRows && coordinatorIndex >= 0;
-        return switch (mouse.getActionType()) {
-            case MOVE -> {
-                panel.setHoveredRow(inside ? contentRow : -1);
-                yield inside;
-            }
-            case CLICK_DOWN -> {
-                if (mouse.getButton() != 1) yield false;
-                coordinatorPressedRow = inside ? contentRow : -1;
-                yield inside;
-            }
-            case DRAG -> coordinatorPressedRow >= 0;
-            case CLICK_RELEASE -> {
-                if (mouse.getButton() != 1) yield false;
-                boolean activate = coordinatorPressedRow >= 0
-                    && coordinatorPressedRow == contentRow && inside;
-                boolean consume = coordinatorPressedRow >= 0;
-                coordinatorPressedRow = -1;
-                if (activate) {
-                    nav.selectAndOpen(coordinatorIndex, coordinatorNavigationHost);
-                    refreshCoordinatorPanel();
-                    refreshFooterPills();
-                    updateHint();
-                }
-                yield consume;
-            }
-            default -> false;
-        };
+        return footer.handleCoordinatorPanelMouse(mouse, origin, size);
     }
 
-    boolean isProjectsButtonSelectedForTest() { return projectsButtonSelected; }
-    boolean isProjectsButtonActiveForTest() { return projectsButtonActive; }
+    ScheduledFuture<?> footerRefreshFutureForTest() { return footer.refreshFutureForTest(); }
+    boolean isProjectsButtonSelectedForTest() { return footer.isProjectsButtonSelected(); }
+    boolean isProjectsButtonActiveForTest() { return footer.isProjectsButtonActive(); }
 
     /**
      * Handles the established prompt wrapper's bare-click cursor positioning.
@@ -4258,122 +2683,23 @@ public class InputPanel extends Panel {
     }
 
     private void clearFooterSelection() {
-        boolean footerSelected = taskNavigation.isPillSelected()
-            || isCoordinatorPanelSelected()
-            || workflowFooterSelected
-            || collaborationPillSelected
-            || projectsButtonSelected;
-        if (!footerSelected) return;
-        taskNavigation.deselectPill();
-        taskNavigationHost.setTeammateTreeExpanded(false);
-        if (coordinatorNavigation != null) coordinatorNavigation.deselectPanel();
-        workflowFooterSelected = false;
-        selectedWorkflowTaskId = null;
-        collaborationPillSelected = false;
-        projectsButtonSelected = false;
-        refreshCoordinatorPanel();
-        refreshFooterPills();
-        updateHint();
+        footer.clearSelection();
     }
 
     boolean handleTasksPillMouseForTest(MouseAction mouse, TerminalPosition origin,
                                         TerminalSize size) {
-        if (mouse == null || origin == null || size == null
-                || !taskNavigation.pillAvailable()
-                || taskNavigation.isTeammateFooterVisible()) {
-            tasksPillMousePressed = false;
-            tasksPillMouseHovered = false;
-            return false;
-        }
-        TerminalPosition point = mouse.getPosition();
-        boolean inside = point.getColumn() >= origin.getColumn()
-            && point.getColumn() < origin.getColumn() + size.getColumns()
-            && point.getRow() >= origin.getRow()
-            && point.getRow() < origin.getRow() + size.getRows();
-        return switch (mouse.getActionType()) {
-            case MOVE -> {
-                if (tasksPillMouseHovered != inside) {
-                    tasksPillMouseHovered = inside;
-                    refreshTasksPill();
-                }
-                yield inside;
-            }
-            case CLICK_DOWN -> {
-                if (mouse.getButton() != 1) yield false;
-                tasksPillMousePressed = inside;
-                yield inside;
-            }
-            case DRAG -> tasksPillMousePressed;
-            case CLICK_RELEASE -> {
-                if (mouse.getButton() != 1) yield false;
-                boolean activate = tasksPillMousePressed && inside;
-                boolean consume = tasksPillMousePressed;
-                tasksPillMousePressed = false;
-                if (activate) {
-                    taskNavigation.deselectPill();
-                    if (actions != null) actions.openTasksDialog();
-                    refreshTasksPill();
-                }
-                yield consume;
-            }
-            default -> false;
-        };
-    }
-
-    /** Renders the original multi-agent footer projection using the shared width window. */
-    private void renderTeammateFooter() {
-        PromptTaskNavigationController.TeammateFooterView footer =
-            taskNavigation.teammateFooterView(Math.max(20, lastDividerWidth - 24));
-        tasksPillsPanel.removeAllComponents();
-        if (footer.showLeftArrow()) {
-            Label left = new Label("← ");
-            left.setForegroundColor(LanternaTheme.welcomeDim());
-            tasksPillsPanel.addComponent(left);
-        }
-        StringBuilder plain = new StringBuilder();
-        for (int i = 0; i < footer.visiblePills().size(); i++) {
-            PromptTaskNavigationController.TeammatePillView pill = footer.visiblePills().get(i);
-            if (i > 0) {
-                tasksPillsPanel.addComponent(new Label(" "));
-                plain.append(' ');
-            }
-            String text = "@" + pill.name();
-            Label label = new Label(text);
-            label.setForegroundColor(pill.idle()
-                ? LanternaTheme.welcomeDim() : LanternaTheme.inputText());
-            if (pill.viewed()) label.addStyle(SGR.BOLD);
-            if (pill.selected()) label.addStyle(SGR.REVERSE);
-            tasksPillsPanel.addComponent(label);
-            plain.append(text);
-        }
-        if (footer.showRightArrow()) {
-            Label right = new Label(" →");
-            right.setForegroundColor(LanternaTheme.welcomeDim());
-            tasksPillsPanel.addComponent(right);
-        }
-        Label expandHint = new Label(" · shift + ↓ expand");
-        expandHint.setForegroundColor(LanternaTheme.welcomeDim());
-        tasksPillsPanel.addComponent(expandHint);
-        plain.append(" · shift + ↓ expand");
-        // Keep the existing package-private test seam meaningful for both footer shapes.
-        setLabelTextIfChanged(tasksPillLabel, plain.toString());
-    }
-
-    private static void setLabelTextIfChanged(Label label, String text) {
-        if (!text.equals(label.getText())) {
-            label.setText(text);
-        }
+        return footer.handleTasksPillMouse(mouse, origin, size);
     }
 
     /**
-     * The pill must also refresh with no user input (a background task
-     * finishing while the user idles has to clear the pill), so a 1s tick
+     * The footer pill must also refresh with no user input (a background task
+     * finishing while the user idles has to clear the pill), so a 1 s tick
      * re-reads the registry — same cadence precedent as
      * {@code BackgroundTasksDialog}'s refresh timer. Scoped to the attached
-     * lifetime so test-constructed panels never leak scheduled tasks; label
-     * mutation is change-gated (see {@link #refreshTasksPill}) so idle ticks
-     * don't trigger redraws. Runs on {@code ESC_SCHEDULER}, which already
-     * mutates these hint labels from its thread (hint-restore timers).
+     * lifetime so test-constructed panels never leak scheduled tasks. Runs on
+     * {@code ESC_SCHEDULER}, which already mutates hint labels from its thread
+     * (hint-restore timers); see {@link PromptFooter#startRefresh} for the
+     * locking contract.
      */
     @Override
     public synchronized void onAdded(Container container) {
@@ -4381,53 +2707,14 @@ public class InputPanel extends Panel {
         startTaskPillRefresh();
     }
 
-    /**
-     * Starts the live task-footer refresh after the REPL scene is attached.
-     *
-     * <p><b>Locking contract for {@link #taskPillTick} and everything it calls.</b>
-     * The tick runs on {@code ESC_SCHEDULER}, not the GUI thread, and
-     * {@link #refreshTasksPill} is {@code synchronized} — so the tick holds this
-     * panel's own monitor, the same one Lanterna's {@code AbstractComponent}
-     * uses for {@code draw()} / {@code calculatePreferredSize()}. The GUI thread
-     * acquires monitors strictly top-down (TextGUI → window → container → leaf),
-     * so the tick body must only ever descend: mutate this panel's own children
-     * ({@code Label.setText}, colors, {@code Panel.addComponent}) and stop there.
-     *
-     * <p>It must never reach <i>upward</i> — no {@code getTheme()},
-     * {@code getRenderer()}, {@code getThemeDefinition()}, {@code getPreferredSize()}
-     * or {@code draw()} on this panel or an ancestor, because those recurse up the
-     * parent chain and invert the GUI thread's order, deadlocking the whole TUI
-     * silently. For the same reason the body must not block (the GUI thread stalls
-     * behind this monitor for the duration): {@code TaskRegistry} reads are
-     * lock-free by design, keep them that way.
-     */
-    public synchronized void startTaskPillRefresh() {
-        if (pillRefreshFuture == null) {
-            pillRefreshFuture = ESC_SCHEDULER.scheduleWithFixedDelay(
-                this::taskPillTick, 1, 1, TimeUnit.SECONDS);
-        }
-    }
-
-    /**
-     * One periodic tick: advance the subagent coordinator lifecycle (auto-exit +
-     * 30 s grace eviction), repaint its panel, then refresh the teammate/tasks
-     * footer. The coordinator and teammate subsystems are stepped independently.
-     */
-    private void taskPillTick() {
-        if (coordinatorNavigation != null) {
-            coordinatorNavigation.tick(coordinatorNavigationHost);
-            refreshCoordinatorPanel();
-        }
-        if (workflowFooterSelected) updateHint();
-        refreshTasksPill();
+    /** Starts the live task-footer refresh after the REPL scene is attached. */
+    public void startTaskPillRefresh() {
+        footer.startRefresh(ESC_SCHEDULER);
     }
 
     @Override
     public synchronized void onRemoved(Container container) {
-        if (pillRefreshFuture != null) {
-            pillRefreshFuture.cancel(false);
-            pillRefreshFuture = null;
-        }
+        footer.stopRefresh();
         super.onRemoved(container);
     }
 
@@ -4435,41 +2722,31 @@ public class InputPanel extends Panel {
     TextBox.Result handleKeyForTest(KeyStroke key) { return textBox.handleKeyStroke(key); }
     void setCaretOffsetForTest(int offset) { TextBoxOffsetAdapter.setOffset(textBox, offset); }
     String queuedPreviewTextForTest() { return String.join("\n", queuedPreviewLines); }
-    boolean isTasksPillSelected() { return taskNavigation.isPillSelected(); }
-    boolean isWorkflowFooterSelectedForTest() { return workflowFooterSelected; }
-    int workflowFooterIndexForTest() { return workflowFooterIndex; }
-    String selectedWorkflowTaskIdForTest() { return selectedWorkflowTaskId; }
-    boolean isCollaborationPillSelected() { return collaborationPillSelected; }
+    boolean isTasksPillSelected() { return footer.isTasksPillSelected(); }
+    boolean isWorkflowFooterSelectedForTest() { return footer.isWorkflowSelected(); }
+    int workflowFooterIndexForTest() { return footer.workflowIndex(); }
+    String selectedWorkflowTaskIdForTest() { return footer.selectedWorkflowTaskId(); }
+    boolean isCollaborationPillSelected() { return footer.isCollaborationPillSelected(); }
     int hintRowVisualIndexForTest() { return getChildrenList().indexOf(hintRow); }
     int collaborationRowVisualIndexForTest() {
-        return getChildrenList().indexOf(collaborationRow);
+        return getChildrenList().indexOf(footer.collaborationRow());
     }
-    int coordinatorIndexForTest() {
-        return coordinatorNavigation == null ? Integer.MIN_VALUE
-            : coordinatorNavigation.coordinatorIndex();
-    }
-    String collaborationPillTextForTest() {
-        return collaborationPillLabel.getText();
-    }
-    String tasksPillTextForTest() { return tasksPillLabel.getText(); }
-    boolean isTasksPillHoveredForTest() { return tasksPillMouseHovered; }
-    String tasksHintTextForTest() { return tasksHintLabel.getText(); }
-    String hintTextForTest() { return hintMainLabel.getText(); }
-    String leaderHintTextForTest() {
-        String main = hintMainLabel.getText();
-        String suffix = hintSuffixLabel.getText();
-        if (!main.isEmpty() && !suffix.isEmpty()) return main + " " + suffix;
-        return main + suffix;
-    }
+    int coordinatorIndexForTest() { return footer.coordinatorIndex(); }
+    String collaborationPillTextForTest() { return footer.collaborationPillText(); }
+    String tasksPillTextForTest() { return footer.tasksPillText(); }
+    boolean isTasksPillHoveredForTest() { return footer.isTasksPillHovered(); }
+    String tasksHintTextForTest() { return footer.tasksHintText(); }
+    String hintTextForTest() { return hintBar.mainText(); }
+    String leaderHintTextForTest() { return hintBar.combinedText(); }
     void setLeftArrowOpensAgentsForTest(BooleanSupplier enabled) {
         leftArrowOpensAgents = enabled != null ? enabled : () -> true;
         updateHint();
     }
     boolean isHistorySearchingForTest() { return historyController.isSearching(); }
     String historySearchDraftForTest() { return historyController.searchDraftForTest(); }
-    boolean isPastingForTest() { return pendingPastes.get() > 0; }
+    boolean isPastingForTest() { return paste.isPending(); }
     void completePasteForTest(String insertedText) {
-        completePasteOnGui(insertedText == null ? null : () -> insertChipAtCursor(insertedText));
+        paste.complete(insertedText == null ? null : () -> chips.insertAtCursor(insertedText));
     }
     int textRowsForTest() { return currentTextRows; }
     PromptTextLayout.Position visualCaretPositionForTest() {
@@ -4480,75 +2757,48 @@ public class InputPanel extends Panel {
         return ((PromptTextBox) textBox).canUsePlainCharacterFastPath(key);
     }
     public void setTaskRegistry(TaskRegistry registry) {
-        this.taskRegistry = registry;
-        taskNavigation.setRegistry(registry);
-        if (coordinatorNavigation != null) coordinatorNavigation.setRegistry(registry);
-        refreshFooterPills();
-        refreshCoordinatorPanel();
+        footer.setTaskRegistry(registry);
     }
 
     public void setTeammateTreeExpanded(boolean expanded) {
-        taskNavigation.setTeammateTreeExpanded(expanded);
+        footer.setTeammateTreeExpanded(expanded);
         updateHint();
         invalidate();
     }
 
-
     public void setWorkflowRunStore(WorkflowRunStore workflowRuns) {
-        this.workflowRuns = workflowRuns;
-        refreshFooterPills();
-        refreshCoordinatorPanel();
+        footer.setWorkflowRunStore(workflowRuns);
     }
 
     /**
      * Binds the subagent coordinator panel — its navigation state machine plus
-     * the view it renders into. The two are wired together here so a single tick
-     * can advance the model and repaint the panel. Independent of the teammate
-     * footer; the controller owns the shared vertical selection while the
-     * existing task controller still supplies the background-pill projection.
+     * the view it renders into — and mounts the view between the hint row and
+     * the Collaboration row.
      */
     public void setCoordinatorNavigation(CoordinatorNavigationController navigation,
                                          CoordinatorPanelView panel,
                                          Function<String, String> agentNameResolver) {
-        this.coordinatorNavigation = navigation;
-        this.coordinatorPanel = panel;
-        if (coordinatorPanelComponent != null) {
-            removeComponent(coordinatorPanelComponent);
-            coordinatorPanelComponent = null;
-        }
-        if (panel instanceof Component component) {
+        Component previous = footer.coordinatorComponent();
+        if (previous != null) removeComponent(previous);
+        footer.bindCoordinator(navigation, panel, agentNameResolver);
+        Component component = footer.coordinatorComponent();
+        if (component != null) {
+            Panel collaborationRow = footer.collaborationRow();
             removeComponent(collaborationRow);
             addComponent(component,
                 LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
             addComponent(collaborationRow);
-            coordinatorPanelComponent = component;
         }
-        this.coordinatorNameResolver =
-            agentNameResolver != null ? agentNameResolver : _ -> null;
-        refreshCoordinatorPanel();
     }
 
-    /**
-     * Rebuilds the coordinator panel snapshot from the live navigation state:
-     * the visible panel agents, the selection (only when the panel owns focus),
-     * and which subagent transcript is being viewed. A no-op when the panel is
-     * not wired. Runs the projection on whatever thread the tick uses; the panel
-     * view is thread-safe.
-     */
+    /** Repaints the coordinator rows from live navigation + workflow state. */
     void refreshCoordinatorPanel() {
-        CoordinatorNavigationController nav = coordinatorNavigation;
-        CoordinatorPanelView panel = coordinatorPanel;
-        if (nav == null || panel == null) return;
-        List<TaskState> agents = nav.panelAgents();
-        int selectedIndex = nav.isPanelSelected() ? nav.coordinatorIndex() : -1;
-        String viewingTaskId = nav.isViewingLocalAgent()
-            ? ViewedTeammateHolder.instance().viewingTaskId() : null;
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        clampWorkflowFooterSelection();
-        int selectedWorkflowIndex = workflowFooterSelected ? workflowFooterIndex : -1;
-        panel.refresh(agents, workflows, selectedIndex, selectedWorkflowIndex, viewingTaskId,
-            Instant.now(), coordinatorNameResolver,
-            taskRegistry == null ? _ -> 0 : taskRegistry::pendingAgentMessageCount);
+        footer.refreshCoordinatorPanel();
+    }
+
+    /** Recomputes the tasks pill + its trailing hint from the live registry. */
+    void refreshTasksPill() {
+        footer.refreshTasksPill();
     }
 
     /**
@@ -4557,174 +2807,33 @@ public class InputPanel extends Panel {
      * new value through the configured GUI invoker before touching Lanterna.
      * Test-constructed panels have no invoker and refresh synchronously.
      */
-    @Explanation("Live projection of Session Link collaboration state")
-    public synchronized void setCollaborationController(
-            SessionCollaborationController controller) {
-        closeCollaborationSubscription();
-        this.collaborationController = controller;
-        if (controller != null) {
-            collaborationSubscription = controller.subscribe(
-                _ -> scheduleCollaborationRefresh(controller));
-        }
-        refreshFooterPills();
+    public void setCollaborationController(SessionCollaborationController controller) {
+        footer.setCollaborationController(controller);
     }
 
     /** Releases the controller listener when the REPL is shutting down. */
-    public synchronized void closeCollaborationBinding() {
-        closeCollaborationSubscription();
-        collaborationController = null;
+    public void closeCollaborationBinding() {
+        footer.closeCollaborationBinding();
     }
 
-    private void scheduleCollaborationRefresh(
-            SessionCollaborationController expectedController) {
-        Runnable refresh = () -> {
-            if (collaborationController == expectedController) refreshFooterPills();
-        };
-        Consumer<Runnable> invoker = guiInvoker;
-        if (invoker == null || isOnGuiThread()) refresh.run();
-        else invoker.accept(refresh);
-    }
-
-    private void closeCollaborationSubscription() {
-        AutoCloseable subscription = collaborationSubscription;
-        collaborationSubscription = null;
-        if (subscription == null) return;
-        try { subscription.close(); }
-        catch (Exception failure) {
-            log.debug("Failed to close collaboration footer subscription", failure);
-        }
-    }
-
-    /** Package-private for {@code InputPanelKeyRoutingTest} (was exposed via {@code beginPasteForTest()}). */
+    /** Package-private for {@code InputPanelKeyRoutingTest}. */
     void beginPaste() {
-        pendingPastes.incrementAndGet();
-        updateHint();
+        paste.begin();
     }
 
-    private void completePasteOnGui(Runnable mutation) {
-        Runnable completion = () -> {
-            if (mutation != null) mutation.run();
-            int remaining = pendingPastes.updateAndGet(value -> Math.max(0, value - 1));
-            updateHint();
-            if (remaining == 0 && deferredPasteSubmit.getAndSet(false)) {
-                ((PromptTextBox) textBox).tryHandleSubmitKeyStroke(new KeyStroke(KeyType.ENTER));
-            }
-        };
-        if (guiInvoker != null) guiInvoker.accept(completion);
-        else completion.run();
-    }
-
-    private void updateHint() {
-        // Don't overwrite an active temporary notification
-        if (hintTimer != null) return;
-        if (pendingPastes.get() > 0) {
-            setHintLabel(hintMainLabel, "  Pasting text…");
-            hintMainLabel.setForegroundColor(LanternaTheme.welcomeDim());
-            setHintLabel(hintSuffixLabel, "");
-            refreshTasksPill();
-            updateVimModeLabel();
-            return;
-        }
-        if (historySearchStatus != null) {
-            setHintLabel(hintMainLabel, "  " + historySearchStatus);
-            hintMainLabel.setForegroundColor(LanternaTheme.welcomeDim());
-            setHintLabel(hintSuffixLabel, "");
-            refreshTasksPill();
-            updateVimModeLabel();
-            return;
-        }
-        if (messageActionsActive) {
-            setHintLabel(hintMainLabel, "  " + messageActionsHint);
-            hintMainLabel.setForegroundColor(LanternaTheme.inputText());
-            setHintLabel(hintSuffixLabel, " · ↑↓ navigate · esc back");
-            hintSuffixLabel.setForegroundColor(LanternaTheme.welcomeDim());
-            refreshTasksPill();
-            updateVimModeLabel();
-            return;
-        }
-        if (workflowFooterSelected) {
-            renderWorkflowFooterHint();
-            refreshTasksPill();
-            updateVimModeLabel();
-            return;
-        }
-        // Teammate-view mode shows navigation/status instead of the leader's
-
-        if (taskNavigation.isActive()) {
-            renderTeammateHint();
-            refreshTasksPill();
-            updateVimModeLabel();
-            return;
-        }
-        renderLeaderHint();
-        refreshTasksPill();
-        updateVimModeLabel();
-    }
-
-
-    private void renderWorkflowFooterHint() {
-        List<WorkflowRun> workflows = visibleWorkflowRuns();
-        if (workflows.isEmpty()) {
-            workflowFooterSelected = false;
-            renderLeaderHint();
-            return;
-        }
-        workflowFooterIndex = Math.min(workflowFooterIndex, workflows.size() - 1);
-        WorkflowRun run = workflows.get(workflowFooterIndex);
-        setHintLabel(hintMainLabel, "  enter view");
-        hintMainLabel.setForegroundColor(LanternaTheme.welcomeDim());
-        setHintLabel(hintSuffixLabel,
-            " · x " + (run.status().hasResult() ? "clear" : "stop"));
-        hintSuffixLabel.setForegroundColor(LanternaTheme.welcomeDim());
-    }
-
-    /** Leader-only hint banner (permission-mode chip + shift+tab hint). */
-    private void renderLeaderHint() {
-
-        PermissionMode mode = PermissionMode.fromString(permMode);
-        String mainText;
-        TextColor mainColor;
-        if (mode == PermissionMode.DEFAULT) {
-            mainText = "";
-            mainColor = LanternaTheme.welcomeDim();
-        } else {
-            mainText = "  " + mode.symbol() + " "
-                + mode.title().toLowerCase(Locale.ROOT) + " on";
-            mainColor = LanternaTheme.colorFor(mode);
-        }
-        setHintLabel(hintMainLabel, mainText);
-        hintMainLabel.setForegroundColor(mainColor);
-        boolean showAgentsHint = !isLoading && leftArrowOpensAgents.getAsBoolean();
-        String suffix = mode == PermissionMode.DEFAULT
-            ? (persistentStatusVisible ? ""
-                : "  ? for shortcuts" + (showAgentsHint ? " · ← for agents" : ""))
-            : "(shift+tab to cycle)" + (showAgentsHint ? " · ← for agents" : "");
-        // Chips live inline in the textBox — no extra count needed here.
-        setHintLabel(hintSuffixLabel, suffix);
-        hintSuffixLabel.setForegroundColor(LanternaTheme.welcomeDim());
-    }
-
-    private static void setHintLabel(Label label, String text) {
-        String value = text == null ? "" : text;
-        label.setText(value);
-        label.setVisible(!value.isEmpty());
-    }
-
-/**
-     * Hint banner shown while stepping/viewing a teammate.
+    /**
+     * Recomputes the hint row, the tasks pill and the vim label from current
+     * state. Anything that changes hint-relevant state calls this.
      */
-    private void renderTeammateHint() {
-        PromptTaskNavigationController.TeammateHint hint =
-            taskNavigation.teammateHint(taskNavigationHost);
-        if (hint == null) {
-            renderLeaderHint();
-            return;
-        }
-        setHintLabel(hintMainLabel, hint.main());
-        hintMainLabel.setForegroundColor(
-            hint.accent() ? LanternaTheme.claude() : LanternaTheme.welcomeDim());
-        setHintLabel(hintSuffixLabel, hint.suffix());
-        hintSuffixLabel.setForegroundColor(LanternaTheme.welcomeDim());
+    private void updateHint() {
+        hintBar.render(new PromptHintBar.Context(
+            paste.isPending(),
+            messageActionsActive,
+            messageActionsHint,
+            permMode,
+            isLoading,
+            leftArrowOpensAgents.getAsBoolean()), footer);
+        footer.refreshTasksPill();
+        vim.refreshLabel();
     }
-
 }
