@@ -6,7 +6,6 @@ import com.claudecode.commands.context.ContextData;
 import com.claudecode.commands.diff.DiffData;
 import com.claudecode.commands.diff.GitDiffCollector;
 import com.claudecode.commands.diff.TurnDiffExtractor;
-import com.claudecode.commands.impl.git.BranchCommand;
 import com.claudecode.commands.impl.info.VersionCommand;
 import com.claudecode.commands.impl.terminal.CopyCommand;
 import com.claudecode.commands.prompt.PromptInvocation;
@@ -18,7 +17,6 @@ import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.engine.PermissionExplainerCallback;
 import com.claudecode.core.engine.ToolExecutionContext;
-import com.claudecode.core.config.EnvUtils;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.imagestore.ImageStore;
 import com.claudecode.core.io.FileUtils;
@@ -30,7 +28,6 @@ import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.model.PermissionModeKind;
-import com.claudecode.core.pokemon.PokemonEvolution;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.process.ExternalEditorDefaults;
@@ -98,11 +95,9 @@ import com.claudecode.ui.lanterna.components.ChipSegments;
 import com.claudecode.ui.lanterna.components.LogoPanel;
 import com.claudecode.ui.lanterna.components.ModelDisplayName;
 import com.claudecode.ui.lanterna.components.OSC52Helper;
-import com.claudecode.ui.lanterna.components.PokemonCardRenderer;
-import com.claudecode.ui.lanterna.components.PokemonEvolutionOverlay;
 import com.claudecode.ui.lanterna.components.SpinnerComponent;
+import com.claudecode.ui.lanterna.components.WelcomeBlockHolder;
 import com.claudecode.ui.lanterna.dialog.BackgroundTasksDialog;
-import com.claudecode.ui.lanterna.dialog.BtwSideQuestionDialog;
 import com.claudecode.ui.lanterna.dialog.ClaudeMdExternalIncludesDialog;
 import com.claudecode.ui.lanterna.dialog.CollaborationPickerDialog;
 import com.claudecode.ui.lanterna.dialog.FeishuSetupDialog;
@@ -114,13 +109,10 @@ import com.claudecode.ui.lanterna.dialog.ExportDialog;
 import com.claudecode.ui.lanterna.dialog.GoalDialog;
 import com.claudecode.ui.lanterna.dialog.HistorySearchDialog;
 import com.claudecode.ui.lanterna.dialog.ItermImagePreviewWindow;
-import com.claudecode.ui.lanterna.dialog.HooksConfigMenuDialog;
 import com.claudecode.ui.lanterna.dialog.LspRecommendationDialog;
-import com.claudecode.ui.lanterna.dialog.MCPSettingsDialog;
 import com.claudecode.ui.lanterna.dialog.ManagedSettingsSecurityDialog;
 import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.dialog.PluginHintMenu;
-import com.claudecode.ui.lanterna.dialog.PokemonHatchDialog;
 import com.claudecode.ui.lanterna.dialog.SkillsDialog;
 import com.claudecode.ui.lanterna.dialog.StatsDialog;
 import com.claudecode.ui.lanterna.dialog.SudoPasswordDialog;
@@ -129,9 +121,11 @@ import com.claudecode.ui.lanterna.dialog.ThinkingToggleDialog;
 import com.claudecode.ui.lanterna.dialog.TrustFolderDialog;
 import com.claudecode.ui.lanterna.dialog.WorkflowsDialog;
 import com.claudecode.ui.lanterna.features.agents.AgentsFeature;
+import com.claudecode.ui.lanterna.features.btw.BtwFeature;
 import com.claudecode.ui.lanterna.features.help.HelpCommandCatalog;
 import com.claudecode.ui.lanterna.features.help.HelpPanel;
 import com.claudecode.ui.lanterna.features.memory.MemoryFeature;
+import com.claudecode.ui.lanterna.features.pokemon.PokemonFeature;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanel;
 import com.claudecode.ui.lanterna.features.projects.ProjectPanelController;
 import com.claudecode.ui.lanterna.features.sandbox.SandboxFeature;
@@ -142,9 +136,6 @@ import com.claudecode.ui.lanterna.features.settings.MCPController;
 import com.claudecode.ui.lanterna.features.settings.PermissionsFeature;
 import com.claudecode.ui.lanterna.features.settings.PreferencesFeature;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
-import com.claudecode.ui.lanterna.features.tasks.TaskBoardPresentationState;
-import com.claudecode.ui.lanterna.features.tasks.TaskBoardProjection;
-import com.claudecode.ui.lanterna.features.tasks.TaskListPanel;
 import com.claudecode.ui.lanterna.input.ExternalEditorCommand;
 import com.claudecode.ui.lanterna.input.CoordinatorNavigationController;
 import com.claudecode.ui.lanterna.input.InputActions;
@@ -207,20 +198,15 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -236,9 +222,6 @@ import org.slf4j.LoggerFactory;
 public class LanternaReplScreen implements SlashHost {
 
     private static final Logger log = LoggerFactory.getLogger(LanternaReplScreen.class);
-    private static final ScheduledExecutorService TASK_BOARD_PRESENTATION_SCHEDULER =
-        Executors.newSingleThreadScheduledExecutor(
-            runnable -> Thread.ofVirtual().name("task-board-presentation").unstarted(runnable));
 
     // ── Lanterna core ──────────────────────────────────────────────────────
     private Terminal            terminal;
@@ -271,28 +254,16 @@ public class LanternaReplScreen implements SlashHost {
     private PluginHintMenu pluginHintMenu;
     /** Inline todo list panel — sits above InputPanel; Ctrl+T cycles compact,
      *  terminal-capacity expanded, and hidden views (app:toggleTodos). */
-    private TaskListPanel taskListPanel;
+    private TaskBoardFeature taskBoardFeature;
     private final TaskBoardPort taskBoard;
     private final ProjectCatalogPort projectCatalog;
-    private volatile TaskBoardPort.Snapshot taskBoardSnapshot = TaskBoardPort.Snapshot.EMPTY;
-    private final TaskBoardPresentationState taskBoardPresentationState =
-        new TaskBoardPresentationState();
-    private final TaskBoardToggleState taskBoardToggleState = new TaskBoardToggleState();
-    private boolean taskBoardExpandable;
-    private AutoCloseable taskBoardSubscription;
-    private AutoCloseable taskBoardIntentSubscription;
-    private volatile ScheduledFuture<?> taskBoardCompletionRefresh;
-    private volatile boolean taskBoardLoading;
     /** Inline /export picker — sibling of effortSlider; collapses to (0,0) when
      *  idle and is activated by {@code openExportDialog}. */
     private ExportDialog exportDialog;
-    /** Inline /hooks browser — sibling of exportDialog; collapses to (0,0) when
-     *  idle and is activated by {@code openHooksDialog}. */
-    private HooksConfigMenuDialog hooksDialog;
 
     private GoalDialog goalDialog;
 
-    private BtwSideQuestionDialog btwSideQuestionDialog;
+    private BtwFeature btwFeature;
     /** Inline /copy content picker — sibling of themePicker; collapses to (0,0)
      *  when idle and is activated by {@code openCopyPicker(...)}. */
     private CopyPickerDialog copyPicker;
@@ -327,9 +298,6 @@ public class LanternaReplScreen implements SlashHost {
     /** Collects the /context usage snapshot ({@code ContextUsageAnalyzer} wired by the CLI);
      *  consumed by {@link #showContextVisualization()}. Null in headless / bridge contexts. */
     private Supplier<ContextData> contextDataCollector;
-    /** Inline /mcp browser — sibling of hooksDialog; collapses to (0,0) when
-     *  idle and is activated by {@code openMcpDialog()}. */
-    private MCPSettingsDialog mcpDialog;
     /** Drives the /mcp browser's backend actions (reconnect / enable / disable /
      *  view tools) through the application-owned management port. */
     private MCPController mcpController;
@@ -348,8 +316,7 @@ public class LanternaReplScreen implements SlashHost {
     private final ReplScene scene = new ReplScene();
 
     private TagRemovalDialog tagRemovalDialog;
-    private PokemonHatchDialog pokemonHatchDialog;
-    private MemoryFeature memoryFeature;
+    private PokemonFeature pokemonFeature;
     private DoctorDialog doctorDialog;
     private SkillsDialog skillsDialog;
     /** Meta+T thinking picker and mid-conversation confirmation. */
@@ -373,12 +340,6 @@ public class LanternaReplScreen implements SlashHost {
      *  Keyboard handlers still drive selection state directly via
      *  {@link SelectionController#getSelection}. */
     private SelectionController selectionController;
-    /** Alias to {@link SelectionController#getSelection} — set once at
-     *  buildLayout so the keyboard branches can keep the concise
-     *  {@code selection.xxx} form. */
-    private Selection selection;
-
-    private ImmediateCommandUiAdapter immediateAdapter;
 
     private BashModeExecutor bashModeExecutor;
     /**
@@ -396,8 +357,6 @@ public class LanternaReplScreen implements SlashHost {
     private TranscriptController transcriptController;
     /** The subagent coordinator panel — persistent {@code main} + local-agent list. */
     private CoordinatorTaskPanel coordinatorTaskPanel;
-    /** Selection/view/eviction state for {@link #coordinatorTaskPanel}. */
-    private CoordinatorNavigationController coordinatorNavigation;
     private LocalAgentInputRouter localAgentInputRouter;
     /** Message selection/navigation/copy/edit interaction. */
     private MessageActionsController messageActionsController;
@@ -428,13 +387,13 @@ public class LanternaReplScreen implements SlashHost {
     private final CommandContext    commandContext;
     private final ToolPresentationSnapshotStore presentationSnapshots;
     private final LanternaMessageDispatcher dispatcher;
-/**
+    /**
      * Tool names passed to getHookEventMetadata for placeholder hints.
      */
     private List<String> toolNames = List.of();
     /** Collapse wrapper — applies applyGrouping / collapseReadSearch passes. */
     private final MessageCollapser  collapser;
-/**
+    /**
      * Session-scoped message store for replay on Ctrl+O.
      */
     private final MessageHistory    messageHistory = new MessageHistory();
@@ -455,21 +414,14 @@ public class LanternaReplScreen implements SlashHost {
     private boolean verbose = false;
 
     private final LogoPanel welcomePanel = new LogoPanel();
-    private final PokemonCardRenderer pokemonCardRenderer =
-        new PokemonCardRenderer();
-    private final Object pokemonExperienceLock = new Object();
-    private PokemonProfile pokemonExperienceState = welcomePanel.pokemon();
-    /** Replaceable source-line range occupied by the welcome block. */
-    private LogoPanel.WelcomeBlock welcomeBlock;
-
-    private record PokemonProgressUpdate(PokemonProfile before, PokemonProfile after) {}
+    /** Replaceable source-line range occupied by the welcome block, shared with {@link PokemonFeature}. */
+    private final WelcomeBlockHolder welcomeBlock = new WelcomeBlockHolder();
 
     // Transcript search and its query/match state are owned by TranscriptController.
 
     // ── Queued commands ─────────────────────────────────────────────────────
     // turnInFlight + the in-flight queue now live in TurnEngine (owned per-session).
-// The screen reads/mutates them via turnEngine.isInFlight/enqueue/countQueued.
-
+    // The screen reads/mutates them via turnEngine.isInFlight/enqueue/countQueued.
 
     private CronScheduler cronScheduler;
     private volatile IdlePromptNotifier idlePromptNotifier;
@@ -486,10 +438,6 @@ public class LanternaReplScreen implements SlashHost {
 
     private final String historyProjectRoot;
 
-    // ── @ file suggestion service ───────────────────────────────────────────
-    // See com.claudecode.ui.lanterna.suggest.FileSuggestionService for cache,
-    // throttling, git-index mtime, and stale-VT gen semantics.
-    private FileSuggestionService fileSuggestionService;
     /** Coordinates the argv prompt with asynchronous startup setup gates and initial rendering. */
     private StartupPromptCoordinator startupPromptCoordinator;
     /** Bare {@code -r}: open the session picker once the startup gates resolve. */
@@ -723,7 +671,7 @@ public class LanternaReplScreen implements SlashHost {
                 queue.add(new PluginHintResult(null, false));
                 return;
             }
-// Flip the once-per-session flag now that the dialog is shown.
+            // Flip the once-per-session flag now that the dialog is shown.
             ClaudeCodeHintStore.getInstance().markShownThisSession();
             pluginHintMenu.show(
                 hint,
@@ -845,7 +793,7 @@ public class LanternaReplScreen implements SlashHost {
         // terminal handoff so alternate screen and input modes unwind once.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (statusLineController != null) statusLineController.close();
-            closeTaskBoardSubscriptions();
+            if (taskBoardFeature != null) taskBoardFeature.close();
             try {
                 releaseTerminalForExit();
             } catch (Exception _) { /* best-effort */ }
@@ -870,7 +818,7 @@ public class LanternaReplScreen implements SlashHost {
 
         // Cold-start replay for --resume / --continue: if the engine was
         // preloaded with prior messages (ClaudeCodeCli before run()), render
-// them now so the REPL doesn't open with a blank transcript. matches
+        // them now so the REPL doesn't open with a blank transcript. matches
 
         List<Message> preloaded = queryEngine.conversation().getMessages();
         if (preloaded != null && !preloaded.isEmpty()) {
@@ -883,12 +831,12 @@ public class LanternaReplScreen implements SlashHost {
         }
         startupPromptCoordinator.markTranscriptReady();
 
-// Commit the fully assembled scene as the first GUI frame.
+        // Commit the fully assembled scene as the first GUI frame.
         if (prestartGuiThreadFactory != null) prestartGuiThreadFactory.start();
         startupReadiness.mark("first-frame");
 
         // Once per startup: scrub image-cache dirs left by previous sessions so
-// ~/.claude/image-cache/ doesn't accumulate one directory per session forever.
+        // ~/.claude/image-cache/ doesn't accumulate one directory per session forever.
         try {
             ImageStore.cleanupOldImageCaches(queryEngine.conversation().getSessionId());
         } catch (Exception _) { /* best-effort */ }
@@ -939,7 +887,7 @@ public class LanternaReplScreen implements SlashHost {
             if (statusLineController != null) statusLineController.close();
             if (idlePromptNotifier != null) idlePromptNotifier.close();
             if (awaySummaryTrigger != null) awaySummaryTrigger.close();
-            closeTaskBoardSubscriptions();
+            if (taskBoardFeature != null) taskBoardFeature.close();
             releaseTerminalForExit();
         }
     }
@@ -1026,11 +974,12 @@ public class LanternaReplScreen implements SlashHost {
         // of waiting for the next assistant message or turn completion.
         executeStatusLineCommandImmediately();
         Runnable repaintWelcomeModel = () -> {
-            if (messagePanel == null || welcomeBlock == null) return;
+            LogoPanel.WelcomeBlock block = welcomeBlock.get();
+            if (messagePanel == null || block == null) return;
             int terminalWidth = screen != null
                 ? screen.getTerminalSize().getColumns() : 100;
             welcomePanel.updateModelLine(
-                messagePanel, welcomeBlock, terminalWidth, model);
+                messagePanel, block, terminalWidth, model);
         };
         // Model commands can finish on a virtual thread. Component mutation
         // stays on Lanterna's GUI thread; startup calls (before gui exists)
@@ -1046,70 +995,7 @@ public class LanternaReplScreen implements SlashHost {
 
 
     public void openBtwDialog(String question, Function<String, String> sideQuestionRunner) {
-        if (gui == null || btwSideQuestionDialog == null || sideQuestionRunner == null) return;
-        gui.getGUIThread().invokeLater(() -> {
-            if (inputPanel != null) inputPanel.setSuppressed(true);
-            int rows = 24;
-            try { rows = screen.getTerminalSize().getRows(); } catch (Exception _) { }
-            btwSideQuestionDialog.show(question, rows, sideQuestionRunner,
-                this::forkBtwExchange, () -> {
-                if (inputPanel != null) {
-                    inputPanel.setSuppressed(false);
-                    inputPanel.takeFocus();
-                }
-            });
-        });
-    }
-
-
-    private void forkBtwExchange(String question, String response) {
-        if (!EnvUtils.isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_COORDINATOR_MODE"))) {
-            spawnBtwForkAgent(question, response);
-            return;
-        }
-        branchBtwExchange(question, response);
-    }
-
-    private void spawnBtwForkAgent(String question, String response) {
-        try {
-            Tool<?, ?> registered = toolRegistry.get("Agent").orElse(null);
-            if (!(registered instanceof AgentTool agentTool)) {
-                throw new IllegalStateException("Agent tool is unavailable");
-            }
-            List<Message> current = queryEngine.conversation().getMessages();
-            String parent = current == null || current.isEmpty() ? null : current.getLast().uuid();
-            String userUuid = UUID.randomUUID().toString();
-            String sessionId = queryEngine.conversation().getSessionId();
-            UserMessage user = new UserMessage(
-                userUuid, MessageContent.ofText(question), false, false, null,
-                MessageOrigin.USER, parent, Instant.now(),
-                null, null, sessionId);
-            AssistantMessage assistant = new AssistantMessage(
-                UUID.randomUUID().toString(),
-                AssistantContent.of(List.of(new TextBlock(response))),
-                false, userUuid, Instant.now());
-            ToolExecutionContext context = currentAgentToolExecutionContext();
-            AgentTool.SpawnedFork spawned = agentTool.spawnForkFromDirective(
-                question, List.of(user, assistant), context);
-            gui.getGUIThread().invokeLater(() -> {
-                btwSideQuestionDialog.hide();
-                if (spawned == null) {
-                    messagePanel.appendLine("  Cannot fork before the first conversation turn",
-                        LanternaTheme.welcomeDim());
-                } else {
-                    String suffix = spawned.agentId().length() <= 4 ? spawned.agentId()
-                        : spawned.agentId().substring(spawned.agentId().length() - 4);
-                    messagePanel.appendLine("  ✻ forked " + spawned.name() + " (" + suffix + ")",
-                        LanternaTheme.welcomeDim());
-                }
-            });
-        } catch (Exception exception) {
-            gui.getGUIThread().invokeLater(() -> {
-                btwSideQuestionDialog.hide();
-                messagePanel.appendLine("  Failed to fork: " + rootMessage(exception),
-                    LanternaTheme.toolError());
-            });
-        }
+        btwFeature.open(question, sideQuestionRunner);
     }
 
     private ToolExecutionContext currentAgentToolExecutionContext() {
@@ -1137,49 +1023,6 @@ public class LanternaReplScreen implements SlashHost {
             .conversationMessages(queryEngine.conversation().getMessages())
             .renderedSystemPrompt(queryEngine.configuration().fetchSystemPromptParts())
             .build();
-    }
-
-    private void branchBtwExchange(String question, String response) {
-        try {
-            List<Message> current = commandContext.session().messagesSupplier().get();
-            String parent = current == null || current.isEmpty() ? null : current.getLast().uuid();
-            String userUuid = UUID.randomUUID().toString();
-            String sessionId = commandContext.session().currentSessionId() == null
-                ? null : commandContext.session().currentSessionId().get();
-            UserMessage user = new UserMessage(
-                userUuid, MessageContent.ofText(question), false, false, null,
-                MessageOrigin.USER, parent, Instant.now(),
-                null, null, sessionId);
-            AssistantMessage assistant = new AssistantMessage(
-                UUID.randomUUID().toString(),
-                AssistantContent.of(List.of(new TextBlock(response))),
-                false, userUuid, Instant.now());
-            String normalized = question.replaceAll("\\s+", " ").trim();
-            String title = FormatUtils.truncate("btw: " + normalized, 80);
-            var result = new BranchCommand().executeWithAdditionalMessages(
-                commandContext, title, List.of(user, assistant));
-            gui.getGUIThread().invokeLater(() -> {
-                if (StringUtils.isNotBlank(result.output())) {
-                    for (String line : result.output().split("\\R", -1)) {
-                        messagePanel.appendLine("  " + line, LanternaTheme.welcomeDim());
-                    }
-                }
-                if (Strings.CS.startsWith(result.output(), "Branched conversation")) {
-                    btwSideQuestionDialog.hide();
-                    if (result.newSessionName() != null && inputPanel != null) {
-                        inputPanel.setAgentName(result.newSessionName());
-                    }
-                } else {
-                    btwSideQuestionDialog.finishFork();
-                }
-            });
-        } catch (Exception exception) {
-            gui.getGUIThread().invokeLater(() -> {
-                btwSideQuestionDialog.hide();
-                messagePanel.appendLine("  Failed to branch /btw response: "
-                    + rootMessage(exception), LanternaTheme.toolError());
-            });
-        }
     }
 
     /** Persists {@code false}, or removes the default-on setting when enabled. */
@@ -1448,7 +1291,7 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     private void handleExportDialogResult(String message) {
-// Same transcript shape as /effort: a grey-bg user-query row matching
+        // Same transcript shape as /effort: a grey-bg user-query row matching
         // what the user "typed", followed by the result line. Keeps the
         // history symmetric with a textual /export <filename>.
         appendLine("", TextColor.ANSI.DEFAULT);  // spacer
@@ -1551,7 +1394,7 @@ public class LanternaReplScreen implements SlashHost {
 
             // PromptInput — the prompt bar must vanish while the dialog is
             // open (same command-to-feature wiring pattern as other inline dialogs). The
-// dialog's close is the single exit for every dismiss path
+            // dialog's close is the single exit for every dismiss path
             // (Esc/←/Space/Enter, kill-last-task auto-close, goBackToList's
             // close branch) and always fires this callback, so the suppression
             // flag cannot leak.
@@ -1624,13 +1467,7 @@ public class LanternaReplScreen implements SlashHost {
 
     /** Opens the safe-by-default confirmation used by {@code /pokemon hatch}. */
     public void openPokemonHatchDialog(CommandContext.PokemonHatchRequest request) {
-        if (gui == null || pokemonHatchDialog == null || request == null) return;
-        gui.getGUIThread().invokeLater(() -> pokemonHatchDialog.show(request, result -> {
-            if (result != null && result.output() != null && !StringUtils.isBlank(result.output())) {
-                postSystemMessage(result.output());
-            }
-            inputPanel.takeFocus();
-        }));
+        pokemonFeature.openHatchDialog(request);
     }
 
     /** Installs the /context data collector (CLI wiring). */
@@ -1767,65 +1604,12 @@ public class LanternaReplScreen implements SlashHost {
 
     /** Live-applies a newly hatched Pokémon and renders its Buddy-style detail card. */
     public void setWelcomePokemon(PokemonProfile pokemon) {
-        synchronized (pokemonExperienceLock) {
-            pokemonExperienceState = pokemon;
-        }
-        Runnable repaint = () -> {
-            if (messagePanel == null) return;
-            int terminalWidth = screen != null ? screen.getTerminalSize().getColumns() : 100;
-            if (welcomeBlock != null) {
-                welcomeBlock = welcomePanel.replacePokemon(
-                    messagePanel, welcomeBlock, terminalWidth, model, pokemon);
-            }
-            pokemonCardRenderer.show(messagePanel, terminalWidth, pokemon);
-            try { if (gui != null) gui.updateScreen(); } catch (Exception _) {}
-        };
-        if (gui != null) gui.getGUIThread().invokeLater(repaint);
-        else repaint.run();
+        pokemonFeature.setWelcomePokemon(pokemon);
     }
 
     /** Renders the current Pokémon card without replacing welcome state. */
     public void showWelcomePokemon(PokemonProfile pokemon) {
-        Runnable show = () -> {
-            if (messagePanel == null || pokemon == null) return;
-            int terminalWidth = screen != null ? screen.getTerminalSize().getColumns() : 100;
-            pokemonCardRenderer.show(messagePanel, terminalWidth, pokemon);
-            try { if (gui != null) gui.updateScreen(); } catch (Exception _) {}
-        };
-        if (gui != null) gui.getGUIThread().invokeLater(show);
-        else show.run();
-    }
-
-    private void addPokemonExperience(long tokens) {
-        if (tokens <= 0) return;
-        PokemonProgressUpdate update;
-        synchronized (pokemonExperienceLock) {
-            PokemonProfile current = pokemonExperienceState;
-            PokemonProfile progressed = PokemonEvolution.addExperience(current, tokens);
-            if (progressed == null || progressed.equals(current)) return;
-            pokemonExperienceState = progressed;
-            update = new PokemonProgressUpdate(current, progressed);
-        }
-        UiSettings.writeGlobalAsync("welcomePokemon", update.after().toJson())
-            .whenComplete((_, failure) -> {
-                if (failure != null) {
-                    log.warn("Failed to persist welcomePokemon: {}", rootMessage(failure));
-                }
-            });
-        Runnable applyExperience = () -> {
-            if (messagePanel == null || welcomeBlock == null) return;
-            int terminalWidth = screen != null ? screen.getTerminalSize().getColumns() : 100;
-            welcomeBlock = welcomePanel.replacePokemon(
-                messagePanel, welcomeBlock, terminalWidth, model, update.after());
-            if (!update.before().name().equals(update.after().name()) && gui != null) {
-                PokemonEvolutionOverlay.play(
-                    gui, update.before(), update.after(),
-                    () -> { if (inputPanel != null) inputPanel.takeFocus(); });
-            }
-            try { if (gui != null) gui.updateScreen(); } catch (Exception _) {}
-        };
-        if (gui != null) gui.getGUIThread().invokeLater(applyExperience);
-        else applyExperience.run();
+        pokemonFeature.showWelcomePokemon(pokemon);
     }
 
     /**
@@ -1922,14 +1706,14 @@ public class LanternaReplScreen implements SlashHost {
         log.info("[LANTERNA] initTerminal step 5: screen.startScreenWithoutTerminalSizeQuery()");
         // TerminalScreen's constructor has just captured the size. Re-querying
         // here duplicates terminal I/O on the critical startup path; later
-// restarts still use startScreen so editor-time resizes are observed.
+        // restarts still use startScreen so editor-time resizes are observed.
         screen.startScreenWithoutTerminalSizeQuery();
 
         // Owns all terminal escape-sequence I/O from here on (title, OSC 9;4
         // progress, OSC 21337 tab status, extended-key detection, screen dump).
         terminalController = new TerminalController(terminal, screen);
 
-// Wire AUTO-scheme theme changes to a full repaint.
+        // Wire AUTO-scheme theme changes to a full repaint.
         LanternaTheme.setOnAutoResolve(() -> {
             try { screen.refresh(Screen.RefreshType.COMPLETE); }
             catch (Exception _) {}
@@ -1963,8 +1747,8 @@ public class LanternaReplScreen implements SlashHost {
                 log.debug("[LANTERNA] enableKittyKeyboard failed (non-fatal)", e);
             }
         }
-// OSC 133 (shell-integration prompt mark) was previously emitted on startup for terminals
-// that support it (iTerm2 / Kitty / WezTerm / Ghostty).
+        // OSC 133 (shell-integration prompt mark) was previously emitted on startup for terminals
+        // that support it (iTerm2 / Kitty / WezTerm / Ghostty).
         if (StringUtils.isNotBlank(initialSessionName)) {
             terminalController.setTitle(initialSessionName);
         } else {
@@ -2091,9 +1875,9 @@ public class LanternaReplScreen implements SlashHost {
         inputPanel.setGuiInvoker(r -> gui.getGUIThread().invokeLater(r));
         inputPanel.setCollaborationController(collaborationController);
         int terminalRows = screen != null ? screen.getTerminalSize().getRows() : 40;
-// Share the engine's SessionIdentity so a switchToSession call
+        // Share the engine's SessionIdentity so a switchToSession call
         // (resume/branch/clear) is visible here too without a separate
-// setSessionId sync step.
+        // setSessionId sync step.
         inputPanel.wireSessionIdentity(queryEngine.conversation().sessionIdentity());
         toolApprovalInteraction = new ToolApprovalInteraction(
             gui, inputPanel, spinnerComponent, queryEngine, permissionGate, permissionExplainer,
@@ -2107,14 +1891,10 @@ public class LanternaReplScreen implements SlashHost {
         lspRecommendationDialog.setKeybindingsStore(keybindingsStore);
         pluginHintMenu   = new PluginHintMenu();   // inline, zero height until shown
         pluginHintMenu.setKeybindingsStore(keybindingsStore);
-        taskListPanel    = new TaskListPanel();       // inline, zero height until shown
-        applyTaskBoardSnapshot(taskBoard.snapshot());
-        taskListPanel.setVisible(UiSettings.readGlobalBoolean("showExpandedTodos", false)
-            && !taskBoardSnapshot.hidden());
-        taskBoardSubscription = taskBoard.subscribe(snapshot ->
-            gui.getGUIThread().invokeLater(() -> applyTaskBoardSnapshot(snapshot)));
-        taskBoardIntentSubscription = taskBoard.subscribeIntents(_ ->
-            gui.getGUIThread().invokeLater(this::expandTaskBoard));
+        taskBoardFeature = new TaskBoardFeature(
+            gui, screen, spinnerComponent, inputPanel, taskBoard, featureRuntime,
+            () -> turnView == null ? List.of() : turnView.runningTeammateMetricsSnapshot());
+        taskBoardFeature.start();
         exportDialog     = new ExportDialog();       // inline, zero height until shown
         exportDialog.setKeybindingsStore(keybindingsStore);
         exportDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
@@ -2125,11 +1905,7 @@ public class LanternaReplScreen implements SlashHost {
         collaborationPickerDialog.setInteractionBlocked(toolApprovalInteraction::isPromptActive);
         feishuSetupDialog = new FeishuSetupDialog();
         feishuSetupDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        hooksDialog      = new HooksConfigMenuDialog(); // inline, zero height until shown
-        hooksDialog.setKeybindingsStore(keybindingsStore);
         goalDialog       = new GoalDialog();         // inline, zero height until shown
-        btwSideQuestionDialog = new BtwSideQuestionDialog(); // inline, zero height until shown
-        btwSideQuestionDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
         copyPicker       = new CopyPickerDialog();   // inline, zero height until shown
         copyPicker.setKeybindingsStore(keybindingsStore);
         diffDialog       = new DiffDialog(           // inline, zero height until shown
@@ -2203,8 +1979,6 @@ public class LanternaReplScreen implements SlashHost {
             UiSettings::persistDangerousModePermissionPrompt,
             terminalRows,
             keybindingsStore);
-        mcpDialog        = new MCPSettingsDialog();  // inline, zero height until shown
-        mcpDialog.setKeybindingsStore(keybindingsStore);
         interruptActions = new ReplInterruptActions(
             () -> bashModeExecutor,
             () -> turnEngine != null && turnEngine.isInFlight(),
@@ -2242,8 +2016,6 @@ public class LanternaReplScreen implements SlashHost {
         });
         tagRemovalDialog = new TagRemovalDialog(); // inline, zero height until shown
         tagRemovalDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
-        pokemonHatchDialog = new PokemonHatchDialog(); // inline, zero height until shown
-        pokemonHatchDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
         diffDialog.setKeybindingsStore(keybindingsStore);
         doctorDialog = new DoctorDialog(doctor);
         doctorDialog.setKeybindingsStore(keybindingsStore);
@@ -2266,15 +2038,17 @@ public class LanternaReplScreen implements SlashHost {
             },
             ZoneId.systemDefault());
         statsDialog.setKeybindingsStore(keybindingsStore);
-        immediateAdapter = new ImmediateCommandUiAdapter(
+        ImmediateCommandUiAdapter immediateAdapter = new ImmediateCommandUiAdapter(
             inputPanel, messagePanel, r -> gui.getGUIThread().invokeLater(r));
         bashModeExecutor = new BashModeExecutor(gui, messagePanel, queryEngine, interactiveSessions,
             interactionCoordinator,
             (image, onClose) -> ItermImagePreviewWindow.show(gui, image, onClose));
-        fileSuggestionService = new FileSuggestionService(gui, inputPanel);
+        // See com.claudecode.ui.lanterna.suggest.FileSuggestionService for cache,
+        // throttling, git-index mtime, and stale-VT gen semantics.
+        FileSuggestionService fileSuggestionService = new FileSuggestionService(gui, inputPanel);
 
         selectionController = new SelectionController(gui, messagePanel, true);
-        selection = selectionController.getSelection();
+        Selection selection = selectionController.getSelection();
         selectionController.setBareClickHandler(inputPanel::handlePromptBareClick);
         // Screen-level selection: the GUI intercepts selection mouse events
         // above window dispatch and paints the highlight over the full back
@@ -2347,7 +2121,8 @@ public class LanternaReplScreen implements SlashHost {
         // before the permanent Collaboration row. InputPanel merges it with the
         // optional background-task pill as one tasks selection state.
         coordinatorTaskPanel = new CoordinatorTaskPanel();
-        coordinatorNavigation = new CoordinatorNavigationController(featureRuntime.taskRegistry());
+        CoordinatorNavigationController coordinatorNavigation =
+            new CoordinatorNavigationController(featureRuntime.taskRegistry());
         inputPanel.setTaskRegistry(featureRuntime.taskRegistry());
         inputPanel.setWorkflowRunStore(featureRuntime.workflowRuns());
         inputPanel.setCoordinatorNavigation(
@@ -2363,24 +2138,21 @@ public class LanternaReplScreen implements SlashHost {
             r -> gui.getGUIThread().invokeLater(r),
             messagePanel, inputPanel, spinnerComponent, terminalController,
             dispatcher, collapser, messageHistory, queryEngine,
-            this::executeStatusLineCommand, () -> model, this::readBtwUseCount,
+            this::executeStatusLineCommand, () -> model, () -> btwFeature.readUseCount(),
             compactWarnings, tipSupplier, () -> {
                 featureRuntime.loopWakeups().onTurnIdle();
                 if (cronScheduler != null) cronScheduler.checkNow();
                 if (idlePromptNotifier != null) idlePromptNotifier.turnCompleted();
                 if (awaySummaryTrigger != null) awaySummaryTrigger.turnCompleted();
             },
-            this::addPokemonExperience);
+            tokens -> pokemonFeature.addExperience(tokens));
         sessionController.setRewindStateReset(turnView::resetBackgroundWaitForRewind);
         sessionEvents = new SessionEventHub(turnView,
             failure -> log.warn("Session Link observer failed", failure));
         // The end-of-turn row reports what is still running in the background.
         turnView.setTaskRegistry(featureRuntime.taskRegistry());
-        turnView.setTaskBoardLoadingListener(loading -> {
-            taskBoardLoading = loading;
-            refreshTaskBoardProjection();
-        });
-        turnView.setTaskBoardOwnersChangedListener(this::refreshTaskBoardProjection);
+        turnView.setTaskBoardLoadingListener(taskBoardFeature::setLoading);
+        turnView.setTaskBoardOwnersChangedListener(taskBoardFeature::refreshProjection);
 
 
         // what the user typed.
@@ -2441,6 +2213,9 @@ public class LanternaReplScreen implements SlashHost {
                         LanternaTheme.userQueryBg()));
             }
         };
+        btwFeature = new BtwFeature(
+            gui, screen, inputPanel, transcriptSink, toolRegistry, queryEngine, commandContext,
+            this::currentAgentToolExecutionContext);
         PreferencesFeature preferencesFeature = new PreferencesFeature(
             gui, inputPanel,
             () -> screen != null ? screen.getTerminalSize().getRows() : 40,
@@ -2464,13 +2239,16 @@ public class LanternaReplScreen implements SlashHost {
             this::viewAgentTask);
         agentsFeature.setKeybindingsStore(keybindingsStore);
         SandboxFeature sandboxFeature = new SandboxFeature(gui, inputPanel, transcriptSink);
-        memoryFeature = new MemoryFeature(gui, screen, memoryCatalog, transcriptSink);
+        MemoryFeature memoryFeature = new MemoryFeature(gui, screen, memoryCatalog, transcriptSink);
         memoryFeature.setKeybindingsStore(keybindingsStore);
+        pokemonFeature = new PokemonFeature(
+            gui, screen, messagePanel, inputPanel, welcomePanel, welcomeBlock,
+            () -> model, transcriptSink);
         commandUi.install(
             preferencesFeature, permissionsFeature, agentsFeature, sandboxFeature,
             memoryFeature, sessionController);
-        mcpController = new MCPController(gui, mcpDialog, inputPanel, transcriptSink,
-            mcpManagement);
+        mcpController = new MCPController(gui, inputPanel, transcriptSink,
+            mcpManagement, keybindingsStore);
         // Bridge background-task (bash / subagent) terminal transitions into the session message
         // queue as <task-notification> messages.
 
@@ -2484,8 +2262,8 @@ public class LanternaReplScreen implements SlashHost {
         featureRuntime.taskRegistry().setMessageQueue(queryEngine.conversation().getMessageQueue());
         // Hooks browser: snapshot loading + settings hot-reload subscription. toolNames /
         // Tool names are mutable; the application hook port is stable for the session.
-        hooksController = new HooksController(gui, hooksDialog, inputPanel, transcriptSink,
-            () -> toolNames, hookConfiguration);
+        hooksController = new HooksController(gui, inputPanel, transcriptSink,
+            () -> toolNames, hookConfiguration, keybindingsStore);
         // Inline overlays polled by onInput, in priority order. Mutually exclusive —
         // opening one suppresses the others (see InlineOverlay).
         scene.registerAll(preferencesFeature.overlays());
@@ -2511,18 +2289,18 @@ public class LanternaReplScreen implements SlashHost {
         scene.register(thinkingToggleDialog);
         scene.register(collaborationPickerDialog);
         scene.register(feishuSetupDialog);
-        scene.register(hooksDialog);
+        scene.register(hooksController.overlay());
         scene.register(goalDialog);
-        scene.register(btwSideQuestionDialog);
+        scene.register(btwFeature.overlay());
         scene.register(copyPicker);
         scene.register(diffDialog);
         scene.register(helpPanel);
         scene.register(projectPanel);
         scene.register(pluginSettingsPanel);
-        scene.register(mcpDialog);
+        scene.register(mcpController.overlay());
         scene.register(exitController.overlay());
         scene.register(tagRemovalDialog);
-        scene.register(pokemonHatchDialog);
+        scene.register(pokemonFeature.overlay());
         scene.register(memoryFeature.overlay());
         scene.register(sessionController.overlay());
         scene.register(doctorDialog);
@@ -2537,7 +2315,7 @@ public class LanternaReplScreen implements SlashHost {
 
         // ── Root: SmartLayout — messagePanel sized by content, input pinned right below ──
         // Order matters: spinner / permissionPanel / effortSlider / taskListPanel
-        // / exportDialog / hooksDialog / input flow together beneath the message stream. Each
+        // / exportDialog / hooksController.view() / input flow together beneath the message stream. Each
         // collapses to (0,0) when idle so the layout hands those rows back to MessagePanel.
         scene.mount(
             messagePanel,
@@ -2554,14 +2332,14 @@ public class LanternaReplScreen implements SlashHost {
             lspRecommendationDialog,
             preferencesFeature.modelView(),
             preferencesFeature.customModelView(),
-            taskListPanel,
+            taskBoardFeature.view(),
             thinkingToggleDialog,
             collaborationPickerDialog,
             feishuSetupDialog,
             exportDialog,
-            hooksDialog,
+            hooksController.view(),
             goalDialog,
-            btwSideQuestionDialog,
+            btwFeature.view(),
             preferencesFeature.themeView(),
             copyPicker,
             diffDialog,
@@ -2572,10 +2350,10 @@ public class LanternaReplScreen implements SlashHost {
             preferencesFeature.settingsView(),
             permissionsFeature.rulesView(),
             agentsFeature.view(),
-            mcpDialog,
+            mcpController.view(),
             exitController.view(),
             tagRemovalDialog,
-            pokemonHatchDialog,
+            pokemonFeature.view(),
             memoryFeature.view(),
             sessionController.view(),
             doctorDialog,
@@ -2594,9 +2372,7 @@ public class LanternaReplScreen implements SlashHost {
                 queryEngine.configuration().getConfig().model())));
 
         // ── Per-tool inline header (e.g.
-
         // CollapsedReadSearchContent as a normal message-panel line — independent
-
         // while toolUseConfirmQueue is non-empty (see permission callback below).
         dispatcher.setInlineHeaderLookup((toolName, argsJson) -> {
             if (Strings.CS.equals("Bash", toolName)) {
@@ -2645,7 +2421,7 @@ public class LanternaReplScreen implements SlashHost {
         // reads live turn/input state and is shared with the SIGINT handler.
         mainWindow = scene.attach(gui, new WindowInputRouter(
             scene.overlays(), messagePanel, selection, selectionController,
-            this::handleCtrlC, keybindingsStore, this::refreshTaskBoardProjection));
+            this::handleCtrlC, keybindingsStore, taskBoardFeature::refreshProjection));
         // InputPanel is mounted before the root is attached, so Lanterna never
         // invokes its Component#onAdded callback. Start the background-task
         // footer refresh explicitly once the live scene exists; otherwise
@@ -2722,7 +2498,6 @@ public class LanternaReplScreen implements SlashHost {
         int termW = screen.getTerminalSize().getColumns();
         inputPanel.setWidth(termW);
 
-
         // Drives the user's statusLine command; renders its (ANSI-colored,
         // possibly multi-line) output into the InputPanel footer. Refreshed on
         // each assistant message (including tool-loop API rounds), turn-complete,
@@ -2738,7 +2513,6 @@ public class LanternaReplScreen implements SlashHost {
             () -> Math.max(1, screen.getTerminalSize().getColumns() - 4),
             this::statusLineEffort);
         statusLineController.scheduleInitialUpdate();
-
 
         if (CronFeatureGate.system().cronEnabled()) {
             ScheduledTaskInteractionRouter scheduledTaskRouter =
@@ -2779,139 +2553,6 @@ public class LanternaReplScreen implements SlashHost {
         });
     }
 
-    private void applyTaskBoardSnapshot(TaskBoardPort.Snapshot snapshot) {
-        taskBoardSnapshot = snapshot == null ? TaskBoardPort.Snapshot.EMPTY : snapshot;
-        taskBoardToggleState.updateSnapshot(taskBoardSnapshot);
-        long nowMillis = System.currentTimeMillis();
-        taskBoardPresentationState.update(taskBoardSnapshot, nowMillis);
-        if (spinnerComponent != null) spinnerComponent.setTaskSnapshot(taskBoardSnapshot);
-        refreshTaskBoardProjection(nowMillis);
-        scheduleTaskBoardCompletionRefresh(nowMillis);
-        if (taskBoardSnapshot.hidden() && taskListPanel.isVisible()) {
-            taskListPanel.setVisible(false);
-            UiSettings.ensureGlobalBooleanAsync("showExpandedTodos", false);
-        }
-    }
-
-    private void refreshTaskBoardProjection() {
-        refreshTaskBoardProjection(System.currentTimeMillis());
-    }
-
-    private void refreshTaskBoardProjection(long nowMillis) {
-        if (taskListPanel == null || screen == null) return;
-        TerminalSize size = screen.getTerminalSize();
-        TaskBoardProjection.View view = TaskBoardProjection.project(
-            taskBoardSnapshot, size.getRows(), size.getColumns(), !taskBoardLoading,
-            taskBoardToggleState.expanded(),
-            nowMillis, taskBoardPresentationState.completionTimes(nowMillis),
-            activeTaskOwners());
-        taskBoardExpandable = view.expandable();
-        taskListPanel.refresh(view);
-    }
-
-    private Map<String, TaskBoardProjection.ActiveOwner> activeTaskOwners() {
-        if (turnView == null) return Map.of();
-        return activeTaskOwners(turnView.runningTeammateMetricsSnapshot());
-    }
-
-    static Map<String, TaskBoardProjection.ActiveOwner> activeTaskOwners(
-            List<SpinnerComponent.TeammateMetric> teammates) {
-        Map<String, TaskBoardProjection.ActiveOwner> owners = new LinkedHashMap<>();
-        for (SpinnerComponent.TeammateMetric teammate : teammates) {
-            if (StringUtils.isNotBlank(teammate.taskId())) {
-                owners.put(teammate.taskId(), new TaskBoardProjection.ActiveOwner(
-                    null, teammate.activity()));
-            }
-            if (StringUtils.isNotBlank(teammate.name())) {
-                owners.put(teammate.name(), new TaskBoardProjection.ActiveOwner(
-                    teammate.colorName(), teammate.activity()));
-            }
-        }
-        return Map.copyOf(owners);
-    }
-
-    private synchronized void scheduleTaskBoardCompletionRefresh(long nowMillis) {
-        cancelTaskBoardCompletionRefresh();
-        long delayMillis = taskBoardPresentationState.nextExpiryDelayMillis(nowMillis);
-        if (delayMillis < 0L) return;
-        taskBoardCompletionRefresh = TASK_BOARD_PRESENTATION_SCHEDULER.schedule(() -> {
-            if (gui == null) return;
-            gui.getGUIThread().invokeLater(() -> {
-                long refreshAt = System.currentTimeMillis();
-                refreshTaskBoardProjection(refreshAt);
-                scheduleTaskBoardCompletionRefresh(refreshAt);
-            });
-        }, Math.max(1L, delayMillis), TimeUnit.MILLISECONDS);
-    }
-
-    private synchronized void cancelTaskBoardCompletionRefresh() {
-        ScheduledFuture<?> current = taskBoardCompletionRefresh;
-        taskBoardCompletionRefresh = null;
-        if (current != null) current.cancel(false);
-    }
-
-    private void expandTaskBoard() {
-        boolean alreadyVisible = taskListPanel.isVisible();
-        applyTaskBoardSnapshot(taskBoard.snapshot());
-        if (taskBoardSnapshot.hidden()) return;
-        if (!alreadyVisible) taskBoardToggleState.showCompact();
-        spinnerComponent.setTeammateTreeExpanded(false);
-        inputPanel.setTeammateTreeExpanded(false);
-        taskListPanel.setVisible(true);
-        refreshTaskBoardProjection();
-        UiSettings.ensureGlobalBooleanAsync("showExpandedTodos", true);
-    }
-
-    private void toggleTaskBoard() {
-        boolean hasTeammates = !featureRuntime.taskRegistry().listRunningTeammates().isEmpty();
-        applyTaskBoardSnapshot(taskBoard.snapshot());
-        if (taskListPanel.isVisible()) {
-            TaskBoardToggleState.Toggle toggle = taskBoardToggleState.toggle(
-                true, taskBoardExpandable);
-            if (toggle == TaskBoardToggleState.Toggle.SHOW_EXPANDED) {
-                spinnerComponent.setTeammateTreeExpanded(false);
-                inputPanel.setTeammateTreeExpanded(false);
-                refreshTaskBoardProjection();
-            } else {
-                taskListPanel.setVisible(false);
-                spinnerComponent.setTeammateTreeExpanded(hasTeammates);
-                inputPanel.setTeammateTreeExpanded(hasTeammates);
-            }
-        } else if (hasTeammates && spinnerComponent.isTeammateTreeExpanded()) {
-            taskBoardToggleState.showCompact();
-            spinnerComponent.setTeammateTreeExpanded(false);
-            inputPanel.setTeammateTreeExpanded(false);
-        } else if (!taskBoardSnapshot.hidden()) {
-            taskBoardToggleState.toggle(false, taskBoardExpandable);
-            spinnerComponent.setTeammateTreeExpanded(false);
-            inputPanel.setTeammateTreeExpanded(false);
-            taskListPanel.setVisible(true);
-            refreshTaskBoardProjection();
-        } else {
-            taskBoardToggleState.showCompact();
-            spinnerComponent.setTeammateTreeExpanded(false);
-            inputPanel.setTeammateTreeExpanded(false);
-        }
-        UiSettings.ensureGlobalBooleanAsync(
-            "showExpandedTodos", taskListPanel.isVisible());
-    }
-
-    private void closeTaskBoardSubscriptions() {
-        cancelTaskBoardCompletionRefresh();
-        closeQuietly(taskBoardSubscription);
-        closeQuietly(taskBoardIntentSubscription);
-        taskBoardSubscription = null;
-        taskBoardIntentSubscription = null;
-    }
-
-    private static void closeQuietly(AutoCloseable subscription) {
-        if (subscription == null) return;
-        try {
-            subscription.close();
-        } catch (Exception _) {
-            // UI teardown is best effort.
-        }
-    }
 
     /**
      * The single outward action/notification port {@link InputPanel} fires into —
@@ -2999,14 +2640,13 @@ public class LanternaReplScreen implements SlashHost {
             });
         }
         @Override public void toggleTodos() {
-            if (taskListPanel == null || spinnerComponent == null) return;
-            gui.getGUIThread().invokeLater(LanternaReplScreen.this::toggleTaskBoard);
+            if (taskBoardFeature == null || spinnerComponent == null) return;
+            gui.getGUIThread().invokeLater(taskBoardFeature::toggle);
         }
         @Override public void setTeammateTreeExpanded(boolean expanded) {
             if (spinnerComponent == null) return;
-            if (expanded && taskListPanel != null) {
-                taskBoardToggleState.showCompact();
-                taskListPanel.setVisible(false);
+            if (expanded && taskBoardFeature != null) {
+                taskBoardFeature.collapseForTeammateTreeExpansion();
             }
             spinnerComponent.setTeammateTreeExpanded(expanded);
             inputPanel.setTeammateTreeExpanded(expanded);
@@ -3149,7 +2789,7 @@ public class LanternaReplScreen implements SlashHost {
     private void renderFreshConversationWelcome() {
         int terminalWidth = screen != null
             ? screen.getTerminalSize().getColumns() : 100;
-        welcomeBlock = welcomePanel.show(messagePanel, terminalWidth, model);
+        welcomeBlock.set(welcomePanel.show(messagePanel, terminalWidth, model));
     }
 
     /**
@@ -3161,11 +2801,12 @@ public class LanternaReplScreen implements SlashHost {
      */
     private void refreshWelcomeWebEntry(String url) {
         Runnable repaint = () -> {
-            if (messagePanel == null || welcomeBlock == null) return;
+            LogoPanel.WelcomeBlock block = welcomeBlock.get();
+            if (messagePanel == null || block == null) return;
             int terminalWidth = screen != null
                 ? screen.getTerminalSize().getColumns() : 100;
-            welcomeBlock = welcomePanel.updateWebLine(
-                messagePanel, welcomeBlock, terminalWidth, model, url);
+            welcomeBlock.set(welcomePanel.updateWebLine(
+                messagePanel, block, terminalWidth, model, url));
         };
         if (gui != null) gui.getGUIThread().invokeLater(repaint);
         else repaint.run();
@@ -3274,9 +2915,9 @@ public class LanternaReplScreen implements SlashHost {
         }
         String preference = Strings.CS.equals("default", selected) ? null : selected;
         queryEngine.configuration().setModel(preference);
-// Session Host model changes match SDK set_model: update only this
+        // Session Host model changes match SDK set_model: update only this
         // QuerySession/session. Reusing applyModelSelection() here wrote
-// ~/on and made sibling PTY/Feishu sessions drift.
+        // ~/on and made sibling PTY/Feishu sessions drift.
         setModel(queryEngine.configuration().getConfig().model());
         return currentSessionModelState(expectedSessionId);
     }
@@ -3409,13 +3050,13 @@ public class LanternaReplScreen implements SlashHost {
         // skipSlashCommands: treat as plain text even if starts with '/'.
         // Covers inputs that must bypass local slash-command routing.
         if (!cmd.skipSlashCommands() && text != null && Strings.CS.startsWith(text, "/")) {
-// Re-route through slash dispatch.
+        // Re-route through slash dispatch.
 
             // alone), so there is nothing left in `batch` to lose here.
             slashDispatcher.dispatch(text);
             return;
         }
-// matches ReplSubmissionCoordinator.handleInput/handleRemoteQuery's blank-input
+        // matches ReplSubmissionCoordinator.handleInput/handleRemoteQuery's blank-input
         // guard for human-typed submissions: a queued command must never reach
         // turnEngine.submit() with neither text nor a pasted image. Without this, a
         // malformed task-notification or an orphaned-permission command that (contrary
@@ -3845,11 +3486,6 @@ public class LanternaReplScreen implements SlashHost {
     }
 
 
-    private int readBtwUseCount() {
-        return UiSettings.readGlobalInt("btwUseCount", 0);
-    }
-
-
     private void undoLastMessage() {
         // Get the last submitted input
         String lastInput = lastSubmittedInput;
@@ -3976,7 +3612,6 @@ public class LanternaReplScreen implements SlashHost {
                 disableMouseBeforeHandoff();
                 screen.stopScreen();
                 screenStopped = true;
-
 
                 // from the shared resolver before waitFor() returns.
                 ProcessBuilder pb = new ProcessBuilder(command.argvFor(tmpFile)).inheritIO();

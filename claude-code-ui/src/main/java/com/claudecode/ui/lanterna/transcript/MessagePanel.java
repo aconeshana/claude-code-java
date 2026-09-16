@@ -1,22 +1,31 @@
 package com.claudecode.ui.lanterna.transcript;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-import com.claudecode.ui.MarkdownRenderer;
 import com.claudecode.core.constants.Figures;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.ui.MarkdownRenderer;
 import com.claudecode.ui.lanterna.components.AnsiToSegments;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TerminalTextUtils;
 import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.TextColor;
-import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
-import java.util.*;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.RandomAccess;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -26,7 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Scrollable message area — the main content panel.

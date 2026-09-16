@@ -1,7 +1,10 @@
 package com.claudecode.ui.lanterna.features.settings;
 
+import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.hooks.HookConfigurationPort;
 import com.claudecode.runtime.hooks.HookConfigurationSnapshot;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.List;
 import java.util.Objects;
@@ -15,7 +18,8 @@ import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
 /**
  * Drives the inline {@code /hooks} configuration browser: loads the merged hook snapshot, shows the
  * {@link HooksConfigMenuDialog}, and keeps it live-refreshed while the user edits the corresponding
- * behavioron from another terminal through {@link HookConfigurationPort}.
+ * behavioron from another terminal through {@link HookConfigurationPort}. Owns the dialog instance
+ * and its scene registration surface. Extracted from {@code LanternaReplScreen}.
  */
 public final class HooksController {
 
@@ -31,15 +35,24 @@ public final class HooksController {
     /** Active hot-reload subscription for the currently-open dialog; null while closed. */
     private AutoCloseable reloadSubscription;
 
-    public HooksController(WindowBasedTextGUI gui, HooksConfigMenuDialog dialog, InputPanel inputPanel,
+    public HooksController(WindowBasedTextGUI gui, InputPanel inputPanel,
                     ReplTranscriptSink sink, Supplier<List<String>> toolNames,
-                    HookConfigurationPort hookConfiguration) {
+                    HookConfigurationPort hookConfiguration, UserKeybindingsStore keybindingsStore) {
         this.gui = gui;
-        this.dialog = dialog;
+        this.dialog = new HooksConfigMenuDialog();  // inline, zero height until shown
+        this.dialog.setKeybindingsStore(keybindingsStore);
         this.inputPanel = inputPanel;
         this.sink = sink;
         this.toolNames = toolNames;
         this.hookConfiguration = Objects.requireNonNull(hookConfiguration, "hookConfiguration");
+    }
+
+    public InlineOverlay overlay() {
+        return dialog;
+    }
+
+    public Component view() {
+        return dialog;
     }
 
     /**

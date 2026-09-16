@@ -8,7 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-class LanternaReplScreenTaskBoardTest {
+class TaskBoardFeatureTest {
 
     @Test
     void released197ColorsOwnerNamesButNotAgentIds() {
@@ -17,7 +17,7 @@ class LanternaReplScreenTaskBoardTest {
             "Reading build.gradle.kts", "working", "worked",
             1L, 0L, 10L, 1);
 
-        var owners = LanternaReplScreen.activeTaskOwners(List.of(teammate));
+        var owners = TaskBoardFeature.activeTaskOwners(List.of(teammate));
 
         assertNull(owners.get("agent-1").colorName());
         assertEquals("Reading build.gradle.kts", owners.get("agent-1").activity());

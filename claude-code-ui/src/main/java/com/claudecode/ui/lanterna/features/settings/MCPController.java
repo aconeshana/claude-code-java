@@ -1,11 +1,14 @@
 package com.claudecode.ui.lanterna.features.settings;
 
+import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.mcp.McpManagementPort;
 import com.claudecode.runtime.mcp.McpManagementPort.Action;
 import com.claudecode.runtime.mcp.McpManagementPort.Server;
 import com.claudecode.ui.lanterna.dialog.MCPSettingsDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
+import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -13,7 +16,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Presentation controller for the inline {@code /mcp} browser.
+ * Presentation controller for the inline {@code /mcp} browser. Owns the
+ * {@link MCPSettingsDialog} instance and its scene registration surface, so callers no longer
+ * hold the dialog field directly. Extracted from {@code LanternaReplScreen}.
  */
 public final class MCPController {
 
@@ -25,13 +30,23 @@ public final class MCPController {
     private final AtomicBoolean actionInFlight = new AtomicBoolean();
     private final AtomicLong dialogEpoch = new AtomicLong();
 
-    public MCPController(WindowBasedTextGUI gui, MCPSettingsDialog dialog, InputPanel inputPanel,
-                         ReplTranscriptSink sink, McpManagementPort management) {
+    public MCPController(WindowBasedTextGUI gui, InputPanel inputPanel,
+                         ReplTranscriptSink sink, McpManagementPort management,
+                         UserKeybindingsStore keybindingsStore) {
         this.gui = gui;
-        this.dialog = dialog;
+        this.dialog = new MCPSettingsDialog();  // inline, zero height until shown
+        this.dialog.setKeybindingsStore(keybindingsStore);
         this.inputPanel = inputPanel;
         this.sink = sink;
         this.management = management != null ? management : McpManagementPort.none();
+    }
+
+    public InlineOverlay overlay() {
+        return dialog;
+    }
+
+    public Component view() {
+        return dialog;
     }
 
     public void open() {

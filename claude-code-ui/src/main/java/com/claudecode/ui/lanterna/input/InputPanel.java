@@ -1,19 +1,19 @@
 package com.claudecode.ui.lanterna.input;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.constants.Figures;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.imagestore.ImageStore;
 import com.claudecode.core.message.PastedContent;
-import com.claudecode.keybindings.UserKeybindingsStore;
-import com.claudecode.keybindings.KeybindingHints;
-import com.claudecode.core.annotation.Explanation;
-import com.claudecode.permissions.PermissionMode;
+import com.claudecode.core.paste.ImagePaste;
+import com.claudecode.core.paste.InputPasteTruncation;
+import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.queue.QueuedCommand;
-import com.claudecode.runtime.turn.QueuedInputDraft;
+import com.claudecode.keybindings.KeybindingHints;
+import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
+import com.claudecode.runtime.turn.QueuedInputDraft;
 import com.claudecode.tools.tasks.InProcessTeammateTask;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
@@ -21,13 +21,15 @@ import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskType;
 import com.claudecode.tools.workflows.WorkflowRun;
 import com.claudecode.tools.workflows.WorkflowRunStore;
+import com.claudecode.ui.lanterna.components.HighlightedTextBox;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox.Highlight;
+import com.claudecode.ui.lanterna.features.settings.UiSettings;
+import com.claudecode.ui.lanterna.status.StatusLineComponent;
+import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
 import com.claudecode.ui.vim.VimMode;
 import com.claudecode.ui.vim.VimStateMachine;
-import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
-import com.claudecode.core.paste.ImagePaste;
-import com.claudecode.core.paste.InputPasteTruncation;
-import com.claudecode.core.paste.PastedRefParser;
 import com.googlecode.lanterna.CursorStyle;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
@@ -69,13 +71,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.claudecode.ui.lanterna.components.HighlightedTextBox;
-import com.claudecode.ui.lanterna.features.settings.UiSettings;
-import com.claudecode.ui.lanterna.status.StatusLineComponent;
-import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 /**
  * Input area for the Lanterna prompt component stack.

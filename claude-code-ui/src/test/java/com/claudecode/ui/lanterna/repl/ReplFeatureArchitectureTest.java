@@ -17,6 +17,8 @@ class ReplFeatureArchitectureTest {
         "src/main/java/com/claudecode/ui/lanterna/repl/LanternaReplScreen.java");
     private static final Path UI_SETTINGS = Path.of(
         "src/main/java/com/claudecode/ui/lanterna/features/settings/UiSettings.java");
+    private static final Path POKEMON_FEATURE = Path.of(
+        "src/main/java/com/claudecode/ui/lanterna/features/pokemon/PokemonFeature.java");
 
     @Test
     void screenDependsOnFeatureFacadesInsteadOfConcreteFeatureViews() throws IOException {
@@ -26,8 +28,8 @@ class ReplFeatureArchitectureTest {
                 "EffortSliderDialog", "ModelPickerDialog", "ThemePickerDialog",
                 "SettingsTabContainer", "PermissionsPanel", "AgentsPanel",
                 "AddDirDialog", "SandboxSettingsDialog", "ReplSettingsController",
-                "MemorySelectorDialog", "BypassPermissionsModeDialog", "WorktreeExitDialog",
-                "MessageSelectorDialog")) {
+                "MemorySelectorDialog", "HooksConfigMenuDialog", "MCPSettingsDialog",
+                "BypassPermissionsModeDialog", "WorktreeExitDialog", "MessageSelectorDialog")) {
             assertFalse(Strings.CS.contains(source, forbidden),
                 () -> "LanternaReplScreen must not own concrete feature view: " + forbidden);
         }
@@ -118,7 +120,7 @@ class ReplFeatureArchitectureTest {
 
     @Test
     void pokemonPersistenceObservesAsyncWriteFailures() throws IOException {
-        String source = Files.readString(SCREEN);
+        String source = Files.readString(POKEMON_FEATURE);
         int start = source.indexOf("UiSettings.writeGlobalAsync(\"welcomePokemon\"");
         int end = source.indexOf("Runnable applyExperience", start);
         assertTrue(start >= 0 && end > start);
@@ -140,12 +142,39 @@ class ReplFeatureArchitectureTest {
     void completedTurnImmediatelyChecksDueScheduledTasks() throws IOException {
         String source = Files.readString(SCREEN);
         int idle = source.indexOf("featureRuntime.loopWakeups().onTurnIdle();");
-        int callbackEnd = source.indexOf("},\n            this::addPokemonExperience", idle);
+        int callbackEnd = source.indexOf("},\n            tokens -> pokemonFeature.addExperience", idle);
         assertTrue(idle >= 0 && callbackEnd > idle);
 
         String idleCallback = source.substring(idle, callbackEnd);
         assertTrue(Strings.CS.contains(idleCallback, "cronScheduler.checkNow()"),
             "197 checks scheduled tasks as soon as loading returns to idle");
+    }
+
+    @Test
+    void screenDelegatesTaskBoardOwnership() throws IOException {
+        String source = Files.readString(SCREEN);
+
+        assertTrue(Strings.CS.contains(source, "TaskBoardFeature"));
+        for (String forbidden : List.of(
+                "private void toggleTaskBoard(", "private void expandTaskBoard(",
+                "private void applyTaskBoardSnapshot(")) {
+            assertFalse(Strings.CS.contains(source, forbidden),
+                () -> "task board lifecycle/projection ownership belongs to TaskBoardFeature: "
+                    + forbidden);
+        }
+    }
+
+    @Test
+    void screenDelegatesBtwExchangeOwnership() throws IOException {
+        String source = Files.readString(SCREEN);
+
+        assertTrue(Strings.CS.contains(source, "BtwFeature"));
+        for (String forbidden : List.of(
+                "private void forkBtwExchange(", "private void spawnBtwForkAgent(",
+                "private void branchBtwExchange(")) {
+            assertFalse(Strings.CS.contains(source, forbidden),
+                () -> "the /btw side-question exchange belongs to BtwFeature: " + forbidden);
+        }
     }
 
     @Test

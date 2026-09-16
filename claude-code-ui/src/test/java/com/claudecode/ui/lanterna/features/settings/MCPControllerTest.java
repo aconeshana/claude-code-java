@@ -37,11 +37,11 @@ class MCPControllerTest {
     void clearAuthenticationRoutesThroughApplicationPort() {
         CapturingSink sink = new CapturingSink();
         AtomicReference<McpManagementPort.Action> action = new AtomicReference<>();
-        MCPController controller = new MCPController(null, null, null, sink,
+        MCPController controller = new MCPController(null, null, sink,
             fake((requested, _) -> {
                 action.set(requested);
                 return "✓ Cleared stored authentication for s";
-            }));
+            }), null);
 
         controller.handleMcpAction(MCPSettingsDialog.MenuAction.CLEAR_AUTH, server("s"));
 
@@ -52,8 +52,8 @@ class MCPControllerTest {
     @Test
     void viewToolsAndBackAreDialogOnly() {
         CapturingSink sink = new CapturingSink();
-        MCPController controller = new MCPController(null, null, null, sink,
-            fake((_, _) -> { throw new AssertionError("must not execute"); }));
+        MCPController controller = new MCPController(null, null, sink,
+            fake((_, _) -> { throw new AssertionError("must not execute"); }), null);
 
         controller.handleMcpAction(MCPSettingsDialog.MenuAction.VIEW_TOOLS, server("s"));
         controller.handleMcpAction(MCPSettingsDialog.MenuAction.BACK, server("s"));
@@ -64,8 +64,8 @@ class MCPControllerTest {
     @Test
     void nullServerIsIgnored() {
         CapturingSink sink = new CapturingSink();
-        MCPController controller = new MCPController(null, null, null, sink,
-            fake((_, _) -> { throw new AssertionError("must not execute"); }));
+        MCPController controller = new MCPController(null, null, sink,
+            fake((_, _) -> { throw new AssertionError("must not execute"); }), null);
 
         controller.handleMcpAction(MCPSettingsDialog.MenuAction.RECONNECT, null);
 
@@ -75,8 +75,8 @@ class MCPControllerTest {
     @Test
     void backendFailureIsReportedToTranscript() {
         CapturingSink sink = new CapturingSink();
-        MCPController controller = new MCPController(null, null, null, sink,
-            fake((_, _) -> { throw new IllegalStateException("MCP client manager not wired"); }));
+        MCPController controller = new MCPController(null, null, sink,
+            fake((_, _) -> { throw new IllegalStateException("MCP client manager not wired"); }), null);
 
         controller.handleMcpAction(MCPSettingsDialog.MenuAction.RECONNECT, server("srv"));
 
