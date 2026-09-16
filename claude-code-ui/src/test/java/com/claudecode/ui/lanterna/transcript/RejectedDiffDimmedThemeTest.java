@@ -6,7 +6,6 @@ import com.claudecode.core.diff.StructuredPatchHunk;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.theme.Theme;
 import com.googlecode.lanterna.TextColor;
-import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -14,26 +13,11 @@ import org.junit.jupiter.api.Test;
  * The dimmed FileEdit diff path (197's {@code FileEditToolUseRejectedMessage},
  * where {@code dim=true}) must select the theme's {@code diffAddedDimmed} /
  * {@code diffRemovedDimmed} line backgrounds directly, not a blend of the
- * normal palette background. This pins {@code appendInlineDiffHunk}'s two-way
+ * normal palette background. This pins {@link SourceCodePainter#appendInlineDiffHunk}'s two-way
  * lookup: dimmed intent reads the dimmed theme keys; the normal path keeps the
  * structured palette.
  */
 class RejectedDiffDimmedThemeTest {
-
-    /** Reviewed via reflection: {@code appendInlineDiffHunk(MessagePanel, StructuredPatchHunk, String, boolean)}. */
-    private static final Method APPEND = reflectAppend();
-
-    private static Method reflectAppend() {
-        try {
-            Method m = LanternaMessageDispatcher.class
-                .getDeclaredMethod("appendInlineDiffHunk",
-                    MessagePanel.class, StructuredPatchHunk.class, String.class, Boolean.TYPE);
-            m.setAccessible(true);
-            return m;
-        } catch (NoSuchMethodException e) {
-            throw new IllegalStateException("appendInlineDiffHunk no longer exists", e);
-        }
-    }
 
     private static StructuredPatchHunk hunk() {
         return new StructuredPatchHunk(1, 4, 1, 4, List.of(
@@ -46,7 +30,7 @@ class RejectedDiffDimmedThemeTest {
 
     private static List<MessagePanel.Segment> segments(boolean dim) throws Exception {
         MessagePanel panel = new MessagePanel();
-        APPEND.invoke(null, panel, hunk(), "java", dim);
+        SourceCodePainter.appendInlineDiffHunk(panel, hunk(), "java", dim);
         return panel.displayRowsForTest(160).stream()
             .flatMap(row -> row.segments().stream())
             .toList();

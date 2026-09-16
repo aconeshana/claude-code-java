@@ -53,7 +53,19 @@ order.
 |---|---|---|
 | TranscriptController | lanterna/transcript/TranscriptController.java | Transcript state and viewed-teammate state |
 | MessagePanel | lanterna/transcript/MessagePanel.java | Message rows, segments, selection, and actions |
-| LanternaMessageDispatcher | lanterna/transcript/LanternaMessageDispatcher.java | Stream and turn-event presentation |
+| LanternaMessageDispatcher | lanterna/transcript/LanternaMessageDispatcher.java | SDKMessage routing, tool-card lifecycle, tombstone retraction, and composition of the renderers below |
+| PendingToolLedger | lanterna/transcript/PendingToolLedger.java | In-flight tool calls, their header/status rows, and per-id progress/result tables |
+| ToolHeaderRenderer | lanterna/transcript/ToolHeaderRenderer.java | Tool header rows: status dot, name, external tag, argument preview, completion recolour |
+| ToolResultRenderer | lanterna/transcript/ToolResultRenderer.java | Per-ResultMode and generic tool result bodies; delegates file edits to FileChangeResultRenderer |
+| FileChangeResultRenderer | lanterna/transcript/FileChangeResultRenderer.java | Edit/Write/Notebook diffs, full-content previews, and rejected-change previews |
+| ToolProgressRenderer | lanterna/transcript/ToolProgressRenderer.java | MCP progress bar, WebSearch updates, shell output summary, and TaskOutput waiting hint |
+| SourceCodePainter | lanterna/transcript/SourceCodePainter.java | Syntax-highlighted code and diff hunk painting, display paths |
+| ToolResultLines | lanterna/transcript/ToolResultLines.java | Shared result-row gutters, error text mapping, plan and denial rows |
+| UserMessageRenderer | lanterna/transcript/UserMessageRenderer.java | Prompt echo, bash/local-command output, channel and compact-summary rows, image chips |
+| SystemMessageRenderer | lanterna/transcript/SystemMessageRenderer.java | System notices, turn summary, errors, retries, attachments, and API status texts |
+| ThinkingRenderer | lanterna/transcript/ThinkingRenderer.java | Completed thinking blocks and their verbose/transcript visibility |
+| AgentProgressPresenter | lanterna/transcript/AgentProgressPresenter.java | Sub-agent progress rows, parallel-agent group cards, and verbose child transcripts |
+| StreamingTextRenderer | lanterna/transcript/StreamingTextRenderer.java | Live streaming text window with snapshot rollback and stable/unstable Markdown tail |
 | BackgroundTasksRenderer | lanterna/transcript/BackgroundTasksRenderer.java | Shell, agent, workflow, monitor, and dream task rows |
 | BackgroundTaskPill | lanterna/transcript/BackgroundTaskPill.java | Compact task status in the transcript |
 | ContextVisualizationRenderer | lanterna/transcript/ContextVisualizationRenderer.java | Context grid, legend, MCP/tools/agents/memory/skills sections, and suggestions |

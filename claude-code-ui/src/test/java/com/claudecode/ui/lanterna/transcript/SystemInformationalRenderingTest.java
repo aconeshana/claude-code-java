@@ -91,14 +91,14 @@ class SystemInformationalRenderingTest {
         dispatcher.setHyperlinkSupport(() -> true);
         dispatcher.dispatch(new SDKMessage.System(new SystemMessage(
             "ann-3", "model_refusal_fallback", "warning",
-            prefix + "learn more: " + LanternaMessageDispatcher.REFUSAL_HELP_URL)), panel);
+            prefix + "learn more: " + SystemMessageRenderer.REFUSAL_HELP_URL)), panel);
 
         List<MessagePanel.Segment> body = panel.mixed.getFirst();
         assertEquals(3, body.size(), "dot + prefix + link, with an empty tail dropped: " + body);
         assertEquals("⏺ " + prefix, body.getFirst().text() + body.get(1).text());
         MessagePanel.Segment link = body.get(2);
         assertEquals("learn more", link.text(), "the url itself is replaced by the label");
-        assertEquals(LanternaMessageDispatcher.REFUSAL_HELP_URL, link.hyperlinkUrl());
+        assertEquals(SystemMessageRenderer.REFUSAL_HELP_URL, link.hyperlinkUrl());
         assertEquals(Set.of(SGR.BOLD, SGR.UNDERLINE), link.modifiers());
     }
 
@@ -106,7 +106,7 @@ class SystemInformationalRenderingTest {
     void trailingLearnMoreStaysLiteralWhenTheTerminalCannotLink() {
         StubPanel panel = new StubPanel();
         String content = "Switched to Claude Sonnet 4.5. Send feedback with /feedback or"
-            + " learn more: " + LanternaMessageDispatcher.REFUSAL_HELP_URL;
+            + " learn more: " + SystemMessageRenderer.REFUSAL_HELP_URL;
 
         LanternaMessageDispatcher dispatcher = new LanternaMessageDispatcher();
         dispatcher.setHyperlinkSupport(() -> false);
