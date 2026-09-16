@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import okhttp3.OkHttpClient;
+import org.apache.commons.lang3.StringUtils;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.AfterEach;
@@ -272,7 +273,7 @@ class GatewayContextTimelineInteropTest {
         }
 
         private boolean live(String sessionId) {
-            return sessionId == null || sessionId.isBlank() || sessionId.equals(liveId);
+            return StringUtils.isBlank(sessionId) || sessionId.equals(liveId);
         }
 
         @Override public Optional<ModelSelection> selection(String sessionId) {

@@ -78,6 +78,8 @@ const EMPTY: SessionTimelineState = { head: null, cold: false, loading: false, f
 
 const viewers = new Map<string, number>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+/** Per-session refresh ticket; a response that is not the newest ticket is dropped. */
+const refreshTickets = new Map<string, number>()
 
 export const useContextTimeline = create<ContextTimelineStore>((set, get) => {
   const patch = (sessionId: string, next: Partial<SessionTimelineState>): void => {
@@ -119,9 +121,16 @@ export const useContextTimeline = create<ContextTimelineStore>((set, get) => {
     },
 
     async refresh(sessionId) {
+      // Last request wins: an `open()` refresh overlapping a debounced mirror
+      // refresh (or a slow response outliving a session switch) must not
+      // overwrite a newer head with an older one.
+      const ticket = (refreshTickets.get(sessionId) ?? 0) + 1
+      refreshTickets.set(sessionId, ticket)
+      const current = (): boolean => refreshTickets.get(sessionId) === ticket
       patch(sessionId, { loading: true })
       try {
         const raw = await fetchContextTimeline(sessionId)
+        if (!current()) return
         if (raw === null) {
           patch(sessionId, { head: null, cold: true, loading: false, failed: false })
           return
@@ -135,7 +144,7 @@ export const useContextTimeline = create<ContextTimelineStore>((set, get) => {
         if (next !== undefined && previous !== undefined && next < previous) forgetContextContent(sessionId)
         patch(sessionId, { head, cold: false, loading: false, failed: head === null })
       } catch {
-        patch(sessionId, { loading: false, failed: true })
+        if (current()) patch(sessionId, { loading: false, failed: true })
       }
     },
 
@@ -192,25 +201,28 @@ const HEADER_TTL_MS = 15_000
  * node. Null when the ledger no longer holds the seq.
  */
 export function makeContentFetcher(sessionId: string): ContentFetcher {
-  let cache = contentCache.get(sessionId)
-  if (cache === undefined) {
-    cache = new Map()
-    contentCache.set(sessionId, cache)
-  }
-  const bySeq = cache
   return (seq: number): Promise<ConversationNodeLike | null> => {
+    // The session's map is looked up per call, not captured: the fetcher is
+    // memoized by the view for the session's lifetime, and
+    // `forgetContextContent` swaps the map out from under it.
+    let bySeq = contentCache.get(sessionId)
+    if (bySeq === undefined) {
+      bySeq = new Map()
+      contentCache.set(sessionId, bySeq)
+    }
     // The promise itself is cached: concurrent misses on one row (an
     // expand racing a re-render) share one GET, and a settled promise is
     // the memo. A transport failure evicts so the next expand retries.
     const hit = bySeq.get(seq)
     if (hit !== undefined) return hit
+    const owner = bySeq
     const pending = fetchContextContent(sessionId, { seq })
       .then((raw) => nodeOfContent(raw, seq))
       .catch((failure: unknown) => {
-        bySeq.delete(seq)
+        owner.delete(seq)
         throw failure
       })
-    bySeq.set(seq, pending)
+    owner.set(seq, pending)
     return pending
   }
 }

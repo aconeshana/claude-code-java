@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -96,6 +97,17 @@ final class ContextTimelineFold {
     static final int MAX_KEPT_DAYS = 400;
     /** Per-node stored content bound, matching the mirror's result excerpt. */
     static final int MAX_CONTENT_CHARS = 20_000;
+    /**
+     * Surface nodes that keep their content for the content endpoint (the
+     * newest). Older live nodes stay on the surface for the token ledger but
+     * drop their text: dsh keeps node text in the harness log, not the fold,
+     * and an unbounded fold of 20k-char excerpts would grow with the session.
+     */
+    static final int MAX_CONTENT_NODES = 600;
+    /** Tool calls whose result never arrived (an interrupted turn) are forgotten past this many. */
+    private static final int MAX_PENDING_CALLS = 500;
+    /** Settled model response ids remembered for usage de-duplication. */
+    private static final int MAX_SETTLED_RESPONSES = 2_000;
     private static final String TRUNCATION_MARKER = "\n…[truncated]";
     private static final int MAX_AGENTS = 200;
     private static final int PREVIEW_CHARS = 80;
@@ -224,12 +236,12 @@ final class ContextTimelineFold {
     private final List<EventRecord> events = new ArrayList<>();
     private final List<FileOp> fileOps = new ArrayList<>();
     private Long fileOpsFloor;
-    private final Map<String, PendingCall> pendingCalls = new HashMap<>();
+    private final Map<String, PendingCall> pendingCalls = new LinkedHashMap<>();
     private final Map<String, AgentRecord> agentsByCall = new LinkedHashMap<>();
     private final TreeMap<String, ActivityDay> days = new TreeMap<>();
     private final Map<String, CostBucket> costByModel = new LinkedHashMap<>();
     private final Map<String, ToolTotals> toolTotals = new LinkedHashMap<>();
-    private final Set<String> settledResponseIds = new HashSet<>();
+    private final Set<String> settledResponseIds = new LinkedHashSet<>();
     private long toolsMs;
     private long toolCalls;
     private long turn;
@@ -329,11 +341,19 @@ final class ContextTimelineFold {
                 event.count = removed.size();
             }
             bump();
+            // The boundary is spent once rows left under it. Left armed
+            // otherwise: the compact_boundary row and the rewrite it
+            // announces can land in two successive snapshots.
+            pendingBoundarySeq = null;
+            pendingBoundaryTime = null;
         }
-        pendingBoundarySeq = null;
-        pendingBoundaryTime = null;
         trim();
         return detailRev != before;
+    }
+
+    /** True before any row was folded (a fresh ledger). */
+    boolean isEmpty() {
+        return nodesByKey.isEmpty();
     }
 
     /** The surface node whose seq matches, live or archived. */
@@ -650,7 +670,7 @@ final class ContextTimelineFold {
 
     private void settleAgent(AgentRecord agent, Node node, Object toolUseResult,
                              Long time, boolean error) {
-        agent.status = error ? "failed" : "completed";
+        agent.status = error ? "failed" : "done";
         agent.endSeq = node.seq;
         agent.endTime = time;
         if (agent.time != null && time != null) agent.durationMs = Math.max(0, time - agent.time);
@@ -745,10 +765,10 @@ final class ContextTimelineFold {
 
     /** dsh {@code linesOf}: '' is 0, a trailing newline closes its own line. */
     static long lines(String text) {
-        if (text == null || text.isEmpty()) return 0;
+        if (StringUtils.isEmpty(text)) return 0;
         long count = 0;
         for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') count++;
-        return text.endsWith("\n") ? count : count + 1;
+        return Strings.CS.endsWith(text, "\n") ? count : count + 1;
     }
 
     // ----------------------------------------------------------------- trim
@@ -797,6 +817,13 @@ final class ContextTimelineFold {
             }
         }
         while (days.size() > MAX_KEPT_DAYS) days.pollFirstEntry();
+        for (int i = 0; i < surface.size() - MAX_CONTENT_NODES; i++) surface.get(i).content = null;
+        while (pendingCalls.size() > MAX_PENDING_CALLS) {
+            pendingCalls.remove(pendingCalls.keySet().iterator().next());
+        }
+        while (settledResponseIds.size() > MAX_SETTLED_RESPONSES) {
+            settledResponseIds.remove(settledResponseIds.iterator().next());
+        }
     }
 
     private int countTurnRuns() {
@@ -818,7 +845,9 @@ final class ContextTimelineFold {
         ObjectNode result = JsonUtils.getMapper().createObjectNode();
         result.put("ok", true);
         if (model != null) result.put("model", model);
-        result.put("provider", "anthropic");
+        // The provider is not on the wire; a Claude model id is the only
+        // evidence, and a custom endpoint serving one still bills like one.
+        if (Strings.CS.startsWith(model, "claude")) result.put("provider", "anthropic");
         if (contextWindow != null && contextWindow > 0) result.put("contextWindow", contextWindow);
         ObjectNode current = result.putObject("current");
         long surfaceTotal = sum(Category.USER) + sum(Category.INJECT) + sum(Category.SKILL)
@@ -1167,7 +1196,7 @@ final class ContextTimelineFold {
     }
 
     private static String bounded(String text) {
-        if (text == null || text.isEmpty()) return null;
+        if (StringUtils.isEmpty(text)) return null;
         return text.length() > MAX_CONTENT_CHARS
             ? text.substring(0, MAX_CONTENT_CHARS) + TRUNCATION_MARKER : text;
     }
@@ -1183,14 +1212,14 @@ final class ContextTimelineFold {
     static String reminderName(String text) {
         String body = stripReminder(text).strip();
         String lower = body.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("plan mode")) return "plan-mode";
-        if (lower.contains("claude.md") || lower.contains("memory file")) return "memory";
-        if (lower.contains("todo")) return "todo";
-        if (lower.contains("<available_skills") || lower.contains("skill")) return "skills";
-        if (lower.contains("hook")) return "hook";
-        if (lower.contains("task")) return "task";
-        if (lower.contains("compact")) return "compaction";
-        if (lower.contains("<command-name>")) return "command";
+        if (Strings.CS.contains(lower, "plan mode")) return "plan-mode";
+        if (Strings.CS.contains(lower, "claude.md") || Strings.CS.contains(lower, "memory file")) return "memory";
+        if (Strings.CS.contains(lower, "todo")) return "todo";
+        if (Strings.CS.contains(lower, "<available_skills") || Strings.CS.contains(lower, "skill")) return "skills";
+        if (Strings.CS.contains(lower, "hook")) return "hook";
+        if (Strings.CS.contains(lower, "task")) return "task";
+        if (Strings.CS.contains(lower, "compact")) return "compaction";
+        if (Strings.CS.contains(lower, "<command-name>")) return "command";
         return "system-reminder";
     }
 

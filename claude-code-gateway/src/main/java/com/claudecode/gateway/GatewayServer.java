@@ -229,7 +229,7 @@ public final class GatewayServer implements AutoCloseable {
                     .map(SessionHostRegistry.ActivationResult::session)
                     .ifPresent(session -> {
                         mirror.attach(session);
-                        contextTimeline.attach(session);
+                        contextTimeline.activated(session);
                         // The activation notice mirrors the IM link's
                         // session.activated frame: a reconnecting web client
                         // learns the switch point from the journal ring.

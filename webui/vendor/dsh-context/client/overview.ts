@@ -201,11 +201,16 @@ export function usageTotalsOf(usage: SessionCostUsage | null | undefined): Usage
   let any = false
   for (const provider of Object.keys(usage)) {
     const models = usage[provider]
+    // claude-code-java: `timelineOf`'s fast path hands the cost tree through
+    // unsanitized below two levels, so a hostile row may carry null here;
+    // it degrades to "no usage" rather than an error card.
+    if (models === null || typeof models !== 'object') continue
     for (const model of Object.keys(models)) {
       const periods = models[model]
+      if (periods === null || typeof periods !== 'object') continue
       for (const period of ['peak', 'off'] as const) {
         const bucket = periods[period]
-        if (bucket === undefined) continue
+        if (bucket === undefined || bucket === null || typeof bucket !== 'object') continue
         totals.input += bucket.uncached
         totals.cacheRead += bucket.cacheRead
         totals.cacheWrite += bucket.cacheWrite

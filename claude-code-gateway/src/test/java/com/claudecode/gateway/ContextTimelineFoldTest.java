@@ -159,6 +159,60 @@ class ContextTimelineFoldTest {
     }
 
     @Test
+    void boundaryObservedBeforeTheRewriteStillOwnsTheArchivedRows() {
+        ContextTimelineFold fold = new ContextTimelineFold(ZoneOffset.UTC);
+        List<Message> rows = new ArrayList<>();
+        rows.add(user("first question", T0));
+        rows.add(assistant("r1", List.of(new TextBlock("first answer")),
+            usage(100, 20, 0, 0), "m", T0.plusSeconds(1)));
+        fold.sync(rows);
+
+        // Snapshot 1: the compact_boundary row is appended while the history
+        // is still in place (the hub delivered the row before the rewrite).
+        SystemMessage boundary = new SystemMessage(UUID.randomUUID().toString(), "compact_boundary",
+            "info", "Conversation compacted", null, T0.plusSeconds(10),
+            new CompactMetadata("auto", 50_000L), null, null, null, null);
+        rows.add(boundary);
+        fold.sync(rows);
+        // Snapshot 2: the rewrite lands.
+        List<Message> compacted = new ArrayList<>();
+        compacted.add(boundary);
+        compacted.add(new UserMessage(UUID.randomUUID().toString(),
+            MessageContent.ofText("Summary"), false, true, null,
+            MessageOrigin.COMPACT_SUMMARY, null, T0.plusSeconds(11), null, null));
+        fold.sync(compacted);
+
+        ObjectNode head = fold.head(null, null);
+        assertThat(head.path("counts").path("compactions").asInt()).isEqualTo(1);
+        assertThat(head.path("counts").path("prunes").asInt()).isZero();
+        ObjectNode detail = JsonUtils.getMapper().createObjectNode();
+        fold.detailInto(detail);
+        assertThat(detail.path("archive")).hasSize(2);
+        JsonNode compaction = detail.path("events").get(0);
+        assertThat(compaction.path("kind").asText()).isEqualTo("compaction");
+        assertThat(compaction.path("count").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void onlyTheNewestSurfaceNodesKeepTheirContent() {
+        ContextTimelineFold fold = new ContextTimelineFold(ZoneOffset.UTC);
+        List<Message> rows = new ArrayList<>();
+        for (int i = 0; i < ContextTimelineFold.MAX_CONTENT_NODES + 5; i++) {
+            rows.add(user("row " + i, T0.plusSeconds(i)));
+        }
+        fold.sync(rows);
+        ObjectNode detail = JsonUtils.getMapper().createObjectNode();
+        fold.detailInto(detail);
+        long oldest = detail.path("nodes").get(0).path("seq").asLong();
+        long newest = detail.path("nodes").get(detail.path("nodes").size() - 1).path("seq").asLong();
+        assertThat(fold.nodeAt(oldest).content).isNull();
+        assertThat(fold.nodeAt(newest).content).isEqualTo("row " + (ContextTimelineFold.MAX_CONTENT_NODES + 4));
+        // The token ledger still counts every live row.
+        assertThat(fold.head(null, null).path("humanInputs").asInt())
+            .isEqualTo(ContextTimelineFold.MAX_CONTENT_NODES + 5);
+    }
+
+    @Test
     void rowsVanishingWithoutABoundaryBecomeAPruneEvent() {
         ContextTimelineFold fold = new ContextTimelineFold(ZoneOffset.UTC);
         List<Message> rows = new ArrayList<>();
@@ -229,7 +283,7 @@ class ContextTimelineFoldTest {
         detail = JsonUtils.getMapper().createObjectNode();
         fold.detailInto(detail);
         JsonNode agent = detail.path("agents").get(0);
-        assertThat(agent.path("status").asText()).isEqualTo("completed");
+        assertThat(agent.path("status").asText()).isEqualTo("done");
         assertThat(agent.path("agentId").asText()).isEqualTo("a1b2c3");
         assertThat(agent.path("tokens").asLong()).isEqualTo(12_345);
         assertThat(agent.path("durationMs").asLong()).isEqualTo(4_200);

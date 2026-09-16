@@ -76,6 +76,22 @@ describe('contextTimeline store', () => {
     expect(useContextTimeline.getState().sessions.down).toMatchObject({ failed: true, loading: false })
   })
 
+  it('a slower, older refresh never overwrites a newer head', async () => {
+    let releaseFirst: (value: Response) => void = () => {}
+    const first = new Promise<Response>((resolve) => { releaseFirst = resolve })
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ timeline: head(7) })))
+    vi.stubGlobal('fetch', fetchMock)
+    const stale = useContextTimeline.getState().refresh('s1')
+    await useContextTimeline.getState().refresh('s1')
+    expect(useContextTimeline.getState().sessions.s1?.head?.detailRev).toBe(7)
+    releaseFirst(jsonResponse({ timeline: head(3) }))
+    await stale
+    expect(useContextTimeline.getState().sessions.s1?.head?.detailRev).toBe(7)
+    expect(useContextTimeline.getState().sessions.s1?.loading).toBe(false)
+  })
+
   it('mirror frames debounce into one refresh for a viewed session only', async () => {
     const urls: string[] = []
     vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
@@ -156,6 +172,18 @@ describe('on-demand content', () => {
     await fetchContent(9)
     expect(a).toBe(b)
     expect(urls).toEqual(['/api/session/context/content?session_id=s1&seq=9'])
+  })
+
+  it('forgetContextContent invalidates a fetcher created before the forget', async () => {
+    let text = 'before'
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve(jsonResponse({ content: { seq: 2, cat: 'user', kind: 'text', text } }))))
+    const fetchContent = makeContentFetcher('s1')
+    await fetchContent(2)
+    text = 'after'
+    forgetContextContent('s1')
+    const node = await fetchContent(2)
+    expect(JSON.stringify(node)).toContain('after')
   })
 
   it('headerContentOf joins the system prompt and the tool list', () => {

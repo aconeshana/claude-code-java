@@ -14,10 +14,12 @@ import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -70,15 +72,44 @@ public final class ContextTimelineLedger {
     private final GatewaySessionContextPort port;
     private final Map<String, Entry> entries = new ConcurrentHashMap<>();
     private final Map<String, AutoCloseable> subscriptions = new HashMap<>();
+    /** The TUI session {@link #activated} last attached; guarded by {@code this}. */
+    private String activeAttached;
+    /** Ids attached through {@link #attach} (open headless sessions); guarded by {@code this}. */
+    private final Set<String> headlessAttached = new HashSet<>();
 
     public ContextTimelineLedger(SessionHostRegistry registry, GatewaySessionContextPort port) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.port = Objects.requireNonNull(port, "port");
     }
 
-    /** Follows one session's hub; re-attaching replaces the previous subscription. */
+    /**
+     * Follows an opened headless session's hub until {@link #forget} (its
+     * close); re-attaching replaces the previous subscription.
+     */
     public synchronized void attach(SessionHostSession session) {
         Objects.requireNonNull(session, "session");
+        headlessAttached.add(session.info().id());
+        follow(session);
+    }
+
+    /**
+     * Follows the newly activated TUI session and forgets the one it
+     * replaced: the TUI owns one live session at a time, so the previous
+     * ledger would otherwise outlive its session for the process lifetime.
+     * A previous id still open headless keeps its ledger.
+     */
+    public synchronized void activated(SessionHostSession session) {
+        Objects.requireNonNull(session, "session");
+        String sessionId = session.info().id();
+        if (activeAttached != null && !Strings.CS.equals(activeAttached, sessionId)
+                && !headlessAttached.contains(activeAttached)) {
+            forget(activeAttached);
+        }
+        activeAttached = sessionId;
+        follow(session);
+    }
+
+    private void follow(SessionHostSession session) {
         String sessionId = session.info().id();
         detach(sessionId);
         Entry entry = entries.computeIfAbsent(sessionId, _ -> new Entry());
@@ -86,7 +117,7 @@ public final class ContextTimelineLedger {
         sync(sessionId, entry);
     }
 
-    /** Drops one session's subscription and ledger (session closed). */
+    /** Drops one session's hub subscription; the ledger entry stays (see {@link #forget}). */
     public synchronized void detach(String sessionId) {
         AutoCloseable previous = subscriptions.remove(sessionId);
         if (previous != null) {
@@ -102,11 +133,16 @@ public final class ContextTimelineLedger {
     public synchronized void forget(String sessionId) {
         detach(sessionId);
         entries.remove(sessionId);
+        headlessAttached.remove(sessionId);
+        if (Strings.CS.equals(activeAttached, sessionId)) activeAttached = null;
     }
 
-    /** Releases every subscription (gateway shutdown). */
+    /** Releases every subscription and ledger (gateway shutdown). */
     public synchronized void close() {
         for (String sessionId : List.copyOf(subscriptions.keySet())) detach(sessionId);
+        entries.clear();
+        headlessAttached.clear();
+        activeAttached = null;
     }
 
     /** The slim head for {@code sessionId} (blank = active TUI session), or empty when cold. */
@@ -114,8 +150,9 @@ public final class ContextTimelineLedger {
         return resolve(sessionId).map(resolved -> {
             Entry entry = resolved.entry();
             sync(resolved.id(), entry);
+            SessionMetricsSnapshot metrics = metrics(resolved.id());
             synchronized (entry) {
-                return head(resolved.id(), entry);
+                return head(entry, metrics);
             }
         });
     }
@@ -126,10 +163,11 @@ public final class ContextTimelineLedger {
             Entry entry = resolved.entry();
             sync(resolved.id(), entry);
             refreshHeaders(resolved.id(), entry);
+            SessionMetricsSnapshot metrics = metrics(resolved.id());
             synchronized (entry) {
                 ObjectNode result = JsonUtils.getMapper().createObjectNode();
                 result.put("rev", entry.fold.detailRev());
-                result.set("head", head(resolved.id(), entry));
+                result.set("head", head(entry, metrics));
                 entry.fold.detailInto(result);
                 result.set("headers", headersBody(entry));
                 return result;
@@ -209,8 +247,9 @@ public final class ContextTimelineLedger {
             row.put("running", entry.running);
             row.put("updatedAt", live.updatedAt() != null
                 ? Math.max(live.updatedAt().toEpochMilli(), entry.updatedAt) : entry.updatedAt);
+            SessionMetricsSnapshot metrics = metrics(live.id());
             synchronized (entry) {
-                row.set("timeline", head(live.id(), entry));
+                row.set("timeline", head(entry, metrics));
                 row.set("activity", entry.fold.activity());
             }
         }
@@ -260,28 +299,49 @@ public final class ContextTimelineLedger {
             .orElse(null);
     }
 
-    /** Re-folds the session's live rows; the envelope and route ride along. */
+    /**
+     * Re-folds the session's live rows; the envelope and route ride along.
+     *
+     * <p>Every port read happens before the entry monitor is taken: the
+     * session hub delivers into this ledger on the engine thread, so a port
+     * implementation that ever takes an engine lock must never be called
+     * while an entry is held (engine → entry vs entry → engine).
+     */
     private void sync(String id, Entry entry) {
         List<Message> rows;
+        Optional<GatewaySessionContextPort.ContextBreakdown> breakdown;
+        Optional<String> model;
         try {
-            rows = port.messages(id).orElse(null);
+            // The engine's list is an unsynchronized live view: copy once so
+            // the fold sees one snapshot. A concurrent compaction rewrite
+            // (clear + addAll) can still throw here or hand back its empty
+            // midpoint; both are skipped and the hub's own callback, on the
+            // engine thread, re-folds from the settled list.
+            List<Message> live = port.messages(id).orElse(null);
+            rows = live == null ? null : List.copyOf(live);
+            breakdown = port.breakdown(id);
+            model = port.selection(id).map(GatewaySessionContextPort.ModelSelection::current);
         } catch (RuntimeException _) {
-            rows = null;
+            return;
         }
         if (rows == null) return;
         synchronized (entry) {
-            port.breakdown(id).ifPresent(breakdown ->
-                entry.fold.envelope(breakdown.systemTokens(), breakdown.toolsTokens()));
-            port.selection(id).map(GatewaySessionContextPort.ModelSelection::current)
-                .ifPresent(entry.fold::model);
+            if (rows.isEmpty() && !entry.fold.isEmpty()) return;
+            breakdown.ifPresent(value -> entry.fold.envelope(value.systemTokens(), value.toolsTokens()));
+            model.ifPresent(entry.fold::model);
             try {
                 if (entry.fold.sync(rows)) entry.updatedAt = System.currentTimeMillis();
             } catch (RuntimeException _) {
-                // The live engine's list is an unsynchronized view: a GET that
-                // races an append or a compaction rewrite can observe a
-                // shifting size. The next sync (the hub's own callback runs on
-                // the engine thread) re-folds from a settled list.
+                // A snapshot the fold cannot digest is dropped; the next one heals.
             }
+        }
+    }
+
+    private SessionMetricsSnapshot metrics(String id) {
+        try {
+            return port.metrics(id).filter(SessionMetricsSnapshot::complete).orElse(null);
+        } catch (RuntimeException _) {
+            return null;
         }
     }
 
@@ -308,7 +368,8 @@ public final class ContextTimelineLedger {
         }
     }
 
-    private ObjectNode head(String id, Entry entry) {
+    /** Builds the head under the entry monitor from a metrics snapshot read outside it. */
+    private static ObjectNode head(Entry entry, SessionMetricsSnapshot metrics) {
         Long contextWindow = null;
         String model = entry.fold.model();
         if (StringUtils.isNotBlank(model)) {
@@ -316,11 +377,8 @@ public final class ContextTimelineLedger {
             if (window > 0) contextWindow = window;
         }
         ObjectNode timing = null;
-        Optional<SessionMetricsSnapshot> metrics = port.metrics(id)
-            .filter(SessionMetricsSnapshot::complete);
-        if (metrics.isPresent()) {
-            SessionMetricsSnapshot fold = metrics.get();
-            timing = entry.fold.timing(fold.llmMs(), fold.toolMs(), fold.ttftMs(), fold.steps());
+        if (metrics != null) {
+            timing = entry.fold.timing(metrics.llmMs(), metrics.toolMs(), metrics.ttftMs(), metrics.steps());
         }
         ObjectNode head = entry.fold.head(contextWindow, timing);
         head.put("running", entry.running);

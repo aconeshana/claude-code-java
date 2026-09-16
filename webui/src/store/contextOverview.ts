@@ -18,6 +18,8 @@ export interface ContextOverviewStore {
   refresh(): Promise<void>
 }
 
+let refreshTicket = 0
+
 export const useContextOverview = create<ContextOverviewStore>((set, get) => ({
   open: false,
   payload: null,
@@ -28,12 +30,17 @@ export const useContextOverview = create<ContextOverviewStore>((set, get) => ({
     if (open) void get().refresh()
   },
   async refresh() {
-    if (get().loading) return
+    // Last request wins rather than "skip while loading": a fetch that never
+    // settles must not wedge the panel, and a stale response must not
+    // overwrite a newer one.
+    const ticket = ++refreshTicket
     set({ loading: true })
     try {
       const payload = await fetchContextOverview()
+      if (ticket !== refreshTicket) return
       set({ payload, loading: false, error: null })
     } catch (failure: unknown) {
+      if (ticket !== refreshTicket) return
       set({ loading: false, error: failure instanceof Error ? failure.message : String(failure) })
     }
   },
