@@ -431,7 +431,7 @@ class HookEngineTest {
         HookEngine engine = new HookEngine(new HooksSettings(Map.of(
             HookEvent.PRE_COMPACT,
             List.of(new HookMatcher(Optional.empty(), List.of(new BashCommandHook(command)))))), "/tmp");
-        engine.setPromptIdSupplier(() -> "prompt-197");
+        engine.context().bindPromptId(() -> "prompt-197");
 
         HookDispatcher.HookOutcome outcome =
             engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
@@ -669,7 +669,7 @@ class HookEngineTest {
         // in executeBashHook when a fast-exiting command closes the pipe first.
         MessageQueueManager queue = new MessageQueueManager();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setMessageQueue(queue);
+        engine.effects().setMessageQueue(queue);
 
         BashCommandHook hook = new BashCommandHook(
             "cat >/dev/null; echo blocking failure >&2; exit 2",
@@ -706,7 +706,7 @@ class HookEngineTest {
         // hook stays a local blocking error and must NOT touch the queue.
         MessageQueueManager queue = new MessageQueueManager();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setMessageQueue(queue);
+        engine.effects().setMessageQueue(queue);
 
         BashCommandHook hook = new BashCommandHook(
             "cat >/dev/null; echo blocking failure >&2; exit 2",
@@ -864,8 +864,8 @@ class HookEngineTest {
             },
             Optional.empty());
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setPromptIdSupplier(() -> "prompt-197");
-        engine.setSdkHooks(Map.of(HookEvent.USER_PROMPT_SUBMIT,
+        engine.context().bindPromptId(() -> "prompt-197");
+        engine.registry().setSdkHooks(Map.of(HookEvent.USER_PROMPT_SUBMIT,
             List.of(new HookMatcher(Optional.empty(), List.of(callback)))));
 
         assertTrue(engine.dispatchUserPromptSubmitWithOutcome("hello").proceed());
@@ -885,7 +885,7 @@ class HookEngineTest {
                     .put("displayContent", input.extra().get("delta").toString().toUpperCase(Locale.ROOT))),
             Optional.empty());
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setSdkHooks(Map.of(HookEvent.MESSAGE_DISPLAY,
+        engine.registry().setSdkHooks(Map.of(HookEvent.MESSAGE_DISPLAY,
             List.of(new HookMatcher(Optional.empty(), List.of(callback)))));
 
         HookDispatcher.HookOutcome outcome = engine.dispatchMessageDisplayWithOutcome(
@@ -941,8 +941,8 @@ class HookEngineTest {
             return output;
         }, Optional.empty());
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setHookEffectSink(sink);
-        engine.setSdkHooks(Map.of(HookEvent.SESSION_START, List.of(
+        engine.effects().setSink(sink);
+        engine.registry().setSdkHooks(Map.of(HookEvent.SESSION_START, List.of(
             new HookMatcher(Optional.empty(), List.of(first, second)))));
 
         engine.dispatchSessionStartWithOutcome("startup");
@@ -1010,7 +1010,7 @@ class HookEngineTest {
         // <system-reminder> task-notification from the background thread.
         MessageQueueManager queue = new MessageQueueManager();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setMessageQueue(queue);
+        engine.effects().setMessageQueue(queue);
 
         BashCommandHook hook = new BashCommandHook(
             "cat >/dev/null; printf '{\"async\":true}\\n'; echo blocking failure >&2; exit 2",
@@ -1110,7 +1110,7 @@ class HookEngineTest {
         // must not be mistaken for a JSON decision, and nothing must be enqueued.
         MessageQueueManager queue = new MessageQueueManager();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setMessageQueue(queue);
+        engine.effects().setMessageQueue(queue);
 
         BashCommandHook hook = new BashCommandHook(
             "cat >/dev/null; printf '{\"async\":true}\\n'; exit 0");

@@ -130,7 +130,7 @@ class SettingsReloadOrchestratorTest {
 
         orchestrator.reload(RuleSource.USER_SETTINGS);
 
-        assertFalse(hookEngine.currentSettings().eventHooks().isEmpty(),
+        assertFalse(hookEngine.registry().currentSettings().eventHooks().isEmpty(),
             "hook settings should reflect the on-disk config after reload");
     }
 
@@ -183,7 +183,7 @@ class SettingsReloadOrchestratorTest {
         orchestrator.reload(RuleSource.USER_SETTINGS);
 
         int baselineRuleCount = gate.currentContext().rules().size();
-        int baselineHookEvents = hookEngine.currentSettings().eventHooks().size();
+        int baselineHookEvents = hookEngine.registry().currentSettings().eventHooks().size();
         assertTrue(baselineRuleCount > 0, "baseline should have loaded at least the allow rule");
         assertTrue(baselineHookEvents > 0, "baseline should have loaded PreToolUse hook");
         int uiCountBefore = uiMessages.size();
@@ -198,7 +198,7 @@ class SettingsReloadOrchestratorTest {
 
         assertEquals(0, gate.currentContext().rules().size(),
             "malformed JSON source must contribute no permission rules");
-        assertEquals(0, hookEngine.currentSettings().eventHooks().size(),
+        assertEquals(0, hookEngine.registry().currentSettings().eventHooks().size(),
             "malformed JSON source must contribute no hooks");
 
         // Step 4: the completed fan-out is still visible to the UI/listeners.

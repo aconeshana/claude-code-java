@@ -234,9 +234,9 @@ final class CliToolchainAssembler {
         log.info("[goal-diag] CliToolchainAssembler: llmClient={} (testOverrideStreamingClient={})",
             llmClient != null ? "NON-NULL" : "null",
             request.testOverrides().streamingClient() != null);
-        hookEngine.setLlmClient(llmClient);
-        hookEngine.setLlmModel(workspace.launch().model());
-        hookEngine.setGoalContextWindowResolver(candidateModel -> {
+        hookEngine.llm().bindClient(llmClient);
+        hookEngine.llm().setModel(workspace.launch().model());
+        hookEngine.goalEvaluator().setContextWindowResolver(candidateModel -> {
             Long configured = customModelCatalog.contextWindow(candidateModel);
             return configured != null ? configured
                 : GoalContextWindowPolicy.contextWindow(
@@ -265,7 +265,7 @@ final class CliToolchainAssembler {
                 && PermissionGate.supportsReleasedExternalAutoModeModel(model));
         permissionGate.setAutoModeCurrentModel(workspace.launch().model());
         SandboxManager sandboxMgr = PlatformSandboxManager.create();
-        hookEngine.setSandboxProxyEnvironmentSupplier(() ->
+        hookEngine.http().setSandboxProxyEnvironmentSupplier(() ->
             sandboxMgr.sandboxEnvironment(SandboxSettings.loadSandboxConfig()));
         permissionGate.setBashSandboxGate((cmd, dds) -> {
             SandboxConfig cfg = SandboxSettings.loadSandboxConfig();
@@ -342,7 +342,7 @@ final class CliToolchainAssembler {
                 agent.setSubAgentModelPolicy(subAgentModelPolicy);
                 agent.setSubagentMaxDepthSupplier(RuntimeSettings::loadSubagentMaxDepth);
                 agent.setTeammateHookDispatcher(hookEngine);
-                hookEngine.setAgentHookFactory(agent.subAgentFactory());
+                hookEngine.llm().bindAgentFactory(agent.subAgentFactory());
             });
         // QuerySessionSpec snapshots the model-visible tool definitions during
         // construction, before CliEngineAssembler can bind its live model

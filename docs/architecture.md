@@ -163,6 +163,18 @@ delegates those operations to `claude-code-session`.
   also register callback hooks. `HookEvent` is the source of truth for the supported tool, prompt,
   session, subagent, permission, compaction, task, configuration, worktree, file,
   working-directory, and display lifecycle events.
+- `HookEngine` is the `HookDispatcher` façade: it builds per-event `HookInput`, runs eligible hooks
+  in parallel on virtual threads, and aggregates results through `HookOutcomes`. Its state and
+  behavior live in components reached through accessors rather than engine setters:
+  `HookRegistry` (settings / plugin / SDK / skill / session hook layers), `HookSessionContext`
+  (session id, cwd, permission mode, prompt id, conversation view), `HookEffects` (UI sink,
+  model wake-ups, attachment outbox), `HookLlmBindings` (side query, live model, sub-agent
+  runtime), `GoalEvaluatorBindings` (evaluator request parameters), `HttpHookExecutor` (HTTP
+  policy and proxy), and `GoalTracker` (the `/goal` state machine). `HookCommandRunner` routes
+  each command to `BashHookExecutor`, `HttpHookExecutor`, `PromptHookExecutor`, or
+  `AgentHookExecutor`; Stop-family prompt hooks go through `StopConditionEvaluator`. Child agent
+  dispatchers are built with `createSubAgentDispatcher`, which forks the registry, context, and
+  effects while sharing the LLM and HTTP components.
 - `CompactService` coordinates micro-compaction, automatic and manual full compaction, partial
   compaction, and opt-in recovery after provider context-limit errors.
 - The automatic compaction threshold is derived from the model context window after reserving summary

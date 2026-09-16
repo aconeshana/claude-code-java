@@ -834,7 +834,7 @@ class StdoutMessageWriterTest {
             },
             Optional.empty());
         HookEngine hookEngine = new HookEngine(HooksSettings.EMPTY, "/tmp/project");
-        hookEngine.setSdkHooks(Map.of(HookEvent.USER_PROMPT_SUBMIT,
+        hookEngine.registry().setSdkHooks(Map.of(HookEvent.USER_PROMPT_SUBMIT,
             List.of(new HookMatcher(Optional.empty(), List.of(callback)))));
         engine.setHookDispatcher(hookEngine);
 

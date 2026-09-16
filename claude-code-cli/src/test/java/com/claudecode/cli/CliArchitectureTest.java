@@ -109,7 +109,7 @@ class CliArchitectureTest {
                         workspace, toolRegistry, errorOutput);\
             """);
         assertTrue(Strings.CS.contains(engine,
-            "hookEngine.setMessagesSupplier(() -> engine.conversation().getMessages());"));
+            "hookEngine.context().bindMessages(() -> engine.conversation().getMessages());"));
         assertTrue(Strings.CS.contains(engine, "Path cwdPath = Path.of(workspace.cwd());"));
     }
 

@@ -28,7 +28,7 @@ class HookEngineSkillRootTest {
                 List.of(new BashCommandHook(command))))));
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, null);
 
-        engine.addExtraHooks(settings, skillRoot);
+        engine.registry().addExtraHooks(settings, skillRoot);
         engine.executeHooks(HookEvent.STOP, HookInput.forStop(false));
 
         assertEquals(skillRoot.toString(),

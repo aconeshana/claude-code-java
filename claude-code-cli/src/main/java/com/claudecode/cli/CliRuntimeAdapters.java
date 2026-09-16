@@ -556,9 +556,9 @@ final class CliRuntimeAdapters {
                 List<IndividualHookConfig> configs = new ArrayList<>(
                     HooksConfigManager.getAllHooks(workingDirectory));
                 if (hookEngine != null) {
-                    addRuntimeHooks(configs, hookEngine.currentSessionHooks(),
+                    addRuntimeHooks(configs, hookEngine.registry().currentSessionHooks(),
                         HookSource.SESSION_HOOK);
-                    addRuntimeHooks(configs, hookEngine.currentPluginHooks(),
+                    addRuntimeHooks(configs, hookEngine.registry().currentPluginHooks(),
                         HookSource.PLUGIN_HOOK);
                 }
                 List<HookEntry> hooks = configs.stream()
@@ -583,7 +583,7 @@ final class CliRuntimeAdapters {
                     : HookConfigurationPort.super.subscribeReload(listener);
             }
             @Override public void clearSessionHooks() {
-                if (hookEngine != null) hookEngine.clearExtraHooks();
+                if (hookEngine != null) hookEngine.registry().clearExtraHooks();
             }
         };
     }

@@ -681,20 +681,18 @@ final class CliEngineAssembler {
             log.info("[goal-diag] CliEngineAssembler: sideQuery={} (llmClient={})",
                 sideQuery != null ? "NON-NULL" : "null",
                 llmClient != null ? "NON-NULL" : "null");
-            hookEngine.setSideQuery(sideQuery);
-            hookEngine.setLlmModelSupplier(() ->
+            hookEngine.llm().bindSideQuery(sideQuery);
+            hookEngine.llm().bindModelSupplier(() ->
                 engine.configuration().getConfig().model());
-            hookEngine.setGoalSystemPromptIdentitySupplier(() ->
-                SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX);
-            hookEngine.setGoalMetadataSupplier(() ->
-                LlmClientAdapter.requestMetadata(engine.conversation().getSessionId()));
-            hookEngine.setGoalEffortSupplier(() -> effort != null
-                ? effort
-                : engine.configuration().getConfig().effortValue() != null
-                    ? engine.configuration().getConfig().effortValue()
-                    : RuntimeSettings.loadEffortLevel());
-            hookEngine.setGoalToolsSupplier(() -> goalToolDefinitions(
-                toolRegistry, engine));
+            hookEngine.goalEvaluator().bind(
+                () -> SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX,
+                () -> LlmClientAdapter.requestMetadata(engine.conversation().getSessionId()),
+                () -> effort != null
+                    ? effort
+                    : engine.configuration().getConfig().effortValue() != null
+                        ? engine.configuration().getConfig().effortValue()
+                        : RuntimeSettings.loadEffortLevel(),
+                () -> goalToolDefinitions(toolRegistry, engine));
             toolRegistry.setAutoModeClassifier(sideQuery != null
                 ? new AutoModeClassifierService(sideQuery, LlmClientAdapter::requestMetadata)
                 : null);
@@ -769,12 +767,12 @@ final class CliEngineAssembler {
 // Hook engine: implements HookDispatcher — drives lifecycle hooks (SessionStart,
 // UserPromptSubmit, PreToolUse, PostToolUse, Stop).
 
-            hookEngine.setMessageQueue(engine.conversation().getMessageQueue());
-            hookEngine.setPermissionModeSupplier(
+            hookEngine.effects().setMessageQueue(engine.conversation().getMessageQueue());
+            hookEngine.context().bindPermissionMode(
                 () -> permissionGate.currentMode().external());
             // Stop and StopFailure hooks read the final assistant text from the
             // live conversation instead of reopening the transcript.
-            hookEngine.setMessagesSupplier(() -> engine.conversation().getMessages());
+            hookEngine.context().bindMessages(() -> engine.conversation().getMessages());
             // Headless sessions do not construct LanternaReplScreen, so wire the
             // same background-task queue bridge here. Interactive sessions keep
             // their existing UI composition-root registration to avoid duplicate

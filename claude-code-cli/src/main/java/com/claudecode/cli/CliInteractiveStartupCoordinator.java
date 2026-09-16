@@ -76,7 +76,7 @@ final class CliInteractiveStartupCoordinator {
 // Plugin hooks are already installed by loadAndInject at this
                 // boundary. Setup and FileChanged matcher capture therefore see
                 // the complete generation.
-                hooks.setHookEffectSink(hookEffects);
+                hooks.effects().setSink(hookEffects);
                 try {
                     CliSessionAssembler.runSetupHook(
                         setupTrigger, hooks, engine, errorOutput);
@@ -86,7 +86,7 @@ final class CliInteractiveStartupCoordinator {
                 }
                 inventory.timeline().mark("setup");
                 try {
-                    watcher.initialize(cwd, hooks.configuredFileChangedMatchers());
+                    watcher.initialize(cwd, hooks.registry().configuredFileChangedMatchers());
                 } catch (RuntimeException failure) {
                     log.warn("FileChanged watcher degraded during startup: {}",
                         failure.getMessage());

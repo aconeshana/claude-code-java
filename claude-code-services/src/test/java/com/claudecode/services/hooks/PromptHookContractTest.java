@@ -70,7 +70,7 @@ class PromptHookContractTest {
     void agentHookRunsARealToolUsingVerifierAgent() {
         AtomicReference<SubAgentRequest> captured = new AtomicReference<>();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setAgentHookFactory(request -> {
+        engine.llm().bindAgentFactory(request -> {
             captured.set(request);
             return SubAgentResult.of("{\"ok\":false,\"reason\":\"not verified\"}");
         });
@@ -87,8 +87,8 @@ class PromptHookContractTest {
 
     private static HookEngine engineWithResponse(String response) {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setLlmClient(new FixedResponseClient(response));
-        engine.setLlmModel("claude-sonnet-4-6");
+        engine.llm().bindClient(new FixedResponseClient(response));
+        engine.llm().setModel("claude-sonnet-4-6");
         return engine;
     }
 

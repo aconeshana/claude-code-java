@@ -26,10 +26,10 @@ class HookConfigurationPortTest {
     @Test
     void snapshotIncludesSessionAndPluginRuntimeHooks() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, tempDir.toString());
-        engine.addExtraHooks(new HooksSettings(Map.of(
+        engine.registry().addExtraHooks(new HooksSettings(Map.of(
             HookEvent.STOP, List.of(new HookMatcher(Optional.empty(),
                 List.of(new PromptHook("check session")))))));
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.PRE_TOOL_USE, List.of(new HookMatcher(Optional.of("Bash"),
                 List.of(new BashCommandHook("plugin-check"))))));
 

@@ -231,7 +231,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
             }
         }
         if (hookEngine != null) {
-            hookEngine.setPluginHooks(snapshot.hooks());
+            hookEngine.registry().setPluginHooks(snapshot.hooks());
         }
         reconcileMcpServers(snapshot.mcpServers());
     }

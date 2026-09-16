@@ -70,8 +70,8 @@ public final class FileChangedHookWatcher implements AutoCloseable {
 
     public FileChangedHookWatcher(HookDispatcher hooks) {
         this(hooks, NioBackend::new, new ScheduledDebouncer(STABLE_WINDOW),
-            hooks instanceof HookEngine
-                ? () -> ((HookEngine) hooks).configuredFileChangedMatchers()
+            hooks instanceof HookEngine engine
+                ? () -> engine.registry().configuredFileChangedMatchers()
                 : List::of);
     }
 

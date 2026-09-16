@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.StreamSupport;
 
 import org.junit.jupiter.api.Test;
@@ -168,7 +169,7 @@ class HookEngineGoalTest {
     void releasedClaudeEvaluatorDefaultsMissingSessionEffortToHigh() {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = engine(client);
-        engine.setGoalEffortSupplier(() -> null);
+        bindGoalEvaluator(engine, () -> null, List::of);
         engine.setGoal("feature is complete", 100);
 
         engine.dispatchStopWithOutcome("success", false);
@@ -183,7 +184,7 @@ class HookEngineGoalTest {
     void evaluatorMergesConsecutiveGoalCommandUserMessagesLikeTheMainWirePath() {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = engine(client);
-        engine.setMessagesSupplier(() -> List.of(
+        engine.context().bindMessages(() -> List.of(
             MessageFactory.createUserMessage("<command-name>/goal</command-name>"),
             MessageFactory.createUserMessage(
                 "<local-command-stdout>Goal set: ship</local-command-stdout>"),
@@ -210,7 +211,7 @@ class HookEngineGoalTest {
     void backgroundWorkDefersOnlyGoalEvaluator() {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = engine(client);
-        engine.setBackgroundTasksRunningSupplier(() -> true);
+        engine.goals().setBackgroundTasksRunningSupplier(() -> true);
         engine.setGoal("background task finishes", 100);
 
         HookDispatcher.HookOutcome outcome = engine.dispatchStopWithOutcome("success", false);
@@ -244,11 +245,11 @@ class HookEngineGoalTest {
     void evaluatorTruncatesOldResponseGroupsPastHalfContextWindow() {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setLlmClient(client);
-        engine.setLlmModel("claude-sonnet-4-6");
+        engine.llm().bindClient(client);
+        engine.llm().setModel("claude-sonnet-4-6");
         String old = "OLD-EVIDENCE " + "x".repeat(260_000);
         String recent = "RECENT-EVIDENCE " + "y".repeat(260_000);
-        engine.setMessagesSupplier(() -> List.of(
+        engine.context().bindMessages(() -> List.of(
             MessageFactory.createUserMessage(old),
             new AssistantMessage("a1", AssistantContent.of(
                 "response-1", List.of(new TextBlock("old response")), null)),
@@ -374,10 +375,10 @@ class HookEngineGoalTest {
     void injectedNativeOneMillionWindowAvoidsTwoHundredKTruncation() {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setLlmClient(client);
-        engine.setLlmModel("claude-opus-4-8");
-        engine.setGoalContextWindowResolver(_ -> 1_000_000L);
-        engine.setMessagesSupplier(() -> List.of(
+        engine.llm().bindClient(client);
+        engine.llm().setModel("claude-opus-4-8");
+        engine.goalEvaluator().setContextWindowResolver(_ -> 1_000_000L);
+        engine.context().bindMessages(() -> List.of(
             MessageFactory.createUserMessage("OLD-EVIDENCE " + "x".repeat(260_000)),
             new AssistantMessage("a1", AssistantContent.of(
                 "response-1", List.of(new TextBlock("old response")), null)),
@@ -400,8 +401,8 @@ class HookEngineGoalTest {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = engine(client);
         AtomicReference<String> model = new AtomicReference<>("claude-opus-4-8");
-        engine.setLlmModelSupplier(model::get);
-        engine.setGoalToolsSupplier(() -> List.of(
+        engine.llm().bindModelSupplier(model::get);
+        bindGoalEvaluator(engine, () -> "high", () -> List.of(
             new CreateMessageRequest.ToolDefinition(
                 "Read", "Read a file", JsonUtils.getMapper().createObjectNode())));
         engine.setGoal("feature complete", 0L);
@@ -418,7 +419,7 @@ class HookEngineGoalTest {
     void hookEvaluatorModelSettingOverridesTheLiveMainModel() throws Exception {
         CapturingClient client = new CapturingClient("{\"ok\":true,\"reason\":\"done\"}");
         HookEngine engine = engine(client);
-        engine.setLlmModelSupplier(() -> "claude-opus-4-8");
+        engine.llm().bindModelSupplier(() -> "claude-opus-4-8");
         engine.setGoal("feature complete", 0L);
 
         // Isolated settings root as the session cwd. Reconfiguring the allowed
@@ -450,20 +451,24 @@ class HookEngineGoalTest {
     private static HookEngine engine(CapturingClient client) {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp",
             SessionIdentity.of("session-197"));
-        engine.setLlmClient(client);
-        engine.setLlmModel("claude-sonnet-4-6");
-        engine.setPermissionMode("bypassPermissions");
-        engine.setPromptIdSupplier(() -> "prompt-197");
-        engine.setGoalSystemPromptIdentitySupplier(
-            () -> SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX);
-        engine.setGoalMetadataSupplier(
-            () -> JsonUtils.getMapper().createObjectNode().put("user_id", "wire-user"));
-        engine.setGoalEffortSupplier(() -> "high");
-        engine.setMessagesSupplier(() -> List.of(
+        engine.llm().bindClient(client);
+        engine.llm().setModel("claude-sonnet-4-6");
+        engine.context().setPermissionMode("bypassPermissions");
+        engine.context().bindPromptId(() -> "prompt-197");
+        bindGoalEvaluator(engine, () -> "high", List::of);
+        engine.context().bindMessages(() -> List.of(
             MessageFactory.createUserMessage("implement the feature"),
             MessageFactory.createAssistantMessage("implementation and tests are complete")));
-        engine.setTokenCountSupplier(() -> 150L);
+        engine.goals().setTokenCountSupplier(() -> 150L);
         return engine;
+    }
+
+    private static void bindGoalEvaluator(HookEngine engine, Supplier<String> effort,
+                                          Supplier<List<CreateMessageRequest.ToolDefinition>> tools) {
+        engine.goalEvaluator().bind(
+            () -> SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX,
+            () -> JsonUtils.getMapper().createObjectNode().put("user_id", "wire-user"),
+            effort, tools);
     }
 
     private static final class CapturingClient implements LlmClient {

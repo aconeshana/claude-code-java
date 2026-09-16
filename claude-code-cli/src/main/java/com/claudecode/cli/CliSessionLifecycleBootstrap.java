@@ -186,7 +186,7 @@ final class CliSessionLifecycleBootstrap {
         transcriptRecorder.setTeamInfoResolver(CliSessionLifecycleBootstrap::resolveTeamInfo);
         boolean persistSession = !workspace.request().session().noSessionPersistence();
         engine.execution().setTranscriptSink(persistSession ? transcriptRecorder : null);
-        hookEngine.setPromptIdSupplier(() -> transcriptRecorder.currentPromptId(engine.conversation().getSessionId()));
+        hookEngine.context().bindPromptId(() -> transcriptRecorder.currentPromptId(engine.conversation().getSessionId()));
         if (persistSession && engine.conversation().getFileHistoryManager() != null) {
             // Reads the recorder's live project so a cross-project resume moves the
             // file-history rows along with the transcript they annotate.

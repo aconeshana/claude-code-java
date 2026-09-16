@@ -135,8 +135,8 @@ final class CliHeadlessSessionRunner {
             Strings.CS.equals("stream-json", request.outputFormat()));
         try (hookEffects) {
             fileWatcher.initialize(Path.of(request.cwd()),
-                request.hookEngine().configuredFileChangedMatchers());
-            request.hookEngine().setHookEffectSink(hookEffects);
+                request.hookEngine().registry().configuredFileChangedMatchers());
+            request.hookEngine().effects().setSink(hookEffects);
             CliSessionAssembler.runSetupHook(request.setupTrigger(), request.hookEngine(),
                 request.engine(), request.diagnosticOutput());
             request.engine().execution().setHookDispatcher(request.hookEngine());

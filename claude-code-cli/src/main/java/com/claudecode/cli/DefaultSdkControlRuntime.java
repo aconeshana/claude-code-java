@@ -318,7 +318,7 @@ final class DefaultSdkControlRuntime implements SdkControlRuntime {
             });
             if (!matchers.isEmpty()) configured.put(event, List.copyOf(matchers));
         });
-        hookEngine.setSdkHooks(configured);
+        hookEngine.registry().setSdkHooks(configured);
     }
 
     @Override

@@ -6,6 +6,7 @@ import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.services.hooks.HookEngine;
+import com.claudecode.services.hooks.HookRegistry;
 import com.claudecode.services.hooks.HooksSettings;
 import java.nio.file.Path;
 import org.slf4j.Logger;
@@ -36,7 +37,7 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
 
     /**
      * @param permissionGate live gate — regime updated via {@link PermissionGate#syncFromDisk}
-     * @param hookEngine     live hook engine — base settings updated via {@link HookEngine#replaceSettings}
+     * @param hookEngine     live hook engine — base settings updated via {@link HookRegistry#replaceSettings}
      * @param cwd            working directory (drives project/local settings paths)
      * @param uiSink         optional callback for user-visible notification;
      *                       pass {@code null} for CLI/headless mode (log-only)
@@ -204,8 +205,8 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
             // the other tiers, and --settings/SDK flag updates must be visible
 
             HooksSettings newHooks = HookSettings.loadHooksSettings();
-            hookEngine.replaceSettings(newHooks);
-            hookEngine.replaceHttpHookPolicy(HookSettings.loadHttpHookPolicy());
+            hookEngine.registry().replaceSettings(newHooks);
+            hookEngine.http().replacePolicy(HookSettings.loadHttpHookPolicy());
 
             int hookCount = countHooks(newHooks);
             String label = friendlySource(source);

@@ -215,8 +215,8 @@ final class CliSessionAssembler {
                 toolchain.skillToolProvider().getSkillLoader(), watcher,
                 output, errorOutput, false, false)) {
             watcher.initialize(Path.of(workspace.cwd()),
-                workspace.hookEngine().configuredFileChangedMatchers());
-            workspace.hookEngine().setHookEffectSink(effects);
+                workspace.hookEngine().registry().configuredFileChangedMatchers());
+            workspace.hookEngine().effects().setSink(effects);
             runSetupHook(workspace.request().session().setupTrigger(), workspace.hookEngine(),
                 engine.engine(), errorOutput);
             engine.engine().execution().setHookDispatcher(workspace.hookEngine());

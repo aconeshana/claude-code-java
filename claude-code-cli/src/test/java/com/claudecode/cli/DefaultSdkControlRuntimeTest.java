@@ -270,8 +270,8 @@ class DefaultSdkControlRuntimeTest {
 
         runtime.configureHooks(config);
 
-        assertEquals(1, hooks.currentSdkHooks().get(HookEvent.PRE_TOOL_USE).size());
-        assertEquals("Bash", hooks.currentSdkHooks().get(HookEvent.PRE_TOOL_USE)
+        assertEquals(1, hooks.registry().currentSdkHooks().get(HookEvent.PRE_TOOL_USE).size());
+        assertEquals("Bash", hooks.registry().currentSdkHooks().get(HookEvent.PRE_TOOL_USE)
             .getFirst().matcher().orElseThrow());
     }
 

@@ -11,9 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link HookEngine#setPluginHooks} — the plugin hook channel must be
+ * {@link HookRegistry#setPluginHooks} — the plugin hook channel must be
  * consulted alongside settings hooks, swapped atomically, and stay
- * independent of {@link HookEngine#replaceSettings}.
+ * independent of {@link HookRegistry#replaceSettings}.
  */
 class HookEnginePluginHooksTest {
 
@@ -28,7 +28,7 @@ class HookEnginePluginHooksTest {
         HooksSettings settings = new HooksSettings(Map.of(
             HookEvent.SESSION_START, List.of(echoMatcher(null, "from-settings"))));
         HookEngine engine = new HookEngine(settings, "/tmp");
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.SESSION_START, List.of(echoMatcher(null, "from-plugin"))));
 
         List<HookResult> results = engine.executeHooks(
@@ -39,7 +39,7 @@ class HookEnginePluginHooksTest {
     @Test
     void pluginHooksMatchOnToolName() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.PRE_TOOL_USE, List.of(echoMatcher("Bash", "matched"))));
 
         var input = new ObjectMapper().createObjectNode();
@@ -52,25 +52,25 @@ class HookEnginePluginHooksTest {
     @Test
     void setPluginHooksReplacesPreviousGenerationWholesale() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.SESSION_START, List.of(echoMatcher(null, "old"))));
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.STOP, List.of(echoMatcher(null, "new"))));
 
         assertTrue(engine.executeHooks(HookEvent.SESSION_START,
                 HookInput.forSessionStart("startup")).isEmpty(),
             "old generation must be gone after the swap");
-        assertTrue(engine.currentPluginHooks().containsKey(HookEvent.STOP));
+        assertTrue(engine.registry().currentPluginHooks().containsKey(HookEvent.STOP));
     }
 
     @Test
     void nullClearsPluginHooks() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.SESSION_START, List.of(echoMatcher(null, "x"))));
-        engine.setPluginHooks(null);
+        engine.registry().setPluginHooks(null);
 
-        assertTrue(engine.currentPluginHooks().isEmpty());
+        assertTrue(engine.registry().currentPluginHooks().isEmpty());
         assertTrue(engine.executeHooks(HookEvent.SESSION_START,
             HookInput.forSessionStart("startup")).isEmpty());
     }
@@ -78,10 +78,10 @@ class HookEnginePluginHooksTest {
     @Test
     void replaceSettingsDoesNotTouchPluginHooks() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        engine.setPluginHooks(Map.of(
+        engine.registry().setPluginHooks(Map.of(
             HookEvent.SESSION_START, List.of(echoMatcher(null, "plugin"))));
 
-        engine.replaceSettings(HooksSettings.EMPTY);
+        engine.registry().replaceSettings(HooksSettings.EMPTY);
         assertEquals(1, engine.executeHooks(HookEvent.SESSION_START,
                 HookInput.forSessionStart("startup")).size(),
             "settings hot-reload must not wipe the plugin hook channel");

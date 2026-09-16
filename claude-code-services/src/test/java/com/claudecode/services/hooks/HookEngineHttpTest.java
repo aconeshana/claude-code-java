@@ -75,7 +75,7 @@ class HookEngineHttpTest {
             })
             .build();
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp", client);
-        engine.replaceHttpHookPolicy(new HttpHookPolicy(
+        engine.http().replacePolicy(new HttpHookPolicy(
             List.of(), null));
 
         HookResult result = engine.executeHttpHook(

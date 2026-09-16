@@ -145,8 +145,8 @@ class PromptInvocationAdapterTest {
         }
 
         @Override
-        public void addExtraHooks(HooksSettings extra, Path root) {
-            this.added = extra;
+        public void installInvocationHooks(InvocationHooks extra, Path root) {
+            this.added = (HooksSettings) extra;
             this.skillRoot = root;
         }
     }

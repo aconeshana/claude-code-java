@@ -224,8 +224,8 @@ final class CliWorkspaceBootstrap {
 
 // updateHooksConfigSnapshot and atomically switch the engine to
             // the worktree's effective hooks/policy.
-            hookEngine.replaceSettings(HookSettings.loadHooksSettings());
-            hookEngine.replaceHttpHookPolicy(HookSettings.loadHttpHookPolicy());
+            hookEngine.registry().replaceSettings(HookSettings.loadHooksSettings());
+            hookEngine.http().replacePolicy(HookSettings.loadHttpHookPolicy());
         }
 
         if (request.permissions().dangerouslySkipPermissions()) {
@@ -358,8 +358,8 @@ final class CliWorkspaceBootstrap {
         HooksSettings hooksSettings = loadHooksSettings();
         HookEngine hookEngine = new HookEngine(
             hooksSettings, /* fixedWorkingDirectory */ null, sessionIdentity);
-        hookEngine.replaceHttpHookPolicy(HookSettings.loadHttpHookPolicy());
-        hookEngine.setBackgroundTasksRunningSupplier(
+        hookEngine.http().replacePolicy(HookSettings.loadHttpHookPolicy());
+        hookEngine.goals().setBackgroundTasksRunningSupplier(
             () -> !TaskRegistry.global().listBackground().isEmpty());
         WorktreeService.setWorktreeHooks(new WorktreeHooks() {
             @Override public boolean hasCreateHook() { return hookEngine.hasWorktreeCreateHook(); }

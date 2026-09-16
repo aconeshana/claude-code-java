@@ -545,7 +545,7 @@ final class CliInteractiveSessionRunner {
                 Consumer<String> skillHookRegistrar = rawHooks -> {
                         HooksSettings parsed = HooksSettings.fromYaml(rawHooks);
                         if (parsed != HooksSettings.EMPTY) {
-                            hookEngine.addExtraHooks(parsed);
+                            hookEngine.registry().addExtraHooks(parsed);
                         }
                     };
                 var applicationPorts = interactiveRuntime.application(
