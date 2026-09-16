@@ -344,6 +344,17 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
         invalidate();
     }
 
+    /**
+     * The header and Config list renderers skip cells they painted on an earlier frame; once the
+     * transcript repaints beneath this container those cells are gone, so the next draw must be a
+     * complete frame.
+     */
+    @Override
+    public void onBackdropRepainted() {
+        if (!active) return;
+        invalidateCompleteRefreshFrame();
+    }
+
     @Explanation("Windows console repaint after Settings opens, changes focus, or switches tabs can omit changed cells")
     private void requestCompleteRefresh() {
         var textGui = getTextGUI();

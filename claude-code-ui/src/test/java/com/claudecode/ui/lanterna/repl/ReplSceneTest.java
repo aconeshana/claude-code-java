@@ -241,13 +241,53 @@ class ReplSceneTest {
         }
     }
 
+    @Test
+    void overlayIsToldWhenTheTranscriptBeneathItRepaints() {
+        Panel root = ReplScene.createRoot();
+        CountingComponent transcript = new CountingComponent(80, 20);
+        CountingOverlay overlay = new CountingOverlay(80, 8);
+        CountingComponent input = new CountingComponent(80, 2);
+        overlay.active = true;
+        root.addComponent(transcript);
+        root.addComponent(overlay);
+        root.addComponent(input);
+        TextGUIGraphics graphics = graphics(new TerminalSize(80, 24), new AtomicInteger());
+
+        root.draw(graphics);
+        assertEquals(1, overlay.backdropRepaints.get(),
+            "the first (layout) frame paints the transcript under the overlay");
+
+        overlay.invalidate();
+        root.draw(graphics);
+        assertEquals(1, overlay.backdropRepaints.get(),
+            "an overlay-only change leaves its retained frame intact");
+
+        transcript.invalidate();
+        root.draw(graphics);
+        assertEquals(2, overlay.backdropRepaints.get(),
+            "a streaming transcript update repaints the rows the overlay covers");
+
+        // Nothing invalid: the parent-only fallback (e.g. a swallowed mouse-move
+        // marked the GUI dirty) repaints every child, transcript included.
+        root.draw(graphics);
+        assertEquals(3, overlay.backdropRepaints.get(),
+            "a full-scene fallback repaint must also reset the overlay's retained frame");
+
+        input.invalidate();
+        root.draw(graphics);
+        assertEquals(3, overlay.backdropRepaints.get(),
+            "a pinned sibling that does not overlap the overlay is not a backdrop repaint");
+    }
+
     private static final class CountingOverlay extends CountingComponent
             implements InlineOverlay {
         boolean active;
+        final AtomicInteger backdropRepaints = new AtomicInteger();
 
         CountingOverlay(int columns, int rows) { super(columns, rows); }
         @Override public boolean isActive() { return active; }
         @Override public void handleKey(KeyStroke key, AtomicBoolean deliver) {}
+        @Override public void onBackdropRepainted() { backdropRepaints.incrementAndGet(); }
     }
 
 }

@@ -44,6 +44,17 @@ public interface InlineOverlay {
     default boolean overlaysTranscript() { return true; }
 
     /**
+     * Called by the scene host immediately before it redraws this overlay because a component
+     * painted <em>beneath</em> it (typically the transcript) is being repainted in the same frame,
+     * or because the whole scene is being repainted. Overlays whose renderer reuses cells it painted
+     * on an earlier frame (pointer-only arrow-key updates, cached static chrome) must discard that
+     * assumption here and repaint completely on the following draw, since the backdrop is about to
+     * overwrite every cell they previously owned. Overlays that always paint their full area may keep
+     * the no-op default.
+     */
+    default void onBackdropRepainted() { }
+
+    /**
      * Handles a key while this overlay is active. Implementations should set
      * {@code deliver} to {@code false} when handled; the host additionally enforces
      * exclusive ownership for unhandled keys as an input-isolation boundary.

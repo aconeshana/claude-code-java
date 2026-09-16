@@ -306,6 +306,38 @@ class ModelPickerDialogTest {
             "only the old and new pointer rows change when effort text is identical");
     }
 
+    @Test
+    void backdropRepaintForcesACompleteFrameOverTheErasedCells() {
+        ModelPickerDialog d = new ModelPickerDialog();
+        show(d, "sonnet", null, _ -> {});
+        TerminalSize size = d.calculatePreferredSize();
+        d.setSize(size);
+        BasicTextImage image = new BasicTextImage(size);
+        TextGUIGraphics backing = TextGUIGraphicsBridge.wrap(null, image.newTextGraphics());
+        d.draw(backing);
+        List<String> complete = imageRows(image);
+
+        // The transcript beneath the picker repainted (e.g. a mouse-move marked the GUI
+        // dirty) and overwrote every cell; a pointer-only redraw would leave it blank.
+        image.newTextGraphics().fill('#');
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true));
+        d.draw(backing);
+        List<String> withoutNotice = imageRows(image);
+        assertTrue(withoutNotice.stream().anyMatch(row -> row.contains("#")),
+            "precondition: an un-notified arrow move trusts its retained frame");
+
+        image.newTextGraphics().fill('#');
+        d.onBackdropRepainted();
+        d.draw(backing);
+        List<String> repainted = imageRows(image);
+
+        assertTrue(repainted.stream().noneMatch(row -> row.contains("#")),
+            "after a backdrop repaint the picker must own every one of its cells again");
+        assertEquals(complete.size(), repainted.size());
+        assertTrue(repainted.stream().anyMatch(row -> row.contains("Switch between")),
+            "the header row is part of the complete frame");
+    }
+
     private static List<String> imageRows(BasicTextImage image) {
         List<String> rows = new ArrayList<>();
         for (int row = 0; row < image.getSize().getRows(); row++) {

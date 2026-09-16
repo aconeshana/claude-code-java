@@ -40,6 +40,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.concurrent.atomic.AtomicLong;
 import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
 import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
@@ -49,7 +50,7 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
 /**
  * Cohesive preferences feature for model, effort, theme, and the shared settings tabs.
  */
-public final class PreferencesFeature implements ReplCommandUiBridge.Preferences {
+public final class PreferencesFeature implements ReplCommandUiBridge.Preferences, ReplFeature {
 
     private final WindowBasedTextGUI gui;
     private final InputPanel inputPanel;
@@ -215,7 +216,7 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
         return hotUiReady;
     }
 
-    public List<InlineOverlay> overlays() {
+    @Override public List<InlineOverlay> overlays() {
         return List.of(effortDialog, modelDialog, customModelDialog, themeDialog, settingsDialog);
     }
 
@@ -368,7 +369,12 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
     private void showModelPicker(long generation,
                                  ModelPickerDialog.PreparedModelPicker prepared) {
         if (modelPickerGeneration.get() != generation) return;
+        // The picker replaces the prompt (PromptInput returns modelPickerElement
+        // instead of the input box), so it sits at the bottom of the screen like
+        // every other inline dialog rather than floating above a still-visible prompt.
+        suppressInput(true);
         modelDialog.show(prepared, result -> {
+            suppressInput(false);
             modelPickerGeneration.incrementAndGet();
             handleModelResult(result);
         });
@@ -448,15 +454,21 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
                     .filter(model -> Strings.CS.equals(modelName, model.modelName()))
                     .findFirst().orElse(null);
             } catch (RuntimeException e) {
-                Runnable render = () -> sink.line(
-                    "  Could not load custom model: " + safeMessage(e),
-                    LanternaTheme.toolError());
-                runOnGuiThread(render);
+                // The picker hid itself on `e` without firing its result callback,
+                // so the prompt it suppressed must be restored on every exit path.
+                runOnGuiThread(() -> {
+                    suppressInput(false);
+                    sink.line("  Could not load custom model: " + safeMessage(e),
+                        LanternaTheme.toolError());
+                });
                 return;
             }
             if (existing == null) {
-                runOnGuiThread(() -> sink.line(
-                    "  Custom model not found: " + modelName, LanternaTheme.toolError()));
+                runOnGuiThread(() -> {
+                    suppressInput(false);
+                    sink.line("  Custom model not found: " + modelName,
+                        LanternaTheme.toolError());
+                });
                 return;
             }
             gui.getGUIThread().invokeLater(() -> {

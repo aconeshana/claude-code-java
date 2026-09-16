@@ -420,6 +420,9 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
         renderedListSize = null;
         renderedListMode = null;
         for (Component child : getChildrenList()) child.invalidate();
+        // The model submenu keeps its own retained frame; invalidating it alone would
+        // only repaint its pointer cells over whatever now sits beneath.
+        modelSubmenu.onBackdropRepainted();
         invalidate();
     }
 

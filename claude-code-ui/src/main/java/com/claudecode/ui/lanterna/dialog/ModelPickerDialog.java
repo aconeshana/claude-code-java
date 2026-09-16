@@ -43,8 +43,9 @@ import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.input.InputPanel;
 
 /**
- * Inline model-picker dialog — sits above {@link InputPanel} in the SmartLayout stack, occupying
- * zero rows when idle.
+ * Inline model-picker dialog — mounted in the SmartLayout stack and shown in place of the
+ * suppressed {@link InputPanel} (the original {@code PromptInput} returns the picker instead of
+ * the input box), occupying zero rows when idle.
  */
 public final class ModelPickerDialog extends Panel implements InlineOverlay {
 
@@ -414,6 +415,18 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
     }
 
     @Override public boolean isActive() { return active; }
+
+    /**
+     * The transcript (or another lower sibling) is about to repaint every cell under this
+     * picker, so the pointer-only and effort-row-only fast paths in {@link PickerRenderer}
+     * would leave stale transcript text where the static frame used to be. Forget the
+     * retained frame so the next draw paints the complete picker again.
+     */
+    @Override
+    public synchronized void onBackdropRepainted() {
+        if (!active) return;
+        resetRenderedFrame();
+    }
 
     @Override
     public synchronized void handleKey(KeyStroke key, AtomicBoolean deliver) {

@@ -92,8 +92,31 @@ final class ReplScene {
             List<Component> redraw = layoutChanged
                 ? children.stream().filter(Component::isVisible).toList()
                 : invalidWithCoveringSiblings(children);
+            notifyBackdropRepaints(redraw);
             for (Component child : redraw) {
                 child.draw(graphics.newTextGraphics(child.getPosition(), child.getSize()));
+            }
+        }
+
+        /**
+         * An overlay drawn in this frame together with a lower sibling it covers is about to
+         * have its cells overwritten by that sibling before its own draw runs. The overlay's
+         * incremental renderer cannot observe that from {@code draw()} alone (the picker's
+         * arrow-key path repaints two pointer cells and trusts the rest of its frame), so tell
+         * it explicitly. This also covers the parent-only fallback where every child repaints
+         * without any of them being invalid, e.g. a swallowed mouse-move marking the GUI dirty.
+         */
+        private static void notifyBackdropRepaints(List<Component> redraw) {
+            for (int i = 1; i < redraw.size(); i++) {
+                Component upper = redraw.get(i);
+                if (!(upper instanceof InlineOverlay overlay)) continue;
+                Geometry upperGeometry = Geometry.of(upper);
+                for (int j = 0; j < i; j++) {
+                    if (Geometry.of(redraw.get(j)).intersects(upperGeometry)) {
+                        overlay.onBackdropRepainted();
+                        break;
+                    }
+                }
             }
         }
 

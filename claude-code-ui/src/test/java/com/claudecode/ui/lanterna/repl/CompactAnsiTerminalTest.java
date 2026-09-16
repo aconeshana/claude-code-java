@@ -2,9 +2,13 @@ package com.claudecode.ui.lanterna.repl;
 
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.input.DefaultKeyDecodingProfile;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
+import com.googlecode.lanterna.input.MouseAction;
+import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
+import com.googlecode.lanterna.terminal.MouseCaptureMode;
 import java.io.StringReader;
 import java.lang.reflect.Proxy;
 import java.util.ArrayDeque;
@@ -115,6 +119,80 @@ class CompactAnsiTerminalTest {
         now.addAndGet(100_000_000L);
         terminal.pollInput();
         assertEquals(2, sizeQueries.get(), "a later frame re-queries the ConPTY dimensions");
+    }
+
+    @Test
+    void moveEventsPassThroughUnderClickReleaseDragForCoordinatorPanelHover() throws Exception {
+        ArrayDeque<KeyStroke> input = new ArrayDeque<>();
+        MouseAction move = new MouseAction(MouseActionType.MOVE, 0, new TerminalPosition(5, 3));
+        input.add(move);
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(
+            fakeInputTerminal(input, new AtomicInteger()));
+
+        terminal.setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE_DRAG);
+
+        assertEquals(move, terminal.readInput(),
+            "the coordinator panel's hover highlight needs button-less MOVE events, "
+                + "so the app's actual capture mode must not filter them out");
+    }
+
+    @Test
+    void moveEventsAreStillFilteredUnderPlainClickModes() throws Exception {
+        ArrayDeque<KeyStroke> input = new ArrayDeque<>();
+        input.add(new MouseAction(MouseActionType.MOVE, 0, new TerminalPosition(5, 3)));
+        input.add(new KeyStroke(KeyType.ESCAPE));
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(
+            fakeInputTerminal(input, new AtomicInteger()));
+
+        terminal.setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE);
+
+        assertEquals(KeyType.ESCAPE, terminal.readInput().getKeyType(),
+            "a mode that never asked for motion tracking should still drop MOVE events");
+    }
+
+    @Test
+    void sgrLeftClickFromRawBytesArrivesAsLanternaButtonOne() throws Exception {
+        // xterm SGR: Cb=0 is the left/primary button on press ('M') and release ('m'),
+        // Cb=32 is a left-button drag. Lanterna's decoder reports Cb=0 as button 2;
+        // the footer pills and coordinator rows only react to button 1.
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(
+            fakeTerminal(new ArrayList<>()),
+            new FastTerminalInputDecoder(
+                new StringReader("\033[<0;10;5M\033[<32;11;5M\033[<0;11;5m"),
+                new DefaultKeyDecodingProfile().getPatterns()),
+            false,
+            () -> 0L);
+        terminal.setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE_DRAG);
+
+        MouseAction press = (MouseAction) terminal.readInput();
+        MouseAction drag = (MouseAction) terminal.readInput();
+        MouseAction release = (MouseAction) terminal.readInput();
+
+        assertEquals(MouseActionType.CLICK_DOWN, press.getActionType());
+        assertEquals(1, press.getButton(), "a real left click must be button 1");
+        assertEquals(new TerminalPosition(9, 4), press.getPosition());
+        assertEquals(MouseActionType.DRAG, drag.getActionType());
+        assertEquals(1, drag.getButton());
+        assertEquals(MouseActionType.CLICK_RELEASE, release.getActionType());
+        assertEquals(1, release.getButton(), "SGR releases keep the button; it must stay left");
+    }
+
+    @Test
+    void sgrMiddleAndRightClicksKeepTheirDocumentedButtons() throws Exception {
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(
+            fakeTerminal(new ArrayList<>()),
+            new FastTerminalInputDecoder(
+                new StringReader("\033[<1;10;5M\033[<2;10;5M\033[<64;10;5M"),
+                new DefaultKeyDecodingProfile().getPatterns()),
+            false,
+            () -> 0L);
+        terminal.setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE_DRAG);
+
+        assertEquals(2, ((MouseAction) terminal.readInput()).getButton(), "middle = 2");
+        assertEquals(3, ((MouseAction) terminal.readInput()).getButton(), "right = 3");
+        MouseAction wheel = (MouseAction) terminal.readInput();
+        assertEquals(MouseActionType.SCROLL_UP, wheel.getActionType());
+        assertEquals(4, wheel.getButton(), "wheel buttons are not remapped");
     }
 
     private static ExtendedTerminal fakeInputTerminal(

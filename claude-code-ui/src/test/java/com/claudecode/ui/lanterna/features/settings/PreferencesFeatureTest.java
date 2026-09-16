@@ -2,6 +2,7 @@ package com.claudecode.ui.lanterna.features.settings;
 
 import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,6 +24,8 @@ import com.claudecode.ui.lanterna.input.InputPanel;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.TextGUIThread;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -30,6 +33,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
@@ -321,7 +325,7 @@ class PreferencesFeatureTest {
     }
 
     @Test
-    void openingModelPickerKeepsPromptVisible() {
+    void openingModelPickerReplacesThePromptUntilItCloses() {
         InputPanel input = new InputPanel();
         int promptRows = input.getPreferredSize().getRows();
         var query = new DefaultQuerySession(QuerySessionSpec.builder()
@@ -336,9 +340,20 @@ class PreferencesFeatureTest {
 
         feature.openModel();
 
-        assertTrue(((ModelPickerDialog) feature.modelView()).isActive());
+        ModelPickerDialog picker = (ModelPickerDialog) feature.modelView();
+        assertTrue(picker.isActive());
+        // 2.1.197 dispatches /model as an ordinary local-jsx command
+        // (`tengu_immediate_model_command` defaults to false), which mounts the picker with
+        // shouldHidePromptInput=true; the SmartLayout equivalent is a collapsed InputPanel so the
+        // picker sits in the pinned bottom zone instead of floating in the transcript.
+        assertEquals(0, input.getPreferredSize().getRows(),
+            "the prompt collapses while the picker is open");
+
+        picker.handleKey(new KeyStroke(KeyType.ESCAPE), new AtomicBoolean(true));
+
+        assertFalse(picker.isActive());
         assertEquals(promptRows, input.getPreferredSize().getRows(),
-            "197 mounts the immediate model picker with shouldHidePromptInput=false");
+            "closing the picker restores the prompt");
     }
 
     static CommandContext.Builder contextBuilder() {
