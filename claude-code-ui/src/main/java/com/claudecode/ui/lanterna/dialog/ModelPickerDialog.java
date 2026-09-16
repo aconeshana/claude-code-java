@@ -122,6 +122,14 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
     private Consumer<ModelPickResult> onResult;
     /** Last rendered picker extent; stable arrow-key frames reuse its cleared background. */
     private TerminalSize renderedSize;
+    /**
+     * Screen position the picker was last fully painted at. {@link SmartLayout} shifts this
+     * panel's Y row whenever a sibling pinned-zone component (task list, spinner) changes height
+     * while the picker stays open, without changing its size. A size-only staleness check would
+     * miss that shift and leave the new row's stale transcript characters unpainted underneath the
+     * partially-redrawn picker.
+     */
+    private TerminalPosition renderedPosition;
     private int lastRenderedSelection = -1;
     private ModelOption lastRenderedEffortOption;
     private String lastRenderedEffortLevel;
@@ -857,6 +865,7 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
 
     private void resetRenderedFrame() {
         renderedSize = null;
+        renderedPosition = null;
         lastRenderedSelection = -1;
         lastRenderedEffortOption = null;
         lastRenderedEffortLevel = null;
@@ -930,20 +939,24 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         public void drawComponent(TextGUIGraphics g, PickerArea c) {
             if (!active) return;
             TerminalSize size = g.getSize();
+            TerminalPosition position = ModelPickerDialog.this.getPosition();
             int cols = size.getColumns();
             if (viewMode == ViewMode.DELETE_CONFIRM) {
                 g.fill(' ');
                 renderedSize = size;
+                renderedPosition = position;
                 drawDeleteConfirmation(g, cols);
                 lastRenderedSelection = -1;
                 return;
             }
             List<ModelOption> opts = options;
             boolean fullRender = !size.equals(renderedSize)
+                || !position.equals(renderedPosition)
                 || lastRenderedSelection < 0;
             if (fullRender) {
                 g.fill(' ');
                 renderedSize = size;
+                renderedPosition = position;
                 drawStaticFrame(g, cols, opts);
                 for (int i = 0; i < opts.size(); i++) {
                     drawOption(g, cols, opts, i);
