@@ -546,6 +546,8 @@ class InputPanelTasksPillTest {
                 int selectedWorkflowIndex,
                 String viewingTaskId, Instant now,
                 Function<String, String> nameResolver) {}
+        @Override public void setHoveredRow(int contentRow) {}
+        @Override public int coordinatorIndexForRow(int contentRow, int columns) { return -1; }
     }
 
     private static void wireCoordinator(InputPanel panel, TaskRegistry registry) {

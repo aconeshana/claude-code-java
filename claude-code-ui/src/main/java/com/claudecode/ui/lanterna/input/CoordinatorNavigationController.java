@@ -149,6 +149,21 @@ public final class CoordinatorNavigationController {
         }
     }
 
+    /**
+     * Selects row {@code index} directly (0 = {@code main}, 1..n = nth agent) and
+     * opens it in one step, as a mouse click would — equivalent to stepping the
+     * keyboard cursor there and pressing Enter. A no-op when {@code index} has no
+     * corresponding row.
+     */
+    public void selectAndOpen(int index, Host host) {
+        List<TaskState> agents = panelAgents();
+        if (index < 0 || index > agents.size()) return;
+        tasksSelected = true;
+        coordinatorIndex = index;
+        selectedTaskId = index > 0 ? agents.get(index - 1).id() : null;
+        openSelected(host);
+    }
+
 
     public void enterView(String taskId, Host host) {
         // retain: block eviction while viewed by clearing the deadline.

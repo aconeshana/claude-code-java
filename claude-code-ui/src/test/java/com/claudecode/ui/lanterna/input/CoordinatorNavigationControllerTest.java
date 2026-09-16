@@ -158,6 +158,54 @@ class CoordinatorNavigationControllerTest {
     }
 
     @Test
+    void selectAndOpenOnMainReturnsToLeader() {
+        TaskStore store = TaskStore.inMemory();
+        TaskRegistry registry = new TaskRegistry(store);
+        TaskState agent = runningAgent(store, "explore");
+        CoordinatorNavigationController controller = controller(registry, Instant.now());
+        TestHost host = new TestHost();
+        controller.enterView(agent.id(), host);
+        assertTrue(view.isViewingLocalAgent());
+
+        controller.selectAndOpen(0, host);
+
+        assertFalse(view.isViewingLocalAgent(), "clicking main exits the subagent view");
+        assertEquals(0, controller.coordinatorIndex());
+    }
+
+    @Test
+    void selectAndOpenOnAgentIndexEntersThatAgentsTranscript() {
+        TaskStore store = TaskStore.inMemory();
+        TaskRegistry registry = new TaskRegistry(store);
+        runningAgent(store, "first");
+        TaskState second = runningAgent(store, "second");
+        CoordinatorNavigationController controller = controller(registry, Instant.now());
+        TestHost host = new TestHost();
+
+        controller.selectAndOpen(2, host);
+
+        assertTrue(view.isViewingLocalAgent());
+        assertEquals(second.id(), view.viewingTaskId());
+        assertEquals(2, controller.coordinatorIndex());
+    }
+
+    @Test
+    void selectAndOpenWithOutOfBoundsIndexIsANoOp() {
+        TaskStore store = TaskStore.inMemory();
+        TaskRegistry registry = new TaskRegistry(store);
+        runningAgent(store, "only");
+        CoordinatorNavigationController controller = controller(registry, Instant.now());
+        TestHost host = new TestHost();
+        controller.selectPanel();
+        int before = controller.coordinatorIndex();
+
+        controller.selectAndOpen(5, host);
+
+        assertFalse(view.isViewingLocalAgent(), "an out-of-bounds click must not open any view");
+        assertEquals(before, controller.coordinatorIndex(), "an out-of-bounds click must not move selection");
+    }
+
+    @Test
     void escapeWhileViewingPreservesRunningLocalAgentAndQueuedInput() {
         TaskStore store = TaskStore.inMemory();
         TaskRegistry registry = new TaskRegistry(store);

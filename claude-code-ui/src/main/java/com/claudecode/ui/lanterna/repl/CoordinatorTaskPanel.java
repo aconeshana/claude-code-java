@@ -64,6 +64,8 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
     }
 
     private volatile Snapshot snapshot = Snapshot.empty();
+    /** Content row (0-based, top margin excluded) currently under the mouse; -1 = none. */
+    private volatile int hoveredContentRow = -1;
 
     /** Replace the displayed snapshot. Safe to call from any thread. */
     @Override
@@ -104,6 +106,21 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
         return new CoordinatorRenderer();
     }
 
+    @Override
+    public void setHoveredRow(int contentRow) {
+        if (hoveredContentRow != contentRow) {
+            hoveredContentRow = contentRow;
+            invalidate();
+        }
+    }
+
+    @Override
+    public int coordinatorIndexForRow(int contentRow, int columns) {
+        List<Row> rows = projectRows(snapshot, columns);
+        if (contentRow < 0 || contentRow >= rows.size()) return -1;
+        return rows.get(contentRow).coordinatorTarget();
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Pure projection (testable without Lanterna)
     // ──────────────────────────────────────────────────────────────────────────
@@ -114,9 +131,12 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
      * ({@code "success"}/{@code "error"}/{@code null}); the leader row is always
      * {@code null} (uncolored). {@code bulletStart}/{@code bulletEnd} bound the
      * substring the color applies to so the rest of the row stays default-colored.
+     * {@code coordinatorTarget} is the {@code coordinatorIndex} a mouse click on
+     * this row should jump to (0 = main, 1..n = nth agent), or {@code -1} when the
+     * row isn't agent-selectable (a "more" indicator or a workflow row).
      */
     record Row(String text, boolean viewed, boolean dim, boolean bold,
-               String bulletColor, int bulletStart, int bulletEnd) {}
+               String bulletColor, int bulletStart, int bulletEnd, int coordinatorTarget) {}
 
     private record AgentProjection(TaskState task, String label, String description,
                                    String status) {}
@@ -129,6 +149,16 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
  * followed by one row per visible agent, laid out for a terminal {@code columns} wide.
      */
     static List<Row> projectRows(Snapshot s, int columns) {
+        return projectRows(s, columns, -1);
+    }
+
+    /**
+     * Same as {@link #projectRows(Snapshot, int)}, but a mouse-hovered content row (0-based,
+     * top margin excluded; -1 = none) is highlighted exactly like keyboard selection — per the
+     * official client, hover is not a distinct visual treatment, it's {@code isSelected ||
+     * isHovered} feeding the same dim-suppression and pointer-glyph prefix.
+     */
+    static List<Row> projectRows(Snapshot s, int columns, int hoveredContentRow) {
         List<Row> rows = new ArrayList<>();
         List<AgentProjection> agents = new ArrayList<>(s.agents().size());
         List<WorkflowProjection> workflows = new ArrayList<>(s.workflows().size());
@@ -180,7 +210,8 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
         if (!s.agents().isEmpty()) {
             boolean mainViewed = s.viewingTaskId() == null;
             boolean mainSelected = s.selectedIndex() == 0;
-            String mainPrefix = mainSelected ? Figures.POINTER + " " : "  ";
+            boolean mainHighlighted = mainSelected || hoveredContentRow == rows.size();
+            String mainPrefix = mainHighlighted ? Figures.POINTER + " " : "  ";
             String mainBullet = mainViewed ? Figures.BLACK_CIRCLE : Figures.CIRCLE;
             String mainText = mainPrefix + mainBullet + " " + MAIN_LABEL;
             if (moreAbove > 0) {
@@ -191,9 +222,9 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             rows.add(new Row(
                 mainText,
                 mainViewed,
-                !mainSelected && !mainViewed,
+                !mainHighlighted && !mainViewed,
                 mainViewed,
-                null, -1, -1));
+                null, -1, -1, 0));
         }
 
         for (int i = windowStart; i < windowEnd; i++) {
@@ -201,7 +232,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             TaskState task = projection.task();
             boolean viewed = task.id().equals(s.viewingTaskId());
             boolean selected = s.selectedIndex() == i + 1;
-            boolean highlighted = selected;
+            boolean highlighted = selected || hoveredContentRow == rows.size();
 
             String prefix = highlighted ? Figures.POINTER + " " : "  ";
             String bullet = viewed ? Figures.BLACK_CIRCLE : Figures.CIRCLE;
@@ -219,13 +250,13 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
                 viewed,
                 !highlighted && !viewed,
                 viewed,
-                bulletColor, bulletStart, bulletEnd));
+                bulletColor, bulletStart, bulletEnd, i + 1));
         }
         if (agents.size() > AGENT_VIEWPORT) {
             String more = moreBelow > 0 ? "↓ " + moreBelow + " more" : "";
             rows.add(new Row(" ".repeat(Math.max(0,
                 columns - FormatUtils.displayWidth(more))) + more,
-                false, true, false, null, -1, -1));
+                false, true, false, null, -1, -1, -1));
         }
         for (int i = 0; i < workflows.size(); i++) {
             rows.add(workflowRow(workflows.get(i), columns, s.selectedWorkflowIndex() == i,
@@ -244,7 +275,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
         return new Row(alignedRow(head, projection.label(), projection.description(),
             projection.status(), labelWidth, statusWidth, columns),
             false, !selected, false, projection.bulletColor(),
-            bulletStart, bulletStart + bullet.length());
+            bulletStart, bulletStart + bullet.length(), -1);
     }
 
     private static WorkflowProjection workflowProjection(WorkflowRun run, Instant now) {
@@ -376,7 +407,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             int cols = g.getSize().getColumns();
             g.fill(' ');
 
-            List<Row> rows = projectRows(s, cols);
+            List<Row> rows = projectRows(s, cols, hoveredContentRow);
             int y = 1; // row 0 is the marginTop blank line
             for (Row row : rows) {
                 TextColor base = row.dim() ? LanternaTheme.welcomeDim() : LanternaTheme.inputText();

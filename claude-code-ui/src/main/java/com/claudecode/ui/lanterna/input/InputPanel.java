@@ -218,6 +218,8 @@ public class InputPanel extends Panel {
     private CoordinatorPanelView coordinatorPanel;
     /** Lanterna component backing {@link #coordinatorPanel}, when it has one. */
     private Component coordinatorPanelComponent;
+    /** Content row armed by a CLICK_DOWN on the coordinator panel; -1 = none. */
+    private int coordinatorPressedRow = -1;
 
     private WorkflowRunStore workflowRuns;
     /** Current-process task projection; persisted workflow history has no footer row. */
@@ -4149,6 +4151,66 @@ public class InputPanel extends Panel {
                     refreshFooterPills();
                     updateHint();
                     if (actions != null) actions.toggleProjectPanel();
+                }
+                yield consume;
+            }
+            default -> false;
+        };
+    }
+
+    /**
+     * Click/hover handling for the {@code main}/subagent coordinator panel rows —
+     * same press/release latch as the tasks pill, but the hit test resolves a
+     * content row (via {@link CoordinatorPanelView#coordinatorIndexForRow}) instead
+     * of a single fixed rect, since the panel is a variable-height row list.
+     */
+    public boolean handleCoordinatorPanelMouse(MouseAction mouse) {
+        Component component = coordinatorPanelComponent;
+        if (component == null) return false;
+        return handleCoordinatorPanelMouseForTest(
+            mouse, component.getGlobalPosition(), component.getSize());
+    }
+
+    boolean handleCoordinatorPanelMouseForTest(MouseAction mouse, TerminalPosition origin,
+                                               TerminalSize size) {
+        CoordinatorPanelView panel = coordinatorPanel;
+        CoordinatorNavigationController nav = coordinatorNavigation;
+        if (mouse == null || origin == null || size == null || panel == null || nav == null) {
+            if (panel != null) panel.setHoveredRow(-1);
+            coordinatorPressedRow = -1;
+            return false;
+        }
+        TerminalPosition point = mouse.getPosition();
+        boolean insideCols = point.getColumn() >= origin.getColumn()
+            && point.getColumn() < origin.getColumn() + size.getColumns();
+        int contentRow = point.getRow() - origin.getRow() - 1; // row 0 is the blank margin
+        boolean insideRows = insideCols && contentRow >= 0
+            && point.getRow() < origin.getRow() + size.getRows();
+        int coordinatorIndex = insideRows
+            ? panel.coordinatorIndexForRow(contentRow, size.getColumns()) : -1;
+        boolean inside = insideRows && coordinatorIndex >= 0;
+        return switch (mouse.getActionType()) {
+            case MOVE -> {
+                panel.setHoveredRow(inside ? contentRow : -1);
+                yield inside;
+            }
+            case CLICK_DOWN -> {
+                if (mouse.getButton() != 1) yield false;
+                coordinatorPressedRow = inside ? contentRow : -1;
+                yield inside;
+            }
+            case DRAG -> coordinatorPressedRow >= 0;
+            case CLICK_RELEASE -> {
+                if (mouse.getButton() != 1) yield false;
+                boolean activate = coordinatorPressedRow >= 0
+                    && coordinatorPressedRow == contentRow && inside;
+                boolean consume = coordinatorPressedRow >= 0;
+                coordinatorPressedRow = -1;
+                if (activate) {
+                    nav.selectAndOpen(coordinatorIndex, coordinatorNavigationHost);
+                    refreshCoordinatorPanel();
+                    refreshFooterPills();
+                    updateHint();
                 }
                 yield consume;
             }

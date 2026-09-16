@@ -124,6 +124,52 @@ class CoordinatorTaskPanelTest {
     }
 
     @Test
+    void hoveredRowGetsPointerPrefixAndIsNeverDimmedJustLikeSelection() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState agent = runningAgent(store, "explore repo");
+
+        // Nothing selected, but the agent row (content row 1) is hovered.
+        List<CoordinatorTaskPanel.Row> rows =
+            CoordinatorTaskPanel.projectRows(snapshot(List.of(agent), -1, null), 80, 1);
+
+        CoordinatorTaskPanel.Row hovered = rowContaining(rows, "explore repo");
+        assertTrue(Strings.CS.startsWith(hovered.text(), Figures.POINTER),
+            "hover swaps the prefix to the pointer glyph, exactly like keyboard selection");
+        assertFalse(hovered.dim(),
+            "197's isSelected || isHovered suppresses dim for a hovered row, not just a selected one");
+        assertFalse(Strings.CS.startsWith(mainRow(rows).text(), Figures.POINTER),
+            "only the hovered row is highlighted, not the unrelated main row");
+    }
+
+    @Test
+    void hoveringMainRowHighlightsItExactlyLikeSelectingIt() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState agent = runningAgent(store, "explore repo");
+
+        // main is content row 0.
+        List<CoordinatorTaskPanel.Row> rows =
+            CoordinatorTaskPanel.projectRows(snapshot(List.of(agent), -1, null), 80, 0);
+
+        assertTrue(Strings.CS.startsWith(mainRow(rows).text(), Figures.POINTER),
+            "hovering the main row highlights it the same way selecting it would");
+        assertFalse(mainRow(rows).dim());
+    }
+
+    @Test
+    void noHoverLeavesRowsExactlyAsTheTwoArgOverloadWould() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState agent = runningAgent(store, "explore repo");
+
+        List<CoordinatorTaskPanel.Row> withoutHoverArg =
+            CoordinatorTaskPanel.projectRows(snapshot(List.of(agent), -1, null), 80);
+        List<CoordinatorTaskPanel.Row> explicitNoHover =
+            CoordinatorTaskPanel.projectRows(snapshot(List.of(agent), -1, null), 80, -1);
+
+        assertEquals(withoutHoverArg, explicitNoHover,
+            "the 2-arg overload is exactly the 3-arg overload with hoveredContentRow = -1");
+    }
+
+    @Test
     void releasedCoordinatorKeepsOnlyFiveAgentsAndTrailsTheSelection() {
         TaskStore store = TaskStore.inMemory();
         List<TaskState> agents = IntStream.rangeClosed(1, 7)
@@ -140,6 +186,26 @@ class CoordinatorTaskPanelTest {
         assertTrue(Strings.CS.startsWith(rowContaining(rows, "agent-7").text(), Figures.POINTER));
         assertEquals("", rows.get(6).text().trim(),
             "197 retains the overflow row but leaves it blank at the lower edge");
+    }
+
+    @Test
+    void coordinatorTargetUsesAbsoluteAgentIndexEvenWhenTheViewportIsScrolled() {
+        TaskStore store = TaskStore.inMemory();
+        List<TaskState> agents = IntStream.rangeClosed(1, 7)
+            .mapToObj(index -> runningAgent(store, "agent-" + index))
+            .toList();
+
+        // Selection at index 7 (the 7th agent) scrolls the window so agent-3
+        // (absolute index 2) is the first one shown, not agent-1.
+        List<CoordinatorTaskPanel.Row> rows = CoordinatorTaskPanel.projectRows(
+            snapshot(agents, 7, null), 80);
+
+        assertEquals(0, mainRow(rows).coordinatorTarget(), "main always targets coordinatorIndex 0");
+        assertEquals(3, rowContaining(rows, "agent-3").coordinatorTarget(),
+            "agent-3 is absolute agent index 2 → coordinatorIndex 3, not its on-screen row position");
+        assertEquals(7, rowContaining(rows, "agent-7").coordinatorTarget());
+        assertEquals(-1, rows.getLast().coordinatorTarget(),
+            "the trailing overflow indicator row isn't agent-selectable");
     }
 
     @Test
