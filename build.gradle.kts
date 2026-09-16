@@ -210,6 +210,13 @@ subprojects {
         environment("CLAUDE_CODE_USE_BEDROCK", "")
         environment("CLAUDE_CODE_USE_VERTEX", "")
         environment("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "")
+        // A test run launched from inside a Claude Code session inherits these from the
+        // parent CLI process. Both must be truly absent (not blank) for the forked test
+        // JVM: ProcessCommand keys off key-presence (putIfAbsent), and PromptHistory
+        // treats CLAUDE_CODE_CHILD_SESSION as a boolean gate that suppresses persistence
+        // whenever the key is present and truthy.
+        environment.remove("CLAUDE_CODE_ENTRYPOINT")
+        environment.remove("CLAUDE_CODE_CHILD_SESSION")
         // The default-model env overrides shift ModelPicker's standard rows
         // (resolveOption takes the env branch), so a developer machine that sets
         // them would flip ConfigPanel's model-submenu row count. Blank them so
