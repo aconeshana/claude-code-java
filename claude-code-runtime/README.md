@@ -157,7 +157,7 @@ on runtime without pulling the terminal UI or the service layer into their compi
 
 ```bash
 ./gradlew :claude-code-runtime:test \
-  --tests 'com.claudecode.runtime.turn.TurnEngineTest' \
+  --tests 'com.claudecode.runtime.query.TurnEngineTest' \
   --tests 'com.claudecode.runtime.turn.TurnEnginePackageBoundaryTest'
 ./gradlew :claude-code-app:test \
   --tests 'com.claudecode.app.ModuleArchitectureTest'

@@ -601,8 +601,11 @@ public final class LanternaSessionSink implements SessionSink {
             // "main-thread command queue non-empty", so while queued commands await
             // their next turn the spinner stays mounted and animated — never an
             // invisible stop→start gap, and the verb is never re-randomized between
-            // queued turns. Only end the leader's spinner when nothing is queued.
-            if (!hasQueuedMainThreadCommands()) {
+            // queued turns. Only end the leader's spinner when nothing is queued, and
+            // when the runtime has no deferred idle work (rewind/compact) still holding
+            // the turn open — otherwise the spinner would vanish while a just-submitted
+            // prompt is still silently waiting behind that work.
+            if (!hasQueuedMainThreadCommands() && !outcome.hasPendingIdleWork()) {
                 spinnerComponent.finishLeaderTurn();
             }
             spinnerComponent.setToolUseMode(false);

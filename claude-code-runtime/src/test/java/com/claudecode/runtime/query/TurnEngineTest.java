@@ -310,6 +310,7 @@ class TurnEngineTest {
         engine.submit(input("first"));
 
         assertTrue(engine.isInFlight());
+        assertTrue(engine.hasActiveTurn(), "the submitted turn is actually executing");
         IllegalStateException failure = assertThrows(IllegalStateException.class,
             () -> engine.submit(input("second")));
         assertTrue(Strings.CS.contains(failure.getMessage(), "already in flight"));
@@ -318,6 +319,7 @@ class TurnEngineTest {
 
         pending.getFirst().run();
         assertFalse(engine.isInFlight());
+        assertFalse(engine.hasActiveTurn());
     }
 
     @Test
@@ -359,6 +361,9 @@ class TurnEngineTest {
         assertEquals(List.of("compact-start"), ordering);
         assertTrue(engine.isInFlight(),
             "the async rewind owns the session until its compact future completes");
+        assertFalse(engine.hasActiveTurn(),
+            "the turn itself has already unwound; only the idle tail remains, so Ctrl+C "
+                + "must not fire a no-op abort here");
         assertThrows(IllegalStateException.class, () -> engine.submit(input("racing prompt")));
 
         compactFinished.complete(null);

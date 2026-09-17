@@ -16,7 +16,21 @@ public record TurnOutcome(
         String restoredInput,
         Map<Integer, PastedContent> restoredImageChips,
         String restoredPermissionMode,
-        String effectivePermissionMode) {
+        String effectivePermissionMode,
+        boolean hasPendingIdleWork) {
+
+    /**
+     * Backward-compatible constructor for outcomes computed before deferred idle work
+     * (rewind/compact) was tracked; assumes none is pending.
+     */
+    public TurnOutcome(boolean userCancel, boolean restored, boolean restoreEligible,
+                       boolean permissionRejected, boolean refusalFallbackEdit, long elapsedMs,
+                       String restoredInput, Map<Integer, PastedContent> restoredImageChips,
+                       String restoredPermissionMode, String effectivePermissionMode) {
+        this(userCancel, restored, restoreEligible, permissionRejected, refusalFallbackEdit,
+            elapsedMs, restoredInput, restoredImageChips, restoredPermissionMode,
+            effectivePermissionMode, false);
+    }
 
     /** Backward-compatible constructor for turns that cannot end in a refusal-fallback edit. */
     public TurnOutcome(boolean userCancel, boolean restored, boolean restoreEligible,

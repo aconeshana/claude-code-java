@@ -32,7 +32,7 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
     }
 
     private final Supplier<BashModeExecutor> bashModeExecutor;
-    private final BooleanSupplier turnInFlight;
+    private final BooleanSupplier hasActiveTurn;
     private final TurnAbortTarget abortTarget;
     private final InteractionCoordinator interactionCoordinator;
     private final Supplier<InputPanel> inputPanel;
@@ -42,7 +42,7 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
 
     ReplInterruptActions(
             Supplier<BashModeExecutor> bashModeExecutor,
-            BooleanSupplier turnInFlight,
+            BooleanSupplier hasActiveTurn,
             TurnAbortTarget abortTarget,
             InteractionCoordinator interactionCoordinator,
             Supplier<InputPanel> inputPanel,
@@ -50,7 +50,7 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
             Supplier<String> lastSubmittedInput,
             BooleanSupplier lastSubmittedInputWasStartupPrompt) {
         this.bashModeExecutor = bashModeExecutor;
-        this.turnInFlight = turnInFlight;
+        this.hasActiveTurn = hasActiveTurn;
         this.abortTarget = abortTarget;
         this.interactionCoordinator = interactionCoordinator;
         this.inputPanel = inputPanel;
@@ -69,13 +69,15 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
 
     @Override
     public boolean interruptTurnIfRunning() {
-        // In-flight-ness is the whole test. Official 2.1.236 aborts whenever an
-        // un-aborted request is in flight and never asks whether the spinner is
-        // showing; requiring a visible spinner here made Ctrl+C fall through to
-        // clear-input / "press again to exit" for the whole stretch where
-        // assistant text is streaming, because streaming text stops the spinner
-        // (SpinnerStateMachine.onStreamTextVisibility).
-        if (!turnInFlight.getAsBoolean()) return false;
+        // Official 2.1.236 aborts whenever an un-aborted request is in flight and never asks
+        // whether the spinner is showing; requiring a visible spinner here made Ctrl+C fall
+        // through to clear-input / "press again to exit" for the whole stretch where assistant
+        // text is streaming, because streaming text stops the spinner
+        // (SpinnerStateMachine.onStreamTextVisibility). hasActiveTurn narrows "in flight" to
+        // exclude the post-turn idle tail (deferred rewind/compact) instead, where interrupt()
+        // is a no-op abort signal with nothing left to catch it — that used to swallow Ctrl+C
+        // for the whole tail, leaving it completely unresponsive.
+        if (!hasActiveTurn.getAsBoolean()) return false;
         abortTarget.interrupt();
         if (interactionCoordinator != null) {
             interactionCoordinator.cancelSession(abortTarget.sessionId());

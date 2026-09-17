@@ -86,6 +86,14 @@ public final class TurnEngine {
 
     private final AtomicBoolean turnInFlight = new AtomicBoolean(false);
     /**
+     * True only while a submitted turn's actual query/tool execution is running — the span in
+     * which an abort request (Ctrl+C) can meaningfully act on something. Unlike
+     * {@link #turnInFlight}, this does NOT cover the post-turn idle tail (deferred
+     * rewind/compact), so a Ctrl+C pressed during that tail falls through instead of firing a
+     * no-op abort and swallowing the keystroke.
+     */
+    private final AtomicBoolean realTurnActive = new AtomicBoolean(false);
+    /**
      * Re-entrancy latch for {@link #drainIfIdle}. The queue notifies its listeners
      * from inside its own {@code dequeue}, so the wake-up subscription can fire while
      * a drain is mid-flight; taking a second command there would submit it ahead of
@@ -154,6 +162,14 @@ public final class TurnEngine {
 
     /** Whether a turn or an exclusive deferred idle operation is currently running. */
     public boolean isInFlight() { return turnInFlight.get(); }
+
+    /**
+     * Whether a submitted turn's actual query/tool execution is running right now — narrower
+     * than {@link #isInFlight()}, which stays true through the post-turn idle tail. Interrupt
+     * gestures (Ctrl+C) should test this instead of {@link #isInFlight()}, so they fall through
+     * to their next fallback rather than firing a no-op abort during the idle tail.
+     */
+    public boolean hasActiveTurn() { return realTurnActive.get(); }
 
     /**
      * Whether the active turn currently executes only mid-turn-steerable (CANCEL)
@@ -313,6 +329,7 @@ public final class TurnEngine {
         if (!turnInFlight.compareAndSet(false, true)) {
             throw new IllegalStateException("turn already in flight; enqueue the command instead");
         }
+        realTurnActive.set(true);
 
         long startMs = System.currentTimeMillis();
         try {
@@ -402,6 +419,10 @@ public final class TurnEngine {
      * matches the ordering of the former {@code TurnExecutor.completeTurn}.
      */
     private void completeTurn(long startMs) {
+        // The turn's actual query/tool execution has already unwound by the time we reach here
+        // (this runs in runTurn's finally), so an abort request from this point on has nothing
+        // left to interrupt — only the idle tail (below) remains.
+        realTurnActive.set(false);
         long elapsed = System.currentTimeMillis() - startMs;
         boolean isUserCancel = isUserCancelSafely();
         boolean permissionRejected = isPermissionRejectedSafely();
@@ -448,10 +469,14 @@ public final class TurnEngine {
             log.warn("Failed to snapshot post-turn permission mode", e);
         }
 
+        // Deferred idle work (rewind/compact) queued via runWhenIdle/runWhenIdleAsync keeps
+        // turnInFlight true past this point (see releaseAfterIdleOperations), so the sink must
+        // know the turn isn't really over yet even though onTurnComplete fires now.
+        boolean hasPendingIdleWork = !idleOperations.isEmpty();
         TurnOutcome outcome = new TurnOutcome(isUserCancel, shouldRestore, restoreEligible,
             permissionRejected, refusalFallbackEdit, elapsed,
             (shouldRestore || restoreEligible) ? toRestore : null,
-            imageChips, restoredPermMode, effectivePermMode);
+            imageChips, restoredPermMode, effectivePermMode, hasPendingIdleWork);
         try {
             sink.onTurnComplete(outcome);
         } catch (RuntimeException e) {

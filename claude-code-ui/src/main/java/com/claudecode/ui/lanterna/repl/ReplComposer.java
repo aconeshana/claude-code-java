@@ -244,7 +244,7 @@ final class ReplComposer {
             keybindings);
         ReplInterruptActions interrupt = new ReplInterruptActions(
             () -> bashMode,
-            this::turnInFlight,
+            this::hasActiveTurn,
             new QuerySessionAbortTarget(queryEngine),
             interactionCoordinator,
             () -> inputPanel,
@@ -630,6 +630,10 @@ final class ReplComposer {
 
     private boolean turnInFlight() {
         return turnEngine != null && turnEngine.isInFlight();
+    }
+
+    private boolean hasActiveTurn() {
+        return turnEngine != null && turnEngine.hasActiveTurn();
     }
 
     private void handleInput(String input) {
