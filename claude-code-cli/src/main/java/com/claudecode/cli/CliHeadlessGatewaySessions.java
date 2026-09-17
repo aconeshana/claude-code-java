@@ -77,8 +77,9 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         }
         // A known disk session resumes message-level: the prior conversation
         // seeds the engine so the client can continue where it left off.
-        List<Message> priorMessages = request.projectPath() == null
-            ? resumeMessages(id, projectPath) : List.of();
+        // resumeMessages() itself falls back to an empty list when no transcript
+        // exists for `id`, so a genuinely new session is unaffected.
+        List<Message> priorMessages = resumeMessages(id, projectPath);
         boolean resumed = !priorMessages.isEmpty();
         factory.gateFor(projectPath).setMode(PermissionMode.DEFAULT);
         CliHeadlessSessionFactory.Assembled assembled =
