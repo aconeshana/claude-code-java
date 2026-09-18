@@ -112,6 +112,16 @@ public interface QuerySession {
         Usage getTotalUsage();
         void setTotalUsage(Usage usage);
         SessionMetricsSnapshot getSessionMetrics();
+        /**
+         * Whole-session metrics <em>including the step currently in flight</em>.
+         * Live progress surfaces (the built-in status HUD) read this so a
+         * long-streaming step is not reported as frozen; durable consumers that
+         * diff turn boundaries keep reading the settled
+         * {@link #getSessionMetrics()} fold.
+         */
+        default SessionMetricsSnapshot getLiveSessionMetrics() {
+            return getSessionMetrics();
+        }
         void restoreSessionMetrics(String sessionId, List<SessionMetricsEvent> events,
                                    List<String> transcriptTurnIds);
         TurnTokenBudget getTurnTokenBudget();

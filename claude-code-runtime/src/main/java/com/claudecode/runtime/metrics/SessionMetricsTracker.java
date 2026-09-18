@@ -182,6 +182,77 @@ public final class SessionMetricsTracker {
             uncachedInputTokens, outputTokens, cacheWriteTokens, cacheReadTokens);
     }
 
+    /**
+     * {@link #snapshot()} plus the step that is currently in flight.
+     *
+     * <p>The durable fold only advances at {@code STEP_END}, which for a
+     * tool-using step lands after every tool of that step has finished. A step
+     * that streams for minutes therefore reads as completely frozen on a live
+     * progress surface, which is why the built-in HUD reads this projection
+     * instead.
+     *
+     * <p>Strictly additive and non-mutating: it re-applies {@link #closeStep}'s
+     * own arithmetic to the open step, substituting the clock for the one
+     * timestamp that step may not have reached yet. No field can therefore
+     * report lower than {@link #snapshot()}, and an incomplete fold still
+     * reports {@link SessionMetricsSnapshot#INCOMPLETE}.
+     *
+     * <p>Decode speed is deliberately <em>not</em> extrapolated while the model
+     * is still streaming: output tokens only arrive with the terminal message
+     * delta, so a growing {@code decodeMs} over a frozen token count would make
+     * {@code tok/s} tick downwards and read as a regression rather than as
+     * progress. It is credited in one move once the step has its usage.
+     */
+    public synchronized SessionMetricsSnapshot liveSnapshot() {
+        OpenStep step = openStep;
+        if (!complete || step == null) return snapshot();
+        long now = clock.getAsLong();
+
+        // closeStep credits step start → assistant message. While the model is
+        // still streaming there is no message time yet and the clock stands in
+        // for it; once the message lands the value freezes even though the step
+        // stays open for its tool calls — exactly what closeStep will record.
+        long liveLlmMs = add(llmMs,
+            elapsed(step.startTime, step.messageTime != null ? step.messageTime : now));
+
+        long liveToolMs = toolMs;
+        for (Long started : openTools.values()) {
+            liveToolMs = add(liveToolMs, elapsed(started, now));
+        }
+
+        long liveTtftMs = ttftMs;
+        long liveTtftSteps = ttftSteps;
+        if (step.firstTokenTime != null) {
+            liveTtftMs = add(ttftMs, elapsed(step.startTime, step.firstTokenTime));
+            liveTtftSteps = add(ttftSteps, 1);
+        }
+
+        long liveDecodeMs = decodeMs;
+        long liveDecodeTokens = decodeTokens;
+        long liveUncachedInput = uncachedInputTokens;
+        long liveOutput = outputTokens;
+        long liveCacheWrite = cacheWriteTokens;
+        long liveCacheRead = cacheReadTokens;
+        if (step.usage != null) {
+            liveUncachedInput = add(liveUncachedInput, step.usage.uncachedInputTokens());
+            liveOutput = add(liveOutput, step.usage.outputTokens());
+            liveCacheWrite = add(liveCacheWrite, step.usage.cacheWriteTokens());
+            liveCacheRead = add(liveCacheRead, step.usage.cacheReadTokens());
+            if (step.firstTokenTime != null && step.messageTime != null) {
+                liveDecodeMs = add(liveDecodeMs, elapsed(step.firstTokenTime, step.messageTime));
+                liveDecodeTokens = add(liveDecodeTokens, step.usage.outputTokens());
+            }
+        }
+
+        long liveTurns = countedTurns.contains(currentTurn)
+            ? countedTurns.size() : countedTurns.size() + 1L;
+
+        return new SessionMetricsSnapshot(true, liveTurns, add(steps, 1),
+            liveLlmMs, liveToolMs, liveTtftMs, liveTtftSteps,
+            liveDecodeMs, liveDecodeTokens,
+            liveUncachedInput, liveOutput, liveCacheWrite, liveCacheRead);
+    }
+
     private void emit(SessionMetricsEvent.Kind kind, String callId,
                       long turn, long step, Usage usage,
                       boolean synthetic) {

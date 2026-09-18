@@ -24,6 +24,12 @@ public final class StatusLineController implements AutoCloseable {
 
     static final long DEBOUNCE_MS = 300;
 
+    /**
+     * Minimum spacing between turn-progress refreshes. Interaction-driven
+     * refreshes are rare and bursty; progress events are neither.
+     */
+    static final long PROGRESS_MIN_INTERVAL_MS = 1_000;
+
     private static final ScheduledExecutorService SCHEDULER =
         Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "statusline-debounce");
@@ -45,6 +51,8 @@ public final class StatusLineController implements AutoCloseable {
     private final AtomicLong generation = new AtomicLong(0);
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<Thread> activeExecution = new AtomicReference<>();
+    private final AtomicLong lastProgressNanos = new AtomicLong();
+    private final AtomicBoolean progressSeen = new AtomicBoolean();
     private volatile ScheduledFuture<?> pending;
 
     /** Production wiring: command/config resolution stays behind {@link StatusLinePort}. */
@@ -97,13 +105,46 @@ public final class StatusLineController implements AutoCloseable {
      * Mount-time refresh without the 300ms interaction debounce. The work is
      * still asynchronous, but it can settle before the first user keystroke
      * instead of racing that keystroke with a multi-line footer repaint.
-     */
-    public synchronized void scheduleInitialUpdate() {
+     */    public synchronized void scheduleInitialUpdate() {
         if (closed.get()) return;
         long gen = generation.incrementAndGet();
         ScheduledFuture<?> prev = pending;
         if (prev != null) prev.cancel(false);
         pending = SCHEDULER.schedule(() -> runIfCurrent(gen), 0, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Refresh driven by turn progress (stream deltas, tool events, progress
+     * ticks) rather than by user interaction.
+     *
+     * <p>{@link #scheduleUpdate()} is a <em>resetting</em> debounce: the newest
+     * call supersedes the pending one. Stream events arrive far denser than its
+     * 300ms window — a single observed turn delivered 1450+ of them — so calling
+     * it per event would cancel the pending run every single time and the HUD
+     * would never repaint at all, which is strictly worse than the frozen
+     * statusline this exists to fix. This gate therefore admits at most one
+     * progress refresh per {@link #PROGRESS_MIN_INTERVAL_MS}, and that one call
+     * goes through the very same debounce. No second timer is introduced.
+     *
+     * <p>Only the built-in HUD is refreshed this way. A user-configured
+     * {@code statusLine} command is an external process, and re-running it once
+     * a second for the length of a turn is not a cost this may impose on it.
+     *
+     * <p>Safe to call from any thread, including the streaming delivery thread.
+     */
+    public void scheduleProgressUpdate() {
+        if (closed.get()) return;
+        long now = System.nanoTime();
+        if (progressSeen.get()) {
+            long last = lastProgressNanos.get();
+            if (now - last < TimeUnit.MILLISECONDS.toNanos(PROGRESS_MIN_INTERVAL_MS)) return;
+            if (!lastProgressNanos.compareAndSet(last, now)) return;
+        } else {
+            lastProgressNanos.set(now);
+            if (!progressSeen.compareAndSet(false, true)) return;
+        }
+        if (!builtInHudEnabled.getAsBoolean()) return;
+        scheduleUpdate();
     }
 
 /** Fires the debounced task only if no newer {@link #scheduleUpdate} superseded it. */

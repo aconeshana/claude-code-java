@@ -28,6 +28,11 @@ import org.apache.commons.lang3.StringUtils;
  *   <li>{@code utils/model/model.ts} — {@code getMainLoopModel}-style runtime model
  *       resolution (an {@code opusplan} setting shows Opus while plan mode is active).</li>
  * </ul>
+ *
+ * <p>The {@code sessionMetrics} ingredient has no original counterpart: the session
+ * metrics fold and the built-in HUD that consumes it are Java-side additions. It is
+ * sourced from the <em>live</em> projection so a mid-turn refresh reflects the step
+ * still in flight.
  */
 final class ReplStatusLineIngredients {
 
@@ -70,7 +75,7 @@ final class ReplStatusLineIngredients {
             runtimeModel, outputStyle,
             vimMode.get(),
             VersionCommand.readVersion(), contextWindow,
-            queryEngine.execution().getSessionMetrics());
+            queryEngine.execution().getLiveSessionMetrics());
     }
 
     String runtimeModel() {

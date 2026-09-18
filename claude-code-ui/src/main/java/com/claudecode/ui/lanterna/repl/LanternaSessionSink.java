@@ -90,6 +90,8 @@ public final class LanternaSessionSink implements SessionSink {
     private final TranscriptEventReducer transcriptEvents;
     private final QuerySession queryEngine; // read-only: getConfig for the turn-summary line
     private final Runnable runStatusLine;       // debounced status-line refresh signal
+    /** Rate-limited mid-turn status-line refresh; see {@link #setProgressStatusLineRefresh}. */
+    private volatile Runnable progressStatusLine = () -> { };
     private final Supplier<String> model;       // for the spinner effort suffix
     private final IntSupplier btwUseCount;      // global-config btwUseCount for the /btw auto-tip
     private final CompactWarningProvider compactWarnings;
@@ -191,7 +193,7 @@ public final class LanternaSessionSink implements SessionSink {
         this.onIdleHook = onIdleHook != null ? onIdleHook : () -> { };
         this.pokemonExperienceConsumer = pokemonExperienceConsumer != null
             ? pokemonExperienceConsumer : _ -> { };
-        this.streamDeltaBatcher = new UiStreamDeltaBatcher(onUi,
+        this.streamDeltaBatcher = new UiStreamDeltaBatcher(this.onUi,
             text -> dispatchOnUi(new SDKMessage.StreamEvent("content_block_delta", text)),
             this::transformMessageDisplayDelta);
         if (spinnerComponent != null) {
@@ -416,7 +418,6 @@ public final class LanternaSessionSink implements SessionSink {
 
     @Override
     public void onMessage(SDKMessage msg) {
-
         // the outer submitted prompt completes. Java's per-block Assistant event can
         // precede GPT response.completed / normalized message_delta by more than the
         // 300 ms debounce, so refreshing there can briefly snapshot Usage.EMPTY and
@@ -427,6 +428,16 @@ public final class LanternaSessionSink implements SessionSink {
             long experienceGain = pokemonExperienceLedger.creditFinalizedAssistant(
                 msg, queryEngine.conversation().getMessages());
             if (experienceGain > 0) pokemonExperienceConsumer.accept(experienceGain);
+        } else {
+            // Everything else a live turn emits — stream deltas, tool
+            // start/result, progress ticks — feeds the throttled progress
+            // channel instead. Without it the HUD's metrics half is pinned to
+            // whatever the last finalized assistant message left behind, so a
+            // step that streams for minutes (or runs a long tool) reads as
+            // frozen. The channel is rate-limited inside the status-line
+            // controller and is a no-op when nothing is registered, so the
+            // per-message cost here is one volatile read.
+            progressStatusLine.run();
         }
 
         // Cache the completed thinking body so ESC can salvage it; see
@@ -816,6 +827,19 @@ public final class LanternaSessionSink implements SessionSink {
      */
     void setInterruptSalvage(Consumer<String> interruptSalvage) {
         this.interruptSalvage = interruptSalvage != null ? interruptSalvage : _ -> { };
+    }
+
+    /**
+     * Registers the mid-turn status-line refresh signal, distinct from the
+     * constructor's {@code runStatusLine}: that one is the authoritative refresh
+     * fired on finalized assistant usage and on turn completion, this one is the
+     * rate-limited progress channel fired from every other streamed message.
+     * Separate on purpose — the authoritative signal must never be throttled
+     * away, and the progress signal must never be allowed to run unthrottled.
+     * Left as a no-op until wired, so headless and test adapters stay unaffected.
+     */
+    void setProgressStatusLineRefresh(Runnable refresh) {
+        this.progressStatusLine = refresh != null ? refresh : () -> { };
     }
 
     /**

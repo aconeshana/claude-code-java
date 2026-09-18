@@ -164,8 +164,65 @@ class StatusLineControllerTest {
     }
 
     @Test
-    void initialUpdateDoesNotWaitForInteractionDebounce() throws Exception {
+    void progressBurstStillRendersInsteadOfStarvingTheDebounce() throws Exception {
         var renderCount = new AtomicInteger();
+        StatusLineController c = new StatusLineController(
+            StatusLinePort.disabled(),
+            StatusLineControllerTest::ingredients,
+            List::of,
+            Runnable::run,
+            (_, _) -> renderCount.incrementAndGet(),
+            () -> { },
+            () -> true,
+            () -> 120);
+
+        // A stream delivers events far denser than the 300ms debounce window.
+        // scheduleUpdate() is a resetting debounce, so a naive per-event call
+        // would cancel its own pending run forever and never paint. The
+        // progress channel must still get exactly one paint out of the burst.
+        for (int i = 0; i < 400; i++) {
+            c.scheduleProgressUpdate();
+            Thread.sleep(1);
+        }
+
+        assertTrue(waitFor(() -> renderCount.get() >= 1), "progress burst must repaint");
+        assertTrue(renderCount.get() <= 2,
+            "400 events over ~0.4s must not repaint more than the rate limit allows, got "
+                + renderCount.get());
+        c.close();
+    }
+
+    @Test
+    void progressRefreshIsSkippedForUserConfiguredStatusLineCommand() throws Exception {
+        var externalCalls = new AtomicInteger();
+        StatusLineController c = new StatusLineController(
+            _ -> {
+                externalCalls.incrementAndGet();
+                return Optional.of(new StatusLinePort.Output("USER-HUD", 0));
+            },
+            StatusLineControllerTest::ingredients,
+            List::of,
+            Runnable::run,
+            (_, _) -> { },
+            () -> { },
+            () -> false,          // built-in HUD off → a user command owns the footer
+            () -> 120);
+
+        for (int i = 0; i < 20; i++) c.scheduleProgressUpdate();
+
+        Thread.sleep(StatusLineController.DEBOUNCE_MS + 200);
+        assertEquals(0, externalCalls.get(),
+            "turn progress must not re-run the user's statusLine process");
+
+        // The authoritative (non-progress) refresh is untouched by the gate.
+        c.scheduleUpdate();
+        assertTrue(waitFor(() -> externalCalls.get() == 1),
+            "interaction/turn refresh must still run the user command");
+        c.close();
+    }
+
+    @Test
+    void initialUpdateDoesNotWaitForInteractionDebounce() throws Exception {        var renderCount = new AtomicInteger();
         StatusLineController c = controller(
             _ -> Optional.of(new StatusLinePort.Output("X", 0)),
             new AtomicReference<>(), renderCount, new AtomicInteger(), new AtomicReference<>());

@@ -395,6 +395,9 @@ final class ReplComposer {
             },
             tokens -> pokemonRef[0].addExperience(tokens));
         turnViewRef[0] = turnView;
+        // Mid-turn HUD progress. Resolved lazily against the controller built
+        // further down, so the sink never sees a half-built statusLine.
+        turnView.setProgressStatusLineRefresh(this::scheduleStatusLineProgressUpdate);
         session.setRewindStateReset(turnView::resetBackgroundWaitForRewind);
         SessionEventHub sessionEvents = new SessionEventHub(turnView,
             failure -> log.warn("Session Link observer failed", failure));
@@ -582,6 +585,8 @@ final class ReplComposer {
         // Drives the user's statusLine command; renders its (ANSI-colored, possibly multi-line)
         // output into the InputPanel footer. Refreshed on each assistant message (including
         // tool-loop API rounds), turn-complete, permission-mode, and vim-mode changes, plus once now.
+        // The built-in HUD additionally follows turn progress through
+        // scheduleProgressUpdate (rate-limited); a user statusLine command does not.
         ReplStatusLineIngredients statusLineIngredients = new ReplStatusLineIngredients(
             queryEngine, interactiveSessions, () -> permissionGate, launch.customModels(),
             inputPanel::getVimMode);
@@ -643,6 +648,11 @@ final class ReplComposer {
 
     private void scheduleStatusLineUpdate() {
         if (statusLine != null) statusLine.scheduleUpdate();
+    }
+
+    /** Turn-progress HUD refresh; rate-limited by the controller, not here. */
+    private void scheduleStatusLineProgressUpdate() {
+        if (statusLine != null) statusLine.scheduleProgressUpdate();
     }
 
     /** Refreshes model-sensitive HUD state without the ordinary interaction debounce. */

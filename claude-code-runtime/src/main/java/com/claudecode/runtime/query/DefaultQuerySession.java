@@ -1068,6 +1068,10 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         return sessionMetrics.snapshot();
     }
 
+    @Override public SessionMetricsSnapshot getLiveSessionMetrics() {
+        return sessionMetrics.liveSnapshot();
+    }
+
     @Override public void restoreSessionMetrics(String sessionId,
                                                 List<SessionMetricsEvent> events,
                                                 List<String> transcriptTurnIds) {
