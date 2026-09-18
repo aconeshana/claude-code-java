@@ -261,12 +261,46 @@ class GatewayContextTimelineInteropTest {
             false, null, time);
     }
 
+    /**
+     * A failing handler must answer 500. {@code com.sun.net.httpserver} turns an
+     * escaping throwable into a socket closed without a byte written, which the
+     * browser reports as {@code ERR_EMPTY_RESPONSE} and {@code fetch()} rejects
+     * as a bare {@code TypeError} — indistinguishable from a stopped gateway, so
+     * none of the webui's per-request error rendering runs.
+     *
+     * <p>An {@code Error} rather than an exception, because that is what the
+     * failure this guards against is: in a native image a handler reaching an
+     * unregistered reflective type throws {@code
+     * MissingReflectionRegistrationError}, which is how this very route began
+     * returning empty responses.
+     */
+    @Test
+    @Timeout(20)
+    void aHandlerFailingWithAnErrorAnswers500RatherThanDroppingTheConnection() throws Exception {
+        FakePort port = new FakePort(activeSessionId);
+        startServer(port);
+        // Set after startServer: activating the session syncs the ledger on this
+        // thread, and a port that already fails would break the setup instead.
+        port.failure = new Error("cannot reflectively instantiate the array class");
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/session/context/timeline?token=" + TOKEN)).build()).execute()) {
+            assertThat(response.code()).isEqualTo(500);
+            JsonNode error = JsonUtils.getMapper()
+                .readTree(response.body().string()).path("error");
+            assertThat(error.path("type").asText()).isEqualTo("api_error");
+            assertThat(error.path("message").asText())
+                .contains("cannot reflectively instantiate the array class");
+        }
+    }
+
     /** A port double serving one live session (the active TUI id) and nothing else. */
     private static final class FakePort implements GatewaySessionContextPort {
         private final String liveId;
         List<Message> messages = List.of();
         ContextBreakdown breakdown;
         SessionMetricsSnapshot metrics;
+        Error failure;
 
         FakePort(String liveId) {
             this.liveId = liveId;
@@ -283,6 +317,7 @@ class GatewayContextTimelineInteropTest {
         }
 
         @Override public Optional<List<Message>> messages(String sessionId) {
+            if (failure != null) throw failure;
             return live(sessionId) ? Optional.of(messages) : Optional.empty();
         }
 

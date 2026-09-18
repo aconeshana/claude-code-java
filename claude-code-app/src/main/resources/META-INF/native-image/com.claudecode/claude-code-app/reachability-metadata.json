@@ -127,6 +127,9 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.api.CreateMessageRequest$ContextEditStrategy[]"
+    },
+    {
       "type": "com.claudecode.api.CreateMessageRequest$ContextManagementConfig",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -428,6 +431,9 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.core.message.ContentBlock[]"
+    },
+    {
       "type": "com.claudecode.core.message.ContextEfficiencyAttachment",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -534,6 +540,9 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.InvokedSkillsAttachment$InvokedSkillEntry[]"
     },
     {
       "type": "com.claudecode.core.message.McpInstructionsDeltaAttachment",
@@ -692,6 +701,9 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.core.message.TaskReminderItem[]"
+    },
+    {
       "type": "com.claudecode.core.message.TaskStatusAttachment",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -720,6 +732,9 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.TodoItem[]"
     },
     {
       "type": "com.claudecode.core.message.TodoReminderAttachment",
@@ -800,6 +815,9 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.core.message.WebSearchToolResultBlock$Hit[]"
+    },
+    {
       "type": "com.claudecode.core.model.CustomModelConfig",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -818,6 +836,9 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.plan.PlanHistoryEntry[]"
     },
     {
       "type": "com.claudecode.lsp.ProcessLspServerInstance$LspLanguageClient",
@@ -847,6 +868,9 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.runtime.plugins.PluginMarketplacePort$PluginEntry[]"
     },
     {
       "type": "com.claudecode.services.cache.PromptCacheBreakDetection$ToolSchema",
@@ -998,6 +1022,9 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.services.plugins.marketplace.PluginChannel[]"
+    },
+    {
       "type": "com.claudecode.services.plugins.marketplace.PluginManifest",
       "allDeclaredFields": true,
       "allPublicMethods": true,
@@ -1029,6 +1056,9 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.UserConfigOption[]"
     },
     {
       "type": "com.claudecode.services.plugins.runtime.McpbBundleLoader$CacheMetadata",
@@ -1169,6 +1199,12 @@
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.tools.plan.PlanCatalogStore$PlanRecord[]"
+    },
+    {
+      "type": "com.claudecode.tools.tasks.DreamTaskDetails$DreamTurn[]"
     },
     {
       "type": "com.claudecode.tools.tasks.Task",

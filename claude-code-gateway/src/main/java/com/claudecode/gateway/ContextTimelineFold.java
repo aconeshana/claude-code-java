@@ -6,6 +6,7 @@ import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.AttachmentPayload;
 import com.claudecode.core.message.AttachmentRenderer;
+import com.claudecode.core.message.AttachmentTypeNames;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.DynamicSkillAttachment;
 import com.claudecode.core.message.ImageBlock;
@@ -1233,15 +1234,7 @@ final class ContextTimelineFold {
 
     /** The payload's JSON discriminator ({@code plan_mode}, {@code skill_listing}…). */
     static String attachmentType(AttachmentPayload payload) {
-        try {
-            JsonNode tree = JsonUtils.getMapper().valueToTree(payload);
-            String type = tree.path("type").asText(null);
-            if (StringUtils.isNotBlank(type)) return type;
-        } catch (RuntimeException _) {
-            // Fall through to the class name.
-        }
-        String simple = payload.getClass().getSimpleName();
-        return StringUtils.removeEnd(simple, "Attachment");
+        return AttachmentTypeNames.of(payload);
     }
 
     private static String skillNameOf(JsonNode input, String text) {

@@ -28,6 +28,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The gateway HTTP server: token-authenticated REST plus the SSE mirror
@@ -65,6 +67,9 @@ public final class GatewayServer implements AutoCloseable {
 
     private static final int NOT_FOUND = 404;
     private static final int UNAUTHORIZED = 401;
+    private static final int INTERNAL_ERROR = 500;
+
+    private static final Logger log = LoggerFactory.getLogger(GatewayServer.class);
 
     private final Config config;
     private final GatewayAuthFilter auth;
@@ -254,7 +259,7 @@ public final class GatewayServer implements AutoCloseable {
         // One virtual thread per exchange: every SSE connection parks its own
         // lane thread while REST handlers finish quickly.
         created.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-        created.createContext("/", this::route);
+        created.createContext("/", this::routeGuarded);
         created.start();
         server = created;
     }
@@ -279,6 +284,85 @@ public final class GatewayServer implements AutoCloseable {
         mirror.detach();
         contextTimeline.close();
         sessionsApi.closeAll();
+    }
+
+    /**
+     * Answers any failure escaping {@link #route} with a 500 instead of a dead
+     * connection.
+     *
+     * <p>{@code com.sun.net.httpserver} handles a handler that throws by closing
+     * the socket without writing a byte. The browser reports that as {@code
+     * ERR_EMPTY_RESPONSE} and {@code fetch()} rejects with a bare {@code
+     * TypeError}, so the webui cannot tell a crashed handler from a stopped
+     * gateway and none of its per-request error rendering runs.
+     *
+     * <p>{@code Error} is caught next to {@code RuntimeException} because the
+     * failure this was written for is one: in a native image a handler that
+     * reaches an unregistered reflective type throws {@code
+     * MissingReflectionRegistrationError}, which is how {@code
+     * /api/session/context/timeline} began returning empty responses (a {@code
+     * List<TodoItem>} in the folded transcript). {@code OutOfMemoryError} is
+     * re-thrown — it describes the process, not this request, and answering 500
+     * would bury it. {@code IOException} also propagates: a client that
+     * disconnected mid-exchange has nothing to receive.
+     */
+    private void routeGuarded(HttpExchange exchange) throws IOException {
+        try {
+            route(exchange);
+        } catch (RuntimeException | Error failure) {
+            if (failure instanceof OutOfMemoryError) throw failure;
+            log.error("gateway handler failed for {} {}; answering {}",
+                exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
+                INTERNAL_ERROR, failure);
+            respondFailure(exchange, failure);
+        }
+    }
+
+    /**
+     * Best-effort 500. A handler that failed after starting its response — or an
+     * SSE lane already streaming — has a sent status line that cannot be taken
+     * back, so closing the exchange is all that is left.
+     */
+    private static void respondFailure(HttpExchange exchange, Throwable failure) {
+        try (exchange) {
+            if (exchange.getResponseCode() != -1) return;
+            respondJson(exchange, INTERNAL_ERROR,
+                errorBody("api_error", "request failed: " + failure));
+        } catch (IOException | RuntimeException _) {
+            // The client is gone, or the response was already committed.
+        }
+    }
+
+    /** One synchronous handler body; {@code IOException} means the client went away. */
+    private interface Handler {
+        void handle() throws IOException;
+    }
+
+    /**
+     * Runs one synchronous handler, then closes the exchange.
+     *
+     * <p>The 500 is written here rather than in {@link #routeGuarded} because
+     * closing the exchange is what makes a failure unanswerable: {@code
+     * ExchangeImpl.close()} drops the connection outright when no response was
+     * sent, so a handler wrapped in a plain {@code try (exchange)} turns any
+     * escaping throwable into {@code ERR_EMPTY_RESPONSE} before the guard above
+     * ever sees it. See {@link #routeGuarded} for why {@code Error} counts.
+     */
+    private static void serve(HttpExchange exchange, Handler handler) throws IOException {
+        try (exchange) {
+            try {
+                handler.handle();
+            } catch (RuntimeException | Error failure) {
+                if (failure instanceof OutOfMemoryError) throw failure;
+                log.error("gateway handler failed for {} {}; answering {}",
+                    exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
+                    INTERNAL_ERROR, failure);
+                if (exchange.getResponseCode() == -1) {
+                    respondJson(exchange, INTERNAL_ERROR,
+                        errorBody("api_error", "request failed: " + failure));
+                }
+            }
+        }
     }
 
     private void route(HttpExchange exchange) throws IOException {
@@ -430,13 +514,13 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            try (exchange) {
+            serve(exchange, () -> {
                 if (get) {
                     settingsApi.handleGet(exchange);
                 } else {
                     settingsApi.handlePost(exchange);
                 }
-            }
+            });
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/schedule", path)) {
@@ -447,13 +531,13 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            try (exchange) {
+            serve(exchange, () -> {
                 if (get) {
                     scheduleApi.handleGet(exchange);
                 } else {
                     scheduleApi.handlePost(exchange);
                 }
-            }
+            });
             return;
         }
         if (delete && Strings.CS.startsWith(path, "/api/schedule/")) {
@@ -466,9 +550,7 @@ public final class GatewayServer implements AutoCloseable {
             }
             String taskId = URLDecoder.decode(
                 path.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
-            try (exchange) {
-                scheduleApi.handleDelete(exchange, taskId);
-            }
+            serve(exchange, () -> scheduleApi.handleDelete(exchange, taskId));
             return;
         }
         if (get && Strings.CS.equals("/api/commands", path)) {
@@ -479,9 +561,7 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            try (exchange) {
-                commandsApi.handleGet(exchange);
-            }
+            serve(exchange, () -> commandsApi.handleGet(exchange));
             return;
         }
         if (get && Strings.CS.startsWith(path, "/api/session/context/")) {
@@ -493,7 +573,7 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             String face = path.substring("/api/session/context/".length());
-            try (exchange) {
+            serve(exchange, () -> {
                 switch (face) {
                     case "timeline" -> contextTimelineApi.handleTimeline(exchange);
                     case "detail" -> contextTimelineApi.handleDetail(exchange);
@@ -502,7 +582,7 @@ public final class GatewayServer implements AutoCloseable {
                     default -> respondJson(exchange, NOT_FOUND, errorBody("not_found",
                         "unknown context face: " + face));
                 }
-            }
+            });
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/session/context", path)) {
@@ -513,13 +593,13 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            try (exchange) {
+            serve(exchange, () -> {
                 if (get) {
                     sessionContextApi.handleGet(exchange);
                 } else {
                     sessionContextApi.handlePost(exchange);
                 }
-            }
+            });
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/models", path)) {
@@ -530,13 +610,13 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            try (exchange) {
+            serve(exchange, () -> {
                 if (get) {
                     modelsApi.handleGet(exchange);
                 } else {
                     modelsApi.handlePost(exchange);
                 }
-            }
+            });
             return;
         }
         if (delete && Strings.CS.startsWith(path, "/api/models/")) {
@@ -549,9 +629,7 @@ public final class GatewayServer implements AutoCloseable {
             }
             String modelName = URLDecoder.decode(
                 path.substring("/api/models/".length()), StandardCharsets.UTF_8);
-            try (exchange) {
-                modelsApi.handleDelete(exchange, modelName);
-            }
+            serve(exchange, () -> modelsApi.handleDelete(exchange, modelName));
             return;
         }
         try (exchange) {
