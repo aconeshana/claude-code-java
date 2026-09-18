@@ -15,12 +15,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Defers Lanterna's GUI loop until the complete REPL scene is ready, while accepting {@code
  * invokeLater} work during component construction.
  */
 final class PrestartTextGUIThreadFactory implements TextGUIThreadFactory {
+
+    private static final Logger log = LoggerFactory.getLogger(PrestartTextGUIThreadFactory.class);
 
     @Explanation("Prioritizes the dedicated Java input/render loop over optional startup and "
         + "service workers; 197 owns input and paint on its single Bun event-loop thread")
@@ -69,13 +73,32 @@ final class PrestartTextGUIThreadFactory implements TextGUIThreadFactory {
         Runnable task;
         while ((task = tasks.poll()) != null) {
             processedTask = true;
-            task.run();
+            runIsolated(task);
         }
 
         boolean updateAfterTasks = gui.isPendingUpdate();
         if (updateAfterTasks) gui.updateScreen();
         return new Cycle(processedInput || processedTask || updated || updateAfterTasks,
             processedInput);
+    }
+
+    /**
+     * Runs one queued GUI task without letting its failure reach {@code mainLoop}.
+     *
+     * <p>An escaping {@code RuntimeException} lands in Lanterna's exception handler,
+     * whose default answer is to stop the GUI thread — one bad render task would
+     * freeze input and paint for the whole session, with the process still alive and
+     * the turn still streaming. An escaping {@code Error} kills the loop outright.
+     * Neither is a proportionate response to a single task, and neither is
+     * distinguishable at the terminal from a hung turn, so a failed task is logged
+     * and the loop moves on to the next one.
+     */
+    private static void runIsolated(Runnable task) {
+        try {
+            task.run();
+        } catch (RuntimeException | StackOverflowError | LinkageError | AssertionError failure) {
+            log.error("GUI task failed; the GUI loop continues with the next task", failure);
+        }
     }
 
     /**
