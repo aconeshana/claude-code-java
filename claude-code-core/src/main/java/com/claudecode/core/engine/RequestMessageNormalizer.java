@@ -6,6 +6,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.model.AnthropicProviderUrls;
 import com.claudecode.core.process.SubprocessEnvironment;
 import java.time.Instant;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.message.ApiErrorMessages;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +70,19 @@ public final class RequestMessageNormalizer {
     private static final String MEDIA_REMOVED_PLACEHOLDER = "[media removed: request limit]";
     /** {@code tengu_media_byte_cap}: remote override for the byte ceiling, in bytes. */
     private static final String MEDIA_BYTE_CAP_FEATURE = "tengu_media_byte_cap";
+
+    /**
+     * Per-model baseUrl lookup (installed by the composition root from the
+     * model.json catalogue) so {@link #mediaByteCap(String)} judges "first-party"
+     * against the endpoint the current request is actually routed to, not a
+     * single process-wide {@code ANTHROPIC_BASE_URL} that may be unset once every
+     * model is self-contained in model.json.
+     */
+    private static volatile Function<String, String> baseUrlResolver = _ -> null;
+
+    public static void configureBaseUrlResolver(Function<String, String> resolver) {
+        baseUrlResolver = resolver != null ? resolver : _ -> null;
+    }
 
     /**
      * Full normalization pipeline used by the main turn loop: strip meta-image/
@@ -164,7 +179,7 @@ public final class RequestMessageNormalizer {
         // request's wire bytes.
         wire = stripExcessMediaItems(wire,
             isLongContextModel(model) ? API_MAX_MEDIA_LONG_CONTEXT : API_MAX_MEDIA_PER_REQUEST,
-            API_MEDIA_KEEP_RECENT, mediaByteCap(), API_MEDIA_KEEP_RECENT_BYTES);
+            API_MEDIA_KEEP_RECENT, mediaByteCap(model), API_MEDIA_KEEP_RECENT_BYTES);
         return wire;
     }
 
@@ -174,13 +189,16 @@ public final class RequestMessageNormalizer {
     }
 
     /** {@code EOT()}: remote-config override, else 24 MiB first-party and 75 MiB otherwise. */
-    private static long mediaByteCap() {
+    private static long mediaByteCap(String model) {
         Long override = CachedFeatureValues.number(MEDIA_BYTE_CAP_FEATURE);
         if (override != null && override > 0) return override;
-        String baseUrl = SubprocessEnvironment.get("ANTHROPIC_BASE_URL");
         if (EnvUtils.isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_BEDROCK"))
                 || EnvUtils.isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_VERTEX"))) {
             return API_MEDIA_BYTE_CAP;
+        }
+        String baseUrl = model != null ? baseUrlResolver.apply(model) : null;
+        if (StringUtils.isBlank(baseUrl)) {
+            baseUrl = SubprocessEnvironment.get("ANTHROPIC_BASE_URL");
         }
         return AnthropicProviderUrls.isFirstPartyBaseUrl(baseUrl)
             ? API_MEDIA_BYTE_CAP_FIRST_PARTY : API_MEDIA_BYTE_CAP;

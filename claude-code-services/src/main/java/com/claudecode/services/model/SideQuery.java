@@ -15,6 +15,7 @@ import com.claudecode.api.StreamEvent;
 import com.claudecode.core.message.*;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.AbortException;
+import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.http.CancellationRegistrar;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -50,9 +51,12 @@ public final class SideQuery {
         });
 
 /**
-     * Default when no env override is set.
+     * Default when no env override is set. Kept as the "haiku" family alias
+     * (not a bare model ID) so the live entry points below can run it through
+     * {@link ModelCatalog#resolve(String)} and pick up modelOverrides-redirected
+     * custom endpoints the same way the main query loop does.
      */
-    public static final String DEFAULT_HAIKU_MODEL = "claude-haiku-4-5";
+    public static final String DEFAULT_HAIKU_MODEL = "haiku";
 
     private final LlmClient llmClient;
 
@@ -75,15 +79,19 @@ public final class SideQuery {
     /**
      * Resolves the helper model for one named scenario. A per-scenario settings
      * key (see {@code RuntimeSettings.loadScenarioModel}) wins over the global
-     * {@code sideQueryModel} before the env chain applies.
+     * {@code sideQueryModel} before the env chain applies. The candidate then
+     * runs through {@link ModelCatalog#resolve(String)} so a bare family alias
+     * (the "haiku" default, or a raw "sonnet"/"opus" env/settings value) picks
+     * up modelOverrides-redirected custom endpoints instead of being sent to
+     * the provider verbatim.
      */
     public static String resolveSmallFastModel(String mainModel, String scenarioKey) {
-        return resolveSmallFastModel(
+        return ModelCatalog.resolve(resolveSmallFastModel(
             mainModel,
             StringUtils.defaultIfBlank(
                 RuntimeSettings.loadScenarioModel(scenarioKey),
                 SubprocessEnvironment.get("ANTHROPIC_SMALL_FAST_MODEL")),
-            SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"));
+            SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")));
     }
 
     /**
@@ -91,14 +99,19 @@ public final class SideQuery {
      * model (197 {@code Vv()} with no override and no subscription key resolves
      * to {@code Cs()}, the main model family — never a default Haiku). Settings
      * and env overrides still win, so per-scenario narrowing keeps working.
+     * The candidate is run through {@link ModelCatalog#resolve(String)} so a
+     * caller passing the raw launch-time alias (e.g. {@code "sonnet"}, before
+     * the main query loop's own resolution step) still lands on the
+     * modelOverrides-redirected custom endpoint instead of a literal that
+     * cannot match {@code model.json}.
      */
     public static String resolveMainModelFallback(String mainModel, String scenarioKey) {
-        return resolveMainModelFallback(
+        return ModelCatalog.resolve(resolveMainModelFallback(
             mainModel,
             StringUtils.defaultIfBlank(
                 RuntimeSettings.loadScenarioModel(scenarioKey),
                 SubprocessEnvironment.get("ANTHROPIC_SMALL_FAST_MODEL")),
-            SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"));
+            SubprocessEnvironment.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")));
     }
 
     static String resolveMainModelFallback(String mainModel, String override, String defaultHaiku) {

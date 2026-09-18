@@ -5,13 +5,14 @@ import static com.claudecode.core.config.EnvUtils.isEnvTruthy;
 import com.claudecode.api.ApiConfig;
 import com.claudecode.api.ApiKeyVerifier;
 import com.claudecode.api.ApiProviderResolver;
-import com.claudecode.api.LlmClient;
 import com.claudecode.api.CustomModelJsonStore;
 import com.claudecode.api.CustomModelRoutingClient;
+import com.claudecode.api.LlmClient;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.MidConversationSystemSupport;
+import com.claudecode.core.engine.RequestMessageNormalizer;
 import com.claudecode.core.engine.SandboxConfig;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.SubAgentLifecycleListener;
@@ -19,14 +20,15 @@ import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.message.SkillListingEntry;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
+import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.prompt.SystemPromptConfig;
 import com.claudecode.core.prompt.SystemPromptProfileResolver;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.state.CwdState;
-import com.claudecode.mcp.McpConfigLoader;
 import com.claudecode.mcp.McpConfig;
+import com.claudecode.mcp.McpConfigLoader;
 import com.claudecode.mcp.SdkControlTransport;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionGate;
@@ -35,6 +37,8 @@ import com.claudecode.permissions.PermissionPathContext;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.runtime.query.QuerySessionFactory;
+import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.services.agent.AgentSummaryService;
 import com.claudecode.services.cache.PromptCacheBreakCleanup;
 import com.claudecode.services.claudemd.MemoryFileScanner;
@@ -47,8 +51,8 @@ import com.claudecode.services.config.McpSkillsFeatureGate;
 import com.claudecode.services.config.PermissionSettings;
 import com.claudecode.services.config.RuntimeSettings;
 import com.claudecode.services.config.SandboxSettings;
-import com.claudecode.services.config.SettingsPaths;
 import com.claudecode.services.config.SettingsEditor;
+import com.claudecode.services.config.SettingsPaths;
 import com.claudecode.services.config.SettingsSources;
 import com.claudecode.services.config.SimpleSystemPromptFeatureGate;
 import com.claudecode.services.config.WorkspaceSettings;
@@ -62,7 +66,6 @@ import com.claudecode.tools.ToolSearchTool;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.tools.agent.AgentTool;
 import com.claudecode.tools.agent.DefaultSubAgentFactory;
-import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.tools.agent.SubAgentModelPolicy;
 import com.claudecode.tools.bash.BashTool;
 import com.claudecode.tools.cron.CronCreateTool;
@@ -82,10 +85,9 @@ import com.claudecode.tools.sandbox.SandboxManager;
 import com.claudecode.tools.skills.DynamicSkillDiscovery;
 import com.claudecode.tools.skills.DynamicSkillTriggerSet;
 import com.claudecode.tools.skills.ShellVariableInjector;
-import com.claudecode.tools.skills.SkillLoader;
 import com.claudecode.tools.skills.Skill;
+import com.claudecode.tools.skills.SkillLoader;
 import com.claudecode.tools.skills.SkillToolProvider;
-import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskReminderSource;
 import com.claudecode.tools.tasks.TaskToolProvider;
@@ -250,12 +252,20 @@ final class CliToolchainAssembler {
             customModelCatalog.find(candidateModel)
                 .map(CustomModelConfig::protocol)
                 .orElse(fallbackProtocol));
-        MidConversationSystemSupport.configureBaseUrlResolver(candidateModel ->
-            customModelCatalog.find(candidateModel).map(CustomModelConfig::baseUrl).orElse(clientBaseUrl));
+        @Explanation("Per-model baseUrl lookup shared by every first-party/third-party "
+            + "gate below, so they judge the endpoint a request is actually routed to "
+            + "instead of a single process-wide ANTHROPIC_BASE_URL.")
+        Function<String, String> perModelBaseUrlResolver = candidateModel ->
+            customModelCatalog.find(candidateModel).map(CustomModelConfig::baseUrl).orElse(clientBaseUrl);
+        MidConversationSystemSupport.configureBaseUrlResolver(perModelBaseUrlResolver);
+        ToolSearchGate.configureBaseUrlResolver(perModelBaseUrlResolver);
+        RequestMessageNormalizer.configureBaseUrlResolver(perModelBaseUrlResolver);
 
         ToolRegistry toolRegistry = new ToolRegistry();
         toolRegistry.setDestructiveCommandWarningEnabled(
             GlobalConfigStore.getBoolean("destructiveCommandWarning", false));
+        toolRegistry.configureEagerInputStreaming(
+            perModelBaseUrlResolver.apply(ModelCatalog.resolve(workspace.launch().model())));
         PlanFiles.configurePlansDirectory(WorkspaceSettings.loadPlansDirectory(System.getProperty("user.dir")));
         PlanFiles.configureMultiPlan(PlanFeatureGate.systemEnabled());
         PermissionGate permissionGate = createPermissionGate(workspace);

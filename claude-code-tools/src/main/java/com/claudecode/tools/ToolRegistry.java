@@ -122,7 +122,7 @@ public class ToolRegistry implements ToolExecutor {
     private final Map<String, String> aliases = new ConcurrentHashMap<>();
     private volatile List<String> modelVisibleToolOrder = List.of();
 
-    private final boolean eagerInputStreaming = ToolSchemaGate.eagerInputStreamingEnabled();
+    private volatile boolean eagerInputStreaming = ToolSchemaGate.eagerInputStreamingEnabled();
     private record ToolResultBudgetKey(String sessionId, String workingDirectory, String agentId) {}
     private final Map<ToolResultBudgetKey, ToolResultBudget.State> toolResultBudgetStates =
         new ConcurrentHashMap<>();
@@ -198,6 +198,15 @@ public class ToolRegistry implements ToolExecutor {
      */
     public void setDestructiveCommandWarningEnabled(boolean enabled) {
         this.destructiveCommandWarningEnabled = enabled;
+    }
+
+    /**
+     * Re-derives {@link #eagerInputStreaming} against the main model's resolved
+     * baseUrl (a model.json catalogue lookup), so third-party models registered
+     * without a global {@code ANTHROPIC_BASE_URL} still get the correct verdict.
+     */
+    public void configureEagerInputStreaming(String modelBaseUrl) {
+        this.eagerInputStreaming = ToolSchemaGate.eagerInputStreamingEnabled(modelBaseUrl);
     }
 
     /** Registers a tool. Replaces any existing tool with the same name. */

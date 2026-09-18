@@ -40,27 +40,22 @@ public final class ToolSearchGate {
     private static volatile Function<String, ModelApiProtocol> protocolResolver =
         _ -> ModelApiProtocol.ANTHROPIC;
 
+    /**
+     * Per-model baseUrl lookup (installed by the composition root from the
+     * model.json catalogue) so the third-party proxy guard judges "first-party"
+     * against the endpoint the current request is actually routed to, not a
+     * single process-wide {@link #resolvedBaseUrl}/{@code ANTHROPIC_BASE_URL}
+     * that may be unset once every model is self-contained in model.json.
+     */
+    private static volatile Function<String, String> baseUrlResolver = _ -> null;
+
     private ToolSearchGate() {}
 
     /**
      * Whether the mechanism is active for this process at all.
      */
     public static boolean isEnabled() {
-        if (isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"))) {
-            return false;
-        }
-        if (Strings.CI.equals("false", SubprocessEnvironment.get("ENABLE_TOOL_SEARCH"))) {
-            return false;
-        }
-        String effectiveBaseUrl = resolvedBaseUrl;
-        if (StringUtils.isBlank(effectiveBaseUrl)) {
-            effectiveBaseUrl = SubprocessEnvironment.get("ANTHROPIC_BASE_URL");
-        }
-        return !isThirdPartyProxyDefaultDisabled(
-            effectiveBaseUrl,
-            SubprocessEnvironment.get("ENABLE_TOOL_SEARCH"),
-            isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_BEDROCK")),
-            isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_VERTEX")));
+        return isEnabledForBaseUrl(fallbackBaseUrl());
     }
 
     /**
@@ -76,16 +71,48 @@ public final class ToolSearchGate {
             ModelApiProtocol resolved = protocolResolver.apply(model);
             if (resolved != null) protocol = resolved;
         }
-        return protocol == ModelApiProtocol.ANTHROPIC && isEnabled();
+        if (protocol != ModelApiProtocol.ANTHROPIC) {
+            return false;
+        }
+        String effectiveBaseUrl = StringUtils.isNotBlank(model)
+            ? baseUrlResolver.apply(model) : null;
+        if (StringUtils.isBlank(effectiveBaseUrl)) {
+            effectiveBaseUrl = fallbackBaseUrl();
+        }
+        return isEnabledForBaseUrl(effectiveBaseUrl);
     }
 
+    private static boolean isEnabledForBaseUrl(String effectiveBaseUrl) {
+        if (isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"))) {
+            return false;
+        }
+        if (Strings.CI.equals("false", SubprocessEnvironment.get("ENABLE_TOOL_SEARCH"))) {
+            return false;
+        }
+        return !isThirdPartyProxyDefaultDisabled(
+            effectiveBaseUrl,
+            SubprocessEnvironment.get("ENABLE_TOOL_SEARCH"),
+            isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_BEDROCK")),
+            isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_VERTEX")));
+    }
 
-
+    private static String fallbackBaseUrl() {
+        String effectiveBaseUrl = resolvedBaseUrl;
+        if (StringUtils.isBlank(effectiveBaseUrl)) {
+            effectiveBaseUrl = SubprocessEnvironment.get("ANTHROPIC_BASE_URL");
+        }
+        return effectiveBaseUrl;
+    }
 
 
 
     public static void configureResolvedBaseUrl(String baseUrl) {
         resolvedBaseUrl = baseUrl;
+    }
+
+    /** Supplies the per-model baseUrl (model.json catalogue lookup). */
+    public static void configureBaseUrlResolver(Function<String, String> resolver) {
+        baseUrlResolver = resolver != null ? resolver : _ -> null;
     }
 
 /** Supplies the wire protocol selected for each request model. */
