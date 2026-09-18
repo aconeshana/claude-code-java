@@ -19,8 +19,64 @@ permissions:
 # 表达，README 用 /releases/latest/download/ 永久引用，发新版不破坏链接）。
 # 跨平台的 fat JAR 只打一份，作为备选 asset。
 jobs:
+  # Creates the release, with notes derived from the tag's own commit range,
+  # before any build job can upload into it. Its own job because it is the only
+  # one that needs the full history (fetch-depth: 0) — the build jobs work from
+  # a shallow checkout on purpose.
+  #
+  # Fully automatic: the tag comes from github.ref_name (or the dispatch input),
+  # and the previous tag is resolved by git describe. Nothing is passed in by
+  # hand — scripts/release-notes.sh takes an optional second argument to
+  # override the previous tag, and this workflow never uses it.
+  release-notes:
+    name: release-notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Notes are built from `git log <previous-tag>..<tag>`, which a
+          # depth-1 checkout cannot answer.
+          fetch-depth: 0
+
+      - name: Derive version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            RAW="${{ github.ref_name }}"
+          else
+            RAW="${{ github.event.inputs.version }}"
+          fi
+          echo "RELEASE_VERSION=${RAW#v}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${RAW}" >> "$GITHUB_ENV"
+
+      - name: Create release with categorized notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.RELEASE_TAG }}"
+          # A manual dispatch may name a tag that does not exist yet; fall back
+          # to HEAD rather than failing the release, and say so in the log.
+          if git rev-parse -q --verify "$TAG^{commit}" >/dev/null; then
+            REF="$TAG"
+          else
+            REF="HEAD"
+            echo "note: $TAG is not a tag in this checkout, deriving notes from HEAD"
+          fi
+          scripts/release-notes.sh "$REF" > /tmp/release-notes.md
+          cat /tmp/release-notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file /tmp/release-notes.md
+          else
+            gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
+              --notes-file /tmp/release-notes.md
+          fi
+
   build-native:
     name: build-${{ matrix.platform }}
+    needs: release-notes
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -130,18 +186,17 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ env.RELEASE_TAG }}"
-          # 各平台 job 并发，release 不存在则先创建（幂等兜底）。notes 由 GitHub
-          # 自动生成本 tag 相对上一 tag 的 changelog（无上一 tag 时为全部历史）。
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
-              --generate-notes || true
-          fi
+          # release-notes created the release with its notes already written; a
+          # missing release here means that job silently did not run, and
+          # creating a blank-bodied one to paper over it is how v0.2.1 shipped
+          # with empty notes in the first place.
+          gh release view "$TAG" >/dev/null
           gh release upload "$TAG" "release/${{ matrix.asset }}" --clobber
 
   build-jar:
     name: build-jar
     runs-on: ubuntu-latest
-    needs: []  # 与二进制构建并行；jar 跨平台，只打一份即可
+    needs: release-notes  # 与二进制构建并行；jar 跨平台，只打一份即可
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -196,9 +251,6 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ env.RELEASE_TAG }}"
-          # 同 build-native：首个并发到达的 job 创建 release，notes 自动生成。
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "${{ env.RELEASE_VERSION }}" \
-              --generate-notes || true
-          fi
+          # 同 build-native：release 及其 notes 由 release-notes job 建好。
+          gh release view "$TAG" >/dev/null
           gh release upload "$TAG" "release/claude-code-app.jar" --clobber

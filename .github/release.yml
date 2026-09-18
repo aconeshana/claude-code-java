@@ -1,14 +1,18 @@
-# release.yml: configures `gh release create --generate-notes`. GitHub builds
-# those notes from merged pull requests only — the sections below match PR
-# *labels*, and commits pushed straight to a branch are never listed as
-# entries. This repo has no pull requests, so every category here is inert:
-# `releases/generate-notes` returns a bare Full Changelog line either way.
-# Kept for a future PR-based flow, and because the changelog.exclude block
-# still documents intent.
+# release.yml: configures GitHub's `--generate-notes`, which builds notes from
+# merged pull requests only — the sections below match PR *labels*, and commits
+# pushed straight to a branch are never listed as entries. This repo has no pull
+# requests, so this file produced a bare Full Changelog line and nothing else:
+# v0.2.0's categorized list was written by hand afterwards, and v0.2.1 shipped
+# empty.
 #
-# (v0.2.0's categorized bullet list was not produced by this file — that
-# release was created with a 22-byte Full Changelog body and rewritten an
-# hour later by hand.)
+# The release workflow therefore no longer calls --generate-notes at all. Notes
+# come from scripts/release-notes.sh, which groups the tag's own commit range by
+# conventional commit type (and links squash-merged PRs through their "(#123)"
+# subject, so a PR-based flow needs no change here either).
+#
+# This file is inert until something calls --generate-notes again. Kept only
+# because the category set and the exclude block still record the intended
+# grouping, which release-notes.sh mirrors.
 changelog:
   exclude:
     labels:
