@@ -56,6 +56,11 @@ import org.slf4j.LoggerFactory;
  *       live window.</li>
  *   <li>{@code src/utils/messages.ts} — tombstone handling: a withdrawn message rolls the
  *       transcript back to its first rendered row so the fallback repaints clean ground.</li>
+ *   <li>{@code src/utils/messages.ts} — {@code reorderMessagesInUI}: a {@code tool_result} is
+ *       rendered under the {@code tool_use} carrying its id, never where it arrived in the
+ *       stream. Authority: the 2.1.197 bundle's {@code y7l}. Here that ordering is produced by
+ *       {@link #renderToolResult} relocating the rows a renderer appended (see
+ *       {@link #ownCardResultTarget}), because the panel is append-only.</li>
  * </ul>
  */
 public class LanternaMessageDispatcher {
@@ -266,11 +271,19 @@ public class LanternaMessageDispatcher {
     /**
      * Tool-result routing shared by user messages and transcript replay: structured and
      * registered bodies first, then the generic folded output.
+     *
+     * <p>Every renderer below appends at the panel tail, which is only correct for the
+     * card that happens to be last. Concurrency-safe tools run as one parallel batch, so
+     * an earlier card's result routinely arrives after later cards were already painted;
+     * the rendered rows are therefore relocated under the card that owns the
+     * {@code tool_use_id}.
      */
     private void renderToolResult(ToolResultBlock result, Object toolUseResult, MessagePanel panel) {
         if (result.toolUseId() != null && toolUseResult != null) {
             tools.recordResult(result.toolUseId(), toolUseResult);
         }
+        int target = ownCardResultTarget(result.toolUseId(), panel);
+        int before = panel.snapshotLineCount();
         if (!results.renderRegistered(toolUseResult, result, panel)
                 && !renderGroupedAgentResult(toolUseResult, result, panel)
                 && !agents.renderStructuredResult(toolUseResult, result, panel)
@@ -278,6 +291,54 @@ public class LanternaMessageDispatcher {
                 && !results.renderStructuredFileChange(toolUseResult, result, panel)) {
             results.renderGeneric(result, panel);
         }
+        fileResultRowsUnderOwnCard(target, before, panel);
+    }
+
+    /**
+     * Source line the result rows of {@code toolUseId} must end up at, or {@code -1} when
+     * appending at the tail is already correct (last card, unknown card, transparent
+     * wrapper, or an Agent card whose progress rows this move must not straddle).
+     */
+    private int ownCardResultTarget(String toolUseId, MessagePanel panel) {
+        if (toolUseId == null) return -1;
+        PendingToolLedger.PendingTool owner = tools.findByToolUseId(toolUseId);
+        if (owner == null || owner.transparent() || owner.lineIdx() < 0) return -1;
+        if (agents.isGrouped(toolUseId) || agents.hasProgressBlock(toolUseId)) return -1;
+        int next = tools.nextCardStart(owner.lineIdx());
+        if (next <= owner.lineIdx() || next > panel.snapshotLineCount()) return -1;
+        // The blank separator row directly above a card belongs to that card, not to the
+        // result body being filed above it.
+        while (next > owner.lineIdx() + 1 && panel.isBlankSourceLine(next - 1)) next--;
+        return next;
+    }
+
+    /**
+     * Relocates the rows just appended by a result renderer to {@code target} and
+     * re-anchors every index the move invalidated.
+     */
+    private void fileResultRowsUnderOwnCard(int target, int before, MessagePanel panel) {
+        if (target < 0 || target > before) return;
+        int appended = panel.snapshotLineCount() - before;
+        if (appended <= 0) return;
+        int moved = panel.moveLines(before, appended, target);
+        if (moved <= 0) return;
+        shiftAnchorsFrom(target, moved);
+        rowShiftListener.onRowsShifted(target, moved);
+    }
+
+    /**
+     * Re-anchors every row index this renderer owns after rows were inserted or removed at
+     * {@code start}. The collapsed Read/Search group is repainted in place by
+     * {@link MessageCollapser}, and its finalized form is one row shorter than its in-flight
+     * form, so a card painted while the group was still growing sits one row above its
+     * recorded anchor once the group settles. Without this, the header repaint on completion
+     * and the result placement of that card both target a stale row.
+     */
+    void shiftAnchorsFrom(int start, int delta) {
+        if (delta == 0 || start < 0) return;
+        tools.shiftLines(start, delta);
+        agents.shiftBlocks(start, delta);
+        retractionAnchors.replaceAll((_, anchor) -> anchor >= start ? anchor + delta : anchor);
     }
 
     private boolean renderGroupedAgentResult(Object payload, ToolResultBlock result,
@@ -340,6 +401,23 @@ public class LanternaMessageDispatcher {
 
     /** Deepest tool-use chain a single fallback can withdraw; older anchors are dropped. */
     private static final int MAX_RETRACTION_ANCHORS = 256;
+
+    /**
+     * Notified when this dispatcher inserts rows in the middle of the panel, so an upstream
+     * stage holding its own source-line anchors (the collapsed Read/Search group card) can
+     * follow along.
+     */
+    @FunctionalInterface
+    interface RowShiftListener {
+        void onRowsShifted(int start, int delta);
+    }
+
+    private RowShiftListener rowShiftListener = (_, _) -> { };
+
+    void setRowShiftListener(RowShiftListener listener) {
+        if (listener != null) this.rowShiftListener = listener;
+    }
+
     private UserKeybindingsStore keybindingsStore;
 
     public void setKeybindingsStore(UserKeybindingsStore store) {
@@ -825,6 +903,7 @@ public class LanternaMessageDispatcher {
                     // Transparent wrapper: discard sentinel, do not render.
                     break;
                 }
+                tools.recordResolved(pending);
                 if (pending != null && pending.toolUseId() != null) {
                     if (agents.resolveGroupedMember(pending.toolUseId(), isError, panel)) {
                         toolResultRenderedThisTurn = true;
@@ -837,7 +916,12 @@ public class LanternaMessageDispatcher {
                 }
                 ToolVisualContractRegistry.ResultMode resultMode =
                     ToolVisualContractRegistry.resultMode(toolName);
-                if (!isError && resultMode != ToolVisualContractRegistry.ResultMode.DEFAULT) {
+                // READ summarizes a structured payload, which a stream event does not carry.
+                // The expanded Read/Search group replays its retained events through this
+                // path (renderExpandedToolEvents), so suppressing the body here would empty
+                // the expansion.
+                if (!isError && resultMode != ToolVisualContractRegistry.ResultMode.DEFAULT
+                        && resultMode != ToolVisualContractRegistry.ResultMode.READ) {
                     headers.complete(pending, LanternaTheme.toolSuccess(), panel);
                     toolResultRenderedThisTurn = true;
                     stream.closeIfOpen();
@@ -1029,6 +1113,7 @@ public class LanternaMessageDispatcher {
         int replaceLine = -1;
         if (pending != null && !pending.transparent()) {
             replaceLine = pending.statusLineIdx();
+            tools.recordResolved(pending);
             headers.complete(pending,
                 result.isError() ? LanternaTheme.toolError() : LanternaTheme.toolSuccess(), panel);
         }

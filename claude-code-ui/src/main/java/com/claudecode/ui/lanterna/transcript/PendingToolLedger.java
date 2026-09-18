@@ -21,11 +21,22 @@ import org.apache.commons.lang3.Strings;
  * (agent progress blocks, groups), so the recorded line indexes are shifted through
  * {@link #shiftLines} rather than recomputed.
  *
+ * <p>Concurrency-safe tools (Read, Grep, Glob) are dispatched as one parallel batch, so
+ * their results can arrive in any order. Resolved cards therefore keep their header
+ * anchor ({@link #recordResolved}) — {@link #nextCardStart} needs it to tell a renderer
+ * where a late result body has to be filed so it lands under its own card instead of the
+ * card that happens to be last.
+ *
  * <ul>
  *   <li>{@code src/utils/messages.ts} — {@code getInProgressToolUseIDs} /
  *       {@code getUnresolvedToolUseIDs}: the set of tool uses awaiting a result.</li>
- *   <li>{@code src/components/Messages.tsx} — matching each {@code tool_result} back to its
- *       {@code tool_use} block by id, with positional fallback for legacy streams.</li>
+ *   <li>{@code src/utils/messages.ts} — {@code reorderMessagesInUI}: each {@code tool_result}
+ *       is grouped under the {@code tool_use} that owns its id and a standalone result is
+ *       dropped from the stream. Authority: the 2.1.197 bundle's {@code y7l}, whose second
+ *       pass emits {@code toolUse, preHooks, toolResult, postHooks} per id and skips any
+ *       {@code user}/{@code tool_result} message it meets on its own. Upstream renders from
+ *       that ordered list, so placement is implicit; this append-only panel has to relocate
+ *       the rows to reach the same layout.</li>
  * </ul>
  */
 final class PendingToolLedger {
@@ -58,6 +69,7 @@ final class PendingToolLedger {
     record ToolInvocation(String toolName, String inputJson) {}
 
     private final Deque<PendingTool> pending = new ArrayDeque<>();
+    private final List<PendingTool> resolved = new ArrayList<>();
     private final Map<String, ToolInvocation> invocations = new HashMap<>();
     private final Map<String, List<ProgressMessage>> progressByToolUseId = new HashMap<>();
     private final Map<String, Object> resultsByToolUseId = new HashMap<>();
@@ -70,6 +82,7 @@ final class PendingToolLedger {
 
     void clear() {
         pending.clear();
+        resolved.clear();
         invocations.clear();
         progressByToolUseId.clear();
         resultsByToolUseId.clear();
@@ -115,6 +128,14 @@ final class PendingToolLedger {
         return legacyWithoutIds.size() == 1 ? legacyWithoutIds.getFirst() : null;
     }
 
+    /** By id only — no positional fallback, so a caller can tell "not mine" from "mine". */
+    PendingTool findByToolUseId(String toolUseId) {
+        if (toolUseId == null) return null;
+        return pending.stream()
+            .filter(tool -> Strings.CS.equals(toolUseId, tool.toolUseId()))
+            .findFirst().orElse(null);
+    }
+
     /** Removes and returns the entry for {@code toolUseId}; head when null; legacy fallback. */
     PendingTool remove(String toolUseId) {
         if (toolUseId == null) return pending.pollFirst();
@@ -144,8 +165,39 @@ final class PendingToolLedger {
 
     /** Shifts every recorded line at or after {@code start} by {@code delta}. */
     void shiftLines(int start, int delta) {
-        if (delta == 0 || pending.isEmpty()) return;
-        reanchor(tool -> tool.shiftedAfter(start, delta));
+        if (delta == 0) return;
+        if (!pending.isEmpty()) reanchor(tool -> tool.shiftedAfter(start, delta));
+        resolved.replaceAll(tool -> tool.shiftedAfter(start, delta));
+    }
+
+    // ── resolved cards ────────────────────────────────────────────────────────
+
+    /**
+     * Remembers where a resolved tool's header row sits. The pending queue alone cannot
+     * answer "where does this card end", because out-of-order results resolve later cards
+     * first; the vacated anchor is what keeps a still-pending card's result from being
+     * filed under its neighbour.
+     */
+    void recordResolved(PendingTool tool) {
+        if (tool != null && !tool.transparent() && tool.lineIdx() >= 0) resolved.add(tool);
+    }
+
+    /**
+     * First header row strictly below {@code afterLineIdx} across pending and resolved
+     * cards, or {@code -1} when the card is the last one — i.e. where a result body must
+     * be inserted so that it stays under its own card.
+     */
+    int nextCardStart(int afterLineIdx) {
+        int best = -1;
+        for (PendingTool tool : pending) best = closerCardStart(best, tool, afterLineIdx);
+        for (PendingTool tool : resolved) best = closerCardStart(best, tool, afterLineIdx);
+        return best;
+    }
+
+    private static int closerCardStart(int best, PendingTool tool, int afterLineIdx) {
+        int line = tool.lineIdx();
+        if (tool.transparent() || line <= afterLineIdx) return best;
+        return best < 0 || line < best ? line : best;
     }
 
     /** Rewrites every entry in place, preserving queue order. */

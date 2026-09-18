@@ -25,6 +25,7 @@ final class ToolVisualContractRegistry {
         DEFAULT,
         HIDDEN,
         SEARCH,
+        READ,
         TASK_OUTPUT,
         SKILL,
         ASK_USER_QUESTION,
@@ -80,6 +81,7 @@ final class ToolVisualContractRegistry {
         if (isMcpTool(toolName)) return ResultMode.MCP;
         return switch (toolName == null ? "" : toolName) {
             case "Grep", "Glob" -> ResultMode.SEARCH;
+            case "Read", "FileRead" -> ResultMode.READ;
             case "TaskOutput", "AgentOutputTool", "BashOutputTool" -> ResultMode.TASK_OUTPUT;
             case "Skill" -> ResultMode.SKILL;
             case "AskUserQuestion" -> ResultMode.ASK_USER_QUESTION;

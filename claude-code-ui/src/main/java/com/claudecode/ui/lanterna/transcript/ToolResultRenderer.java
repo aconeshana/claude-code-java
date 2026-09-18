@@ -68,6 +68,8 @@ import org.apache.commons.lang3.Strings;
  *       objects.</li>
  *   <li>{@code src/components/messages/ExitPlanModeRejected.tsx} — rejected plan bodies
  *       and the remembered/persisted plan fallback.</li>
+ *   <li>{@code src/tools/FileReadTool/UI.tsx} — only the dispatch to it; the row itself is
+ *       {@link ReadResultRenderer}.</li>
  * </ul>
  */
 final class ToolResultRenderer {
@@ -189,6 +191,15 @@ final class ToolResultRenderer {
         }
         if (payload == null) return false;
         JsonNode node = JsonUtils.getMapper().valueToTree(payload);
+        if (mode == ToolVisualContractRegistry.ResultMode.READ) {
+            // No structured payload (transcript replay of an older session, or a provider
+            // that dropped it) — the plain text body is all there is, so fall through.
+            if (!ReadResultRenderer.handles(node)) return false;
+            Placement placement = host.beginToolResult(result, panel);
+            tools.forgetInvocation(result.toolUseId());
+            ReadResultRenderer.render(node, placement.replaceLine(), panel);
+            return true;
+        }
         if (mode == ToolVisualContractRegistry.ResultMode.TASK_OUTPUT
                 && node.has("retrieval_status") && node.has("task")) {
             renderTaskOutputResult(node, result, panel);

@@ -18,6 +18,7 @@ import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -473,6 +474,96 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         }
         if (autoScroll) scrollToBottom();
         invalidate();
+    }
+
+    /**
+     * Moves a just-appended tail block of source rows to {@code target}, keeping the rows
+     * themselves intact — tool-output and Markdown projections included, which
+     * {@link #replaceLines} cannot express — and re-anchoring every index this panel owns:
+     * logical messages, blink entries and the retained history header.
+     *
+     * <p>This is how a tool result that completed out of order is filed under its own tool
+     * card: renderers keep appending at the tail, and the dispatcher relocates those rows
+     * once it knows which card owns them.
+     *
+     * @return the number of rows moved, or {@code 0} when the request was a no-op
+     */
+    int moveLines(int start, int count, int target) {
+        if (count <= 0 || start < 0 || target < 0 || target >= start) return 0;
+        lock.writeLock().lock();
+        try {
+            if (start + count > lines.size()) return 0;
+            List<StyledLine> moved = new ArrayList<>(lines.subList(start, start + count));
+            lines.subList(start, start + count).clear();
+            lines.addAll(target, moved);
+            remapLogicalMessagesForMoveLocked(start, count, target);
+            remapBlinkEntriesForMoveLocked(start, count, target);
+            adjustHistoryTopAnchorForMoveLocked(start, count, target);
+            markRenderChangedLocked();
+        } finally {
+            lock.writeLock().unlock();
+        }
+        if (autoScroll) scrollToBottom();
+        invalidate();
+        return count;
+    }
+
+    /** True when the source row at {@code index} is the blank separator row between cards. */
+    boolean isBlankSourceLine(int index) {
+        lock.readLock().lock();
+        try {
+            if (index < 0 || index >= lines.size()) return false;
+            StyledLine line = lines.get(index);
+            return !line.isDivider() && StringUtils.isBlank(line.text());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private void remapLogicalMessagesForMoveLocked(int start, int count, int target) {
+        int end = start + count;
+        for (int i = 0; i < logicalMessages.size(); i++) {
+            LogicalMessage message = logicalMessages.get(i);
+            if (message.startLine() >= start && message.endLine() < end) {
+                logicalMessages.set(i, message.shifted(target - start));
+            } else if (message.startLine() >= target && message.endLine() < start) {
+                logicalMessages.set(i, message.shifted(count));
+            }
+        }
+        logicalMessages.sort(Comparator.comparingInt(LogicalMessage::startLine)
+            .thenComparingInt(LogicalMessage::endLine));
+    }
+
+    /**
+     * The retained history header sits at the top of the transcript, so a tail-to-earlier
+     * move either leaves it alone or shifts it down; a move that straddles it drops the
+     * in-transcript link, matching {@link #adjustHistoryTopAnchorForReplacementLocked}.
+     */
+    private void adjustHistoryTopAnchorForMoveLocked(int start, int count, int target) {
+        if (!historyTopAnchorInTranscript || historyTopAnchorStart < 0) return;
+        int anchorEnd = historyTopAnchorStart + historyTopAnchorCount;
+        if (anchorEnd <= target || historyTopAnchorStart >= start + count) return;
+        if (historyTopAnchorStart >= target && anchorEnd <= start) {
+            historyTopAnchorStart += count;
+            return;
+        }
+        historyTopAnchorStart = -1;
+        historyTopAnchorInTranscript = false;
+    }
+
+    private void remapBlinkEntriesForMoveLocked(int start, int count, int target) {
+        if (blinkEntries.isEmpty()) return;
+        Map<Integer, BlinkEntry> remapped = new HashMap<>(blinkEntries.size());
+        blinkEntries.forEach((index, entry) ->
+            remapped.put(movedIndex(index, start, count, target), entry));
+        blinkEntries.clear();
+        blinkEntries.putAll(remapped);
+    }
+
+    private static int movedIndex(int index, int start, int count, int target) {
+        if (index >= start && index < start + count) return index - start + target;
+        if (index >= target && index < start) return index + count;
+        return index;
     }
 
     /**

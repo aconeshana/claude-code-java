@@ -69,6 +69,12 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
  * <p>236's {@code isLiveBriefTurn} has no Java counterpart and is treated as constantly false, and
  * its {@code Ps()} fullscreen gate on the live clock is treated as constantly true because this
  * Lanterna TUI is always fullscreen-equivalent.
+ *
+ * <p>The group row is repainted in place, and its settled form is one row shorter than its
+ * in-flight form, so every row below it moves. React reorders a message list and has nothing to
+ * fix up; this append-only panel does, so the shift is handed to
+ * {@link LanternaMessageDispatcher#shiftAnchorsFrom} to re-anchor the tool cards that were
+ * painted while the group was still growing.
  */
 public class MessageCollapser {
 
@@ -189,6 +195,15 @@ public class MessageCollapser {
         this.downstream = downstream;
         this.verbose    = verbose;
         this.showAll    = false;
+        // A late tool result filed under its own card inserts rows mid-panel, which can be
+        // above this stage's live group card.
+        if (downstream != null) downstream.setRowShiftListener(this::shiftGroupAnchor);
+    }
+
+    private void shiftGroupAnchor(int start, int delta) {
+        synchronized (renderLock) {
+            if (activeRunLineIdx >= start) activeRunLineIdx += delta;
+        }
     }
 
     public void setVerbose(boolean verbose) { this.verbose = verbose; }
@@ -756,6 +771,14 @@ public class MessageCollapser {
                 for (List<MessagePanel.Segment> row : rows) panel.appendMixed(row);
             } else if (activeRunLineIdx < panel.snapshotLineCount()) {
                 panel.replaceLines(activeRunLineIdx, activeRunRowCount, rows);
+                // The group shrinks when it settles (the in-flight form carries an extra
+                // detail row), which pulls every row below it up. Cards painted while the
+                // group was still growing are downstream state, so their anchors have to
+                // follow — otherwise their completion repaint lands on a foreign row.
+                if (downstream != null) {
+                    downstream.shiftAnchorsFrom(activeRunLineIdx + activeRunRowCount,
+                        rows.size() - activeRunRowCount);
+                }
             } else if (!active) {
                 // Lightweight test panels may record appendMixed without retaining
                 // MessagePanel's internal rows. Preserve their observable projection.

@@ -46,7 +46,8 @@ import org.apache.commons.lang3.Strings;
  *
  * <p>Progress rows live above later tool cards, so every insert or removal shifts the
  * recorded line indexes of the pending-tool ledger, the other progress blocks and the group
- * cards; all such shifts happen inside this class.
+ * cards. This class owns the shifts it causes itself; rows inserted elsewhere in the panel
+ * reach these blocks through {@link #shiftBlocks}.
  *
  * <ul>
  *   <li>{@code src/tools/AgentTool/UI.tsx} — {@code renderToolUseProgressMessage}: last
@@ -112,6 +113,25 @@ final class AgentProgressPresenter {
 
     boolean isGrouped(String toolUseId) {
         return toolUseId != null && agentGroupsByToolUseId.containsKey(toolUseId);
+    }
+
+    /** True when this tool use owns progress rows below its card that a row move must not straddle. */
+    boolean hasProgressBlock(String toolUseId) {
+        return toolUseId != null && agentProgressBlocks.containsKey(toolUseId);
+    }
+
+    /**
+     * Re-anchors progress blocks and group cards after rows were inserted elsewhere —
+     * the mirror of the shifts {@link #renderAgentGroup} performs for its own edits.
+     */
+    void shiftBlocks(int start, int delta) {
+        if (delta == 0) return;
+        agentProgressBlocks.values().stream()
+            .filter(block -> block.start >= start)
+            .forEach(block -> block.start += delta);
+        new HashSet<>(agentGroupsByToolUseId.values()).stream()
+            .filter(group -> group.start >= start)
+            .forEach(group -> group.start += delta);
     }
 
     /** Repaints the group card an already-grouped Agent belongs to (tool_call_start). */
