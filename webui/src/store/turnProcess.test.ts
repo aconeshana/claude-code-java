@@ -1,164 +1,230 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import type { ConversationState, MessageState } from './conversations'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MirrorFrame } from '../api/types'
+import type { ConversationState } from './conversations'
+import { useConversations } from './conversations'
 import { deriveTurnProcessView, isSubagentDelegationTool, useTurnProcess } from './turnProcess'
 import { useTranscriptView } from './transcriptView'
 
-function assistant(id: string, overrides: Partial<Extract<MessageState, { kind: 'assistant' }>> = {}): MessageState {
-  return {
-    kind: 'assistant',
-    id,
-    textBlocks: [],
-    thinkingBlocks: [],
-    toolCalls: [],
-    open: false,
-    ...overrides,
-  }
-}
+vi.mock('../api/client', () => ({ fetchSnapshot: vi.fn() }))
 
-function userRow(id: string, text: string): MessageState {
-  return { kind: 'user', id, text }
-}
-
-function conversation(messages: readonly MessageState[]): ConversationState {
-  return { messages, lastFrameId: 0, turnRunning: false, lastError: null }
-}
-
+const SESSION = 'sess-1'
 const EMPTY_SET: ReadonlySet<number> = new Set()
 
+let nextFrameId = 0
+
+/**
+ * Drive the real reduction path: these are the mirror frames the gateway
+ * publishes, not hand-assembled message rows. The fold used to be tested only
+ * against hand-assembled multi-row transcripts, which the live frame path
+ * never produced — so every rule passed while the feature never folded a
+ * single live turn.
+ */
+function apply(event: MirrorFrame['event'], data: Record<string, unknown>): void {
+  nextFrameId += 1
+  useConversations.getState().applyFrame(
+    { event, id: nextFrameId, data: { session_id: SESSION, ...data } } as MirrorFrame,
+  )
+}
+
+function conversation(): ConversationState {
+  return useConversations.getState().conversations[SESSION]
+}
+
+function view(expanded: ReadonlySet<number> = EMPTY_SET) {
+  return deriveTurnProcessView(conversation(), expanded)
+}
+
+/** One tool call that starts and completes inside step {@code messageId}. */
+function toolStep(messageId: string, name: string, useId: string): void {
+  apply('tool.started', { name, tool_use_id: useId, input: {}, message_id: messageId })
+  apply('tool.completed', {
+    status: 'completed',
+    tool_use_id: useId,
+    result: { type: 'tool_result', data: 'ok' },
+  })
+}
+
 beforeEach(() => {
+  nextFrameId = 0
+  useConversations.setState({ conversations: {} })
   useTurnProcess.setState({ openTurns: new Set() })
   useTranscriptView.getState().setMode('compact')
 })
 
-describe('deriveTurnProcessView eligibility', () => {
+describe('turn-process fold over the live frame path', () => {
+  it('folds a thinking + tool turn behind its final answer', () => {
+    apply('turn.started', { display_text: '查一下', permission_mode: 'default', origin: 'web' })
+    apply('output.thinking', { content: '先看目录', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    toolStep('msg-1', 'Read', 'tu-2')
+    apply('output.text', { content: '看完了，结论是……', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 1200, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    // The step split is the whole point: two assistant rows, not one.
+    expect(rows.map((row) => row.kind)).toEqual(['user', 'assistant', 'assistant'])
+
+    const folded = view()
+    expect(folded.roles[rows[1].id]).toBe('member')
+    expect(folded.roles[rows[2].id]).toBe('answer')
+    expect(folded.controlTurns[rows[0].id]).toBe(1)
+    expect(folded.counts[rows[0].id]).toEqual({
+      toolCallCount: 2, messageCount: 0, subagentCount: 0,
+    })
+    expect(folded.memberTurns[rows[1].id]).toBe(1)
+  })
+
+  it('never folds while the turn is still running', () => {
+    apply('turn.started', { display_text: '跑吧', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '中间结论', message_id: 'msg-2' })
+
+    expect(conversation().turnRunning).toBe(true)
+    expect(view().roles).toEqual({})
+  })
+
+  it('keeps every row visible when the last step is reasoning only', () => {
+    // Upstream reads the LATEST step alone: an earlier reply-bearing step is
+    // process, never a fallback answer.
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '中途汇报', message_id: 'msg-2' })
+    apply('output.thinking', { content: '还得再想', message_id: 'msg-3' })
+    apply('turn.completed', { done: true, elapsed_ms: 900, user_cancel: false, turn: 1 })
+
+    expect(view().roles).toEqual({})
+    expect(view().controlTurns).toEqual({})
+  })
+
+  it('keeps every row visible when the last step still calls a tool', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '我来跑一下', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('turn.completed', { done: true, elapsed_ms: 400, user_cancel: false, turn: 1 })
+
+    expect(view().roles).toEqual({})
+  })
+
+  it('counts tool calls across the whole turn, subagents separately', () => {
+    // Upstream publishes state.toolCallCount unfiltered — a tool call in the
+    // answer step counts too, unlike messageCount.
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '中间消息', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    toolStep('msg-1', 'Agent', 'tu-2')
+    toolStep('msg-1', 'Task', 'tu-3')
+    apply('output.text', { content: '最终答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    expect(view().counts[rows[0].id]).toEqual({
+      toolCallCount: 1, messageCount: 1, subagentCount: 2,
+    })
+  })
+
+  it('hides the answer row own reasoning when the answer step carries it', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.thinking', { content: '答案前的思考', message_id: 'msg-2' })
+    apply('output.text', { content: '答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    const answer = rows[rows.length - 1]
+    expect(view().roles[answer.id]).toBe('answer')
+    expect(view().inlineReasoningAnswers.has(answer.id)).toBe(true)
+    expect(view().compactAnswers.has(answer.id)).toBe(true)
+  })
+
+  it('treats synthetic System text as a foldable context row, never an answer', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '系统提示：额度不足', synthetic: true })
+    apply('output.text', { content: '真正的答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    const synthetic = rows.find((row) => row.kind === 'assistant' && row.synthetic === true)
+    const answer = rows[rows.length - 1]
+    expect(synthetic).toBeDefined()
+    expect(view().roles[answer.id]).toBe('answer')
+    expect(view().roles[synthetic!.id]).toBe('member')
+  })
+
   it('marks nothing outside compact mode', () => {
     useTranscriptView.getState().setMode('normal')
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], toolCalls: [{ toolUseId: 't1', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null }] }),
-      assistant('a2', { textBlocks: ['done'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles).toEqual({})
-    expect(view.controlTurns).toEqual({})
-  })
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
 
-  it('folds tool calls and thinking behind the final answer', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], toolCalls: [
-        { toolUseId: 't1', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null },
-        { toolUseId: 't2', name: 'Read', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null },
-      ], turn: 1 }),
-      assistant('a2', { textBlocks: ['done'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles['a1']).toBe('member')
-    expect(view.roles['a2']).toBe('answer')
-    expect(view.controlTurns['u1']).toBe(1)
-    expect(view.counts['u1']).toEqual({ toolCallCount: 2, messageCount: 0, subagentCount: 0 })
-    expect(view.memberTurns['a1']).toBe(1)
-  })
-
-  it('keeps every row visible when the turn has no answer', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], toolCalls: [{ toolUseId: 't1', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null }], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles).toEqual({})
-    expect(view.controlTurns).toEqual({})
-  })
-
-  it('never folds an open (running) turn', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], open: true }),
-    ]), EMPTY_SET)
-    expect(view.roles).toEqual({})
-  })
-
-  it('keeps an answer-only turn unfolded', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { textBlocks: ['just the answer'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles).toEqual({})
-    expect(view.controlTurns).toEqual({})
-  })
-
-  it('counts intermediate reply messages and subagent delegations separately', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', {
-        textBlocks: ['intermediate'], toolCalls: [
-          { toolUseId: 't1', name: 'subagent', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null },
-          { toolUseId: 't2', name: 'subagent_fork', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null },
-          { toolUseId: 't3', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null },
-        ], turn: 1,
-      }),
-      assistant('a2', { textBlocks: ['final'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.counts['u1']).toEqual({ toolCallCount: 1, messageCount: 1, subagentCount: 2 })
-  })
-
-  it('picks the LAST text answer as the boundary, folding later tool steps too', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { textBlocks: ['early text'], toolCalls: [{ toolUseId: 't1', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null }], turn: 1 }),
-      assistant('a2', { textBlocks: ['middle'], turn: 1 }),
-      assistant('a3', { textBlocks: ['the real answer'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles['a1']).toBe('member')
-    expect(view.roles['a2']).toBe('member')
-    expect(view.roles['a3']).toBe('answer')
-    expect(view.counts['u1']).toEqual({ toolCallCount: 1, messageCount: 2, subagentCount: 0 })
-  })
-
-  it('treats a tool-calling step as process, not answer', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { textBlocks: ['running the tool now'], toolCalls: [{ toolUseId: 't1', name: 'Bash', args: null, status: 'executed', ready: true, resultData: '', resultType: null, resultError: null, transcriptPath: null, locations: null }], turn: 1 }),
-      assistant('a2', { textBlocks: [], thinkingBlocks: ['more'], turn: 1 }),
-    ]), EMPTY_SET)
-    // No answer row: everything stays visible.
-    expect(view.roles).toEqual({})
-  })
-
-  it('passes the expanded set through for manually opened groups', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], turn: 1 }),
-      assistant('a2', { textBlocks: ['done'], turn: 1 }),
-    ]), new Set([1]))
-    expect(view.expandedTurns.has(1)).toBe(true)
-  })
-
-  it('folds a reasoning-only turn (the 已思考 label case)', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['long deliberation'], turn: 1 }),
-      assistant('a2', { textBlocks: ['done'], turn: 1 }),
-    ]), EMPTY_SET)
-    expect(view.roles['a1']).toBe('member')
-    expect(view.counts['u1']).toEqual({ toolCallCount: 0, messageCount: 0, subagentCount: 0 })
+    expect(view().roles).toEqual({})
+    expect(view().controlTurns).toEqual({})
   })
 
   it('handles consecutive turns independently', () => {
-    const view = deriveTurnProcessView(conversation([
-      userRow('u1', 'hi'),
-      assistant('a1', { thinkingBlocks: ['hmm'], turn: 1 }),
-      assistant('a2', { textBlocks: ['done'], turn: 1 }),
-      userRow('u2', 'again'),
-      assistant('a3', { textBlocks: ['answer two'], turn: 2 }),
-    ]), EMPTY_SET)
-    expect(view.controlTurns['u1']).toBe(1)
-    expect(view.controlTurns['u2']).toBeUndefined()
+    apply('turn.started', { display_text: '一', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案一', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+    apply('turn.started', { display_text: '二', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '答案二', message_id: 'msg-3' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 2 })
+
+    const rows = conversation().messages
+    const firstUser = rows[0]
+    const secondUser = rows.find((row) => row.kind === 'user' && row.id !== firstUser.id)
+    expect(view().controlTurns[firstUser.id]).toBe(1)
+    // An answer-only turn has no process rows to fold.
+    expect(view().controlTurns[secondUser!.id]).toBeUndefined()
+  })
+
+  it('degrades to one row when the gateway reports no step id', () => {
+    // An older gateway publishes no message_id; the reduction keeps its
+    // single-row behavior and the turn stays unfolded rather than guessing a
+    // boundary from block order.
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('tool.started', { name: 'Bash', tool_use_id: 'tu-1', input: {} })
+    apply('tool.completed', {
+      status: 'completed', tool_use_id: 'tu-1', result: { type: 'tool_result', data: 'ok' },
+    })
+    apply('output.text', { content: '答案' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    expect(conversation().messages.filter((row) => row.kind === 'assistant')).toHaveLength(1)
+    expect(view().roles).toEqual({})
+  })
+
+  it('passes the expanded set through for manually opened groups', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    expect(view(new Set([1])).expandedTurns.has(1)).toBe(true)
+  })
+
+  it('folds a reasoning-only process behind the answer (the 已思考 label case)', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.thinking', { content: '长时间推敲', message_id: 'msg-1' })
+    apply('output.text', { content: '答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    expect(view().roles[rows[1].id]).toBe('member')
+    expect(view().counts[rows[0].id]).toEqual({
+      toolCallCount: 0, messageCount: 0, subagentCount: 0,
+    })
   })
 })
 
 describe('isSubagentDelegationTool', () => {
-  it('recognizes the shipped name and configured variants', () => {
-    expect(isSubagentDelegationTool('subagent')).toBe(true)
-    expect(isSubagentDelegationTool('subagent_fork')).toBe(true)
-    expect(isSubagentDelegationTool('send_message')).toBe(false)
+  it('recognizes this product delegation tool and its alias', () => {
+    // Deviation from upstream (subagent / subagent_*): the shipped name here
+    // is Agent with the Task alias.
+    expect(isSubagentDelegationTool('Agent')).toBe(true)
+    expect(isSubagentDelegationTool('Task')).toBe(true)
+    expect(isSubagentDelegationTool('SendMessage')).toBe(false)
     expect(isSubagentDelegationTool('Bash')).toBe(false)
   })
 })

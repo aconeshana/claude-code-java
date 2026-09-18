@@ -12,6 +12,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
@@ -412,6 +413,44 @@ class GatewayServerInteropTest {
                 && Strings.CS.contains(f, "toolu_big"));
         assertThat(frame).contains("[truncated]");
         assertThat(frame.length()).isLessThan(25_000);
+        source.cancel();
+    }
+
+    @Test
+    @Timeout(20)
+    void everyBlockFrameOfOneAssistantMessageCarriesTheSameStepId() throws Exception {
+        // The per-block fan-out erases the assistant message boundary, so each
+        // frame republishes it as message_id. A web client rebuilds the step
+        // from it — without the id a turn's tool steps and its final answer
+        // reduce to one row and the turn-process fold finds no answer.
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+
+        SDKMessage.Assistant step = assistantMessage(List.of(
+            new ThinkingBlock("weighing it", null),
+            new TextBlock("running the tool"),
+            new ToolUseBlock("toolu_step_1", "Bash", null)));
+        String stepId = step.message().uuid();
+        hub.onMessage(step);
+        hub.onMessage(textMessage("the answer"));
+
+        String thinking = pollUntilFrameFor(events, "step thinking",
+            f -> Strings.CS.contains(f, "output.thinking"));
+        String text = pollUntilFrameFor(events, "step text",
+            f -> Strings.CS.contains(f, "output.text"));
+        String tool = pollUntilFrameFor(events, "step tool",
+            f -> Strings.CS.contains(f, "tool.started"));
+        assertThat(thinking).contains("\"message_id\":\"" + stepId + "\"");
+        assertThat(text).contains("\"message_id\":\"" + stepId + "\"");
+        assertThat(tool).contains("\"message_id\":\"" + stepId + "\"");
+
+        // The next assistant message is the next step: a different id.
+        String answer = pollUntilFrameFor(events, "next step",
+            f -> Strings.CS.contains(f, "output.text"));
+        assertThat(answer).contains("the answer")
+            .contains("\"message_id\":")
+            .doesNotContain("\"message_id\":\"" + stepId + "\"");
         source.cancel();
     }
 

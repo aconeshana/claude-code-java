@@ -23,6 +23,14 @@ interface AssistantMessageState {
   readonly thinkingBlocks: readonly string[]
   readonly toolCalls: readonly ToolCallState[]
   readonly open: boolean
+  /**
+   * The owning assistant step's identity (frame path: the mirror frame's
+   * message_id; snapshot path: the entry id, which is the same fact). Frames
+   * sharing it belong to one step; a change closes the row and opens the next.
+   */
+  readonly messageId?: string
+  /** A System-message projection rather than model output (frame path only). */
+  readonly synthetic?: boolean
   /** 1-based turn number (snapshot path); absent before the first human prompt. */
   readonly turn?: number
   /** This assistant step's provider-reported buckets (snapshot or frame path). */
@@ -143,6 +151,9 @@ function toMessageState(message: SnapshotMessage): MessageState {
   return {
     kind: 'assistant',
     id: message.id,
+    // The snapshot entry id IS the step identity the frame path reports as
+    // message_id, so both paths reduce to the same row identity.
+    messageId: message.id,
     textBlocks,
     thinkingBlocks,
     toolCalls,
@@ -153,8 +164,7 @@ function toMessageState(message: SnapshotMessage): MessageState {
   }
 }
 
-function reduceFrame(state: ConversationState, frame: MirrorFrame): ConversationState {
-  switch (frame.event) {
+function reduceFrame(state: ConversationState, frame: MirrorFrame): ConversationState {  switch (frame.event) {
     case 'turn.started': {
       const userMessage: MessageState = {
         kind: 'user',
@@ -170,14 +180,14 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
       }
     }
     case 'output.text': {
-      const messages = appendBlock(state.messages, (last) => ({
+      const messages = appendBlock(state.messages, stepOf(frame.data), (last) => ({
         ...last,
         textBlocks: [...last.textBlocks, frame.data.content],
       }))
       return { ...state, messages }
     }
     case 'output.thinking': {
-      const messages = appendBlock(state.messages, (last) => ({
+      const messages = appendBlock(state.messages, stepOf(frame.data), (last) => ({
         ...last,
         thinkingBlocks: [...last.thinkingBlocks, frame.data.content],
       }))
@@ -196,7 +206,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         transcriptPath: null,
         locations: null,
       }
-      const messages = appendBlock(state.messages, (last) => ({
+      const messages = appendBlock(state.messages, stepOf(frame.data), (last) => ({
         ...last,
         toolCalls: [...last.toolCalls, call],
       }))
@@ -259,23 +269,63 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
   }
 }
 
-/** Applies {@code edit} to the open assistant row, opening one when absent. */
+/** One step's identity as reported by the frame that carries a block. */
+interface StepIdentity {
+  readonly messageId?: string
+  readonly synthetic?: boolean
+}
+
+/** The step identity a block-carrying frame reports. */
+function stepOf(data: { message_id?: string; synthetic?: boolean }): StepIdentity {
+  return {
+    ...(data.message_id !== undefined ? { messageId: data.message_id } : {}),
+    ...(data.synthetic === true ? { synthetic: true } : {}),
+  }
+}
+
+/**
+ * Applies {@code edit} to the open assistant row of {@code step}, opening one
+ * when the step changed or none is open.
+ *
+ * One assistant message is one step; the mirror fans it out into one frame per
+ * content block, so consecutive frames sharing message_id reassemble into one
+ * row — the shape the snapshot path serves directly. Without this split a
+ * turn's tool steps and its final answer collapse into a single row and the
+ * turn-process fold can never find an answer boundary. A frame with no
+ * message_id (an older gateway) keeps the previous single-row behavior; a
+ * synthetic System projection always stands alone, since it has no step.
+ */
 function appendBlock(
   messages: readonly MessageState[],
+  step: StepIdentity,
   edit: (last: AssistantMessageState) => AssistantMessageState,
 ): readonly MessageState[] {
   const last = messages[messages.length - 1]
-  if (last != null && last.kind === 'assistant' && last.open) {
-    return [...messages.slice(0, -1), edit(last)]
+  const openRow = last != null && last.kind === 'assistant' && last.open ? last : null
+  if (openRow != null && !opensNewStep(openRow, step)) {
+    return [...messages.slice(0, -1), edit(openRow)]
   }
-  return [...messages, edit({
+  const settled = openRow == null
+    ? messages
+    : [...messages.slice(0, -1), { ...openRow, open: false }]
+  return [...settled, edit({
     kind: 'assistant',
-    id: `live-${messages.length}`,
+    // The step id doubles as the row id, matching the snapshot path's entry
+    // id, so a reload keeps the same row identity.
+    id: step.messageId ?? `live-${messages.length}`,
     textBlocks: [],
     thinkingBlocks: [],
     toolCalls: [],
     open: true,
+    ...(step.messageId !== undefined ? { messageId: step.messageId } : {}),
+    ...(step.synthetic === true ? { synthetic: true } : {}),
   })]
+}
+
+function opensNewStep(open: AssistantMessageState, step: StepIdentity): boolean {
+  if (step.synthetic === true || open.synthetic === true) return true
+  if (step.messageId == null || open.messageId == null) return false
+  return open.messageId !== step.messageId
 }
 
 function closeAssistant(

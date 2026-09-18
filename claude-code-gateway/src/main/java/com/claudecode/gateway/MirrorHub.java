@@ -1,5 +1,7 @@
 package com.claudecode.gateway;
 
+import com.claudecode.core.message.AssistantContent;
+import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
@@ -56,6 +58,12 @@ import org.apache.commons.lang3.Strings;
  * <p>Frame production never blocks on a client: this hub only offers to each
  * connection's bounded lane, so a lagging tab disconnects itself without
  * stalling the semantic event pipeline.
+ *
+ * <p>Step projection: one assistant message becomes one frame per content
+ * block, so every such frame carries {@code message_id} — the step identity
+ * the snapshot path serves as its assistant entry id. Without it a client
+ * cannot tell a turn's tool steps from its final answer, because the
+ * per-block fan-out erases the message boundary.
  *
  * <p>Tool-result projection: {@code tool.started} frames remember each tool
  * use's name (the {@code ToolUseBlock} is the only place it appears), and
@@ -444,16 +452,19 @@ public final class MirrorHub {
         List<ContentBlock> blocks =
             assistant.message().message().content();
         if (blocks == null) return;
+        String stepId = stepId(assistant.message());
         for (ContentBlock block : blocks) {
             switch (block) {
                 case TextBlock text -> {
                     ObjectNode payload = object();
                     payload.put("content", text.text());
+                    putStepId(payload, stepId);
                     publish(sessionId, "output.text", payload);
                 }
                 case ThinkingBlock thinking -> {
                     ObjectNode payload = object();
                     payload.put("content", thinking.thinking());
+                    putStepId(payload, stepId);
                     publish(sessionId, "output.thinking", payload);
                 }
                 case ToolUseBlock tool -> {
@@ -462,11 +473,31 @@ public final class MirrorHub {
                     payload.put("name", tool.name());
                     payload.put("tool_use_id", tool.id());
                     if (tool.input() != null) payload.set("input", tool.input());
+                    putStepId(payload, stepId);
                     publish(sessionId, "tool.started", payload);
                 }
                 default -> { /* Rich blocks stay in the local renderer. */ }
             }
         }
+    }
+
+    /**
+     * This assistant step's identity: the message uuid the snapshot path
+     * serves as its assistant entry id, falling back to the provider
+     * envelope's message id. The per-block frames carry it so a client can
+     * reassemble the step boundary this projection would otherwise flatten —
+     * frames sharing one id are one assistant message, which is what keeps a
+     * turn's tool steps separate rows from its final answer. A synthetic
+     * System message has no step of its own and carries no id.
+     */
+    private static String stepId(AssistantMessage message) {
+        if (StringUtils.isNotBlank(message.uuid())) return message.uuid();
+        AssistantContent envelope = message.message();
+        return envelope == null || StringUtils.isBlank(envelope.id()) ? null : envelope.id();
+    }
+
+    private static void putStepId(ObjectNode payload, String stepId) {
+        if (stepId != null) payload.put("message_id", stepId);
     }
 
     private void publishToolResults(String sessionId, SDKMessage.User user) {

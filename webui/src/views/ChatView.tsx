@@ -107,10 +107,13 @@ export function ChatView({ conversation }: { conversation: ConversationState | u
               key={message.id}
               className={css.flowItem}
               data-turn-process-member={memberTurn !== undefined ? String(memberTurn) : undefined}
-              data-turn-process-answer={role === 'answer' ? '' : undefined}
+              data-turn-process-answer={foldView.compactAnswers.has(message.id) ? '' : undefined}
               hidden={collapsed ? ('until-found' as unknown as boolean) : undefined}
             >
-              <MessageItem message={message} />
+              <MessageItem
+                message={message}
+                hideReasoning={foldView.inlineReasoningAnswers.has(message.id)}
+              />
             </div>,
           )
           return rows

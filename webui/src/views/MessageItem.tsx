@@ -24,7 +24,15 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * vendored dsh-context Chat→Context jump + usage pills + trailing clock) on
  * the settled turn's last assistant row.
  */
-export function MessageItem({ message }: { message: MessageState }) {
+export function MessageItem({ message, hideReasoning = false }: {
+  message: MessageState
+  /**
+   * The turn-process fold's `inlineReasoning`: this row is a folded turn's
+   * answer, so its own thinking blocks belong to the process group and stay
+   * hidden while the reply stays visible.
+   */
+  hideReasoning?: boolean
+}) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
     return (
@@ -41,12 +49,13 @@ export function MessageItem({ message }: { message: MessageState }) {
       </div>
     )
   }
-  return <AssistantItem message={message} t={statsT} />
+  return <AssistantItem message={message} t={statsT} hideReasoning={hideReasoning} />
 }
 
-function AssistantItem({ message, t }: {
+function AssistantItem({ message, t, hideReasoning }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
+  hideReasoning: boolean
 }) {
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   // One stable labels identity: MarkdownText's streaming cache resets when
@@ -60,7 +69,7 @@ function AssistantItem({ message, t }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      {message.thinkingBlocks.map((text: string, index: number) => (
+      {!hideReasoning && message.thinkingBlocks.map((text: string, index: number) => (
         <ReasoningRow
           key={index}
           text={text}
