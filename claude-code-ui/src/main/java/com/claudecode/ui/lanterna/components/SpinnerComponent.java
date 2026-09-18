@@ -907,6 +907,15 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
     }
 
     /**
+     * True while a submitted turn is in flight, between {@link #beginTurnClock()}
+     * and {@link #finishTurnClock()}. Lets a deferred task tell "the turn is still
+     * working" from "the turn ended and the spinner is legitimately down".
+     */
+    boolean isTurnClockActive() {
+        return turnClockActive;
+    }
+
+    /**
      * Freeze the elapsed timer while a permission dialog is open.
      */
     public void pauseTimer() {

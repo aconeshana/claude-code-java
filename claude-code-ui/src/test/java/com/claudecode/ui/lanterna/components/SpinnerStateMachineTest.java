@@ -303,4 +303,98 @@ class SpinnerStateMachineTest {
         assertFalse(m.gotMeaningfulContent());
         assertTrue(spinner.isSpinning());
     }
+
+    // ── Stalled visible-text phase ───────────────────────────────────────────
+    // A slow endpoint can hold the text window open while streaming a couple of
+    // tokens per second. 197's rule hides the spinner for that whole phase, which
+    // on such an endpoint leaves the screen with no motion for minutes. These
+    // cover re-showing it on a stall and handing it back when text resumes.
+
+    /** Stall window short enough to assert without a multi-second sleep. */
+    private static final long STALL_MS = 120L;
+    private static final long POLL_MS = 20L;
+
+    private SpinnerStateMachine newStallMachine() {
+        return new SpinnerStateMachine(SYNC, spinner, STALL_MS, POLL_MS);
+    }
+
+    private void awaitSpinning(boolean expected, String message) {
+        long deadline = System.currentTimeMillis() + 2_000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (spinner.isSpinning() == expected) return;
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("interrupted while awaiting spinner state", interrupted);
+            }
+        }
+        assertEquals(expected, spinner.isSpinning(), message);
+    }
+
+    @Test
+    void stalledStreamingText_reShowsSpinner() {
+        SpinnerStateMachine m = newStallMachine();
+        m.startTurn("tip", "");
+        m.onStreamEvent("content_block_delta", "hello");
+        m.onStreamTextVisibility(true);
+        assertFalse(spinner.isSpinning(), "text initially yields the spinner");
+
+        awaitSpinning(true, "text that stops advancing must re-show the spinner");
+    }
+
+    @Test
+    void resumedStreamingText_yieldsSpinnerBackToText() {
+        SpinnerStateMachine m = newStallMachine();
+        m.startTurn("tip", "");
+        m.onStreamTextVisibility(true);
+        awaitSpinning(true, "stall re-shows the spinner");
+
+        m.onStreamEvent("content_block_delta", "more text");
+        assertFalse(spinner.isSpinning(),
+            "text resuming hands the screen back to it, as when the phase opened");
+    }
+
+    @Test
+    void endedTurn_isNotRevivedByTheStallProbe() {
+        SpinnerStateMachine m = newStallMachine();
+        m.startTurn("tip", "");
+        m.onStreamTextVisibility(true);
+        // Turn ends while the text window is still open — the pure-text tail case.
+        spinner.finishTurnClock();
+        spinner.stop();
+
+        long deadline = System.currentTimeMillis() + STALL_MS * 6;
+        while (System.currentTimeMillis() < deadline) {
+            assertFalse(spinner.isSpinning(),
+                "a completed turn must not have its spinner revived by the stall probe");
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("interrupted", interrupted);
+            }
+        }
+    }
+
+    @Test
+    void closingTextWindow_disarmsTheStallProbe() {
+        SpinnerStateMachine m = newStallMachine();
+        m.startTurn("tip", "");
+        m.onStreamTextVisibility(true);
+        m.onStreamTextVisibility(false); // pure-text tail: no tool in flight
+        spinner.stop();
+
+        long deadline = System.currentTimeMillis() + STALL_MS * 6;
+        while (System.currentTimeMillis() < deadline) {
+            assertFalse(spinner.isSpinning(),
+                "a closed text window must leave no probe able to re-show the spinner");
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("interrupted", interrupted);
+            }
+        }
+    }
 }

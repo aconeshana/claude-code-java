@@ -2,8 +2,13 @@ package com.claudecode.ui.lanterna.components;
 
 import org.apache.commons.lang3.Strings;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -36,9 +41,48 @@ public final class SpinnerStateMachine {
      */
     private volatile boolean textVisible = false;
 
+    /**
+     * How long visible streamed text may stop advancing before the spinner is
+     * shown again.
+     *
+     * <p>197 hides the spinner for the whole visible-text phase because its
+     * first-party stream advances fast enough to be its own progress indicator.
+     * A user-configured endpoint can stream at a couple of tokens per second
+     * with multi-second gaps between deltas, and there the same rule leaves the
+     * screen with no motion at all — no spinner, no visibly growing text — for
+     * minutes while the turn is in fact healthy. Re-showing the spinner once the
+     * text stalls restores the indicator without touching the fast path, which
+     * never idles this long.
+     */
+    private static final long TEXT_STALL_MS = 2_000L;
+    /** Stall-probe period; a fraction of {@link #TEXT_STALL_MS} to bound detection lag. */
+    private static final long TEXT_STALL_POLL_MS = 400L;
+
+    private static final ScheduledExecutorService STALL_PROBE =
+        Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "spinner-text-stall");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+    private final AtomicLong lastTextDeltaMs = new AtomicLong();
+    private final AtomicReference<ScheduledFuture<?>> stallProbe = new AtomicReference<>();
+    /** True while the spinner is visible only because the streamed text stalled. */
+    private volatile boolean stallSpinnerShown;
+    private final long textStallMs;
+    private final long textStallPollMs;
+
     public SpinnerStateMachine(Consumer<Runnable> uiInvoker, SpinnerComponent spinner) {
+        this(uiInvoker, spinner, TEXT_STALL_MS, TEXT_STALL_POLL_MS);
+    }
+
+    /** Test seam: shortens the stall window so a test need not sleep two seconds. */
+    SpinnerStateMachine(Consumer<Runnable> uiInvoker, SpinnerComponent spinner,
+                        long textStallMs, long textStallPollMs) {
         this.uiInvoker = uiInvoker;
         this.spinner = spinner;
+        this.textStallMs = textStallMs;
+        this.textStallPollMs = textStallPollMs;
     }
 
     /**
@@ -48,6 +92,8 @@ public final class SpinnerStateMachine {
     public void startTurn(String tip, String effortSuffix) {
 
         spinner.beginTurnClock();
+        textVisible = false;
+        disarmTextStallProbe();
         uiInvoker.accept(() -> {
             spinner.setSpinnerTip(tip);
             spinner.setEffortSuffix(effortSuffix);
@@ -142,6 +188,7 @@ public final class SpinnerStateMachine {
                 gotMeaningfulContent = true;
                 totalResponseChars += evData.length();
                 final int chars = totalResponseChars;
+                noteTextAdvanced();
 
                 final long thinkDuration = takeThinkingDuration();
                 uiInvoker.accept(() -> {
@@ -181,10 +228,12 @@ public final class SpinnerStateMachine {
             if (!textVisible) {
                 textVisible = true;
                 uiInvoker.accept(spinner::stop);
+                armTextStallProbe();
             }
         } else {
             if (textVisible) {
                 textVisible = false;
+                disarmTextStallProbe();
                 if (pendingToolCount.get() > 0 && !spinner.isSpinning()) {
                     uiInvoker.accept(() -> {
                         if (!spinner.isSpinning()) spinner.start(spinner.getCurrentVerb());
@@ -192,6 +241,58 @@ public final class SpinnerStateMachine {
                 }
             }
         }
+    }
+
+    /**
+     * Records that streamed text just advanced. While the spinner is only up
+     * because the text had stalled, resuming text hands the screen back to it —
+     * the same yield {@link #onStreamTextVisibility} performs when the phase opens.
+     */
+    private void noteTextAdvanced() {
+        lastTextDeltaMs.set(System.currentTimeMillis());
+        if (stallSpinnerShown) {
+            stallSpinnerShown = false;
+            uiInvoker.accept(spinner::stop);
+        }
+    }
+
+    /**
+     * Polls for a stalled visible-text phase. The probe cancels itself once the
+     * phase closes, so a turn that ends without {@code onStreamTextVisibility(false)}
+     * cannot leave it running against the next turn's spinner.
+     */
+    private void armTextStallProbe() {
+        lastTextDeltaMs.set(System.currentTimeMillis());
+        stallSpinnerShown = false;
+        ScheduledFuture<?> probe = STALL_PROBE.scheduleWithFixedDelay(this::checkTextStall,
+            textStallPollMs, textStallPollMs, TimeUnit.MILLISECONDS);
+        cancel(stallProbe.getAndSet(probe));
+    }
+
+    private void disarmTextStallProbe() {
+        cancel(stallProbe.getAndSet(null));
+        stallSpinnerShown = false;
+    }
+
+    private void checkTextStall() {
+        if (!textVisible || !spinner.isTurnClockActive()) {
+            disarmTextStallProbe();
+            return;
+        }
+        if (stallSpinnerShown) return;
+        if (System.currentTimeMillis() - lastTextDeltaMs.get() < textStallMs) return;
+        stallSpinnerShown = true;
+        uiInvoker.accept(() -> {
+            // Re-check on the UI thread: a delta may have landed while this task
+            // was queued, in which case noteTextAdvanced already cleared the flag.
+            if (!stallSpinnerShown || !textVisible) return;
+            if (!spinner.isTurnClockActive()) return;
+            if (!spinner.isSpinning()) spinner.start(spinner.getCurrentVerb());
+        });
+    }
+
+    private static void cancel(ScheduledFuture<?> probe) {
+        if (probe != null) probe.cancel(false);
     }
 
     /** Consume the pending thinking window, returning its elapsed ms (0 if none). */
