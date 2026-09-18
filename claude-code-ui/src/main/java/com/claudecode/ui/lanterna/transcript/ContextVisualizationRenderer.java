@@ -11,10 +11,7 @@ import com.googlecode.lanterna.TextColor;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
@@ -274,7 +271,7 @@ public final class ContextVisualizationRenderer {
         for (String source : SOURCE_DISPLAY_ORDER) {
             List<T> group = groups.remove(source);
             if (group != null) {
-                group.sort((a, b) -> Long.compare(tokensOf.applyAsLong(b), tokensOf.applyAsLong(a)));
+                group.sort(Comparator.comparingLong((T a) -> tokensOf.applyAsLong(a)).reversed());
                 ordered.put(source, group);
             }
         }

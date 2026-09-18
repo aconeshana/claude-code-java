@@ -36,6 +36,7 @@ import java.text.BreakIterator;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -389,7 +390,7 @@ public class SessionSelectorDialog extends BasicWindow {
         for (var entry : byGroup.entrySet()) {
             List<DisplayEntry> list = entry.getValue();
             // Sort by lastModified descending (newest first).
-            list.sort((a, b) -> Long.compare(b.info().lastModified(), a.info().lastModified()));
+            list.sort(Comparator.comparingLong((com.claudecode.ui.lanterna.dialog.SessionSelectorDialog.DisplayEntry a) -> a.info().lastModified()).reversed());
             if (list.size() == 1) {
                 groups.add(new SessionGroup(entry.getKey(), list.getFirst(), List.of(), false));
             } else {

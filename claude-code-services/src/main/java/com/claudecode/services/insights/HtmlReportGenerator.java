@@ -12,6 +12,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -148,7 +149,7 @@ public final class HtmlReportGenerator {
                 .toList();
         } else {
             List<Map.Entry<String, Long>> sorted = new ArrayList<>(source.entrySet());
-            sorted.sort((a, b) -> Long.compare(valueOf(b.getValue()), valueOf(a.getValue())));
+            sorted.sort(Comparator.comparingLong((java.util.Map.Entry<java.lang.String, java.lang.Long> a) -> valueOf(a.getValue())).reversed());
             entries = List.copyOf(sorted.subList(0, Math.min(maxItems, sorted.size())));
         }
 

@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -316,7 +317,7 @@ final class ContextTimelineFold {
             iterator.remove();
         }
         if (!removed.isEmpty()) {
-            removed.sort((a, b) -> Long.compare(a.seq, b.seq));
+            removed.sort(Comparator.comparingLong((com.claudecode.gateway.ContextTimelineFold.Node a) -> a.seq));
             long goneSeq = pendingBoundarySeq != null ? pendingBoundarySeq : allocate();
             long goneTime = pendingBoundaryTime != null ? pendingBoundaryTime
                 : System.currentTimeMillis();
@@ -939,7 +940,7 @@ final class ContextTimelineFold {
         node.put("toolCalls", toolCalls);
         ObjectNode tools = node.putObject("tools");
         toolTotals.entrySet().stream()
-            .sorted((a, b) -> Long.compare(b.getValue().ms, a.getValue().ms))
+            .sorted(Comparator.comparingLong((java.util.Map.Entry<java.lang.String, com.claudecode.gateway.ContextTimelineFold.ToolTotals> a) -> a.getValue().ms).reversed())
             .limit(16)
             .forEach(entry -> {
                 ObjectNode row = tools.putObject(entry.getKey());

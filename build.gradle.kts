@@ -130,6 +130,7 @@ subprojects {
             "org.openrewrite.staticanalysis.RemoveRedundantNullCheckBeforeLiteralEquals",
             "com.claudecode.recipes.ReplaceAnonymousClassWithLambdaSafely",
             "com.claudecode.recipes.ReplaceLambdaWithMethodReferenceSafely",
+            "com.claudecode.recipes.UseComparatorComparingSafely",
             "org.openrewrite.staticanalysis.UnnecessaryCloseInTryWithResources",
             "org.openrewrite.staticanalysis.UnnecessaryPrimitiveAnnotations",
             "org.openrewrite.staticanalysis.UnnecessaryReturnAsLastStatement",

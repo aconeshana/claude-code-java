@@ -20,10 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -397,7 +394,7 @@ public final class InsightsGenerator {
         ArrayNode result = JsonUtils.getMapper().createArrayNode();
         if (counts == null) return result;
         counts.entrySet().stream()
-            .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+            .sorted(Comparator.comparingLong((java.util.Map.Entry<java.lang.String, java.lang.Long> a) -> a.getValue()).reversed())
             .limit(limit)
             .forEach(e -> {
                 ArrayNode pair = result.addArray();

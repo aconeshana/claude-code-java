@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -131,7 +132,7 @@ public final class FileSuggestionService {
             if (score >= 0) matches.add(Map.entry(file, score));
         }
         if (cancelled.getAsBoolean()) return List.of();
-        matches.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        matches.sort(Comparator.comparingInt((java.util.Map.Entry<java.lang.String, java.lang.Integer> a) -> a.getValue()).reversed());
         return matches.stream().limit(SuggestionPanel.MAX_VISIBLE)
             .map(e -> new SuggestionPanel.Suggestion(e.getKey(), "", "+"))
             .toList();
