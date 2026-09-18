@@ -78,6 +78,21 @@ class SessionEventHubTest {
     }
 
     @Test
+    void isolatesPrimaryFailureAndStillNotifiesObservers() {
+        List<String> calls = new ArrayList<>();
+        RuntimeException primaryFailure = new RuntimeException("render blew up");
+        SessionEventHub hub = new SessionEventHub(
+            new ThrowingSink(primaryFailure),
+            failure -> calls.add("failure:" + failure.getMessage()));
+        hub.subscribe(new RecordingSink("remote", calls));
+
+        assertDoesNotThrow(() -> hub.onMessage(new SDKMessage.System(
+            new SystemMessage("m1", "status", "info", "ready"))));
+
+        assertEquals(List.of("failure:render blew up", "remote:message"), calls);
+    }
+
+    @Test
     void isolatesFailureReporterFailureAndContinuesFanOut() {
         List<String> calls = new ArrayList<>();
         SessionEventHub hub = new SessionEventHub(

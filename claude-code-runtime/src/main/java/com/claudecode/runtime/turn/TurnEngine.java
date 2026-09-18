@@ -387,6 +387,7 @@ public final class TurnEngine {
     // ── Turn body ───────────────────────────────────────────────────────────────
 
     private void runTurn(UserInput input, SubmitOptions opts, long startMs) {
+        int renderFailures = 0;
         try {
             Iterator<SDKMessage> messages = queryEngine.submission()
                 .submitMessage(input.queryContent(), opts);
@@ -401,14 +402,68 @@ public final class TurnEngine {
                         log.debug("[TURN] msg: {}", msg.getClass().getSimpleName());
                     }
                 }
-                sink.onMessage(msg);
+                renderFailures = deliver(msg, renderFailures);
             }
         } catch (Exception e) {
             boolean isUserCancel = isUserCancel();
-            if (!isUserCancel) log.debug("Query error", e);
+            if (!isUserCancel) log.warn("Query error", e);
             notifyError(e, isUserCancel);
+        } catch (StackOverflowError | LinkageError | AssertionError fatal) {
+            // Not reachable through `catch (Exception)`. A native-image build surfaces
+            // a missing reflection/resource registration as a LinkageError, so on the
+            // native binary this arm is the difference between a reported failure and
+            // a turn that silently stops updating the screen.
+            log.error("Turn aborted by a non-Exception failure", fatal);
+            notifyError(fatal, false);
         } finally {
+            if (renderFailures > 0) {
+                log.warn("Turn finished with {} message(s) the sink failed to render",
+                    renderFailures);
+            }
             completeTurn(startMs);
+        }
+    }
+
+    /**
+     * Hands one message to the sink, keeping a rendering failure out of the query
+     * path's {@code catch}.
+     *
+     * <p>The pump drains an iterator fed by the query loop on another thread. If a
+     * sink failure escaped here it would leave the {@code while} loop and run
+     * {@code completeTurn}: the UI would stop the spinner and freeze the transcript
+     * while the query loop kept producing messages into a queue nobody reads — a
+     * turn that is still running but invisible. A sink that cannot render one
+     * message is never a reason to stop reading the rest, so failures are logged
+     * and the message is dropped.
+     *
+     * <p>Interruption still propagates: cancelling a turn must not be mistaken for
+     * a rendering bug. {@link LinkageError} and {@link AssertionError} are treated
+     * as rendering failures rather than fatal ones because on a native-image build
+     * a missing reflection or resource registration in the render path arrives as a
+     * {@code LinkageError}; letting it end the pump is exactly the invisible-turn
+     * failure this method exists to prevent. {@link OutOfMemoryError} and the other
+     * {@link VirtualMachineError}s are not caught — those the JVM cannot continue past.
+     *
+     * @return the running failure count, used to log a per-turn summary and to keep
+     *         a sink that fails on every message from flooding the log with stacks
+     */
+    private int deliver(SDKMessage msg, int priorFailures) {
+        try {
+            sink.onMessage(msg);
+            return priorFailures;
+        } catch (RuntimeException | StackOverflowError | LinkageError
+                 | AssertionError renderFailure) {
+            if (Thread.currentThread().isInterrupted()) throw renderFailure;
+            int failures = priorFailures + 1;
+            String type = msg.getClass().getSimpleName();
+            if (failures == 1) {
+                log.error("Session sink failed to render {}; dropping it and continuing the turn",
+                    type, renderFailure);
+            } else {
+                log.warn("Session sink failed to render {} ({} failures this turn): {}",
+                    type, failures, renderFailure.toString());
+            }
+            return failures;
         }
     }
 

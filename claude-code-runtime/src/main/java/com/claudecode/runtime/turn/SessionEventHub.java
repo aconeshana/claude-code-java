@@ -75,7 +75,7 @@ public final class SessionEventHub implements SessionSink {
     @Override
     public void onTurnStart(UserInput input) {
         synchronized (lock) {
-            primary.onTurnStart(input);
+            notifyPrimary(sink -> sink.onTurnStart(input));
             replay.clear();
             publishAndRecord(sink -> sink.onTurnStart(input));
         }
@@ -84,7 +84,7 @@ public final class SessionEventHub implements SessionSink {
     @Override
     public void onMessage(SDKMessage msg) {
         synchronized (lock) {
-            primary.onMessage(msg);
+            notifyPrimary(sink -> sink.onMessage(msg));
             publishAndRecord(sink -> sink.onMessage(msg));
         }
     }
@@ -92,7 +92,7 @@ public final class SessionEventHub implements SessionSink {
     @Override
     public void onError(Throwable error, boolean userCancel) {
         synchronized (lock) {
-            primary.onError(error, userCancel);
+            notifyPrimary(sink -> sink.onError(error, userCancel));
             publishAndRecord(sink -> sink.onError(error, userCancel));
         }
     }
@@ -100,7 +100,7 @@ public final class SessionEventHub implements SessionSink {
     @Override
     public void onTurnComplete(TurnOutcome outcome) {
         synchronized (lock) {
-            primary.onTurnComplete(outcome);
+            notifyPrimary(sink -> sink.onTurnComplete(outcome));
             publishAndRecord(sink -> sink.onTurnComplete(outcome));
         }
     }
@@ -108,7 +108,7 @@ public final class SessionEventHub implements SessionSink {
     @Override
     public void onIdle() {
         synchronized (lock) {
-            primary.onIdle();
+            notifyPrimary(SessionSink::onIdle);
             publish(SessionSink::onIdle);
         }
     }
@@ -131,15 +131,46 @@ public final class SessionEventHub implements SessionSink {
         }
     }
 
+    /**
+     * Runs one callback against {@link #primary}, isolating its failure the same way
+     * {@link #notifyObserver} isolates an observer's: a broken render sink must not
+     * abort the turn's message loop (it would silently detach every remaining message
+     * this turn — for the primary *and* every observer, since {@link #publishAndRecord}
+     * runs after this call) nor propagate out of the hub uncaught.
+     */
+    private void notifyPrimary(Consumer<SessionSink> callback) {
+        try {
+            callback.accept(primary);
+        } catch (RuntimeException failure) {
+            log.error("Session primary sink failed; turn continues, observers still notified",
+                failure);
+            report(failure);
+        } catch (StackOverflowError | LinkageError | AssertionError failure) {
+            // A native-image build reports a missing reflection or resource
+            // registration as a LinkageError, which `catch (RuntimeException)` misses.
+            // It is only reportable through the log: observerFailure takes a
+            // RuntimeException and wrapping would misrepresent the cause's type.
+            log.error("Session primary sink failed with a non-Exception error; turn continues",
+                failure);
+        }
+    }
+
     private void notifyObserver(SessionSink observer, Consumer<SessionSink> callback) {
         try {
             callback.accept(observer);
         } catch (RuntimeException failure) {
-            try {
-                observerFailure.accept(failure);
-            } catch (RuntimeException reportingFailure) {
-                log.warn("Session observer failure reporter also failed", reportingFailure);
-            }
+            report(failure);
+        } catch (StackOverflowError | LinkageError | AssertionError failure) {
+            log.error("Session observer failed with a non-Exception error; delivery continues",
+                failure);
+        }
+    }
+
+    private void report(RuntimeException failure) {
+        try {
+            observerFailure.accept(failure);
+        } catch (RuntimeException reportingFailure) {
+            log.warn("Session sink failure reporter also failed", reportingFailure);
         }
     }
 

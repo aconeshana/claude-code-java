@@ -70,12 +70,16 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Shared helpers for the query turn loop, used by the production {@code QueryLoop} so the loop
  * cannot drift.
  */
 final class QueryHelpers {
+
+    private static final Logger log = LoggerFactory.getLogger(QueryHelpers.class);
 
     private QueryHelpers() {}
 
@@ -316,9 +320,14 @@ final class QueryHelpers {
                     && Objects.equals(cmd.agentId(), myAgentId);
 
         List<QueuedCommand> drained = queue.dequeueAllMatching(filter);
+        if (!drained.isEmpty()) {
+            log.info("Mid-turn queue drain agentId={} took={} remaining={} modes={}",
+                myAgentId, drained.size(), queue.snapshot().size(),
+                drained.stream().map(QueuedCommand::mode).toList());
+        }
         for (QueuedCommand cmd : drained) {
-// SDK orphaned-permission replay: re-execute the tool_use with the out-of-band
-// permission decision.
+            // SDK orphaned-permission replay: re-execute the tool_use with the out-of-band
+            // permission decision.
             if (Strings.CS.equals("orphaned-permission", cmd.mode()) && cmd.orphanedPermission() != null) {
                 OrphanedPermissionExecutor.execute(cmd.orphanedPermission(), engine, emit);
                 continue;
@@ -450,8 +459,8 @@ final class QueryHelpers {
             String model, List<? extends Message> leadingMessages,
             List<StreamingClient.StreamRequest.ToolDef> availableToolDefinitions) {
 
-      // Initial Agent/MCP/Skill inventory attachments are created after the first user
-// message and persist in the typed transcript.
+        // Initial Agent/MCP/Skill inventory attachments are created after the first user
+        // message and persist in the typed transcript.
         List<Message> promotedLeading = new ArrayList<>(leadingMessages);
         List<Message> conversationForNormalization = new ArrayList<>(conversationMessages.size());
         boolean beforeFirstAssistant = true;
@@ -876,8 +885,6 @@ final class QueryHelpers {
     // ------------------------------------------------------------------------
 
     public static String resolveRuntimeModel(DefaultQuerySession engine) {
-
-
         // Resolve aliases (opus/sonnet/…) to concrete ids, matching
         // ModelNames.parseUserSpecifiedModel used for the model setting.
         String override = engine.getModelOverride();
