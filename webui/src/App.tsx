@@ -16,6 +16,7 @@ import { ApprovalCard } from './views/ApprovalCard'
 import { ChatView } from './views/ChatView'
 import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
+import { QuestionCard } from './views/QuestionCard'
 import { Sidebar } from './views/Sidebar'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
@@ -102,7 +103,30 @@ export function App() {
         transcript={<ChatView conversation={conversation} />}
         composer={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {visibleAsk != null && (
+            {visibleAsk != null && (visibleAsk.questions?.length ?? 0) > 0 && (
+              <QuestionCard
+                key={visibleAsk.request_id}
+                ask={visibleAsk}
+                onSubmit={async (ask, updatedInput) => {
+                  const { respondPermission } = await import('./api/client')
+                  await respondPermission({
+                    request_id: ask.request_id,
+                    session_id: ask.session_id,
+                    allowed: true,
+                    updated_input: updatedInput,
+                  })
+                }}
+                onCancel={async (ask) => {
+                  const { respondPermission } = await import('./api/client')
+                  await respondPermission({
+                    request_id: ask.request_id,
+                    session_id: ask.session_id,
+                    allowed: false,
+                  })
+                }}
+              />
+            )}
+            {visibleAsk != null && (visibleAsk.questions?.length ?? 0) === 0 && (
               <ApprovalCard
                 ask={visibleAsk}
                 onDecision={async (ask, allowed) => {

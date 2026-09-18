@@ -208,6 +208,7 @@ export interface PermissionQuestionOption {
 export interface PermissionQuestion {
   readonly question: string
   readonly header?: string
+  readonly multi_select?: boolean
   readonly options: readonly PermissionQuestionOption[]
 }
 

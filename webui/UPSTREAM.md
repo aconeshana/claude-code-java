@@ -15,6 +15,7 @@ cordis/Typert RPC).
 | `vendor/ui-primitives/` | `packages/client/ui-primitives/src/` | Full package source; already cordis-free upstream (runtime deps are public npm packages only) |
 | `vendor/dsh-composer-menu/` | `packages/client/ui-input-trigger/` + `ui-commands/` | The composer "+" menu — see the section below |
 | `vendor/dsh-stats-pills/` | `packages/client/ui-chat/` | The composer session-stat pills + the turn-tail usage/time pills — see the section below |
+| `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
 
@@ -303,6 +304,84 @@ is a genuinely-supported backend field being wired up, not new backend work.
   not warrant its own vendor file here; it lives in the already-vendored
   `ToolRow.module.css` and both `ReasoningRow.tsx` and `ToolCallRow.tsx`
   import it from there.
+
+### `vendor/dsh-user-questions/` — the `AskUserQuestion` answer card
+
+The gateway's `AskUserQuestionTool` was already projecting `questions`
+(`question`/`header`/`multi_select`/`options[].label/.description`) into the
+`permission.asked` frame and already accepted `updated_input` on respond —
+the webui simply had no renderer for it and fell through to the generic
+`ApprovalCard`, which `JSON.stringify`s any non-command/path tool input.
+Vendored from `packages/client/ui-user-questions/src/client/QuestionComposer.tsx`
++ `QuestionComposer.module.css`:
+
+| File here | Upstream source | Notes |
+|-----------|----------------|-------|
+| `QuestionComposer.module.css` | `QuestionComposer.module.css` | Kept verbatim except three cuts: `.cardMinimized`/`.cardMinimized .header` (the minimize toggle is deferred, see below), `.detail` (`AskUserQuestion` never sends a `detail` field), and `.customBlock`/`.customBlock:focus-within` (the optionless-question block variant — `AskUserQuestionTool.parseQuestions()` always requires 2-4 options, so that branch never fires). All consumed `--dsw-*`/`--dsh-*` tokens resolve in the already-vendored `theme/styles/design-platform.css` — the same pair `ApprovalPanel.module.css` already draws from. |
+| `src/views/QuestionCard.tsx` | `QuestionComposer.tsx`'s `QuestionFlow` | The pager state machine (index + per-question `{selected, custom, skipped}` drafts), single-select auto-advance, multi-select checkbox toggling, the inline auto-growing `AnswerField` (hidden mirror `<div>` + `textarea` sharing one grid cell), `parseRecommendedLabel()`'s `(recommended)`/`（推荐）` suffix parsing for the badge, the skip-per-question and cancel-whole-ask buttons, and the IME-aware (`isComposing`) Enter-to-continue handling are all ported line-for-line. |
+
+Product-scope deviations (documented, not gaps):
+
+- **No Cordis Slot store.** Upstream keeps drafts in a Session-scoped Slot
+  store (`useStore`/`actions.replace`/`actions.clear`) so a strict-mode
+  remount of the composer entry restores the in-flight draft. This app has
+  no such session-level slot infrastructure and, at any time, at most one
+  `PermissionAsk` is pending per session — `QuestionCard` keeps drafts in
+  local `useState` instead, and `App.tsx` mounts it with
+  `key={visibleAsk.request_id}` so a new ask (a different `request_id`)
+  gets a fresh draft rather than reusing stale state.
+- **No `PlanReviewPanel` routing.** Upstream's `QuestionComposer` router
+  dispatches to a plan-review presentation when `planReviewOf(questions)`
+  detects an `exit_plan_mode`-style single-decision contract. This
+  project's `AskUserQuestionTool` has no such contract, so the router and
+  `PlanReviewPanel` are not ported — every ask renders as `QuestionFlow`.
+- **No composer-takeover global routing.** Upstream's `QuestionComposer` is
+  registered into a cordis slot that takes over the whole composer seat.
+  `QuestionCard` instead mounts at the exact spot `ApprovalCard` already
+  occupies in `App.tsx`'s composer column, branching on whether
+  `visibleAsk.questions` is non-empty.
+- **No minimize/collapse toggle.** Upstream's header carries a
+  minimize button that collapses the card to its title strip
+  (`cardMinimized`, Session-persisted). Deferred for this pass — not
+  required to fix the underlying bug (being unable to select/submit
+  answers at all) and can be added later without touching the answer
+  contract.
+- **No `question.detail` / `MarkdownText` rendering.** `AskUserQuestionTool`
+  never populates a `detail` field on a question, so that upstream branch
+  (and its `MarkdownText` dependency) is not ported.
+- **No i18n `t()` dictionary.** Upstream localizes every label through a
+  `t()` function backed by a dictionary. This app hardcodes the (small,
+  fixed) set of Chinese strings directly, matching the neighboring
+  `ApprovalCard.tsx`, which does the same.
+- **No option `preview`/design-variant rendering.** Upstream's design-variant
+  card (`isDesignVariant`) shows a preview pane fed by `option.preview`.
+  `GatewayInteractionPresenter.putQuestions()` only ever projects
+  `label`/`description` — `preview` is a TUI-only field — so the plain-list
+  card is the only variant this project renders, and `annotations` in the
+  submitted `updated_input` is always an empty object (there is never a
+  `preview`/`notes` value to carry).
+- **The recommended-suffix strip is applied to the submitted answer text,
+  not just the badge.** Upstream's `choose()` stores the *raw* option label
+  (including any `(recommended)`/`（推荐）` suffix) as the selected value, so
+  the suffix can leak into its own submitted answer. `QuestionCard` tracks
+  selection by option **index** instead of by label (avoiding any
+  duplicate-label ambiguity) and formats the final answer text from
+  `parseRecommendedLabel(...).label` — the badge and the submitted text
+  both use the stripped label, so the model never receives its own
+  redundant marker back.
+- **Answer-string join rule mirrors the TUI, not upstream's structured
+  payload.** Upstream's `pending.answer()` takes a structured
+  `{answers: [{id, selected, custom?}]}` shape over its own RPC contract.
+  This gateway's `AskUserQuestionTool.buildAnswerInput()` expects `answers`
+  keyed by question text with a single joined string value (and always
+  writes `annotations`, even empty) — `QuestionCard` builds that string
+  with the same join rule as the TUI's `AnswerSubmission.listAnswer()`
+  (selected labels joined by `, `, a custom answer appended after a comma
+  if both are present, or standing alone if there is no selection), and
+  a question that is neither answered nor explicitly skipped blocks
+  submission (`completed()`), matching the TUI's requirement that every
+  question resolve to either an answer or an explicit skip before the ask
+  can go out.
 
 ### Product-scope deviations (settings & schedule)
 
