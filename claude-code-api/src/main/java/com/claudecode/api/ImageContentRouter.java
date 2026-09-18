@@ -5,6 +5,8 @@ import com.claudecode.core.message.TextBlock;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,13 +28,31 @@ import java.util.Objects;
  * array and nested inside {@code tool_result.content} (Read and MCP tools return
  * images there), in both Map and Jackson {@code JsonNode} shapes.
  *
+ * <p>Captions are memoized in an {@link ImageCaptionCache} supplied by the caller
+ * and keyed by image content, because the rewrite only applies to the wire copy:
+ * the session history keeps the original image blocks, so an uncached router
+ * re-describes the entire history's images on every single turn. Reuse buys both
+ * the obvious latency saving and prompt-cache stability, since a re-described
+ * image yields different words every turn and invalidates the main endpoint's
+ * cache from the image's position onwards.
+ *
+ * <p><b>Sequence-label constraint.</b> Only the model's raw description is
+ * cached, never the assembled block. The {@code [n of m]} suffix produced by
+ * {@link CaptionCounter} numbers images by their order <em>within the current
+ * request</em>; caching the assembled text would pin whichever suffix the image
+ * happened to get the first time and make it wrong (and unstable) in later
+ * requests. So on a cache hit the description is reused verbatim while the suffix
+ * is regenerated from this request's counter.
+ *
  * <p>The router is deliberately conservative: any failure while captioning leaves
  * the original image block in place, so a misconfigured image model degrades to
  * the pre-existing behavior (the endpoint's own error) instead of failing the
- * whole turn locally.
+ * whole turn locally. Failures are never cached — the next turn retries.
  */
 @Explanation("Image captioning fallback for text-only custom endpoints")
 final class ImageContentRouter {
+
+    private static final Logger log = LoggerFactory.getLogger(ImageContentRouter.class);
 
     private ImageContentRouter() {}
 
@@ -43,6 +63,7 @@ final class ImageContentRouter {
      * Rewrites the request's messages when the target endpoint rejects images and an
      * image-capable model is configured.
      *
+     * @param captionCache caption memo shared across requests; must not be null
      * @return the rewritten messages, or the original list when no rewrite is needed
      *         or captioning failed
      */
@@ -50,23 +71,29 @@ final class ImageContentRouter {
             List<CreateMessageRequest.RequestMessage> messages,
             boolean targetAcceptsImages,
             ImageEndpoint imageEndpoint,
-            String imageModelName) {
+            String imageModelName,
+            ImageCaptionCache captionCache) {
         if (targetAcceptsImages || imageModelName == null || StringUtils.isBlank(imageModelName)) {
             return messages;
         }
         if (imageEndpoint == null || !imageEndpoint.acceptsImages()) return messages;
         if (!containsImageBlock(messages)) return messages;
-        LlmClient imageClient = imageEndpoint.client();
         int totalImages = countImageBlocks(messages);
-        CaptionCounter counter = new CaptionCounter(totalImages);
+        long routeStart = System.nanoTime();
+        log.info("[image-diag] captioning {} image block(s) via {} before the text-only request",
+            totalImages, imageModelName);
+        CaptionContext context = new CaptionContext(imageEndpoint.client(), imageModelName,
+            Objects.requireNonNull(captionCache, "captionCache"),
+            new CaptionCounter(totalImages));
         List<CreateMessageRequest.RequestMessage> rewritten = new ArrayList<>(messages.size());
         boolean changed = false;
         for (CreateMessageRequest.RequestMessage message : messages) {
-            CreateMessageRequest.RequestMessage converted =
-                convertMessage(message, imageClient, imageModelName, counter);
+            CreateMessageRequest.RequestMessage converted = convertMessage(message, context);
             rewritten.add(converted);
             if (converted != message) changed = true;
         }
+        log.info("[image-diag] captioning done: images={} changed={} totalMs={}",
+            totalImages, changed, (System.nanoTime() - routeStart) / 1_000_000L);
         return changed ? rewritten : messages;
     }
 
@@ -76,6 +103,14 @@ final class ImageContentRouter {
             return new ImageEndpoint(client, false);
         }
     }
+
+    /**
+     * Everything one captioning pass needs: where to send images, how to label the
+     * resulting blocks, and where previously described images are remembered. The
+     * counter is request-scoped mutable state; the cache outlives the request.
+     */
+    private record CaptionContext(
+        LlmClient client, String modelName, ImageCaptionCache cache, CaptionCounter counter) {}
 
     /** Numbers captions across the whole request so the model can tell images apart. */
     private static final class CaptionCounter {
@@ -107,10 +142,9 @@ final class ImageContentRouter {
 
     /** Message-level conversion: swaps image blocks for caption text blocks. */
     private static CreateMessageRequest.RequestMessage convertMessage(
-            CreateMessageRequest.RequestMessage message,
-            LlmClient imageClient, String imageModelName, CaptionCounter counter) {
+            CreateMessageRequest.RequestMessage message, CaptionContext context) {
         Object content = message.content();
-        Object converted = convertContent(content, imageClient, imageModelName, counter);
+        Object converted = convertContent(content, context);
         if (converted != content) {
             return new CreateMessageRequest.RequestMessage(message.role(), converted);
         }
@@ -121,23 +155,21 @@ final class ImageContentRouter {
      * Converts one content value (a block list, a JSON block array, or a plain
      * string); returns the original reference when nothing was captioned.
      */
-    private static Object convertContent(Object content,
-            LlmClient imageClient, String imageModelName, CaptionCounter counter) {
+    private static Object convertContent(Object content, CaptionContext context) {
         if (content instanceof List<?> blocks) {
-            return convertListBlocks(blocks, imageClient, imageModelName, counter);
+            return convertListBlocks(blocks, context);
         }
         if (content instanceof JsonNode node && node.isArray()) {
-            return convertJsonBlocks(node, imageClient, imageModelName, counter);
+            return convertJsonBlocks(node, context);
         }
         return content;
     }
 
-    private static Object convertListBlocks(List<?> blocks,
-            LlmClient imageClient, String imageModelName, CaptionCounter counter) {
+    private static Object convertListBlocks(List<?> blocks, CaptionContext context) {
         List<Object> converted = null;
         for (int i = 0; i < blocks.size(); i++) {
             Object block = blocks.get(i);
-            Object replacement = replaceBlock(block, imageClient, imageModelName, counter);
+            Object replacement = replaceBlock(block, context);
             if (replacement != null) {
                 if (converted == null) converted = new ArrayList<>(blocks);
                 converted.set(i, replacement);
@@ -146,12 +178,11 @@ final class ImageContentRouter {
         return converted != null ? converted : blocks;
     }
 
-    private static Object convertJsonBlocks(JsonNode array,
-            LlmClient imageClient, String imageModelName, CaptionCounter counter) {
+    private static Object convertJsonBlocks(JsonNode array, CaptionContext context) {
         List<Object> converted = null;
         for (int i = 0; i < array.size(); i++) {
             JsonNode block = array.get(i);
-            Object replacement = replaceBlock(block, imageClient, imageModelName, counter);
+            Object replacement = replaceBlock(block, context);
             if (replacement != null) {
                 if (converted == null) {
                     converted = new ArrayList<>(array.size());
@@ -170,16 +201,14 @@ final class ImageContentRouter {
      * captioned directly; a tool_result's inner content array is converted
      * recursively so nested images are captioned too.
      */
-    private static Object replaceBlock(Object block,
-            LlmClient imageClient, String imageModelName, CaptionCounter counter) {
+    private static Object replaceBlock(Object block, CaptionContext context) {
         if (block instanceof Map<?, ?> map) {
             if (isImageBlock(map)) {
-                return captionBlock(map, imageClient, imageModelName, counter);
+                return captionBlock(map, context);
             }
             Object inner = map.get("content");
             if (isToolResultBlock(map) && inner instanceof List<?> innerBlocks) {
-                Object convertedInner =
-                    convertListBlocks(innerBlocks, imageClient, imageModelName, counter);
+                Object convertedInner = convertListBlocks(innerBlocks, context);
                 if (convertedInner != inner) {
                     Map<String, Object> copy = new LinkedHashMap<>();
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -194,13 +223,12 @@ final class ImageContentRouter {
         }
         if (block instanceof JsonNode node && node.isObject()) {
             if (isImageBlock(node)) {
-                return captionBlock(node, imageClient, imageModelName, counter);
+                return captionBlock(node, context);
             }
             JsonNode inner = node.path("content");
             if (Strings.CS.equals("tool_result", node.path("type").asText(null))
                     && inner.isArray()) {
-                Object convertedInner =
-                    convertJsonBlocks(inner, imageClient, imageModelName, counter);
+                Object convertedInner = convertJsonBlocks(inner, context);
                 if (convertedInner != inner) {
                     return convertedInner;
                 }
@@ -282,28 +310,54 @@ final class ImageContentRouter {
     }
 
     /**
-     * Sends one image block to the image model and wraps its description in a
-     * text block; returns {@code null} on any failure (keep the original block).
+     * Reuses this image's remembered description, or sends the image to the image
+     * model once and remembers the result; returns {@code null} on any failure
+     * (keep the original block, and do not remember the failure).
      */
-    private static Object captionBlock(Object imageBlock,
-                                       LlmClient imageClient, String imageModelName,
-                                       CaptionCounter counter) {
+    private static Object captionBlock(Object imageBlock, CaptionContext context) {
+        long start = System.nanoTime();
         try {
             Object source = sourceOf(imageBlock);
             if (source == null) return null;
-            CreateMessageRequest captionRequest = captionRequest(source, imageModelName);
-            ApiMessage described = imageClient.createMessage(captionRequest, 60_000L);
+            String cacheKey = ImageCaptionCache.keyFor(source, context.modelName());
+            String remembered = context.cache().get(cacheKey);
+            if (remembered != null) {
+                log.info("[image-diag] caption cache hit ({} chars) — image request skipped",
+                    remembered.length());
+                return captionTextBlock(remembered, context);
+            }
+            CreateMessageRequest captionRequest = captionRequest(source, context.modelName());
+            ApiMessage described = context.client().createMessage(captionRequest, 60_000L);
             String text = extractText(described);
-            if (StringUtils.isBlank(text)) return null;
-            Map<String, Object> replacement = new LinkedHashMap<>();
-            replacement.put("type", "text");
-            replacement.put("text",
-                CAPTIONED_IMAGE_PREFIX + imageModelName + "]" + counter.label() + ":\n"
-                    + text.trim());
-            return replacement;
-        } catch (RuntimeException _) {
+            if (StringUtils.isBlank(text)) {
+                log.warn("[image-diag] caption returned no text after {}ms — keeping raw image",
+                    (System.nanoTime() - start) / 1_000_000L);
+                return null;
+            }
+            log.info("[image-diag] caption ok in {}ms ({} chars)",
+                (System.nanoTime() - start) / 1_000_000L, text.length());
+            String caption = text.trim();
+            context.cache().put(cacheKey, caption);
+            return captionTextBlock(caption, context);
+        } catch (RuntimeException e) {
+            log.warn("[image-diag] caption failed after {}ms — keeping raw image: {}",
+                (System.nanoTime() - start) / 1_000_000L, e.toString());
             return null;
         }
+    }
+
+    /**
+     * Assembles the placeholder text block. The sequence suffix is taken from this
+     * request's counter — see the class comment: it must never be cached with the
+     * description, or the same image would carry a stale position in later requests.
+     */
+    private static Map<String, Object> captionTextBlock(String caption, CaptionContext context) {
+        Map<String, Object> replacement = new LinkedHashMap<>();
+        replacement.put("type", "text");
+        replacement.put("text",
+            CAPTIONED_IMAGE_PREFIX + context.modelName() + "]" + context.counter().label() + ":\n"
+                + caption);
+        return replacement;
     }
 
     private static Object sourceOf(Object imageBlock) {

@@ -17,7 +17,7 @@ import java.util.Locale;
 
 /**
  * Routes each request to the protocol client configured for its model name.
- *
+ * <p>
  * Supports user-defined Anthropic, Chat Completions, and Responses endpoints.
  * An effort-specific 400/422 retries once without effort and caches that
  * endpoint decision. Tagged model IDs retain their client-side context
@@ -31,6 +31,12 @@ public final class CustomModelRoutingClient implements LlmClient {
     private final Supplier<String> imageModelName;
     private final ConcurrentHashMap<CustomModelConfig, LlmClient> clients = new ConcurrentHashMap<>();
     private final Set<CustomModelConfig> effortUnsupported = ConcurrentHashMap.newKeySet();
+    /**
+     * Captions survive for the life of the routing client: the rewrite applies to
+     * the wire copy only, so without reuse every turn re-describes the whole
+     * history's images. Shared by all requests, hence the cache's own locking.
+     */
+    private final ImageCaptionCache captionCache = new ImageCaptionCache();
 
     public CustomModelRoutingClient(
             LlmClient fallback,
@@ -158,7 +164,7 @@ public final class CustomModelRoutingClient implements LlmClient {
         }
         if (StringUtils.isBlank(imageModel)) return request;
         List<CreateMessageRequest.RequestMessage> rewritten = ImageContentRouter.routeImages(
-            request.messages(), false, resolveImageEndpoint(imageModel), imageModel);
+            request.messages(), false, resolveImageEndpoint(imageModel), imageModel, captionCache);
         if (rewritten == request.messages()) return request;
         return CreateMessageRequest.builder()
             .model(request.model())
