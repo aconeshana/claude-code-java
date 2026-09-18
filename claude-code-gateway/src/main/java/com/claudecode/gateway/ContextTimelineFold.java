@@ -32,11 +32,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -116,7 +118,7 @@ final class ContextTimelineFold {
         Pattern.compile("</?system-reminder>", Pattern.CASE_INSENSITIVE);
 
     enum Category { USER, INJECT, SKILL, ASSISTANT, TOOL;
-        String wire() { return name().toLowerCase(java.util.Locale.ROOT); }
+        String wire() { return name().toLowerCase(Locale.ROOT); }
     }
 
     /** One model-visible message on the surface (dsh {@code SurfaceNode}). */
@@ -229,7 +231,7 @@ final class ContextTimelineFold {
     private long detailRev;
     private final Map<String, List<Node>> nodesByKey = new HashMap<>();
     private final List<Node> surface = new ArrayList<>();
-    private final Map<Category, Long> sums = new java.util.EnumMap<>(Category.class);
+    private final Map<Category, Long> sums = new EnumMap<>(Category.class);
     private final List<Node> archive = new ArrayList<>();
     private Long archiveFloor;
     private final List<RequestRecord> requests = new ArrayList<>();
@@ -465,9 +467,7 @@ final class ContextTimelineFold {
             ToolTotals totals = toolTotals.computeIfAbsent(call.name(), _ -> new ToolTotals());
             totals.calls += 1;
             totals.ms += duration;
-            for (FileOp op : fileOpsOf(node.seq, time, call.name(), call.input(), result.isError())) {
-                fileOps.add(op);
-            }
+            fileOps.addAll(fileOpsOf(node.seq, time, call.name(), call.input(), result.isError()));
             AgentRecord agent = agentsByCall.get(result.toolUseId());
             if (agent != null) settleAgent(agent, node, user.toolUseResult(), time, result.isError());
             if (Strings.CS.equals(call.name(), "Skill")) {
@@ -1211,7 +1211,7 @@ final class ContextTimelineFold {
      */
     static String reminderName(String text) {
         String body = stripReminder(text).strip();
-        String lower = body.toLowerCase(java.util.Locale.ROOT);
+        String lower = body.toLowerCase(Locale.ROOT);
         if (Strings.CS.contains(lower, "plan mode")) return "plan-mode";
         if (Strings.CS.contains(lower, "claude.md") || Strings.CS.contains(lower, "memory file")) return "memory";
         if (Strings.CS.contains(lower, "todo")) return "todo";

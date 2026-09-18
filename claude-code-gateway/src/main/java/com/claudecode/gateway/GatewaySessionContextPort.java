@@ -2,6 +2,7 @@ package com.claudecode.gateway;
 
 import com.claudecode.core.message.Message;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -106,7 +107,7 @@ public interface GatewaySessionContextPort {
     }
 
     /** One live (attached) session the context dashboard can list. */
-    record LiveSession(String id, String title, String cwd, java.time.Instant updatedAt) {}
+    record LiveSession(String id, String title, String cwd, Instant updatedAt) {}
 
     /** Result of one selection change: the refreshed state, or a rejection. */
     record SelectionResult(ModelSelection selection, String error) {

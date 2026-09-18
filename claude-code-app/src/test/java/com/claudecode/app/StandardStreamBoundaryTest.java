@@ -29,6 +29,7 @@ class StandardStreamBoundaryTest {
     private static final Set<String> ALLOWED_INTERACTIVE_CHILDREN = Set.of(
         "claude-code-commands/src/main/java/com/claudecode/commands/impl/context/MemoryCommand.java",
         "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/input/ExternalEditorLauncher.java",
+        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/input/PromptExternalEditor.java",
         "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/repl/LanternaReplScreen.java"
     );
     private static final Set<String> ALLOWED_CLI_COMPOSITION_ROOTS = Set.of(

@@ -6,7 +6,6 @@ import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskType;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox;
-import com.claudecode.ui.lanterna.components.HighlightedTextBox.Highlight;
 import com.claudecode.ui.lanterna.input.InputPanel.Mode;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.TerminalSize;

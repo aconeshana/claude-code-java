@@ -17,7 +17,9 @@ import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -100,7 +102,7 @@ class ContextTimelineLedgerTest {
 
     /** A port double whose live set is exactly the ids it holds rows for. */
     private static final class MultiPort implements GatewaySessionContextPort {
-        final java.util.Map<String, List<Message>> rows = new java.util.HashMap<>();
+        final Map<String, List<Message>> rows = new HashMap<>();
 
         @Override public Optional<List<Message>> messages(String sessionId) {
             return Optional.ofNullable(rows.get(sessionId));

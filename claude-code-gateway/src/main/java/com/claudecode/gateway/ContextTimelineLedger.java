@@ -11,6 +11,7 @@ import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashMap;
@@ -406,7 +407,7 @@ public final class ContextTimelineLedger {
             if (tool.inputSchema() != null) {
                 try {
                     chars += JsonUtils.getMapper().writeValueAsString(tool.inputSchema()).length();
-                } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException _) {
+                } catch (RuntimeException | JsonProcessingException _) {
                     // Unserializable schema: priced by name and description only.
                 }
             }

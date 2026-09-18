@@ -1088,7 +1088,7 @@ final class CliInteractiveSessionRunner {
      * first-party built-in.
      */
     private static String toolSource(String toolName) {
-        if (toolName == null || !toolName.startsWith("mcp__")) return "builtin";
+        if (toolName == null || !Strings.CS.startsWith(toolName, "mcp__")) return "builtin";
         String rest = toolName.substring("mcp__".length());
         int split = rest.indexOf("__");
         return "mcp:" + (split > 0 ? rest.substring(0, split) : rest);

@@ -7,6 +7,7 @@ import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * The horizontal rules framing the prompt: a top divider that can carry a
@@ -72,7 +73,7 @@ final class PromptDividers {
 
     /** Applies a {@code /color} name; null, {@code default} or an unknown name restores the default. */
     void setSessionColor(String colorName) {
-        sessionColor = colorName == null || "default".equals(colorName)
+        sessionColor = colorName == null || Strings.CS.equals("default", colorName)
             ? null : LanternaTheme.agentColor(colorName);
         render();
     }

@@ -323,7 +323,7 @@ class ModelPickerDialogTest {
         d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true));
         d.draw(backing);
         List<String> withoutNotice = imageRows(image);
-        assertTrue(withoutNotice.stream().anyMatch(row -> row.contains("#")),
+        assertTrue(withoutNotice.stream().anyMatch(row -> Strings.CS.contains(row, "#")),
             "precondition: an un-notified arrow move trusts its retained frame");
 
         image.newTextGraphics().fill('#');
@@ -331,10 +331,10 @@ class ModelPickerDialogTest {
         d.draw(backing);
         List<String> repainted = imageRows(image);
 
-        assertTrue(repainted.stream().noneMatch(row -> row.contains("#")),
+        assertTrue(repainted.stream().noneMatch(row -> Strings.CS.contains(row, "#")),
             "after a backdrop repaint the picker must own every one of its cells again");
         assertEquals(complete.size(), repainted.size());
-        assertTrue(repainted.stream().anyMatch(row -> row.contains("Switch between")),
+        assertTrue(repainted.stream().anyMatch(row -> Strings.CS.contains(row, "Switch between")),
             "the header row is part of the complete frame");
     }
 
