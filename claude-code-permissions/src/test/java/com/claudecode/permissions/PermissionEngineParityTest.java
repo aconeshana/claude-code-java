@@ -19,6 +19,16 @@ class PermissionEngineParityTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private PermissionEngine engine;
 
+    /**
+     * Working directory for the cases that need a real file on disk. It must be a
+     * temporary directory rather than a path inside the project: the earlier
+     * version wrote into the gitignored {@code claude-code-permissions/target/}
+     * without creating it, so these cases passed only on a tree that already had
+     * build leftovers and failed on every fresh checkout.
+     */
+    @TempDir
+    private Path workDir;
+
     @BeforeEach
     void setUp() {
         engine = new PermissionEngine();
@@ -33,24 +43,25 @@ class PermissionEngineParityTest {
     // Finding 1: content (path) rules are bucketed by the canonical file-tool name
     // (FILE_EDIT_TOOL_NAME="Edit" / FILE_READ_TOOL_NAME="Read"). An "Edit(...)" rule
     // must also match Write / NotebookEdit invocations. Only content rules bucket —
-    // a bare rule keeps strict name matching. The file is created so the safety gate
+    // a bare rule keeps strict name matching.
 
     @Test
     void editBucketRuleAllowsWriteAndNotebookEditTools() throws Exception {
-        // Existing files in the project dir (not /tmp) so the safety gate, which
-
-
-        // file matcher roots relative path rules at it; a literal "." would make
+        // The working directory must be absolute and symlink-resolved: the file
+        // matcher roots relative path rules at it; a literal "." would make
         // isWithin(candidate, ".") fail and the allow rule would never fire.
-        Path cwd = Path.of(".").toAbsolutePath().normalize();
-        Path rel = cwd.resolve("target/perm-rel.txt");
+        // The rule keeps a nested pattern so the relative match spans a directory
+        // separator rather than a bare file name.
+        Path cwd = workDir.toRealPath();
+        Path rel = cwd.resolve("nested/perm-rel.txt");
+        Files.createDirectories(rel.getParent());
         Files.writeString(rel, "x");
 
         ToolPermissionContext ctx = ToolPermissionContext.builder()
             .workingDirectory(cwd)
             .mode(PermissionMode.DEFAULT)
             .rules(List.of(PermissionRule.withPattern("Edit", PermissionBehavior.ALLOW,
-                RuleSource.SESSION, "target/perm-rel.txt")))
+                RuleSource.SESSION, "nested/perm-rel.txt")))
             .build();
         // Write / NotebookEdit in DEFAULT mode are not auto-allowed inside the WD,
         // so Allow can only come from the Edit-bucket rule matching these tools.
@@ -240,17 +251,21 @@ class PermissionEngineParityTest {
     }
 
 
-    // fetches rules by the canonical "Edit" bucket name, never "Write".
+    // Finding 1, inverse direction: the bucket is one-way. A "Write(...)" rule must
+    // NOT allow an Edit invocation, because the lookup always fetches rules by the
+    // canonical "Edit" bucket name, never "Write".
     @Test
     void writeRuleDoesNotMatchEditTool() throws Exception {
-        Path rel = Path.of("target", "perm-rel.txt");
+        Path cwd = workDir.toRealPath();
+        Path rel = cwd.resolve("nested/perm-rel.txt");
+        Files.createDirectories(rel.getParent());
         Files.writeString(rel, "x");
 
         ToolPermissionContext ctx = ToolPermissionContext.builder()
-            .workingDirectory(Path.of("."))
+            .workingDirectory(cwd)
             .mode(PermissionMode.DEFAULT)
             .rules(List.of(PermissionRule.withPattern("Write", PermissionBehavior.ALLOW,
-                RuleSource.SESSION, "target/perm-rel.txt")))
+                RuleSource.SESSION, "nested/perm-rel.txt")))
             .build();
         assertInstanceOf(PermissionDecision.Ask.class,
             engine.evaluateDetailed("Edit", input("file_path", rel.toString()), ctx).decision());
