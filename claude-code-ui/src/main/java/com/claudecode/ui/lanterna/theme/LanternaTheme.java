@@ -167,6 +167,14 @@ public final class LanternaTheme {
     public static TextColor clawdBody()       { return toLC(theme().clawd_body()); }
     public static TextColor clawdBackground() { return toLC(theme().clawd_background()); }
 
+    /**
+     * Cyan accent for the footer's background-task summary pill (e.g. {@code "1 shell"}).
+     * The upstream theme field is literally named {@code background} — a naming trap, since
+     * it means "background *task*" accent, not the terminal background color; that role is
+     * {@link #clawdBackground()}.
+     */
+    public static TextColor backgroundTaskAccent() { return toLC(theme().background()); }
+
 // ── Permission mode hint colors ───────────────────────────────────────.
     public static TextColor bypassRed()    { return toLC(theme().error()); }
     public static TextColor autoYellow()   { return toLC(theme().warning()); }

@@ -24,7 +24,7 @@ import com.googlecode.lanterna.gui2.Panel;
  */
 final class TasksPill {
 
-    /** Summary pill text; dim, REVERSE while selected. Empty = hidden. */
+    /** Summary pill text; cyan accent, REVERSE while selected. Empty = hidden. */
     private final Label pillLabel = new Label("");
     /** Dynamic multi-agent pill row; the summary pill is inserted here when needed. */
     private final Panel pillsPanel =
@@ -59,7 +59,7 @@ final class TasksPill {
             setTextIfChanged(hintLabel, "");
             return;
         }
-        pillLabel.setForegroundColor(LanternaTheme.welcomeDim());
+        pillLabel.setForegroundColor(LanternaTheme.backgroundTaskAccent());
         if (pill.selected() || latch.hovered()) pillLabel.addStyle(SGR.REVERSE);
         else pillLabel.removeStyle(SGR.REVERSE);
         setTextIfChanged(pillLabel, pill.label());
