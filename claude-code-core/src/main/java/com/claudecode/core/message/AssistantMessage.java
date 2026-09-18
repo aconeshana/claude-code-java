@@ -81,6 +81,13 @@ public record AssistantMessage(
         return "assistant";
     }
 
+    /** Replaces the content envelope, keeping uuid, attribution and error metadata intact. */
+    public AssistantMessage withMessage(AssistantContent replacement) {
+        return new AssistantMessage(uuid, replacement, isApiErrorMessage, parentUuidValue,
+            timestampValue, attributionSkill, attributionPlugin, attributionMcpServer,
+            attributionMcpTool, apiError, error, isVirtual, requestId, advisorModel, isMeta);
+    }
+
     @Override
     public Optional<String> parentUuid() {
         return Optional.ofNullable(parentUuidValue);

@@ -80,6 +80,11 @@ public record AssistantContent(
             stopDetails);
     }
 
+    /** Replaces the blocks, keeping every envelope field — used by presentation projections. */
+    public AssistantContent withContent(List<ContentBlock> blocks) {
+        return new AssistantContent(id, blocks, usage, model, stopReason, stopSequence, stopDetails);
+    }
+
     /** Applies the final delta without dropping the response model or content. */
     public AssistantContent withFinalDelta(Usage finalUsage,
                                            String finalStopReason,

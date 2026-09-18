@@ -327,6 +327,49 @@ public class LanternaMessageDispatcher {
     }
 
     /**
+     * Records a tool invocation without painting a card. {@link MessageCollapser} folds read,
+     * search, shell and MCP calls into a single group row and strips their {@code tool_use} blocks
+     * from the assistant envelope, so this renderer never sees them — but the ledger still needs the
+     * name and input to attribute a result that escapes the group, e.g. because intervening text
+     * sealed it before the result arrived. Such a result gets a card painted on arrival
+     * ({@link #paintDeferredFoldedCard}) rather than an unattributed body at the bottom.
+     */
+    void recordFoldedInvocation(String toolUseId, String toolName, String inputJson) {
+        if (StringUtils.isBlank(toolUseId)) return;
+        PendingToolLedger.ToolInvocation invocation =
+            new PendingToolLedger.ToolInvocation(toolName, inputJson);
+        tools.recordInvocation(toolUseId, invocation);
+        foldedInvocations.put(toolUseId, invocation);
+    }
+
+    /**
+     * Paints the card of a folded call whose result the group never absorbed, so the body has a
+     * header to be filed under. Consumes the record, so a second result for the same id — a
+     * duplicate, or one the group did absorb — cannot paint a second card.
+     */
+    private PendingToolLedger.PendingTool paintDeferredFoldedCard(String toolUseId,
+                                                                 MessagePanel panel) {
+        PendingToolLedger.ToolInvocation invocation = foldedInvocations.remove(toolUseId);
+        if (invocation == null || panel == null) return null;
+        String toolName = invocation.toolName();
+        String argsJson = invocation.inputJson() == null ? "" : invocation.inputJson();
+        if (ToolVisualContractRegistry.hidesUse(toolName)
+                || ToolVisualContractRegistry.useView(toolName, argsJson, verbose).hidden()) {
+            return null;
+        }
+        if (stream.isOpen() || toolEmittedThisTurn || textRenderedThisTurn || !tools.isEmpty()) {
+            panel.appendLine("", TextColor.ANSI.DEFAULT);
+        }
+        int lineIdx = panel.snapshotLineCount();
+        panel.appendMixed(headers.dimToolSegs(toolName,
+            headers.toolArgsPart(toolName, argsJson),
+            headers.toolTagPart(toolName, argsJson, toolUseId), argsJson));
+        toolEmittedThisTurn = true;
+        return new PendingToolLedger.PendingTool(lineIdx, false, argsJson, toolName, -1,
+            tools.nextLogicalId(), toolUseId, null);
+    }
+
+    /**
      * Re-anchors every row index this renderer owns after rows were inserted or removed at
      * {@code start}. The collapsed Read/Search group is repainted in place by
      * {@link MessageCollapser}, and its finalized form is one row shorter than its in-flight
@@ -401,6 +444,13 @@ public class LanternaMessageDispatcher {
 
     /** Deepest tool-use chain a single fallback can withdraw; older anchors are dropped. */
     private static final int MAX_RETRACTION_ANCHORS = 256;
+
+    /**
+     * Folded calls whose card was deliberately not painted, keyed by {@code tool_use_id}. Emptied as
+     * results arrive: a group that absorbs its own results never consults it.
+     */
+    private final Map<String, PendingToolLedger.ToolInvocation> foldedInvocations =
+        new LinkedHashMap<>();
 
     /**
      * Notified when this dispatcher inserts rows in the middle of the panel, so an upstream
@@ -488,6 +538,7 @@ public class LanternaMessageDispatcher {
         presentationSnapshots.resetTurn();
         agents.resetTurn();
         retractionAnchors.clear();
+        foldedInvocations.clear();
         users.resetTurn();
     }
 
@@ -1110,6 +1161,7 @@ public class LanternaMessageDispatcher {
         // tool result; see StreamingTextRenderer#close).
         stream.closeIfOpen();
         PendingToolLedger.PendingTool pending = tools.remove(result.toolUseId());
+        if (pending == null) pending = paintDeferredFoldedCard(result.toolUseId(), panel);
         int replaceLine = -1;
         if (pending != null && !pending.transparent()) {
             replaceLine = pending.statusLineIdx();

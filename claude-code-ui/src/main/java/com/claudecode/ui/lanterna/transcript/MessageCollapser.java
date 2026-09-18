@@ -11,6 +11,7 @@ import com.claudecode.core.constants.Figures;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
+import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.tools.mcp.McpCollapseClassifier;
@@ -42,9 +43,9 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 
 /**
- * Projects a run of consecutive read/search, MCP, and thinking messages onto a single collapsed
- * group line plus an optional {@code ⎿} detail row, replacing the per-tool transcript entries the
- * dispatcher would otherwise emit.
+ * Projects a run of consecutive read/search, shell, MCP, and thinking messages onto a single
+ * collapsed group line plus an optional {@code ⎿} detail row, replacing the per-tool transcript
+ * entries the dispatcher would otherwise emit.
  *
  * <ul>
  *   <li>Covers {@code src/components/messages/CollapsedToolUseGroup.tsx} — the collapsed
@@ -64,11 +65,22 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
  *       segment ahead of every count part; {@code DCh} is the one-second live clock; {@code G0h}
  *       holds the summary {@code egw = 3000} ms past its reset; and {@code ngw} clamps the summary
  *       row to {@code tgw = 10} wrapped lines at {@code width - u7i} columns.</li>
+ *   <li><b>Shell folding is also 236, not 197.</b> {@code ZxS} admits Bash and PowerShell into the
+ *       group, so a turn that thinks while it works renders as one
+ *       {@code Thinking for 3m 46s, reading 3 files, running 2 shell commands…} line. {@code VBp}'s
+ *       branch chain is if/else-if, so a shell command counts once: {@code bashCount} unless
+ *       {@link CollapsedShellCommand} classifies it as pure list, search, or read builtins, in which
+ *       case it joins that count instead. The header renders
+ *       {@code Z = max(0, bashCount - gitOpBashCount)} so a git commit/push is described by its
+ *       badge rather than counted twice. {@code je} capitalizes only the leading segment, whichever
+ *       it is, and {@code MCh} appends a dim {@code " · 4s"} once a call has been in flight for two
+ *       seconds. All five counts are latched through {@code useRef}/{@code Math.max} so the header
+ *       never counts down as results land.</li>
  * </ul>
  *
  * <p>236's {@code isLiveBriefTurn} has no Java counterpart and is treated as constantly false, and
- * its {@code Ps()} fullscreen gate on the live clock is treated as constantly true because this
- * Lanterna TUI is always fullscreen-equivalent.
+ * its {@code Ps()} fullscreen gate — which also gates the shell segment — is treated as constantly
+ * true because this Lanterna TUI is always fullscreen-equivalent.
  *
  * <p>The group row is repainted in place, and its settled form is one row shorter than its
  * in-flight form, so every row below it moves. React reorders a message list and has nothing to
@@ -127,6 +139,14 @@ public class MessageCollapser {
     private int readOperationCount = 0;
     private final Deque<String> unresolvedToolIds = new ArrayDeque<>();
     private final Map<String, String> collapsedToolNamesById = new LinkedHashMap<>();
+    /**
+     * Ids of collapsible tools whose {@code tool_streaming_start} this group swallowed. The stream
+     * emits the single-block assistant envelope on {@code content_block_stop}, i.e. one event
+     * <em>before</em> {@code tool_streaming_done} folds the call, so at envelope time
+     * {@link #collapsedToolNamesById} does not know the id yet. Without this set the envelope paints
+     * a full card next to the group row for every folded call.
+     */
+    private final Set<String> streamedFoldableToolIds = new LinkedHashSet<>();
     private long collapsedToolSequence;
     private boolean collapsedGroupHasError;
 
@@ -138,6 +158,29 @@ public class MessageCollapser {
     private int                  memoryWriteCount  = 0;
     private int                  searchCount       = 0;  // Grep/Glob pattern searches
     private int                  listCount         = 0;  // LS calls (split from readSearchRun for active-form phrasing)
+
+    // ── Shell commands in the group (2.1.236) ────────────────────────────────
+
+    /** 236's {@code bashCount}: Bash/PowerShell calls that were not read/search/list commands. */
+    private int bashCount = 0;
+    /** 236's {@code gitOpBashCount}, subtracted from {@code bashCount} — the git badge shows it. */
+    private int gitOpBashCount = 0;
+
+    /**
+     * 236's {@code Math.max} refs ({@code C}, {@code k}, {@code A}, {@code R}, {@code P}): the
+     * header's counts are latched so a repaint can never show fewer than it did a moment ago, which
+     * is what the reducer's set-based read count would otherwise do when a path repeats.
+     */
+    private int latchedReadCount   = 0;
+    private int latchedSearchCount = 0;
+    private int latchedListCount   = 0;
+    private int latchedMcpCount    = 0;
+    private int latchedBashCount   = 0;
+
+    /** 236's {@code MCh} anchor: when the group's oldest unresolved tool call started. */
+    private long inFlightSinceMs = 0;
+    /** 236's {@code MCh} floor — below two seconds the elapsed suffix renders nothing. */
+    private static final long ELAPSED_SUFFIX_MIN_MS = 2_000;
 
     // ── Thinking projection (2.1.236) ────────────────────────────────────────
 
@@ -235,7 +278,8 @@ public class MessageCollapser {
     }
 
     /**
-     * Build present-continuous summary for the currently-running tool group.
+     * Build present-continuous summary for the currently-running tool group, in 236's renderer order
+     * — search, read, list, MCP, shell, then the memory segments, which trail rather than lead.
      */
     public String buildActiveGroupPhrase() {
         if ((readSearchRun > 0 || mcpCallCount > 0)
@@ -243,14 +287,6 @@ public class MessageCollapser {
             return "";
         }
         List<String> parts = new ArrayList<>();
-        if (memoryReadCount > 0) {
-            parts.add("recalling " + memoryReadCount + " "
-                + (memoryReadCount == 1 ? "memory" : "memories"));
-        }
-        if (memoryWriteCount > 0) {
-            parts.add("writing " + memoryWriteCount + " "
-                + (memoryWriteCount == 1 ? "memory" : "memories"));
-        }
         if (searchCount > 0) {
             parts.add("searching for " + searchCount + " pattern" + (searchCount > 1 ? "s" : ""));
         }
@@ -267,15 +303,20 @@ public class MessageCollapser {
             parts.add("calling " + srv + (mcpCallCount > 1
                 ? " " + mcpCallCount + " times" : ""));
         }
+        int shellCount = Math.max(0, bashCount - gitOpBashCount);
+        if (shellCount > 0) {
+            parts.add("running " + shellCount + " shell command" + (shellCount > 1 ? "s" : ""));
+        }
+        if (memoryReadCount > 0) {
+            parts.add("recalling " + memoryReadCount + " "
+                + (memoryReadCount == 1 ? "memory" : "memories"));
+        }
+        if (memoryWriteCount > 0) {
+            parts.add("writing " + memoryWriteCount + " "
+                + (memoryWriteCount == 1 ? "memory" : "memories"));
+        }
         if (parts.isEmpty() && lastNonReadSearchToolName != null) {
-            if (Strings.CS.equals("Bash", lastNonReadSearchToolName) && lastBashCommand != null) {
-                String c = lastBashCommand.length() > 50
-                    ? FormatUtils.truncate(lastBashCommand, 50)
-                    : lastBashCommand;
-                parts.add("running $ " + c);
-            } else {
-                parts.add("running " + lastNonReadSearchToolName);
-            }
+            parts.add("running " + lastNonReadSearchToolName);
         }
         if (parts.isEmpty()) return "";
         String joined = String.join(", ", parts);
@@ -285,6 +326,7 @@ public class MessageCollapser {
 
     public void resetTurn() {
         flushPending(null);
+        streamedFoldableToolIds.clear();
         downstream.resetTurn();
     }
 
@@ -321,6 +363,11 @@ public class MessageCollapser {
                     if (Strings.CS.equals("tool_streaming_done", et)) {
                         handleToolCallStart(new SDKMessage.StreamEvent(
                             "tool_call_start", info), panel);
+                    } else {
+                        String[] parts = info.split("\\|", 3);
+                        if (parts.length > 1 && !parts[1].isBlank()) {
+                            streamedFoldableToolIds.add(parts[1]);
+                        }
                     }
                     return;
                 }
@@ -352,6 +399,14 @@ public class MessageCollapser {
             return;
         }
 
+        // Messages the transcript renders as nothing must not seal the group. RawStreamEvent is
+        // emitted once per SSE frame for lossless stream-json consumers, so letting it reach
+        // flushPending() below closes the collapsed run between every two folded calls — the live
+        // symptom was one singleton group row per tool instead of one accumulating row.
+        if (isTranscriptInert(message)) {
+            return;
+        }
+
         // 236 tracks the previous message's timestamp across the whole transcript walk; the Δ a
         // thinking block contributes is measured against whatever came before it.
         Instant previousAt = previousMessageAt;
@@ -365,7 +420,8 @@ public class MessageCollapser {
         // not seal the active projection before their real results arrive.
         if (message instanceof SDKMessage.Assistant assistant) {
             absorbThinking(assistant, previousAt, panel);
-            downstream.dispatch(message, panel);
+            SDKMessage.Assistant projected = withoutFoldedToolUses(assistant);
+            if (projected != null) downstream.dispatch(projected, panel);
             return;
         }
 
@@ -379,6 +435,18 @@ public class MessageCollapser {
     }
 
     // ── Thinking projection ─────────────────────────────────────────────────
+
+    /**
+     * Whether {@link LanternaMessageDispatcher#dispatch} paints nothing for this message, so
+     * forwarding it is a no-op and flushing the collapsed group for it is pure damage.
+     *
+     * <p>Only mid-stream carriers belong here. Turn-boundary messages such as
+     * {@code Result} are also render-inert but arrive when sealing the group is correct anyway.
+     */
+    private static boolean isTranscriptInert(SDKMessage message) {
+        return message instanceof SDKMessage.RawStreamEvent
+            || message instanceof SDKMessage.ToolUseSummary;
+    }
 
     /** 236's {@code se}: whether the group has anything thinking-related to show. */
     private boolean hasThinking() {
@@ -410,8 +478,44 @@ public class MessageCollapser {
         renderCollapsedGroup(panel, true);
     }
 
-    /** 236's {@code XxS}: only {@code content[0]}, and only when the thinking text is non-blank. */
-    private static String leadingThinkingText(SDKMessage.Assistant assistant) {
+    /**
+     * Removes the {@code tool_use} blocks this group already folded from the assistant envelope, so
+     * the group row is their only trace. 236's projection replaces those messages outright; here the
+     * envelope arrives after the streamed calls and would otherwise paint a second, redundant card
+     * per folded tool — a shell call being the worst case, since its output is inside the group and
+     * the card would render with no body at all.
+     *
+     * @return the original message when nothing was folded, a copy without the folded blocks, or
+     *     {@code null} when the envelope carried nothing else and should not be dispatched.
+     */
+    private SDKMessage.Assistant withoutFoldedToolUses(SDKMessage.Assistant assistant) {
+        AssistantMessage envelope = assistant.message();
+        if (envelope == null || envelope.message() == null) return assistant;
+        List<ContentBlock> content = envelope.message().content();
+        if (content == null || content.isEmpty()) return assistant;
+
+        List<ContentBlock> kept = content.stream()
+            .filter(block -> !(block instanceof ToolUseBlock tool && isFolded(tool)))
+            .toList();
+        if (kept.size() == content.size()) return assistant;
+
+        content.stream()
+            .filter(ToolUseBlock.class::isInstance).map(ToolUseBlock.class::cast)
+            .filter(this::isFolded)
+            .forEach(tool -> downstream.recordFoldedInvocation(tool.id(), tool.name(),
+                tool.input() == null ? "{}" : tool.input().toString()));
+        if (kept.isEmpty()) return null;
+        return new SDKMessage.Assistant(
+            envelope.withMessage(envelope.message().withContent(kept)), assistant.usage());
+    }
+
+    private boolean isFolded(ToolUseBlock tool) {
+        return tool.id() != null
+            && (collapsedToolNamesById.containsKey(tool.id())
+                || streamedFoldableToolIds.contains(tool.id()));
+    }
+
+    /** 236's {@code XxS}: only {@code content[0]}, and only when the thinking text is non-blank. */    private static String leadingThinkingText(SDKMessage.Assistant assistant) {
         AssistantMessage envelope = assistant.message();
         if (envelope == null || envelope.message() == null) return null;
         List<ContentBlock> content = envelope.message().content();
@@ -517,6 +621,12 @@ public class MessageCollapser {
             return;
         }
 
+        if (CollapsedShellCommand.isShellTool(toolName)) {
+            absorbShellCommand(toolName, toolUseId, argsJson, event, panel);
+            emitPhrase();
+            return;
+        }
+
         if (READ_SEARCH_TOOLS.contains(toolName)) {
             readSearchMessages.add(event);
             // Accumulate into the read/search run.
@@ -561,16 +671,62 @@ public class MessageCollapser {
             }
             renderCollapsedGroup(panel, true);
         } else {
-            // Non-read-search, non-MCP tool: flush any accumulated run first.
+            // Non-read-search, non-MCP tool: flush any accumulated run first. Bash and PowerShell
+            // never arrive here — they fold into the group above, which is also where their command
+            // is remembered for git-operation detection.
             flushReadSearchRun(panel);
-            // Track Bash commands for git operation detection.
-            if (Strings.CS.equals("Bash", toolName)) {
-                lastBashCommand = extractJsonString(argsJson, "command");
-            }
             lastNonReadSearchToolName = toolName;
             pendingToolMessages.add(event);
         }
         emitPhrase();
+    }
+
+    /**
+     * Folds one Bash/PowerShell call into the collapsed group, following 236's reducer branch chain
+     * — {@code isBash} before {@code isList} before {@code isSearch} before the read fallback, so a
+     * command that is both a search and a read counts once, as a search. Only the shell-command and
+     * list branches store a hint; a search's hint slot is reserved for a {@code pattern} argument
+     * the shell tools do not have, so the previous hint survives.
+     */
+    private void absorbShellCommand(String toolName, String toolUseId, String argsJson,
+            SDKMessage.StreamEvent event, MessagePanel panel) {
+        String command = extractJsonString(argsJson, "command");
+        CollapsedShellCommand.Kind kind = CollapsedShellCommand.classify(toolName, command);
+        readSearchMessages.add(event);
+        trackCollapsedTool(toolUseId, toolName);
+        // readSearchRun is the group's liveness counter, not a rendered count — every folded tool
+        // call bumps it so the result handler and the flush guards see the group.
+        readSearchRun++;
+        lastBashCommand = command;
+        if (!kind.readSearchLike()) {
+            bashCount++;
+            String hint = CollapsedShellCommand.displayHint(command);
+            if (hint != null) latestDisplayHint = hint;
+        } else if (kind.list()) {
+            listCount++;
+            String hint = CollapsedShellCommand.preview(command);
+            if (hint != null) latestDisplayHint = hint;
+        } else if (kind.search()) {
+            searchCount++;
+        } else {
+            readOperationCount++;
+            String hint = CollapsedShellCommand.preview(command);
+            if (hint != null) latestDisplayHint = hint;
+        }
+        renderCollapsedGroup(panel, true);
+    }
+
+    /**
+     * Runs the git-operation detection for a folded shell result. 236 keeps the git operations out
+     * of the shell-command count — {@code Z = max(0, bashCount - gitOpBashCount)} — because they
+     * render as their own "committed"/"pushed to" segments instead.
+     */
+    private void absorbShellResult(String result) {
+        if (lastBashCommand == null) return;
+        boolean hadGitOp = buildGitBadge() != null;
+        detectAndStoreGitOp(lastBashCommand, result);
+        if (!hadGitOp && buildGitBadge() != null) gitOpBashCount++;
+        lastBashCommand = null;
     }
 
     private void handleToolResult(SDKMessage.StreamEvent event, MessagePanel panel) {
@@ -580,6 +736,7 @@ public class MessageCollapser {
         String result   = pipe > 0 ? info.substring(pipe + 1) : "";
 
         if (readSearchRun > 0) {
+            if (CollapsedShellCommand.isShellTool(toolName)) absorbShellResult(result);
             readSearchMessages.add(event);
             resolveCollapsedTool(toolName);
             if (Strings.CS.equals("tool_result_error", event.eventType())) {
@@ -666,6 +823,14 @@ public class MessageCollapser {
         readSearchRun    = 0;
         searchCount      = 0;
         listCount        = 0;
+        bashCount        = 0;
+        gitOpBashCount   = 0;
+        latchedReadCount   = 0;
+        latchedSearchCount = 0;
+        latchedListCount   = 0;
+        latchedMcpCount    = 0;
+        latchedBashCount   = 0;
+        inFlightSinceMs  = 0;
         readFilePaths.clear();
         readOperationCount = 0;
         unresolvedToolIds.clear();
@@ -687,13 +852,9 @@ public class MessageCollapser {
         lastNonReadSearchToolName = null;
         activeRunLineIdx = -1;
         activeRunRowCount = 0;
-        gitCommitSha     = null;
-        gitCommitKind    = null;
-        gitPushBranch    = null;
-        gitMergeRef      = null;
-        gitMergeAction   = null;
-        gitPrNumber      = 0;
-        gitPrAction      = null;
+        // The git fields deliberately survive: a folded git Bash call sets them here, and
+        // flushPending() — which may run later, once the group has already been sealed — is what
+        // paints the badge and clears them.
         emitPhrase();
     }
 
@@ -717,6 +878,7 @@ public class MessageCollapser {
         String id = org.apache.commons.lang3.StringUtils.isBlank(toolUseId)
             ? "legacy-collapsed-" + (++collapsedToolSequence) : toolUseId;
         collapsedToolNamesById.put(id, toolName);
+        if (unresolvedToolIds.isEmpty()) inFlightSinceMs = clock.getAsLong();
         unresolvedToolIds.addLast(id);
     }
 
@@ -724,6 +886,15 @@ public class MessageCollapser {
         unresolvedToolIds.stream()
           .filter(id -> Strings.CS.equals(toolName, collapsedToolNamesById.get(id)))
           .findFirst().ifPresent(unresolvedToolIds::remove);
+        clearInFlightAnchorIfSettled();
+    }
+
+    /**
+     * 236 anchors the elapsed suffix at the oldest unresolved call, so the clock restarts rather
+     * than accumulating once the group briefly has nothing in flight.
+     */
+    private void clearInFlightAnchorIfSettled() {
+        if (unresolvedToolIds.isEmpty()) inFlightSinceMs = 0;
     }
 
     private boolean absorbCollapsedToolResults(SDKMessage.User user, MessagePanel panel) {
@@ -753,6 +924,7 @@ public class MessageCollapser {
             unresolvedToolIds.remove(result.toolUseId());
             collapsedGroupHasError |= result.isError();
         }
+        clearInFlightAnchorIfSettled();
         renderCollapsedGroup(panel, isCollapsedGroupActive());
         emitPhrase();
         return true;
@@ -818,56 +990,78 @@ public class MessageCollapser {
 
 // Each count-part's "first" flag is derived from its index in a runtime-built list, so the
 // leading part is not a compile-time constant.
-        record CountPart(String activeFirst, String active, String doneFirst,
-                String done, int count, String singular, String plural) {}
+        record CountPart(String active, String done, int count, String singular, String plural) {}
+        // 236's je() call order in the renderer: search, read, list, mcp, shell commands, then the
+        // memory parts. Only the segments this product has are present; 236's scratchpad, workshop,
+        // frame, REPL, agent, and generic "other tool" parts have no Java counterpart.
+        latchedSearchCount = Math.max(latchedSearchCount, searchCount);
+        latchedReadCount   = Math.max(latchedReadCount, regularReadCount());
+        latchedListCount   = Math.max(latchedListCount, listCount);
+        latchedMcpCount    = Math.max(latchedMcpCount, mcpCallCount);
+        latchedBashCount   = Math.max(latchedBashCount, bashCount);
+        int shellCount = Math.max(0, latchedBashCount - gitOpBashCount);
+
         List<CountPart> parts = new ArrayList<>();
-        if (memoryReadCount > 0) {
-            parts.add(new CountPart("Recalling", "Recalling", "Recalled", "Recalled",
-                memoryReadCount, "memory", "memories"));
+        if (latchedSearchCount > 0) {
+            parts.add(new CountPart("searching for", "searched for",
+                latchedSearchCount, "pattern", "patterns"));
         }
-        if (memoryWriteCount > 0) {
-            parts.add(new CountPart("Writing", "writing", "Wrote", "wrote",
-                memoryWriteCount, "memory", "memories"));
+        if (latchedReadCount > 0) {
+            parts.add(new CountPart("reading", "read", latchedReadCount, "file", "files"));
         }
-        if (searchCount > 0) {
-            parts.add(new CountPart("Searching for", "searching for",
-                "Searched for", "searched for", searchCount, "pattern", "patterns"));
-        }
-        int readCount = regularReadCount();
-        if (readCount > 0) {
-            parts.add(new CountPart("Reading", "reading", "Read", "read",
-                readCount, "file", "files"));
-        }
-        if (listCount > 0) {
-            parts.add(new CountPart("Listing", "listing", "Listed", "listed",
-                listCount, "directory", "directories"));
+        if (latchedListCount > 0) {
+            parts.add(new CountPart("listing", "listed",
+                latchedListCount, "directory", "directories"));
         }
         for (int i = 0; i < parts.size(); i++) {
             boolean first = i == 0 && !thinking;
             CountPart p = parts.get(i);
-            String verb = active
-                ? first ? p.activeFirst() : p.active()
-                : first ? p.doneFirst() : p.done();
-            appendCountPart(header, first, verb, p.count(),
-                p.count() == 1 ? p.singular() : p.plural(), color);
+            appendCountPart(header, first, capitalizeIf(first, active ? p.active() : p.done()),
+                p.count(), p.count() == 1 ? p.singular() : p.plural(), color);
         }
-        if (mcpCallCount > 0) {
+        if (latchedMcpCount > 0) {
             boolean first = parts.isEmpty() && !thinking;
             if (!first) header.add(new MessagePanel.Segment(", ", color));
             String serverLabel = mcpServerNames.isEmpty()
                 ? "MCP" : String.join(", ", mcpServerNames);
             header.add(new MessagePanel.Segment(
-                (active
-                    ? first ? "Calling " : "calling "
-                    : first ? "Called " : "called ") + serverLabel, color));
-            if (mcpCallCount > 1) {
+                capitalizeIf(first, active ? "calling " : "called ") + serverLabel, color));
+            if (latchedMcpCount > 1) {
                 header.add(new MessagePanel.Segment(" ", color));
-                header.add(new MessagePanel.Segment(Integer.toString(mcpCallCount),
+                header.add(new MessagePanel.Segment(Integer.toString(latchedMcpCount),
                     color, null, null, Set.of(SGR.BOLD)));
                 header.add(new MessagePanel.Segment(" times", color));
             }
         }
+        if (shellCount > 0) {
+            // 236's je("bash", …): "running 2 shell commands", the count emphasised, the noun not.
+            boolean first = parts.isEmpty() && latchedMcpCount == 0 && !thinking;
+            if (!first) header.add(new MessagePanel.Segment(", ", color));
+            header.add(new MessagePanel.Segment(
+                capitalizeIf(first, active ? "running " : "ran "), color));
+            header.add(new MessagePanel.Segment(Integer.toString(shellCount),
+                color, null, null, Set.of(SGR.BOLD)));
+            header.add(new MessagePanel.Segment(
+                " shell command" + (shellCount == 1 ? "" : "s"), color));
+        }
+        boolean memoryFirst = parts.isEmpty() && latchedMcpCount == 0 && shellCount == 0
+            && !thinking;
+        if (memoryReadCount > 0) {
+            appendCountPart(header, memoryFirst,
+                capitalizeIf(memoryFirst, active ? "recalling" : "recalled"),
+                memoryReadCount, memoryReadCount == 1 ? "memory" : "memories", color);
+            memoryFirst = false;
+        }
+        if (memoryWriteCount > 0) {
+            appendCountPart(header, memoryFirst,
+                capitalizeIf(memoryFirst, active ? "writing" : "wrote"),
+                memoryWriteCount, memoryWriteCount == 1 ? "memory" : "memories", color);
+        }
         if (active) header.add(new MessagePanel.Segment("…", color));
+        String elapsed = elapsedSuffix(active);
+        if (elapsed != null) {
+            header.add(new MessagePanel.Segment(elapsed, LanternaTheme.welcomeDim()));
+        }
         header.add(new MessagePanel.Segment(" ", color));
         header.add(new MessagePanel.Segment(
             KeybindingHints.expand(keybindingsStore), LanternaTheme.welcomeDim()));
@@ -881,14 +1075,38 @@ public class MessageCollapser {
             ? MessagePanel.truncateToLines(summary, summaryWidth(panel), SUMMARY_MAX_LINES)
             : latestDisplayHint;
         if (active && body != null) {
-            rows.add(List.of(
-                new MessagePanel.Segment(Figures.RESULT_PREFIX, LanternaTheme.welcomeDim()),
-                summary != null
-                    ? new MessagePanel.Segment(body, LanternaTheme.welcomeDim(), null, null,
-                        Set.of(SGR.ITALIC))
-                    : new MessagePanel.Segment(body, LanternaTheme.welcomeDim())));
+            // 236 renders the hint in a 5-column ⎿ gutter beside a column box, so a multi-line
+            // shell command's continuation lines sit under the first one rather than at column 0.
+            String[] lines = body.split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                rows.add(List.of(
+                    new MessagePanel.Segment(
+                        i == 0 ? Figures.RESULT_PREFIX : Figures.RESULT_INDENT,
+                        LanternaTheme.welcomeDim()),
+                    summary != null
+                        ? new MessagePanel.Segment(lines[i], LanternaTheme.welcomeDim(), null, null,
+                            Set.of(SGR.ITALIC))
+                        : new MessagePanel.Segment(lines[i], LanternaTheme.welcomeDim())));
+            }
         }
         return rows;
+    }
+
+    /** 236's {@code je}: only the leading segment is capitalized, whichever segment that is. */
+    private static String capitalizeIf(boolean first, String verb) {
+        return first && !verb.isEmpty()
+            ? Character.toUpperCase(verb.charAt(0)) + verb.substring(1) : verb;
+    }
+
+    /**
+     * 236's {@code MCh}: once the group's oldest unresolved call has been running two seconds, the
+     * header gains a dim {@code " · 4s"} suffix that ticks with the thinking clock.
+     */
+    private String elapsedSuffix(boolean active) {
+        if (!active || inFlightSinceMs == 0) return null;
+        long elapsed = clock.getAsLong() - inFlightSinceMs;
+        return elapsed < ELAPSED_SUFFIX_MIN_MS
+            ? null : " · " + FormatUtils.formatDuration(elapsed);
     }
 
     /** 236's {@code y - u7i}: the columns left once the {@code ⎿} gutter is subtracted. */
@@ -913,6 +1131,7 @@ public class MessageCollapser {
 
     private static boolean isCollapsibleTool(String toolName) {
         return READ_SEARCH_TOOLS.contains(toolName)
+            || CollapsedShellCommand.isShellTool(toolName)
             || McpCollapseClassifier.isCollapsible(toolName);
     }
 

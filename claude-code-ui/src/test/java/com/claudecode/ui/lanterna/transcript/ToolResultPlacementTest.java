@@ -73,25 +73,51 @@ class ToolResultPlacementTest {
     void filesAResultUnderItsCardEvenWhenALaterCardResolvedFirst() {
         MessagePanel panel = new MessagePanel();
         MessageCollapser collapser = collapser();
-        panel.appendLine("> read both", null);
+        panel.appendLine("> write three notes", null);
+
+        // Uncollapsible tools throughout: read/search/shell calls fold into the group row and get
+        // their card only if a result escapes it, which by construction happens in result order.
+        // Cards painted up front are what out-of-order completion can file a body under.
+        announceWrite(collapser, panel, "toolu_1", "/tmp/ccdiag/a.txt");
+        announceWrite(collapser, panel, "toolu_2", "/tmp/ccdiag/b.txt");
+        announceWrite(collapser, panel, "toolu_3", "/tmp/ccdiag/c.txt");
+
+        // Out-of-order completion: the last card resolves first, then the middle, then the first.
+        collapser.dispatch(new SDKMessage.User(textResult("toolu_3", "wrote c")), panel);
+        collapser.dispatch(new SDKMessage.User(textResult("toolu_2", "wrote b")), panel);
+        collapser.dispatch(new SDKMessage.User(textResult("toolu_1", "wrote a")), panel);
+
+        List<String> rows = rows(panel);
+        assertThat(indexOfRowContaining(rows, "wrote a"))
+            .isBetween(indexOfRowContaining(rows, "a.txt") + 1,
+                indexOfRowContaining(rows, "b.txt") - 1);
+        assertThat(indexOfRowContaining(rows, "wrote b"))
+            .isBetween(indexOfRowContaining(rows, "b.txt") + 1,
+                indexOfRowContaining(rows, "c.txt") - 1);
+        assertThat(indexOfRowContaining(rows, "wrote c"))
+            .isGreaterThan(indexOfRowContaining(rows, "c.txt"));
+    }
+
+    /**
+     * A folded call gets no card while the group owns it. When text seals the group before the
+     * result arrives, the result can no longer be absorbed — so the card is painted on arrival and
+     * the body files under it, instead of an unattributed body drifting to the bottom.
+     */
+    @Test
+    void paintsACardForAFoldedResultTheGroupCouldNoLongerAbsorb() {
+        MessagePanel panel = new MessagePanel();
+        MessageCollapser collapser = collapser();
+        panel.appendLine("> read one", null);
 
         announceRead(collapser, panel, "toolu_1", "/tmp/ccdiag/shot1.png");
         collapser.dispatch(new SDKMessage.StreamEvent("content_block_delta", "\n"), panel);
-        announceRead(collapser, panel, "toolu_2", "/tmp/ccdiag/shot2.png");
-        announceBash(collapser, panel, "toolu_3", "ls");
-
-        // Out-of-order completion: the last card resolves first, then the middle, then the first.
-        collapser.dispatch(new SDKMessage.User(textResult("toolu_3", "shot1.png")), panel);
-        collapser.dispatch(new SDKMessage.User(imageResult("toolu_2", 4_846_665L)), panel);
         collapser.dispatch(new SDKMessage.User(imageResult("toolu_1", 4_425_649L)), panel);
 
         List<String> rows = rows(panel);
+        assertThat(rows.stream().filter(row -> Strings.CS.contains(row, "shot1.png")).count())
+            .as("exactly one card, painted when the orphaned result arrived").isEqualTo(1);
         assertThat(indexOfRowContaining(rows, "Read image (4.2MB)"))
-            .isBetween(indexOfRowContaining(rows, "Read(/tmp/ccdiag/shot1.png)") + 1,
-                indexOfRowContaining(rows, "Read(/tmp/ccdiag/shot2.png)") - 1);
-        assertThat(indexOfRowContaining(rows, "Read image (4.6MB)"))
-            .isBetween(indexOfRowContaining(rows, "Read(/tmp/ccdiag/shot2.png)") + 1,
-                indexOfRowContaining(rows, "Bash(ls)") - 1);
+            .isGreaterThan(indexOfRowContaining(rows, "Read(/tmp/ccdiag/shot1.png)"));
     }
 
     @Test
@@ -176,6 +202,13 @@ class ToolResultPlacementTest {
                                      String toolUseId, String command) {
         ObjectNode input = JsonUtils.getMapper().createObjectNode().put("command", command);
         announce(collapser, panel, "Bash", toolUseId, input);
+    }
+
+    private static void announceWrite(MessageCollapser collapser, MessagePanel panel,
+                                      String toolUseId, String path) {
+        ObjectNode input = JsonUtils.getMapper().createObjectNode()
+            .put("file_path", path).put("content", "note");
+        announce(collapser, panel, "Write", toolUseId, input);
     }
 
     private static void announce(MessageCollapser collapser, MessagePanel panel, String toolName,
