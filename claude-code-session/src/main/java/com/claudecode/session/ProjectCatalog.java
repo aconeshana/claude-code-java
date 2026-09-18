@@ -233,6 +233,7 @@ public final class ProjectCatalog {
         Map<String, ProjectSessionRef> deduped = new LinkedHashMap<>();
         memory.values().stream()
             .flatMap(state -> state.sessions().stream())
+            .filter(ref -> !ref.info().archived())
             .sorted(Comparator.comparingLong(
                 (ProjectSessionRef ref) -> ref.info().lastModified()).reversed())
             .forEach(ref -> deduped.putIfAbsent(ref.info().id(), ref));
@@ -319,13 +320,13 @@ public final class ProjectCatalog {
         return new SessionInfo(cs.id(), cs.lastModifiedMs(),
             cs.createdAtMs() > 0 ? Instant.ofEpochMilli(cs.createdAtMs()) : null,
             cs.messageCount(), cs.summary(), cs.gitBranch(), cs.cwd(), cs.tag(),
-            cs.fileSize(), cs.customTitle(), cs.firstPrompt());
+            cs.fileSize(), cs.customTitle(), cs.firstPrompt(), cs.archived());
     }
 
     private static ProjectIndexSnapshot.CachedSession toCachedSession(SessionInfo s) {
         return new ProjectIndexSnapshot.CachedSession(s.id(), s.cwd(), s.lastModified(),
             s.createdAt() != null ? s.createdAt().toEpochMilli() : 0,
             s.messageCount(), s.summary(), s.gitBranch(), s.tag(),
-            s.customTitle(), s.firstPrompt(), s.fileSize());
+            s.customTitle(), s.firstPrompt(), s.fileSize(), s.archived());
     }
 }

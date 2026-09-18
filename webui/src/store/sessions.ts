@@ -1,5 +1,8 @@
 import { create } from 'zustand'
-import { closeHeadlessSession, fetchCatalog, openHeadlessSession } from '../api/client'
+import {
+  archiveSession as archiveSessionApi, closeHeadlessSession, deleteSession as deleteSessionApi,
+  fetchCatalog, forkSession as forkSessionApi, openHeadlessSession, renameSession as renameSessionApi,
+} from '../api/client'
 import type { CatalogProject } from '../api/types'
 import { useConversations } from './conversations'
 
@@ -29,6 +32,10 @@ export interface SessionsStore {
   openSession(sessionId: string, projectPath: string | null): Promise<void>
   createSession(projectPath: string | null): Promise<void>
   closeSession(sessionId: string): Promise<void>
+  renameSession(sessionId: string, title: string): Promise<void>
+  forkSession(sessionId: string, title?: string): Promise<void>
+  archiveSession(sessionId: string): Promise<void>
+  deleteSession(sessionId: string): Promise<void>
 }
 
 export const useSessions = create<SessionsStore>((set, get) => ({
@@ -100,6 +107,51 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   async closeSession(sessionId: string) {
     try {
       await closeHeadlessSession(sessionId)
+      await get().refresh()
+      if (get().selectedSessionId === sessionId) {
+        set({ selectedSessionId: null })
+        await get().selectActiveOrFirst()
+      }
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async renameSession(sessionId: string, title: string) {
+    try {
+      await renameSessionApi(sessionId, title)
+      await get().refresh()
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async forkSession(sessionId: string, title?: string) {
+    try {
+      const forked = await forkSessionApi(sessionId, title)
+      await get().refresh()
+      await get().select(forked.session_id)
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async archiveSession(sessionId: string) {
+    try {
+      await archiveSessionApi(sessionId)
+      await get().refresh()
+      if (get().selectedSessionId === sessionId) {
+        set({ selectedSessionId: null })
+        await get().selectActiveOrFirst()
+      }
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async deleteSession(sessionId: string) {
+    try {
+      await deleteSessionApi(sessionId)
       await get().refresh()
       if (get().selectedSessionId === sessionId) {
         set({ selectedSessionId: null })

@@ -1171,7 +1171,7 @@ public class SessionStorage {
         "permission-mode", "worktree-state", "attribution-snapshot",
         "speculation-accept", "file-history-snapshot",
         "marble-origami-commit", "marble-origami-snapshot", "queue-operation",
-        "parent-session");
+        "parent-session", "archived");
 
     /** Reusable metadata-row projection shared by both read paths. */
     private void collectContentReplacements(

@@ -60,7 +60,8 @@ public record ProjectIndexSnapshot(
         String tag,
         String customTitle,
         String firstPrompt,
-        long fileSize
+        long fileSize,
+        boolean archived
     ) {}
 
     public static ProjectIndexSnapshot empty() {

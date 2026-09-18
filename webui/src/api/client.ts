@@ -1,4 +1,4 @@
-import { ApiError, type CatalogProject, type CloseSessionResponse, type CommandsListing, type FlatSessionCatalog, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SettingsSnapshot, type SettingsTier, type UserContentBlock } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SettingsSnapshot, type SettingsTier, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -106,6 +106,26 @@ export function openHeadlessSession(sessionId: string | null, projectPath: strin
 
 export function closeHeadlessSession(sessionId: string): Promise<CloseSessionResponse> {
   return requestJson('POST', '/api/sessions/close', { session_id: sessionId })
+}
+
+/** POST /api/sessions/{id}/rename: renames one session in place. */
+export function renameSession(sessionId: string, title: string): Promise<RenameSessionResponse> {
+  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title })
+}
+
+/** POST /api/sessions/{id}/fork: forks one session at its last completed turn. */
+export function forkSession(sessionId: string, title?: string): Promise<ForkSessionResponse> {
+  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/fork`, title == null ? {} : { title })
+}
+
+/** POST /api/sessions/{id}/archive: one-way hide from every catalog view. */
+export function archiveSession(sessionId: string): Promise<ArchiveSessionResponse> {
+  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/archive`)
+}
+
+/** DELETE /api/sessions/{id}: permanently deletes a session's transcript. */
+export function deleteSession(sessionId: string): Promise<DeleteSessionResponse> {
+  return requestJson('DELETE', `/api/sessions/${encodeURIComponent(sessionId)}`)
 }
 
 export function respondPermission(request: RespondRequest): Promise<unknown> {

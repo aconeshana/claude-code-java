@@ -385,11 +385,12 @@ final class SessionCatalog {
                 && StringUtils.isBlank(cwd)) return Optional.empty();
         String gitBranch = firstNonBlank(lastString(tail, "gitBranch"), firstString(head, "gitBranch"));
         String tag = lastTypedString(tail, "tag", "tag");
+        boolean archived = Boolean.TRUE.equals(lastTypedBoolean(tail, "archived", "archived"));
         long mtime = candidate.mtime() > 0 ? candidate.mtime() : lite.mtime();
         long ctime = candidate.ctime() > 0 ? candidate.ctime() : lite.ctime();
         Instant createdAt = parseInstant(firstString(head, "timestamp"), ctime);
         SessionInfo info = new SessionInfo(candidate.sessionId(), mtime, createdAt, -1,
-            summary, gitBranch, cwd, tag, lite.size(), customTitle, firstPrompt);
+            summary, gitBranch, cwd, tag, lite.size(), customTitle, firstPrompt, archived);
         return Optional.of(new Entry(info, candidate.transcript(),
             firstNonBlank(candidate.projectPath(), cwd), aiTitle, candidate.alias()));
     }
@@ -456,6 +457,15 @@ final class SessionCatalog {
         return result;
     }
     private static String firstLine(String text) { int n = text.indexOf('\n'); return n < 0 ? text : text.substring(0, n); }
+    private static Boolean lastTypedBoolean(String text, String type, String field) {
+        Boolean result = null;
+        for (String line : text.split("\n")) if (Strings.CS.contains(line, "\"type\":\"" + type + "\"")
+                || Strings.CS.contains(line, "\"type\": \"" + type + "\"")) {
+            if (containsBoolean(line, field, true)) result = Boolean.TRUE;
+            else if (containsBoolean(line, field, false)) result = Boolean.FALSE;
+        }
+        return result;
+    }
     private static boolean containsBoolean(String text, String field, boolean value) {
         return Strings.CS.contains(text, "\"" + field + "\":" + value)
             || Strings.CS.contains(text, "\"" + field + "\": " + value);

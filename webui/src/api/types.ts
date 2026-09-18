@@ -138,16 +138,20 @@ export type MirrorFrame =
       readonly session_id: string
       readonly content: string
       readonly synthetic?: boolean
+      /** The owning assistant step's id (absent on synthetic System text). */
+      readonly message_id?: string
     } }
   | { readonly event: 'output.thinking'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly content: string
+      readonly message_id?: string
     } }
   | { readonly event: 'tool.started'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly name: string
       readonly tool_use_id: string
       readonly input?: Readonly<Record<string, unknown>>
+      readonly message_id?: string
     } }
   | { readonly event: 'tool.progress'; readonly id: number; readonly data: {
       readonly session_id: string
@@ -259,6 +263,29 @@ export interface OpenSessionResponse {
 export interface CloseSessionResponse {
   readonly session_id: string
   readonly closed: boolean
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/sessions/{id}/rename|fork|archive, DELETE /api/sessions/{id}
+// ---------------------------------------------------------------------------
+
+export interface RenameSessionResponse {
+  readonly session_id: string
+  readonly custom_title: string
+}
+
+export interface ForkSessionResponse {
+  readonly session_id: string
+}
+
+export interface ArchiveSessionResponse {
+  readonly session_id: string
+  readonly archived: boolean
+}
+
+export interface DeleteSessionResponse {
+  readonly session_id: string
+  readonly deleted: boolean
 }
 
 export interface RespondRequest {

@@ -18,6 +18,7 @@ import com.claudecode.commands.impl.config.AddDirCommand;
 import com.claudecode.commands.impl.config.ModelCommand;
 import com.claudecode.commands.impl.integration.McpCommand;
 import com.claudecode.commands.impl.terminal.CopyCommand;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.engine.CostCalculator;
 import com.claudecode.runtime.interaction.InteractionFeatures;
@@ -41,6 +42,7 @@ import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewaySchedulePort;
+import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
 import com.claudecode.gateway.GatewaySettingsPort;
@@ -78,6 +80,7 @@ import com.claudecode.services.tips.ExternalTips;
 import com.claudecode.services.titles.SessionTitleGenerator;
 import com.claudecode.services.titles.TerminalSessionTitleGenerator;
 import com.claudecode.session.SessionManager;
+import com.claudecode.session.SessionOperationsService;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
@@ -177,7 +180,9 @@ final class CliInteractiveSessionRunner {
              * Pre-fills that picker's search box with a {@code -r <value>} that matched no single
              * session title, so the unresolved value stays visible instead of being dropped.
              */
-            String startupResumeSearchTerm) {}
+            String startupResumeSearchTerm,
+            /** Gates the {@code ultracode} effort level, which needs workflow orchestration. */
+            boolean workflowsEnabled) {}
 
     private record OptionalInteractiveSettings(
             long idlePromptThresholdMs, boolean awaySummaryEnabled) {
@@ -385,7 +390,8 @@ final class CliInteractiveSessionRunner {
                     gatewayCommands(cmdRegistry),
                     gatewaySessionContext(sessionHostRuntime.registry(), engine,
                         headlessSessions, interactiveCwd, contextDataCollector,
-                        toolRegistry::getContextAnalysisToolDefinitions));
+                        toolRegistry::getContextAnalysisToolDefinitions),
+                    gatewaySessionActions());
                 DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                     permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
                 CliSettingsManagementAdapter settingsManagement =
@@ -453,6 +459,7 @@ final class CliInteractiveSessionRunner {
                         .mcpManagement(mcpManagement)
 // disableNonInteractive: hidden in print / --no-interactive mode.
                         .nonInteractive(printMode || noInteractive)
+                        .workflowsEnabledSupplier(input::workflowsEnabled)
                         .btwDialogLauncher(btwLauncher)
                         .sessionColorSetter(colorSetter)
                         .pokemonSetter(pokemonSetter)
@@ -686,6 +693,30 @@ final class CliInteractiveSessionRunner {
                         session.lastModified(), session.gitBranch(), session.cwd(),
                         session.customTitle(), session.firstPrompt()))
                     .toList();
+            }
+        };
+    }
+
+    /**
+     * Bridges the session row menu's rename/fork/archive/delete actions onto
+     * {@link SessionOperationsService}, addressing sessions by bare id
+     * (dir left {@code null}) so the gateway need not resolve a project
+     * directory itself.
+     */
+    private static GatewaySessionActionsPort gatewaySessionActions() {
+        SessionOperationsService operations = new SessionOperationsService(ClaudePaths.CLAUDE_HOME);
+        return new GatewaySessionActionsPort() {
+            @Override public void rename(String sessionId, String title) {
+                operations.renameSession(sessionId, title, null);
+            }
+            @Override public ForkResult fork(String sessionId, String title) {
+                return new ForkResult(operations.forkSession(sessionId, (String) null, null, title).sessionId());
+            }
+            @Override public void archive(String sessionId) {
+                operations.archiveSession(sessionId, null);
+            }
+            @Override public boolean delete(String sessionId) {
+                return operations.deleteSession(sessionId, null);
             }
         };
     }

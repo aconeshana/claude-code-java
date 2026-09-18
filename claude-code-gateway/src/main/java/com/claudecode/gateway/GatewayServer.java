@@ -80,6 +80,7 @@ public final class GatewayServer implements AutoCloseable {
     private final ChatHandler chat;
     private final ResponsesHandler responses;
     private final GatewaySessionsHandler sessionsApi;
+    private final GatewaySessionActionsHandler sessionActionsApi;
     private final GatewaySessionCatalogPort catalog;
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
@@ -158,6 +159,17 @@ public final class GatewayServer implements AutoCloseable {
             GatewaySettingsPort settings, GatewaySchedulePort schedule,
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, new GatewaySessionActionsPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -225,6 +237,7 @@ public final class GatewayServer implements AutoCloseable {
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
+        this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
         mirror.metricsReader(sessionContext::metrics);
@@ -486,6 +499,81 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             messagesSnapshotApi.handle(exchange, sessionId);
+            return;
+        }
+        if (post && Strings.CS.startsWith(path, "/api/sessions/") && (Strings.CS.endsWith(path, "/rename")
+                || Strings.CS.endsWith(path, "/fork") || Strings.CS.endsWith(path, "/archive"))) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            String suffix = Strings.CS.endsWith(path, "/rename") ? "/rename"
+                : Strings.CS.endsWith(path, "/fork") ? "/fork" : "/archive";
+            String sessionId = URLDecoder.decode(
+                path.substring("/api/sessions/".length(), path.length() - suffix.length()),
+                StandardCharsets.UTF_8);
+            if (sessionId.isEmpty()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id is required"));
+                }
+                return;
+            }
+            Thread.ofVirtual().name("gateway-sessions-api").start(() -> {
+                try (exchange) {
+                    switch (suffix) {
+                        case "/rename" -> sessionActionsApi.handleRename(exchange, sessionId);
+                        case "/fork" -> sessionActionsApi.handleFork(exchange, sessionId);
+                        default -> sessionActionsApi.handleArchive(exchange, sessionId);
+                    }
+                } catch (IOException _) {
+                    // The client disconnected mid-request; nothing to recover.
+                } catch (RuntimeException failure) {
+                    try {
+                        respondJson(exchange, 500, errorBody("api_error",
+                            "session request failed: " + failure.getMessage()));
+                    } catch (IOException _) {
+                        // Client already gone.
+                    }
+                }
+            });
+            return;
+        }
+        if (delete && Strings.CS.startsWith(path, "/api/sessions/") && !Strings.CS.contains(
+                path.substring("/api/sessions/".length()), "/")) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            String sessionId = URLDecoder.decode(
+                path.substring("/api/sessions/".length()), StandardCharsets.UTF_8);
+            if (sessionId.isEmpty()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id is required"));
+                }
+                return;
+            }
+            Thread.ofVirtual().name("gateway-sessions-api").start(() -> {
+                try (exchange) {
+                    sessionActionsApi.handleDelete(exchange, sessionId);
+                } catch (IOException _) {
+                    // The client disconnected mid-request; nothing to recover.
+                } catch (RuntimeException failure) {
+                    try {
+                        respondJson(exchange, 500, errorBody("api_error",
+                            "session request failed: " + failure.getMessage()));
+                    } catch (IOException _) {
+                        // Client already gone.
+                    }
+                }
+            });
             return;
         }
         if (post && Strings.CS.equals("/api/permissions/respond", path)) {

@@ -6,6 +6,7 @@ import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
+import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
@@ -62,6 +63,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayModelsPort models;
     private final GatewayCommandsPort commands;
     private final GatewaySessionContextPort sessionContext;
+    private final GatewaySessionActionsPort actions;
     /**
      * Single-flight start state: null = never started, pending = start in
      * progress, done = running (or failed-and-resettable). Every concurrent
@@ -127,6 +129,16 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewaySettingsPort settings, GatewaySchedulePort schedule,
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext) {
+        this(registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, null);
+    }
+
+    CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
+            CliHeadlessGatewaySessions headless, InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.headless = headless;
@@ -137,6 +149,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         this.models = models;
         this.commands = commands;
         this.sessionContext = sessionContext;
+        this.actions = actions;
     }
 
     @Override
@@ -201,7 +214,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             schedule != null ? schedule : new GatewaySchedulePort() {},
             models != null ? models : new GatewayModelsPort() {},
             commands != null ? commands : new GatewayCommandsPort() {},
-            sessionContext != null ? sessionContext : new GatewaySessionContextPort() {});
+            sessionContext != null ? sessionContext : new GatewaySessionContextPort() {},
+            actions != null ? actions : new GatewaySessionActionsPort() {});
         created.start();
         server = created;
         url = "http://127.0.0.1:" + created.port() + "/?token=" + token;

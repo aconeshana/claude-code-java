@@ -16,20 +16,21 @@ public record SessionInfo(
     String tag,
     long fileSize,
     String customTitle,
-    String firstPrompt
+    String firstPrompt,
+    boolean archived
 ) {
     /** Backward-compatible constructor for the pre-lite-catalog projection. */
     public SessionInfo(String id, long lastModified, Instant createdAt, int messageCount,
                        String summary, String gitBranch, String cwd, String tag) {
         this(id, lastModified, createdAt, messageCount, summary, gitBranch, cwd, tag,
-            -1L, null, null);
+            -1L, null, null, false);
     }
 
     /** Backward-compatible constructor without tag. */
     public SessionInfo(String id, long lastModified, Instant createdAt, int messageCount,
                        String summary, String gitBranch, String cwd) {
         this(id, lastModified, createdAt, messageCount, summary, gitBranch, cwd, null,
-            -1L, null, null);
+            -1L, null, null, false);
     }
 
     /** Backward-compatible constructor for callers that don't have the new fields. */
@@ -44,6 +45,7 @@ public record SessionInfo(
              null,
              -1L,
              null,
-             null);
+             null,
+             false);
     }
 }

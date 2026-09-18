@@ -9,8 +9,8 @@ info:
 
     This contract is the authoritative alignment standard for the gateway's
     web rendering API, keeping official Claude Code stream-json wire naming
-    first priority. Human-readable spec: docs.local/gateway-api.md (local-only,
-    not committed).
+    first priority. It is the single source of truth: the SSE mirror-frame
+    catalog lives in the MirrorFrame schema, not in a side document.
 
     Alignment strategy (two steps): this document is the standard first; code
     implementation then aligns to it.
@@ -245,6 +245,123 @@ paths:
               schema: { $ref: '#/components/schemas/MessageSnapshot' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/rename:
+    post:
+      tags: [Sessions]
+      summary: Rename a session in place
+      description: |
+        Appends a custom-title JSONL event; confirming an unchanged title is
+        deliberately allowed. Mirrors the upstream row menu's Rename action.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+      responses:
+        '200':
+          description: Rename result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  custom_title: { type: string }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/fork:
+    post:
+      tags: [Sessions]
+      summary: Fork a session at its last completed turn
+      description: |
+        Copies the source transcript up to its last completed turn into a new
+        session id. Mirrors the upstream row menu's Fork session action.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+      responses:
+        '200':
+          description: The forked session's id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/archive:
+    post:
+      tags: [Sessions]
+      summary: Hide a session from the default catalog listing
+      description: |
+        Appends a one-way archived JSONL event; the transcript itself is
+        untouched. Archived sessions are filtered out of every grouping
+        surface (webui and the TUI /resume picker share the same catalog).
+        No unarchive endpoint exists in this pass.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Archive result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  archived: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}:
+    delete:
+      tags: [Sessions]
+      summary: Permanently delete a session
+      description: |
+        Deletes the session's transcript and sidecar directory from disk.
+        Product-scope extension with no upstream counterpart — reuses the
+        Java /resume picker's permanent-deletion capability.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Delete result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  deleted: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
   /api/events:
     get:
       tags: [Sessions]
@@ -276,7 +393,10 @@ paths:
           description: Alternative to the Authorization header
       responses:
         '200':
-          description: text/event-stream of mirror frames (event catalog in the local spec)
+          description: text/event-stream of mirror frames
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/MirrorFrame' }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /api/permissions/respond:
     post:
@@ -681,7 +801,15 @@ components:
           type: object
           required: [type, message]
           properties:
-            type: { type: string }
+            type:
+              type: string
+              description: |
+                invalid_request (400: malformed JSON, missing session_id, over
+                length), authentication_required (401), not_found (404: unknown
+                route or session), already_responded (409: an ask another
+                observer settled, or a submission with no session_id and no
+                active session), api_error (429: a turn already in flight on
+                this session, or the headless session limit).
             message: { type: string }
     ProtocolMessage:
       type: object
@@ -851,17 +979,32 @@ components:
                 ready: { type: boolean }
     ToolResult:
       type: object
-      description: Typed per tool family
+      description: |
+        Typed per tool family. The type discriminator is mapped from the tool
+        name remembered at tool.started: Bash -> execute_command_tool_result,
+        Read -> read_file_tool_result, Write -> write_to_file_tool_result,
+        Edit/NotebookEdit -> replace_in_file_tool_result,
+        Agent/Task -> task_tool_result, anything else or unknown ->
+        tool_result. Non-text blocks (images) are not projected.
       properties:
         type:
           type: string
           description: 'e.g. execute_command_tool_result, read_file_tool_result, task_tool_result'
         data:
           type: string
-          description: 'Tool-family specific payload (stdout, file content, diff)'
+          description: |
+            Tool-family specific payload (stdout, file content, diff): every
+            text block of the result, concatenated and bounded at 20000 chars
+            with a trailing "…[truncated]" marker. The mirror is a rendering
+            channel, so the on-disk transcript stays the source of truth for
+            full output.
         message: { type: string }
-        errorMessage: { type: string }
-        errorCode: { type: string }
+        errorMessage:
+          type: string
+          description: Present only when status is failed; carries the same text as data
+        errorCode:
+          type: string
+          description: 'Present only when status is failed (tool_error)'
         transcript_path:
           type: string
           description: Sidechain transcript of a completed sub-agent tool (Agent/Task family only)
@@ -870,6 +1013,219 @@ components:
           items: { type: string }
           nullable: true
           description: File path(s) produced by a Write/Edit/NotebookEdit tool call
+    MirrorFrame:
+      type: object
+      description: |
+        One frame of GET /api/events. On the wire the SSE `event:` field
+        carries event, `id:` carries id (the monotonic journal cursor a client
+        replays through Last-Event-ID), and `data:` carries the data body.
+        Every body carries session_id so a multi-session client can route the
+        frame to the right conversation view.
+
+        A reconnect is snapshot-first: pull
+        GET /api/sessions/{id}/messages for authoritative state, then take the
+        delta from the cursor. The mirror is a rendering channel, so no client
+        depends on having missed no frame.
+      required: [event, id, data]
+      properties:
+        event:
+          type: string
+          enum:
+            - session.activated
+            - turn.started
+            - output.text
+            - output.thinking
+            - tool.started
+            - tool.progress
+            - tool.completed
+            - turn.completed
+            - turn.cancelled
+            - session.error
+            - session.idle
+            - permission.asked
+            - permission.resolved
+        id:
+          type: integer
+          format: int64
+          description: Monotonic journal cursor; bounded ring replay via Last-Event-ID
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/FrameSessionActivated'
+            - $ref: '#/components/schemas/FrameTurnStarted'
+            - $ref: '#/components/schemas/FrameOutputText'
+            - $ref: '#/components/schemas/FrameOutputThinking'
+            - $ref: '#/components/schemas/FrameToolStarted'
+            - $ref: '#/components/schemas/FrameToolProgress'
+            - $ref: '#/components/schemas/FrameToolCompleted'
+            - $ref: '#/components/schemas/FrameTurnCompleted'
+            - $ref: '#/components/schemas/FrameSessionError'
+            - $ref: '#/components/schemas/FrameSessionOnly'
+            - $ref: '#/components/schemas/PermissionAsk'
+            - $ref: '#/components/schemas/FramePermissionResolved'
+    FrameSessionActivated:
+      type: object
+      description: The active session switched; mirrors rebind to the new id
+      required: [id, message_count, origin, session_id]
+      properties:
+        id: { type: string, description: The activated session id (same value as session_id) }
+        summary: { type: string }
+        message_count: { type: integer }
+        modified_at: { type: string, format: date-time }
+        origin: { type: string }
+        session_id: { type: string }
+    FrameTurnStarted:
+      type: object
+      required: [display_text, permission_mode, origin, session_id]
+      properties:
+        display_text: { type: string, description: The prompt as echoed in the transcript }
+        permission_mode: { type: string }
+        origin: { type: string }
+        time: { type: integer, format: int64, description: The user row's leading clock, epoch ms }
+        session_id: { type: string }
+    FrameOutputText:
+      type: object
+      required: [content, session_id]
+      properties:
+        content: { type: string, description: One whole text block, never a delta }
+        synthetic:
+          type: boolean
+          description: A System-message projection rather than model output
+        message_id:
+          type: string
+          description: |
+            The owning assistant step's identity — the same value the snapshot
+            path serves as its assistant entry id. One assistant message
+            becomes one frame per content block, so consecutive frames sharing
+            this id reassemble into one assistant row. Without it a client
+            cannot separate a turn's tool steps from its final answer.
+            Absent on synthetic System text, which has no step of its own.
+        session_id: { type: string }
+    FrameOutputThinking:
+      type: object
+      required: [content, session_id]
+      properties:
+        content: { type: string, description: One whole thinking block, never a delta }
+        message_id: { type: string, description: The owning assistant step's identity }
+        session_id: { type: string }
+    FrameToolStarted:
+      type: object
+      required: [name, tool_use_id, session_id]
+      properties:
+        name: { type: string }
+        tool_use_id: { type: string }
+        input: { type: object, additionalProperties: true, description: The complete tool args }
+        message_id: { type: string, description: The owning assistant step's identity }
+        session_id: { type: string }
+    FrameToolProgress:
+      type: object
+      description: |
+        A running tool's process channel — for the Agent/Task family this is
+        the sub-agent's live output, keyed by tool_use_id; agent_id doubles as
+        the sidechain transcript key.
+      required: [kind, session_id]
+      properties:
+        tool_use_id: { type: string }
+        kind: { type: string }
+        agent_id: { type: string }
+        prompt: { type: string }
+        progress: { type: integer }
+        message: { type: string }
+        content: { type: string }
+        session_id: { type: string }
+    FrameToolCompleted:
+      type: object
+      required: [status, tool_use_id, result, session_id]
+      properties:
+        status: { type: string, enum: [completed, failed] }
+        tool_use_id: { type: string }
+        result: { $ref: '#/components/schemas/ToolResult' }
+        session_id: { type: string }
+    FrameTurnCompleted:
+      type: object
+      required: [done, elapsed_ms, user_cancel, session_id]
+      properties:
+        done: { type: boolean }
+        elapsed_ms: { type: integer, format: int64, description: Turn wall time }
+        user_cancel: { type: boolean }
+        ttft_ms:
+          type: integer
+          format: int64
+          description: Time to first stream output; absent when the turn produced none
+        time: { type: integer, format: int64, description: The turn tail's trailing clock, epoch ms }
+        turn:
+          type: integer
+          description: |
+            1-based turn number, present when the metrics reader is wired (a
+            live addressable engine). The stable key joining this live row to
+            the snapshot path's per-row turn field.
+        turn_usage: { $ref: '#/components/schemas/TurnUsage' }
+        session_id: { type: string }
+    FrameSessionError:
+      type: object
+      required: [message, session_id]
+      properties:
+        message: { type: string }
+        session_id: { type: string }
+    FrameSessionOnly:
+      type: object
+      description: Body of session.idle and turn.cancelled — no facts beyond the routing id
+      required: [session_id]
+      properties:
+        session_id: { type: string }
+    FramePermissionResolved:
+      type: object
+      required: [request_id, resolution, origin, session_id]
+      properties:
+        request_id: { type: string }
+        resolution: { type: string, enum: [allowed, denied] }
+        origin:
+          type: string
+          enum: [tui, web]
+          description: Which observer answered first
+        feedback: { type: string }
+        session_id: { type: string }
+    PermissionAsk:
+      type: object
+      description: |
+        Body of the permission.asked frame: one tool waiting at ASK inside the
+        shared interaction coordinator. The TUI dialog and every web client are
+        observers of the same ask — first answer wins, and permission.resolved
+        reports which origin got there.
+      required: [request_id, tool, session_id]
+      properties:
+        request_id:
+          type: string
+          description: The id POST /api/permissions/respond answers (not tool_use_id)
+        tool: { type: string }
+        tool_use_id: { type: string }
+        input: { type: object, additionalProperties: true }
+        decision_reason_type: { type: string }
+        decision_reason_detail: { type: string }
+        suggestion_rule_content: { type: string }
+        suggestion_label: { type: string }
+        destructive_warning: { type: string }
+        blocked_path: { type: string }
+        custom_message: { type: string }
+        tool_description: { type: string }
+        questions:
+          type: array
+          description: AskUserQuestion definitions only; absent for every other tool
+          items:
+            type: object
+            required: [question, multi_select, options]
+            properties:
+              question: { type: string }
+              header: { type: string }
+              multi_select: { type: boolean }
+              options:
+                type: array
+                items:
+                  type: object
+                  required: [label]
+                  properties:
+                    label: { type: string }
+                    description: { type: string }
+        session_id: { type: string }
     SettingsSnapshot:
       type: object
       description: Merged effective settings plus per-tier source attribution
@@ -881,8 +1237,7 @@ components:
             The merged settings object (user -> project -> local -> flag ->
             policy, later tiers override earlier). Keys are loosely typed
             camelCase scalars (e.g. alwaysThinkingEnabled) plus a nested
-            permissions object; see docs.local/gateway-api.md for the full
-            key catalogue.
+            permissions object.
           properties:
             permissions:
               type: object

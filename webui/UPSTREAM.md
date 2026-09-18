@@ -15,6 +15,7 @@ cordis/Typert RPC).
 | `vendor/ui-primitives/` | `packages/client/ui-primitives/src/` | Full package source; already cordis-free upstream (runtime deps are public npm packages only) |
 | `vendor/dsh-composer-menu/` | `packages/client/ui-input-trigger/` + `ui-commands/` | The composer "+" menu — see the section below |
 | `vendor/dsh-stats-pills/` | `packages/client/ui-chat/` | The composer session-stat pills + the turn-tail usage/time pills — see the section below |
+| `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`) | The turn-process fold rules — see the section below |
 | `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
@@ -229,6 +230,34 @@ Product-scope deviations (documented, not gaps):
 |-----------|-------------------|----------------|
 | `WorkspaceBrowser.module.css` | `ui-workspace` | `src/client/WorkspaceBrowser.module.css` — the session-list seat: its own `.root` wrapper (declares `--dsh-session-list-edge-inset`, canceling `SidebarRoot.module.css`'s `.regionArea` negative margin so the nested scrollbar sits flush), `.sectionHeader`/`.sectionLabel`/`.headerActions`, `.listArea`/`.treeBody`/`.list`/`.fade`, and the grouped-project row shell (`.groupSection`, `.sessionOverflowButton`). `.sectionHeader` uses `justify-content: flex-end`; upstream's dropped `.searchSlot` (`flex: 1; max-width: 28px; margin-left: auto`) is what pushes `.sectionLabel` left / `.headerActions` right, so a local `Sidebar.module.css` `.headerActions { margin-left: auto }` reproduces just that split without the search UI itself. The flat "In one list" view and its view-options menu are not ported (no backend surface — see `session sidebar` scope note in `Sidebar.tsx`'s class Javadoc). **Overflow-control semantics** (fixed 2026-09-13): upstream's `sessionOverflowButton` is a LOCAL fold toggle over `expandedSessionGroups` — expanded renders every group row and flips the button to `sessions.collapse` ("Show less"), `aria-expanded` carries the state, and the header's collapse ALSO drops the group from `expandedSessionGroups`. An earlier revision had wrongly wired the button to `growPerPage` alone (refetch with a larger `?per_project=` page) with a rows/hiddenCount derivation that contradicted itself (`expanded && hiddenCount === 0` gating against `session_count`-based hiddenCount), so clicking "Show {n} more sessions" never unfolded the group. The port now mirrors the local toggle (`expandedGroups` + `toggled()`), with one recorded deviation: upstream's client holds every account row, while this port's rows are a gateway page, so expanding ALSO grows the page one step while `session_count > sessions.length` (the paged-out remainder counts in the button's `n`). |
 
+**Session row "..." menu (Rename / Fork / Archive), ported from `ui-workspace`'s
+`Rows.tsx` `sessionMenuItems`.** `SessionNodeItem` in `SessionRows.tsx` opens a
+`vendor/ui-primitives/Menu.tsx` from a new `IconEllipsisOutline16` trigger,
+placed before the existing close-headless icon button (upstream's own row-
+action ordering). **Rename** renames the session in place via a
+`Modal`+`Input` dialog (`Sidebar.tsx`), prefilled with `displayTitle(session)`
+— an unchanged title round-trips as a legal no-op. **Fork** forks the session
+at its last completed turn with no confirmation dialog, matching upstream.
+**Archive** hides the session from every catalog view (TUI `/resume` panel
+and the webui sidebar both read the same `ProjectCatalog.aggregate()`
+dedup pipeline) via a one-way `"archived"` JSONL event appended to the
+session's own transcript — no confirmation, matching upstream. Per an
+explicit product decision, **this pass does not build an unarchive/view-
+archived-sessions surface**; archiving is one-way until a future pass adds
+one. **Delete is a product-scope deviation with no upstream counterpart**:
+this project already had `SessionManager.deleteSessionPermanently` (TUI
+`/resume` picker) with no webui surface, so the row menu adds a fourth,
+project-specific "删除" entry that permanently deletes the session's
+transcript from disk. Its confirmation reuses the already-vendored
+`RiskConfirmation.tsx` (checkbox-gated "我已知晓" acknowledgement) rather than
+the TUI picker's simpler yes/no confirm — a deliberate choice to give the
+irreversible webui action the stronger of the two confirmation patterns
+already vendored in this codebase. Backend: `GatewaySessionActionsPort`
+(`claude-code-gateway`) with `POST /api/sessions/{id}/rename|fork|archive`
+and `DELETE /api/sessions/{id}`, backed by
+`SessionOperationsService.renameSession`/`forkSession` (already existed) and
+new `archiveSession`/`deleteSession` methods.
+
 ### `vendor/chat-styles/` — reasoning row & tool-call row
 
 | File here | Upstream package | Upstream file |
@@ -267,34 +296,66 @@ is a genuinely-supported backend field being wired up, not new backend work.
   `TerminalBlock` is only given `running={call.status === 'pending'}` — no
   `exitCode`/`signal` props — relying on `call.status` (pending/executed/
   failed) as the one reliable state source instead.
-- **Turn-level fold/unfold row (restored 2026-09-13).** An earlier revision
-  recorded "no turn-level fold" as a structural consequence of this app's
-  one-row-per-message model. The fold now exists, ported from upstream's
-  turn-process projection (`turn-process.ts` /
-  `turn-process-presentation.ts` / `ChatNodeSeat.tsx` /
-  `TurnProcessNodeView.tsx` + the 2026-08-14 folding design note): in
-  compact mode, a closed turn whose LAST closed assistant message carries
-  non-blank reply text and no tool calls is the answer; every assistant row
-  before it in the turn (thinking, tool rows, intermediate replies) hides
-  behind one summary control rendered right after the opening user row —
-  "N 次工具调用 · N 条消息 · N 个 subagent" with zero segments omitted and
-  "已思考" when all are zero. Upstream derives membership from a
-  per-ChatNode `TurnProcessSpec` event projection with seq anchors; this
-  port derives it in `src/store/turnProcess.ts` from the reduced message
-  list (`deriveTurnProcessView`), same rules on a simpler substrate. Rows
-  hide with `hidden="until-found"` (never unmounted — stateful tool
-  renderers keep state, browser find reveals them, and a `beforematch` on a
-  member expands the group via `ChatView.tsx`'s native listener). Manual
-  expansion lives in the non-persisted `useTurnProcess` store (absent =
-  collapsed); transcriptView "normal" disables folding entirely; an open
-  turn and a no-answer turn never fold (upstream: "a closed Turn with no
-  final answer keeps all process evidence visible"). The vendored
-  `ChatView.module.css` gap rules (the `[data-turn-process-answer]` 8px
-  follow-gap, hidden-row spacing exemption) and `TurnProcessNodeView.module.css`
-  are consumed as-is. Subagent counting (`subagent`/`subagent_*` names → the
-  subagent segment, never the tool-call segment) is ported verbatim; this
-  gateway currently has no subagent delegation tools, so the segment stays
-  at zero until one exists.
+- **Turn-level fold/unfold row (restored 2026-09-13, rules vendored
+  2026-09-18).** An earlier revision recorded "no turn-level fold" as a
+  structural consequence of this app's one-row-per-message model. The fold now
+  exists, and since this round its **rules are vendored rather than
+  re-derived**: `vendor/dsh-turn-process/turnProcessRules.ts` merges upstream's
+  `contract/turn-process.ts`, `contract/assistant-content.ts`,
+  `conversation-nodes/turn-process.ts` and
+  `conversation-nodes/turn-process-presentation.ts`. `src/store/turnProcess.ts`
+  is now only the manual-expansion store plus the adapter that maps the reduced
+  message list onto the rules' `TurnInput`. Cut from upstream: the cordis
+  `ConversationNodeDefinition` (match/start/update/publication/
+  buildLocationData/buildViewNode), the event stream it reduces
+  (`assistant/live-chunk`, `assistant/attempt`, `step/start`, `llm/retry`), the
+  Location-data store with its reference-preserving equality gates, and the
+  `ChatTurnProcessProjector` memo class — this app has no event registry and
+  React's `useMemo` covers the caching. Substrate mapping: upstream's event
+  `seq` is the transcript row index and a turn's `step` is the assistant row's
+  ordinal in its turn.
+
+  The previous hand-written port had drifted from these rules on five points,
+  all corrected this round: the answer boundary is upstream's `latestAnswer`,
+  which reads the turn's **last step and only that step** (the old port scanned
+  for the last *qualifying* row, so a turn ending in a reasoning-only step
+  folded when upstream keeps it open); `toolCallCount`/`subagentCount` count
+  the **whole turn** while `messageCount` counts only steps before the answer
+  step; `inlineReasoning` makes the answer row hide its own thinking blocks
+  (`MessageItem`'s `hideReasoning`); `compactAnswer` gates the 8px follow-gap,
+  so an intervening independent input restores normal spacing; and
+  `hasExternalProcess` gates whether the control shows at all. Rows hide with
+  `hidden="until-found"` (never unmounted — stateful tool renderers keep state,
+  browser find reveals them, and a `beforematch` on a member expands the group
+  via `ChatView.tsx`'s native listener). Manual expansion lives in the
+  non-persisted `useTurnProcess` store (absent = collapsed); transcriptView
+  "normal" disables folding entirely; an open turn and a no-answer turn never
+  fold. The vendored `ChatView.module.css` gap rules and
+  `TurnProcessNodeView.module.css` are consumed as-is.
+
+  Two deviations:
+
+  - **`isSubagentDelegationTool` matches `Agent`/`Task`, not upstream's
+    `subagent`/`subagent_*`.** This product's delegation tool registers as
+    `Agent` with the `Task` alias (`claude-code-tools` `AgentTool`), and its
+    control-plane siblings (`SendMessage`, `TaskList`) carry unrelated names,
+    so the same delegation-vs-control split holds under different literals.
+    (An earlier revision of this file claimed this gateway has no subagent
+    delegation tool and the segment always reads zero — that was wrong.)
+  - **Step boundaries come from the gateway, backend-first.** Upstream's
+    `assistant/message` events carry step identity natively. This app's mirror
+    fans one assistant message out into one frame per content block, which
+    erased that boundary, so every reply-bearing turn reduced to a single row
+    and the fold could never find an answer — the feature never fired on the
+    live path even though its unit tests passed against hand-assembled
+    multi-row transcripts. `MirrorHub.publishAssistant` now stamps
+    `message_id` (the assistant message uuid, the same fact the snapshot path
+    serves as its entry id; see `MirrorFrame` in `openapi.yaml`) on
+    `output.text`/`output.thinking`/`tool.started`, and
+    `conversations.ts` splits rows on it. A synthetic System projection has no
+    step and folds as a `context` row, never as an answer candidate. A frame
+    with no `message_id` (an older gateway) keeps the old single-row behavior
+    and simply does not fold.
 - **No Inspect pill / trajectory-view jump.** Upstream's hover-revealed
   Inspect button on an expanded tool row jumps to a trajectory/replay view
   this app does not have; the button is not rendered.

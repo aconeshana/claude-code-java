@@ -74,6 +74,6 @@ public final class SessionListingService {
         String title = StringUtils.isNotBlank(info.customTitle()) ? info.customTitle() : entry.aiTitle();
         return new SessionInfo(info.id(), info.lastModified(), info.createdAt(), info.messageCount(),
             info.summary(), info.gitBranch(), info.cwd(), info.tag(), info.fileSize(), title,
-            info.firstPrompt());
+            info.firstPrompt(), info.archived());
     }
 }

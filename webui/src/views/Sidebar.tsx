@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
-import { IconNewChatOutline16, IconRefreshOutline16, IconSettingsOutline16, Pill } from '@primitives'
+import { Button, IconNewChatOutline16, IconRefreshOutline16, IconSettingsOutline16, Input, Modal, Pill, RiskConfirmation } from '@primitives'
 import css from '@chat-styles/SidebarRoot.module.css'
 import browserCss from '@chat-styles/WorkspaceBrowser.module.css'
 import triggerCss from '@chat-styles/SettingsRoot.module.css'
@@ -8,7 +8,7 @@ import localCss from './Sidebar.module.css'
 import { useSessions } from '../store/sessions'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
-import { ProjectRowItem, SessionNodeItem } from './SessionRows'
+import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
@@ -41,10 +41,13 @@ const NOW_TICK_MS = 30_000
  * `localCss.headerActions`'s `margin-left: auto` reproduces the search
  * slot's title/actions split without the search machinery), the flat "In
  * one list" view and its view-options menu, workspace CRUD
- * (add/rename/delete/pick flow), session rename/fork/archive menus, and
- * drag-and-drop ordering (both rows and workspace groups). The refresh
- * affordance in the section header is this port's own (upstream's list is
- * live-pushed; ours is a request/response catalog). The sidebar foot's
+ * (add/rename/delete/pick flow), and drag-and-drop ordering (both rows and
+ * workspace groups). The session row's own rename/fork/archive menu (plus
+ * this project's delete, no upstream counterpart) lives in this file as the
+ * rename dialog and delete confirmation — see SessionRows.tsx for the menu
+ * itself and webui/UPSTREAM.md for provenance. The refresh affordance in the
+ * section header is this port's own (upstream's list is live-pushed; ours is
+ * a request/response catalog). The sidebar foot's
  * `.footerActions` seat (vendored `SidebarRoot.module.css` `.footArea`) holds
  * the vendored dsh-context Context Dashboard entry (ContextDashboard.tsx);
  * Settings sits below it. The scheduled-task surface moved into the settings
@@ -59,11 +62,23 @@ export function Sidebar() {
   const openSession = useSessions((state) => state.openSession)
   const createSession = useSessions((state) => state.createSession)
   const closeSession = useSessions((state) => state.closeSession)
+  const renameSession = useSessions((state) => state.renameSession)
+  const forkSession = useSessions((state) => state.forkSession)
+  const archiveSession = useSessions((state) => state.archiveSession)
+  const deleteSession = useSessions((state) => state.deleteSession)
   const refresh = useSessions((state) => state.refresh)
   const growPerPage = useSessions((state) => state.growPerPage)
   const loading = useSessions((state) => state.loading)
   const error = useSessions((state) => state.error)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // The rename dialog and the delete confirmation are dialogs over ONE row
+  // at a time; each row's menu opens the dialog by setting its target here
+  // rather than calling the store action directly (fork/archive have no
+  // confirmation step and call straight through).
+  const [renameTarget, setRenameTarget] = useState<CatalogSession | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<CatalogSession | null>(null)
+  const [deleteAcknowledged, setDeleteAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
 
   // Relative-time labels re-derive their bucket on a slow tick, the same
@@ -162,6 +177,16 @@ export function Sidebar() {
                         : openSession(session.id, project.project_path))
                     }}
                     onClose={(session) => { void closeSession(session.id) }}
+                    onRename={(session) => {
+                      setRenameTarget(session)
+                      setRenameValue(displayTitle(session))
+                    }}
+                    onFork={(session) => { void forkSession(session.id) }}
+                    onArchive={(session) => { void archiveSession(session.id) }}
+                    onDelete={(session) => {
+                      setDeleteTarget(session)
+                      setDeleteAcknowledged(false)
+                    }}
                     onOverflowToggle={() => {
                       // Upstream's overflow control is a local fold toggle —
                       // expanded shows every row the account holds and flips
@@ -205,6 +230,63 @@ export function Sidebar() {
         <Pill>Claude Code</Pill>
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
+      <Modal
+        open={renameTarget != null}
+        onClose={() => { setRenameTarget(null) }}
+        title={t('rename.title')}
+        closeLabel={t('dialog.close.aria')}
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => { setRenameTarget(null) }}>
+              {t('rename.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={renameValue.trim() === ''}
+              onClick={() => {
+                const target = renameTarget
+                if (target == null) return
+                setRenameTarget(null)
+                void renameSession(target.id, renameValue.trim())
+              }}
+            >
+              {t('rename.confirm')}
+            </Button>
+          </>
+        )}
+      >
+        <Input
+          value={renameValue}
+          placeholder={t('rename.placeholder')}
+          autoFocus
+          onChange={(e) => { setRenameValue(e.currentTarget.value) }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && renameValue.trim() !== '' && renameTarget != null) {
+              const target = renameTarget
+              setRenameTarget(null)
+              void renameSession(target.id, renameValue.trim())
+            }
+          }}
+        />
+      </Modal>
+      <RiskConfirmation
+        open={deleteTarget != null}
+        title={t('delete.title')}
+        description={t('delete.description')}
+        acknowledgeLabel={t('delete.acknowledge')}
+        cancelLabel={t('delete.cancel')}
+        closeLabel={t('dialog.close.aria')}
+        confirmLabel={t('delete.confirm')}
+        acknowledged={deleteAcknowledged}
+        onAcknowledgedChange={setDeleteAcknowledged}
+        onCancel={() => { setDeleteTarget(null) }}
+        onConfirm={() => {
+          const target = deleteTarget
+          if (target == null) return
+          setDeleteTarget(null)
+          void deleteSession(target.id)
+        }}
+      />
     </div>
   )
 }
@@ -228,7 +310,7 @@ function toggled(list: readonly string[], key: string): string[] {
 }
 
 /** One project group: the 34px header row plus its 32px session rows. */
-function GroupSection({ project, expanded, overflowExpanded, selectedId, now, containsCurrent, onToggle, onOpen, onClose, onOverflowToggle, t }: {
+function GroupSection({ project, expanded, overflowExpanded, selectedId, now, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onOverflowToggle, t }: {
   project: CatalogProject
   expanded: boolean
   /** Rows unfolded past the 5-row limit (upstream's sessionsExpanded). */
@@ -239,6 +321,10 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, co
   onToggle: () => void
   onOpen: (session: CatalogSession) => void
   onClose: (session: CatalogSession) => void
+  onRename: (session: CatalogSession) => void
+  onFork: (session: CatalogSession) => void
+  onArchive: (session: CatalogSession) => void
+  onDelete: (session: CatalogSession) => void
   /** Toggles this group's overflow fold (upstream's overflow-button onClick). */
   onOverflowToggle: () => void
   t: ReturnType<typeof useTranslate>
@@ -281,6 +367,10 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, co
           now={now}
           onOpen={onOpen}
           onClose={onClose}
+          onRename={onRename}
+          onFork={onFork}
+          onArchive={onArchive}
+          onDelete={onDelete}
           t={t}
         />
       ))}

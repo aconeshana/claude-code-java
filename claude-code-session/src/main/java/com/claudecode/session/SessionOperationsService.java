@@ -16,6 +16,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -88,7 +90,7 @@ public final class SessionOperationsService {
         String git = firstNonBlank(lastField(tail, "gitBranch", null), firstField(head, "gitBranch"));
         return Optional.of(new SessionInfo(sessionId, modified, created, -1, summary, git, cwd,
             StringUtils.isBlank(tag) ? null : tag, jsonl.getBytes(StandardCharsets.UTF_8).length,
-            firstNonBlank(custom, ai), firstPrompt));
+            firstNonBlank(custom, ai), firstPrompt, false));
     }
 
     public List<HistoryMessage> getSessionMessages(String sessionId, String dir, Integer limit,
@@ -129,6 +131,19 @@ public final class SessionOperationsService {
         appendExisting(sessionId, dir, entry);
     }
 
+    /**
+     * Hides a session from the default catalog listing without touching its
+     * transcript — a one-way JSONL event ({@link ProjectCatalog#aggregate}
+     * filters archived sessions out of every grouping surface). No upstream
+     * counterpart's "unarchive" UI is implemented in this pass.
+     */
+    public void archiveSession(String sessionId, String dir) {
+        requireUuid(sessionId);
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        entry.put("type", "archived").put("archived", true).put("sessionId", sessionId);
+        appendExisting(sessionId, dir, entry);
+    }
+
     public ForkedSession forkSession(String sessionId, String dir, String upToMessageId,
                                      String title) {
         requireUuid(sessionId);
@@ -147,6 +162,40 @@ public final class SessionOperationsService {
             throw new UncheckedIOException(failure);
         }
         return new ForkedSession(transformed.sessionId(), transformed.entries());
+    }
+
+    /**
+     * Permanently deletes a stored conversation and its session-owned sidecar
+     * directory. Product-scope extension with no upstream counterpart: resolves
+     * the session's project directory via {@link #resolve} (dir-optional, like
+     * rename/tag/fork) rather than requiring a pre-resolved {@link SessionManager},
+     * so gateway callers can address a session by bare id.
+     */
+    public boolean deleteSession(String sessionId, String dir) {
+        requireUuid(sessionId);
+        ResolvedSession target = resolve(sessionId, dir).orElseThrow(() ->
+            new SessionOperationException(dir == null
+                ? "Session " + sessionId + " not found in any project directory"
+                : "Session " + sessionId + " not found in project directory for " + dir));
+        Path projectDir = target.file().getParent();
+        Path ownedDirectory = projectDir.resolve(sessionId).normalize();
+        boolean existed = Files.exists(target.file()) || Files.exists(ownedDirectory);
+        try {
+            deleteTreeStrict(ownedDirectory);
+            Files.deleteIfExists(target.file());
+            return existed;
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Failed to permanently delete session " + sessionId, failure);
+        }
+    }
+
+    private static void deleteTreeStrict(Path path) throws IOException {
+        if (!Files.exists(path)) return;
+        try (Stream<Path> walk = Files.walk(path)) {
+            for (Path entry : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(entry);
+            }
+        }
     }
 
     public ForkedSession forkSession(String sessionId, List<JsonNode> entries,
@@ -366,7 +415,7 @@ public final class SessionOperationsService {
         String title = firstNonBlank(info.customTitle(), entry.aiTitle());
         return new SessionInfo(info.id(), info.lastModified(), info.createdAt(), info.messageCount(),
             info.summary(), info.gitBranch(), info.cwd(), info.tag(), info.fileSize(), title,
-            info.firstPrompt());
+            info.firstPrompt(), info.archived());
     }
 
     private static String firstPrompt(List<JsonNode> entries) {

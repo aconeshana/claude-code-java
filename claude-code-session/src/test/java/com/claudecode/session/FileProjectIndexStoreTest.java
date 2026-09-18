@@ -29,7 +29,7 @@ class FileProjectIndexStoreTest {
     private static ProjectIndexSnapshot.CachedSession session(String id, long mtime) {
         return new ProjectIndexSnapshot.CachedSession(
             id, "/p/x", mtime, mtime - 1000, 12, "summary of " + id, "main", null,
-            "custom " + id, "first prompt " + id, 4096);
+            "custom " + id, "first prompt " + id, 4096, false);
     }
 
     private static ProjectIndexSnapshot.CachedDir dir(String dirName) {
