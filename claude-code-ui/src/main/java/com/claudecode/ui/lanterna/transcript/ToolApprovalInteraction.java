@@ -529,10 +529,22 @@ public final class ToolApprovalInteraction {
         gui.getGUIThread().invokeLater(() -> teammateTurnSubmitter.accept(message));
     }
 
+    /**
+     * Guards against a rendering gap where a tool-use spinner "show" (queued moments
+     * earlier by {@link SpinnerStateMachine#onStreamEvent}, e.g. for {@code AskUserQuestion})
+     * is still sitting unexecuted on the GUI thread when this permission ask begins. Reading
+     * {@code spinner.isVisible()} on the calling turn thread would race that queued task and
+     * see its pre-update value; queuing this method's own hide right behind it then lets
+     * Lanterna's GUI thread drain both in the same batch and paint only the final (hidden)
+     * state — {@code AbstractTextGUIThread#processEventsAndUpdate} runs every queued
+     * {@code invokeLater} task before issuing a single {@code updateScreen()}. The user
+     * never sees the tool-in-progress spinner at all; the permission dialog just appears.
+     */
     private <T> T withSpinnerPaused(Supplier<T> action) {
-        boolean visible = spinner.isVisible();
+        boolean visible = awaitCurrentSpinnerVisibility();
         boolean activeTurn = Boolean.TRUE.equals(turnInFlight.get());
         if (visible) {
+            settleBeforeHidingSpinner();
             gui.getGUIThread().invokeLater(() -> spinner.setVisible(false));
         }
         try {
@@ -541,6 +553,34 @@ public final class ToolApprovalInteraction {
             if (visible) {
                 if (Boolean.TRUE.equals(turnInFlight.get())) gui.getGUIThread().invokeLater(() -> spinner.setVisible(true));
             }
+        }
+    }
+
+    /** How long {@link #settleBeforeHidingSpinner()} yields — comfortably above Lanterna's
+     * observed ~16ms post-redraw frame-coalescing window and its ~1ms idle poll, so a real
+     * {@code updateScreen()} has certainly happened before the hide is queued. */
+    private static final long SPINNER_SETTLE_MS = 30;
+
+    /** Reads spinner visibility on the GUI thread rather than the calling turn thread, so a
+     * just-queued "show" is observed after it has actually applied instead of before. */
+    private boolean awaitCurrentSpinnerVisibility() {
+        AtomicBoolean visible = new AtomicBoolean(spinner.isVisible());
+        try {
+            gui.getGUIThread().invokeAndWait(() -> visible.set(spinner.isVisible()));
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        }
+        return visible.get();
+    }
+
+    /** Lets the GUI thread's own loop actually paint the current (visible) spinner state
+     * before this method queues the hide, instead of letting both collapse into one redraw. */
+    private void settleBeforeHidingSpinner() {
+        try {
+            gui.getGUIThread().invokeAndWait(() -> { /* drains any pending show ahead of us */ });
+            Thread.sleep(SPINNER_SETTLE_MS);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
         }
     }
 

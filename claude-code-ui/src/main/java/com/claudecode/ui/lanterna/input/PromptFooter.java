@@ -270,16 +270,15 @@ final class PromptFooter {
     /**
      * Starts the live task-footer refresh after the REPL scene is attached.
      *
-     * <p><b>Locking contract for {@link #tick} and everything it calls.</b> The
-     * tick runs on {@code scheduler}, not the GUI thread, and
-     * {@link #refreshTasksPill} is {@code synchronized} on this footer. The GUI
-     * thread acquires monitors strictly top-down (TextGUI → window → container →
-     * leaf), so the tick body must only ever descend: mutate this footer's own
-     * children ({@code Label.setText}, colors, {@code Panel.addComponent}) and
-     * stop there. It must never reach <i>upward</i> — no {@code getTheme()},
-     * {@code getRenderer()}, {@code getPreferredSize()} or {@code draw()} on the
-     * panel or an ancestor — and it must not block: {@code TaskRegistry} reads
-     * are lock-free by design, keep them that way.
+     * <p>The scheduler fires {@link #tick} on its own background thread, never
+     * the GUI thread. {@code tick} itself does nothing but hand its whole body
+     * off via {@link Host#runOnGui}, so every actual mutation — including the
+     * ones that reach upward into {@code host.refreshHint()} (hint bar, other
+     * footer children, vim label) — runs serialized on the GUI thread like any
+     * other input event. This avoids acquiring Lanterna's component monitors
+     * (top-down: TextGUI → window → container → leaf) from a background thread
+     * out of order, which previously could deadlock against
+     * {@code updateScreen} with no exception thrown.
      */
     synchronized void startRefresh(ScheduledExecutorService scheduler) {
         if (refreshFuture == null) {
@@ -300,8 +299,13 @@ final class PromptFooter {
      * One periodic tick: advance the subagent coordinator lifecycle (auto-exit +
      * 30 s grace eviction), repaint its panel, then refresh the teammate/tasks
      * footer. The coordinator and teammate subsystems are stepped independently.
+     * Marshaled onto the GUI thread as a whole; see {@link #startRefresh}.
      */
     void tick() {
+        host.runOnGui(this::tickOnGuiThread);
+    }
+
+    private void tickOnGuiThread() {
         if (coordinator.isBound()) {
             coordinator.navigation().tick(coordinatorNavigationHost);
             refreshCoordinatorPanel();
