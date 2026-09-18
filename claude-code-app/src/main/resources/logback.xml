@@ -8,11 +8,21 @@
       diagnostics, but the async wrapper never blocks the producer thread.
     -->
     <property name="LOG_LEVEL" value="${CLAUDE_CODE_LOG_LEVEL:-INFO}"/>
+    <!--
+      The log file is append-mode and shared by every concurrently running CLI
+      process, so lines must carry a pid to be attributable. The value is
+      produced by a PropertyDefiner rather than System.setProperty, which would
+      lose the race against the static Logger fields that initialise logback
+      during entry-point class loading. No default value is supplied on purpose:
+      a broken definer must render ccPid_IS_UNDEFINED instead of hiding behind a
+      plausible-looking placeholder.
+    -->
+    <define name="ccPid" class="com.claudecode.app.ProcessIdPropertyDefiner"/>
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>/tmp/claude-code-java.log</file>
         <append>true</append>
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{30} - %msg%n%ex</pattern>
+            <pattern>%d{HH:mm:ss.SSS} [pid:${ccPid}] [%thread] %-5level %logger{30} - %msg%n%ex</pattern>
         </encoder>
     </appender>
 

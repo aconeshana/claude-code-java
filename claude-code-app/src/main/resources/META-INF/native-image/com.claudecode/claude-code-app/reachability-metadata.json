@@ -45,6 +45,11 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "ch.qos.logback.core.PropertyDefinerBase",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "ch.qos.logback.core.encoder.Encoder",
       "allPublicMethods": true,
       "allDeclaredConstructors": true
@@ -61,6 +66,11 @@
     },
     {
       "type": "ch.qos.logback.core.spi.ContextAware",
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "ch.qos.logback.core.spi.PropertyDefiner",
       "allPublicMethods": true,
       "allDeclaredConstructors": true
     },
@@ -197,6 +207,11 @@
     {
       "type": "com.claudecode.api.MessageDeltaData",
       "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.app.ProcessIdPropertyDefiner",
       "allPublicMethods": true,
       "allDeclaredConstructors": true
     },

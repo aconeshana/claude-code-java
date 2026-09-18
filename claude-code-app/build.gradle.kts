@@ -177,7 +177,9 @@ sourceSets.main {
 
 dependencies {
     implementation(project(":claude-code-cli"))
-    runtimeOnly(libs.logback.classic)
+    // Not runtimeOnly: ProcessIdPropertyDefiner extends logback-core's PropertyDefinerBase,
+    // so this module compiles against logback as well as shipping it.
+    implementation(libs.logback.classic)
     // NativeReachabilityMetadataTest reflects over the Jackson binding closure and
     // parses the committed reachability metadata; jackson reaches this module only
     // transitively at runtime, so the test needs it declared directly.
