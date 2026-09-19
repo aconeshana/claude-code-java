@@ -131,6 +131,71 @@ class SessionOperationsServiceTest {
         assertNull(entries.getFirst().get("teamName"));
     }
 
+    /**
+     * Not-found is its own exception type, not something a caller infers from
+     * {@code RuntimeException}. A boundary mapping failures onto status codes
+     * needs the two apart, and cannot get there by inspection: a write that
+     * fails on a session that exists surfaces as an unchecked I/O wrapper,
+     * which is a {@code RuntimeException} exactly like a lookup miss.
+     */
+    @Test
+    void mutatingAnUnresolvableSessionFailsAsNotFound() {
+        SessionOperationsService service = new SessionOperationsService(tempDir.resolve(".claude"));
+
+        assertThrows(SessionOperationsService.SessionNotFoundException.class,
+            () -> service.renameSession(SOURCE, "title", null));
+        assertThrows(SessionOperationsService.SessionNotFoundException.class,
+            () -> service.archiveSession(SOURCE, null));
+        assertThrows(SessionOperationsService.SessionNotFoundException.class,
+            () -> service.tagSession(SOURCE, "tag", null));
+        assertThrows(SessionOperationsService.SessionNotFoundException.class,
+            () -> service.forkSession(SOURCE, (String) null, null, "title"));
+    }
+
+    /**
+     * Deletion answers {@code false} rather than throwing for an absent
+     * session, which is what makes it idempotent: two clients listing the same
+     * catalog race, and the loser deleting an already-deleted row got the
+     * outcome it asked for. It previously resolved-or-threw, so the {@code
+     * false} return was unreachable and the caller's not-found branch dead.
+     */
+    @Test
+    void deletingAnAbsentSessionAnswersFalseRatherThanThrowing() throws Exception {
+        Path project = tempDir.resolve("project");
+        SessionManager manager = new SessionManager(tempDir.resolve(".claude"), project.toString());
+        Files.createDirectories(manager.projectDirectory());
+        SessionOperationsService service = new SessionOperationsService(tempDir.resolve(".claude"));
+
+        assertFalse(service.deleteSession(SOURCE, null));
+        assertFalse(service.deleteSession(SOURCE, project.toString()));
+        // An empty transcript never resolves either — same absent answer.
+        Files.writeString(manager.getSessionFile(SOURCE), "");
+        assertFalse(service.deleteSession(SOURCE, null));
+        // A non-UUID id is a caller mistake, still distinct from "absent".
+        assertThrows(IllegalArgumentException.class,
+            () -> service.deleteSession("../not-a-session", null));
+    }
+
+    @Test
+    void deletingAResolvedSessionRemovesTheTranscriptAndItsSidecarDirectory() throws Exception {
+        Path project = tempDir.resolve("project");
+        SessionManager manager = new SessionManager(tempDir.resolve(".claude"), project.toString());
+        Files.createDirectories(manager.projectDirectory());
+        Files.writeString(manager.getSessionFile(SOURCE),
+            row("user", U1, null, SOURCE, "first", false, false) + "\n");
+        Path sidecar = manager.projectDirectory().resolve(SOURCE);
+        Files.createDirectories(sidecar.resolve("nested"));
+        Files.writeString(sidecar.resolve("nested").resolve("blob.bin"), "payload");
+        SessionOperationsService service = new SessionOperationsService(tempDir.resolve(".claude"));
+
+        assertTrue(service.deleteSession(SOURCE, null));
+
+        assertFalse(Files.exists(manager.getSessionFile(SOURCE)));
+        assertFalse(Files.exists(sidecar));
+        // Idempotent: the second delete finds nothing and says so.
+        assertFalse(service.deleteSession(SOURCE, null));
+    }
+
     private static String row(String type, String uuid, String parent, String sessionId,
                               String content, boolean meta, boolean sidechain) throws Exception {
         var node = JsonUtils.getMapper().createObjectNode();

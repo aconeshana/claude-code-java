@@ -150,8 +150,7 @@ public final class SessionOperationsService {
         if (StringUtils.isNotBlank(upToMessageId) && !UuidUtils.isValid(upToMessageId)) {
             throw new IllegalArgumentException("Invalid upToMessageId: " + upToMessageId);
         }
-        ResolvedSession source = resolve(sessionId, dir).orElseThrow(() ->
-            new SessionOperationException("Session " + sessionId + " not found"));
+        ResolvedSession source = requireResolved(sessionId, dir);
         List<JsonNode> entries = parseJsonl(source.file());
         ForkTransform transformed = forkEntries(sessionId, entries, upToMessageId, title);
         Path target = source.file().resolveSibling(transformed.sessionId() + ".jsonl");
@@ -170,20 +169,24 @@ public final class SessionOperationsService {
      * the session's project directory via {@link #resolve} (dir-optional, like
      * rename/tag/fork) rather than requiring a pre-resolved {@link SessionManager},
      * so gateway callers can address a session by bare id.
+     *
+     * <p>Answers {@code false} — rather than throwing — when no transcript
+     * matches the id, which makes deletion idempotent from a caller's point of
+     * view: two clients listing the same catalog will race, and the loser
+     * deleting an already-deleted row has got the outcome it asked for. A
+     * deletion that resolves and then fails still throws.
      */
     public boolean deleteSession(String sessionId, String dir) {
         requireUuid(sessionId);
-        ResolvedSession target = resolve(sessionId, dir).orElseThrow(() ->
-            new SessionOperationException(dir == null
-                ? "Session " + sessionId + " not found in any project directory"
-                : "Session " + sessionId + " not found in project directory for " + dir));
+        Optional<ResolvedSession> resolved = resolve(sessionId, dir);
+        if (resolved.isEmpty()) return false;
+        ResolvedSession target = resolved.get();
         Path projectDir = target.file().getParent();
         Path ownedDirectory = projectDir.resolve(sessionId).normalize();
-        boolean existed = Files.exists(target.file()) || Files.exists(ownedDirectory);
         try {
             deleteTreeStrict(ownedDirectory);
             Files.deleteIfExists(target.file());
-            return existed;
+            return true;
         } catch (IOException failure) {
             throw new UncheckedIOException("Failed to permanently delete session " + sessionId, failure);
         }
@@ -354,17 +357,27 @@ public final class SessionOperationsService {
     }
 
     private void appendExisting(String sessionId, String dir, ObjectNode entry) {
-        ResolvedSession target = resolve(sessionId, dir).orElseThrow(() ->
-            new SessionOperationException(dir == null
-                ? "Session " + sessionId + " not found in any project directory"
-                : "Session " + sessionId + " not found in project directory for " + dir));
+        ResolvedSession target = requireResolved(sessionId, dir);
         try {
             if (!TranscriptAppender.appendToExisting(target.file(), entry.toString() + "\n")) {
-                throw new SessionOperationException("Session " + sessionId + " not found");
+                // Resolved a moment ago, gone by the time the append ran.
+                throw new SessionNotFoundException("Session " + sessionId + " not found");
             }
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
+    }
+
+    /**
+     * The resolve every mutating operation starts with, failing as
+     * {@link SessionNotFoundException} so boundaries can tell an unknown id
+     * from a write that failed on a session that exists.
+     */
+    private ResolvedSession requireResolved(String sessionId, String dir) {
+        return resolve(sessionId, dir).orElseThrow(() ->
+            new SessionNotFoundException(dir == null
+                ? "Session " + sessionId + " not found in any project directory"
+                : "Session " + sessionId + " not found in project directory for " + dir));
     }
 
     private Optional<ResolvedSession> resolve(String sessionId, String dir) {
@@ -504,7 +517,23 @@ public final class SessionOperationsService {
     private record ForkTransform(String sessionId, List<JsonNode> entries) {}
     private record ResolvedSession(Path file, String projectPath) {}
 
-    public static final class SessionOperationException extends RuntimeException {
+    public static sealed class SessionOperationException extends RuntimeException
+            permits SessionNotFoundException {
         public SessionOperationException(String message) { super(message); }
+    }
+
+    /**
+     * No transcript matches the id — distinct from an operation that failed on
+     * a session that provably exists.
+     *
+     * <p>Callers that map failures onto a status code need the two apart: a
+     * disk-full append on a resolved session is a 500, while an id nothing
+     * answers to is a 404. Inferring that from exception types at the boundary
+     * cannot work — {@link UncheckedIOException} and this class are both
+     * {@code RuntimeException} — so the distinction is made here, where the
+     * resolve result is still in hand.
+     */
+    public static final class SessionNotFoundException extends SessionOperationException {
+        public SessionNotFoundException(String message) { super(message); }
     }
 }

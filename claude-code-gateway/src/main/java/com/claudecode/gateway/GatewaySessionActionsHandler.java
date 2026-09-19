@@ -13,6 +13,14 @@ import com.sun.net.httpserver.HttpExchange;
  * {@code POST /api/sessions/{id}/rename}, {@code /fork}, {@code /archive},
  * and {@code DELETE /api/sessions/{id}}: the session row menu's mutating
  * actions, delegated to {@link GatewaySessionActionsPort}.
+ *
+ * <p>All four handlers share one failure vocabulary, because the client
+ * renders the three outcomes differently: 400 for a request the user can fix,
+ * 404 for a row that is already gone (the webui drops it and moves on), and
+ * 500 carrying the underlying message for an operation that failed on a
+ * session that exists. Collapsing the last two loses the only signal that
+ * tells a user their transcript is intact but unwritable — see
+ * {@link GatewaySessionActionsPort.UnknownSessionException}.
  */
 final class GatewaySessionActionsHandler {
 
@@ -36,9 +44,11 @@ final class GatewaySessionActionsHandler {
             respondJson(exchange, 400, errorBody("invalid_request",
                 StringUtils.defaultIfBlank(failure.getMessage(), "invalid rename request")));
             return;
+        } catch (GatewaySessionActionsPort.UnknownSessionException _) {
+            respondUnknown(exchange, sessionId);
+            return;
         } catch (RuntimeException failure) {
-            respondJson(exchange, 404, errorBody("not_found",
-                "unknown session: " + sessionId));
+            respondFailed(exchange, "rename", sessionId, failure);
             return;
         }
         ObjectNode result = JsonUtils.getMapper().createObjectNode();
@@ -58,9 +68,11 @@ final class GatewaySessionActionsHandler {
             respondJson(exchange, 400, errorBody("invalid_request",
                 StringUtils.defaultIfBlank(failure.getMessage(), "invalid fork request")));
             return;
+        } catch (GatewaySessionActionsPort.UnknownSessionException _) {
+            respondUnknown(exchange, sessionId);
+            return;
         } catch (RuntimeException failure) {
-            respondJson(exchange, 404, errorBody("not_found",
-                "unknown session: " + sessionId));
+            respondFailed(exchange, "fork", sessionId, failure);
             return;
         }
         ObjectNode result = JsonUtils.getMapper().createObjectNode();
@@ -71,9 +83,15 @@ final class GatewaySessionActionsHandler {
     void handleArchive(HttpExchange exchange, String sessionId) throws IOException {
         try {
             actions.archive(sessionId);
+        } catch (IllegalArgumentException failure) {
+            respondJson(exchange, 400, errorBody("invalid_request",
+                StringUtils.defaultIfBlank(failure.getMessage(), "invalid archive request")));
+            return;
+        } catch (GatewaySessionActionsPort.UnknownSessionException _) {
+            respondUnknown(exchange, sessionId);
+            return;
         } catch (RuntimeException failure) {
-            respondJson(exchange, 404, errorBody("not_found",
-                "unknown session: " + sessionId));
+            respondFailed(exchange, "archive", sessionId, failure);
             return;
         }
         ObjectNode result = JsonUtils.getMapper().createObjectNode();
@@ -86,20 +104,42 @@ final class GatewaySessionActionsHandler {
         boolean deleted;
         try {
             deleted = actions.delete(sessionId);
+        } catch (IllegalArgumentException failure) {
+            respondJson(exchange, 400, errorBody("invalid_request",
+                StringUtils.defaultIfBlank(failure.getMessage(), "invalid delete request")));
+            return;
+        } catch (GatewaySessionActionsPort.UnknownSessionException _) {
+            respondUnknown(exchange, sessionId);
+            return;
         } catch (RuntimeException failure) {
-            respondJson(exchange, 500, errorBody("api_error",
-                "failed to delete session: " + failure.getMessage()));
+            respondFailed(exchange, "delete", sessionId, failure);
             return;
         }
         if (!deleted) {
-            respondJson(exchange, 404, errorBody("not_found",
-                "unknown session: " + sessionId));
+            respondUnknown(exchange, sessionId);
             return;
         }
         ObjectNode result = JsonUtils.getMapper().createObjectNode();
         result.put("session_id", sessionId);
         result.put("deleted", true);
         respondJson(exchange, 200, result);
+    }
+
+    private static void respondUnknown(HttpExchange exchange, String sessionId) throws IOException {
+        respondJson(exchange, 404, errorBody("not_found", "unknown session: " + sessionId));
+    }
+
+    /**
+     * The session resolved and the operation failed on it — a full disk or a
+     * read-only transcript, not a missing row. The underlying message is
+     * carried through: answering "unknown session" here would tell the user
+     * their conversation is gone when it is intact and merely unwritable.
+     */
+    private static void respondFailed(HttpExchange exchange, String action, String sessionId,
+            RuntimeException failure) throws IOException {
+        respondJson(exchange, 500, errorBody("api_error", "failed to " + action + " session "
+            + sessionId + ": " + StringUtils.defaultIfBlank(failure.getMessage(),
+                failure.toString())));
     }
 
     private static JsonNode readBody(HttpExchange exchange) throws IOException {

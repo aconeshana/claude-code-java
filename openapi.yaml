@@ -279,6 +279,7 @@ paths:
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+        '500': { $ref: '#/components/responses/SessionOperationFailed' }
   /api/sessions/{sessionId}/fork:
     post:
       tags: [Sessions]
@@ -311,6 +312,7 @@ paths:
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+        '500': { $ref: '#/components/responses/SessionOperationFailed' }
   /api/sessions/{sessionId}/archive:
     post:
       tags: [Sessions]
@@ -335,8 +337,10 @@ paths:
                 properties:
                   session_id: { type: string }
                   archived: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+        '500': { $ref: '#/components/responses/SessionOperationFailed' }
   /api/sessions/{sessionId}:
     delete:
       tags: [Sessions]
@@ -345,6 +349,11 @@ paths:
         Deletes the session's transcript and sidecar directory from disk.
         Product-scope extension with no upstream counterpart — reuses the
         Java /resume picker's permanent-deletion capability.
+
+        An id no session answers to is 404, not an error: two clients on the
+        same catalog listing race, and the loser deleting an already-deleted
+        row got the outcome it asked for. 500 is reserved for a session that
+        resolved and could not be deleted.
       parameters:
         - name: sessionId
           in: path
@@ -360,8 +369,10 @@ paths:
                 properties:
                   session_id: { type: string }
                   deleted: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+        '500': { $ref: '#/components/responses/SessionOperationFailed' }
   /api/events:
     get:
       tags: [Sessions]
@@ -1512,10 +1523,24 @@ components:
           description: Present only when the model advertises reasoning effort levels
           required: [current, effective, choices]
           properties:
-            current: { type: string }
-            effective: { type: string }
+            current:
+              type: string
+              description: |
+                The configured selection, or "auto" when nothing is set. May be
+                "ultracode", which is a session-scoped pseudo-level rather than a
+                wire value; it is never persisted.
+            effective:
+              type: string
+              description: |
+                The real level the request carries. Always one of the wire levels —
+                an "ultracode" selection reports "xhigh" here, which is the level it
+                folds to before reaching the model.
             choices:
               type: array
+              description: |
+                Selectable values: "auto" followed by the model's supported levels,
+                plus "ultracode" when dynamic-workflow orchestration is available and
+                the model and organization allow xhigh.
               items: { type: string }
     ModelChoice:
       type: object
@@ -1572,7 +1597,10 @@ components:
           description: The model name to apply (a ModelChoice name)
         effort:
           type: string
-          description: The effort level to apply ("auto" clears the override)
+          description: |
+            The effort level to apply ("auto" clears the override). Must be one of
+            the values the session's effort.choices currently offers, which includes
+            "ultracode" when dynamic workflows are available; anything else is 400.
       description: Exactly one of model or effort must be present
     CommandEntry:
       type: object
@@ -1657,6 +1685,15 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     NotFound:
       description: No resource matches the id
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    SessionOperationFailed:
+      description: |
+        The session exists and the operation failed on it — a full disk or an
+        unwritable transcript, not a missing row. Deliberately distinct from
+        404: the message names the underlying failure so a client can tell the
+        user their conversation is intact but could not be written.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

@@ -378,6 +378,48 @@ public final class GatewayServer implements AutoCloseable {
         }
     }
 
+    /**
+     * Runs one handler off the exchange thread, then closes the exchange.
+     *
+     * <p>The async twin of {@link #serve}: routes whose body blocks on slow I/O
+     * (engine assembly, transcript reads and writes) hand the exchange to a
+     * virtual thread and return from {@link #route} immediately. That return is
+     * also what puts them out of {@link #routeGuarded}'s reach — the guard only
+     * wraps the synchronous call, so everything the guard promises has to be
+     * repeated here, on the thread that actually runs the handler.
+     *
+     * <p>A plain try/finally, not try-with-resources: the fallback 500 must
+     * still reach the wire from the catch block, and try-with-resources closes
+     * the exchange in its own finally <em>before</em> that catch runs — closing
+     * the socket out from under the 500 write and producing the empty reply the
+     * guard exists to prevent. See {@link #routeGuarded} for why {@code Error}
+     * counts, and why {@code OutOfMemoryError} is re-thrown instead.
+     */
+    private static void serveAsync(HttpExchange exchange, Handler handler) {
+        Thread.ofVirtual().name("gateway-api-async").start(() -> {
+            try {
+                handler.handle();
+            } catch (IOException _) {
+                // The client disconnected mid-request; nothing to recover.
+            } catch (RuntimeException | Error failure) {
+                if (failure instanceof OutOfMemoryError) throw failure;
+                log.error("gateway handler failed for {} {}; answering {}",
+                    exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
+                    INTERNAL_ERROR, failure);
+                try {
+                    if (exchange.getResponseCode() == -1) {
+                        respondJson(exchange, INTERNAL_ERROR,
+                            errorBody("api_error", "request failed: " + failure));
+                    }
+                } catch (IOException | RuntimeException _) {
+                    // The client is gone, or the response was already committed.
+                }
+            } finally {
+                exchange.close();
+            }
+        });
+    }
+
     private void route(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
@@ -462,21 +504,8 @@ public final class GatewayServer implements AutoCloseable {
             }
             // The open path assembles an engine (slow I/O) off the exchange thread.
             String targetPath = path;
-            Thread.ofVirtual().name("gateway-sessions-api").start(() -> {
-                try (exchange) {
-                    sessionsApi.handle(exchange,
-                        Strings.CS.equals("/api/sessions/open", targetPath));
-                } catch (IOException _) {
-                    // The client disconnected mid-request; nothing to recover.
-                } catch (RuntimeException failure) {
-                    try {
-                        respondJson(exchange, 500, errorBody("api_error",
-                            "session request failed: " + failure.getMessage()));
-                    } catch (IOException _) {
-                        // Client already gone.
-                    }
-                }
-            });
+            serveAsync(exchange, () -> sessionsApi.handle(exchange,
+                Strings.CS.equals("/api/sessions/open", targetPath)));
             return;
         }
         if (get && Strings.CS.startsWith(path, "/api/sessions/")
@@ -522,22 +551,13 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            Thread.ofVirtual().name("gateway-sessions-api").start(() -> {
-                try (exchange) {
-                    switch (suffix) {
-                        case "/rename" -> sessionActionsApi.handleRename(exchange, sessionId);
-                        case "/fork" -> sessionActionsApi.handleFork(exchange, sessionId);
-                        default -> sessionActionsApi.handleArchive(exchange, sessionId);
-                    }
-                } catch (IOException _) {
-                    // The client disconnected mid-request; nothing to recover.
-                } catch (RuntimeException failure) {
-                    try {
-                        respondJson(exchange, 500, errorBody("api_error",
-                            "session request failed: " + failure.getMessage()));
-                    } catch (IOException _) {
-                        // Client already gone.
-                    }
+            // Rename/fork/archive append to (or copy) a transcript on disk;
+            // run the write off the exchange thread.
+            serveAsync(exchange, () -> {
+                switch (suffix) {
+                    case "/rename" -> sessionActionsApi.handleRename(exchange, sessionId);
+                    case "/fork" -> sessionActionsApi.handleFork(exchange, sessionId);
+                    default -> sessionActionsApi.handleArchive(exchange, sessionId);
                 }
             });
             return;
@@ -560,20 +580,9 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            Thread.ofVirtual().name("gateway-sessions-api").start(() -> {
-                try (exchange) {
-                    sessionActionsApi.handleDelete(exchange, sessionId);
-                } catch (IOException _) {
-                    // The client disconnected mid-request; nothing to recover.
-                } catch (RuntimeException failure) {
-                    try {
-                        respondJson(exchange, 500, errorBody("api_error",
-                            "session request failed: " + failure.getMessage()));
-                    } catch (IOException _) {
-                        // Client already gone.
-                    }
-                }
-            });
+            // Deletion walks the session's sidecar tree; run it off the
+            // exchange thread like the other mutating session actions.
+            serveAsync(exchange, () -> sessionActionsApi.handleDelete(exchange, sessionId));
             return;
         }
         if (post && Strings.CS.equals("/api/permissions/respond", path)) {
@@ -737,30 +746,10 @@ public final class GatewayServer implements AutoCloseable {
         drain(exchange);
         int perProjectLimit = perProjectLimitOf(exchange);
         // Off the exchange thread: the fingerprint-validated listing may block
-        // on transcript reads. This handler owns the exchange lifecycle here —
-        // the route dispatcher no longer closes it on return.
-        Thread.ofVirtual().name("gateway-sessions-list").start(() -> {
-            // A plain try/finally, not try-with-resources: a fallback error
-            // response must still reach the wire from the catch block below,
-            // and try-with-resources closes the exchange in its own finally
-            // before that catch runs — closing the socket out from under the
-            // 500 write and producing an empty reply instead of an error body.
-            try {
-                respondJson(exchange, 200,
-                    sessionsBody(perProjectLimit).toString());
-            } catch (IOException _) {
-                // The client disconnected mid-listing; nothing to recover.
-            } catch (RuntimeException failure) {
-                try {
-                    respondJson(exchange, 500, errorBody("api_error",
-                        "session listing failed: " + failure.getMessage()));
-                } catch (IOException _) {
-                    // Client already gone.
-                }
-            } finally {
-                exchange.close();
-            }
-        });
+        // on transcript reads. See {@link #serveAsync} for the close discipline
+        // that keeps a failure answerable there.
+        serveAsync(exchange, () -> respondJson(exchange, 200,
+            sessionsBody(perProjectLimit).toString()));
     }
 
     /**

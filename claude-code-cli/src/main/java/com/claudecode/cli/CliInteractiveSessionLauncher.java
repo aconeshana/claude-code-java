@@ -15,7 +15,7 @@ import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.SideQuestionContext;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.engine.AbortController;
-import com.claudecode.core.engine.FallbackTriggeredError;
+import com.claudecode.core.engine.ForkFallbackRetry;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AssistantContent;
@@ -120,14 +120,8 @@ final class CliInteractiveSessionLauncher {
                     forkSideQuestionRequest(cacheSafe, wrappedQuestion,
                         SideQuestionContext.history());
                 long startedAt = System.currentTimeMillis();
-                SideQuestionStreamResult result;
-                try {
-                    result = consumeSideQuestionStream(client.createStream(fork));
-                } catch (FallbackTriggeredError fallback) {
-                    if (StringUtils.isBlank(fork.fallbackModel())) throw fallback;
-                    result = consumeSideQuestionStream(client.createStream(withModel(
-                        fork, fork.fallbackModel())));
-                }
+                SideQuestionStreamResult result = ForkFallbackRetry.call(fork,
+                    attempt -> consumeSideQuestionStream(client.createStream(attempt)));
                 if (result.error() == null) {
                     long completedAt = System.currentTimeMillis();
                     SessionCostState.get().recordApiRequest(
@@ -225,26 +219,9 @@ final class CliInteractiveSessionLauncher {
             }
         }
         messages.add(new StreamingClient.StreamRequest.RequestMessage("user", wrappedQuestion));
-        return new StreamingClient.StreamRequest(
-            parent.model(), parent.maxTokens(), parent.systemPrompt(), List.copyOf(messages), true,
-            parent.tools(), null, parent.effort(), parent.fallbackModel(),
-            parent.maxOutputTokensOverride(), parent.taskBudget(), parent.toolChoice(),
-            parent.onStreamingFallback(), parent.thinkingEnabled(), parent.sessionId(),
-            null, true, "side_question",
+        return parent.asFork(messages, "side_question",
             SideQuestionContext.abortController() != null
-                ? SideQuestionContext.abortController() : new AbortController(),
-            parent.thinkingBudgetTokens());
-    }
-
-    private static StreamingClient.StreamRequest withModel(
-            StreamingClient.StreamRequest request, String model) {
-        return new StreamingClient.StreamRequest(
-            model, request.maxTokens(), request.systemPrompt(), request.messages(), true,
-            request.tools(), request.jsonSchema(), request.effort(), null,
-            request.maxOutputTokensOverride(), request.taskBudget(), request.toolChoice(),
-            request.onStreamingFallback(), request.thinkingEnabled(), request.sessionId(),
-            request.agentId(), request.skipCacheWrite(), request.querySource(),
-            request.abortController(), request.thinkingBudgetTokens());
+                ? SideQuestionContext.abortController() : new AbortController());
     }
 
     private record SideQuestionStreamResult(String text, String toolUseName,

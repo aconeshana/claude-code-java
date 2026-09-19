@@ -702,23 +702,46 @@ final class CliInteractiveSessionRunner {
      * {@link SessionOperationsService}, addressing sessions by bare id
      * (dir left {@code null}) so the gateway need not resolve a project
      * directory itself.
+     *
+     * <p>The service's {@code SessionNotFoundException} is translated to the
+     * port's own {@code UnknownSessionException} here, at the module boundary:
+     * the gateway does not depend on {@code claude-code-session}, and without
+     * the translation an unwritable-but-present transcript (which surfaces as
+     * {@code UncheckedIOException}) is indistinguishable at the handler from an
+     * id nothing answers to. Delete needs no translation — the service already
+     * answers {@code false} for an absent session.
      */
     private static GatewaySessionActionsPort gatewaySessionActions() {
         SessionOperationsService operations = new SessionOperationsService(ClaudePaths.CLAUDE_HOME);
         return new GatewaySessionActionsPort() {
             @Override public void rename(String sessionId, String title) {
-                operations.renameSession(sessionId, title, null);
+                translatingNotFound(() -> {
+                    operations.renameSession(sessionId, title, null);
+                    return null;
+                });
             }
             @Override public ForkResult fork(String sessionId, String title) {
-                return new ForkResult(operations.forkSession(sessionId, (String) null, null, title).sessionId());
+                return translatingNotFound(() -> new ForkResult(operations.forkSession(
+                    sessionId, (String) null, null, title).sessionId()));
             }
             @Override public void archive(String sessionId) {
-                operations.archiveSession(sessionId, null);
+                translatingNotFound(() -> {
+                    operations.archiveSession(sessionId, null);
+                    return null;
+                });
             }
             @Override public boolean delete(String sessionId) {
-                return operations.deleteSession(sessionId, null);
+                return translatingNotFound(() -> operations.deleteSession(sessionId, null));
             }
         };
+    }
+
+    private static <T> T translatingNotFound(Supplier<T> operation) {
+        try {
+            return operation.get();
+        } catch (SessionOperationsService.SessionNotFoundException failure) {
+            throw new GatewaySessionActionsPort.UnknownSessionException(failure.getMessage());
+        }
     }
 
     /**
