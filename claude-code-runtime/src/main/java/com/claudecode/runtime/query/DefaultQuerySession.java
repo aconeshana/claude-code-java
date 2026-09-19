@@ -799,11 +799,17 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         String effortValue = getEffortOverride() != null
             ? getEffortOverride() : config.effortValue();
         String resolvedEffort = EffortHelpers.resolveAppliedEffort(resolvedModel, effortValue);
+        // Full canonical shape: the shorter overloads silently default the tail
+        // components, which is how forks built here lost thinkingBudgetTokens and
+        // the Fast Mode pair — a rebuilt /recap or /btw fork in a Fast Mode
+        // session went out without speed: "fast" and with no cooldown callback.
         return new StreamingClient.StreamRequest(
             resolvedModel, config.maxTokens(), fetchSystemPromptParts(), requestMessages,
             true, toolDefs, null, resolvedEffort, config.fallbackModel(), null, null,
             null, null, config.isThinkingEnabled(), getSessionId(), config.agentId(),
-            true, querySource, getAbortController());
+            true, querySource, getAbortController(), config.thinkingBudgetTokens(),
+            config.fastModeController().isFastRequest(resolvedModel),
+            config.fastModeController().failureHandler());
     }
 
     @Override public void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request) {

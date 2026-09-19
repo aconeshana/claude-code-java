@@ -70,7 +70,6 @@ import com.claudecode.runtime.metrics.SessionMetricsTracker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -540,11 +539,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 config.isThinkingEnabled(), engine.getSessionId(), config.agentId(), params.skipCacheWrite(),
                 params.querySource(), engine.getAbortController(), config.thinkingBudgetTokens(),
                 config.fastModeController().isFastRequest(currentModel),
-                (status, retryAfterSeconds) -> config.fastModeController().enterCooldown(
-                    Duration.ofSeconds(retryAfterSeconds == null
-                        ? 1_800L : Math.max(600L, retryAfterSeconds)),
-                    status == 529 ? FastModeCooldownReason.OVERLOADED
-                        : FastModeCooldownReason.RATE_LIMIT));
+                config.fastModeController().failureHandler());
 
             long apiStartMs = System.currentTimeMillis();
             if (apiRetryChainStartMs == null) apiRetryChainStartMs = apiStartMs;
@@ -1076,7 +1071,9 @@ class QueryLoop implements SdkEventSequencedIterator {
                         currentModel, forkEffortValue, config.isCustomModel(currentModel)),
                     config.fallbackModel(), null, params.taskBudget(), null, null,
                     config.isThinkingEnabled(), engine.getSessionId(), null, false,
-                    "user", null, config.thinkingBudgetTokens()));
+                    "user", null, config.thinkingBudgetTokens(),
+                    config.fastModeController().isFastRequest(currentModel),
+                    config.fastModeController().failureHandler()));
             }
 
             if (config.memoryExtractor() != null && config.agentId() == null) {

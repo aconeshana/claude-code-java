@@ -1,6 +1,7 @@
 package com.claudecode.services.agent;
 
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.engine.FallbackTriggeredError;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.ToolExecutionContext;
@@ -54,14 +55,26 @@ class AwaySummaryServiceTest {
     private static final class RecordingStreamingClient implements StreamingClient {
         final List<StreamRequest> requests = new ArrayList<>();
         volatile String response;
+        /** Thrown from the first {@code createStream} only, to model an overloaded primary. */
+        private volatile RuntimeException firstFailure;
 
         RecordingStreamingClient(String response) {
             this.response = response;
         }
 
+        /** Makes the next (first) attempt fail, as the adapter does on an overloaded primary. */
+        void failFirstWith(RuntimeException failure) {
+            this.firstFailure = failure;
+        }
+
         @Override
         public Iterator<StreamingEvent> createStream(StreamRequest request) {
             requests.add(request);
+            RuntimeException failure = firstFailure;
+            if (failure != null) {
+                firstFailure = null;
+                throw failure;
+            }
             List<StreamingEvent> events = new ArrayList<>();
             events.add(new StreamingEvent.MessageStartEvent(
                 "msg-recap", request.model(), List.of(), Usage.EMPTY));
@@ -381,6 +394,85 @@ class AwaySummaryServiceTest {
 
         assertNull(published.get());
         assertTrue(h.client().requests.isEmpty());
+    }
+
+    /**
+     * The recap fork must carry the session's Fast Mode state and its cooldown
+     * callback. It used to reconstruct {@code StreamRequest} with 20 positional
+     * arguments, which silently bound to the pre-Fast-Mode convenience
+     * constructor and hardcoded {@code fastMode=false, onFastModeFailure=null}:
+     * a recap in a Fast Mode session went out without {@code speed: "fast"}
+     * (billed and latency-shaped as a normal request), and a rate-limited recap
+     * never entered the cooldown, so the session kept firing fast requests at an
+     * endpoint already rejecting them.
+     */
+    @Test
+    void recapForkPropagatesFastModeAndItsFailureCallbackFromTheParent() {
+        Harness h = harness("Back on the parser.");
+        AtomicReference<String> cooldown = new AtomicReference<>();
+        StreamingClient.StreamRequest saved = h.engine().forks().buildCacheSharingRequest(
+            List.of(new UserMessage("s1", MessageContent.ofText("saved turn"))),
+            "saved prompt", "user");
+        saved = saved.withFastMode(true,
+            (status, retryAfter) -> cooldown.set(status + ":" + retryAfter));
+        h.engine().forks().setLastCacheSafeForkRequest(saved);
+
+        h.service().synthesizeRecap(sampleMessages(4));
+
+        StreamingClient.StreamRequest request = h.client().onlyRequest();
+        assertTrue(request.fastMode(),
+            "a recap in a Fast Mode session must still request speed: fast");
+        assertNotNull(request.onFastModeFailure(),
+            "without the callback a rate-limited recap never enters the cooldown");
+
+        request.onFastModeFailure().accept(429, 900L);
+        assertEquals("429:900", cooldown.get(),
+            "the callback must be the parent's, not an inert stand-in");
+    }
+
+    /**
+     * An overloaded primary with {@code --fallback-model} configured must retry
+     * on the fallback. The adapter signals this by throwing
+     * {@link FallbackTriggeredError}, a {@code RuntimeException} that the broad
+     * {@code catch (Exception)} used to swallow into a generic "Couldn't
+     * generate a recap" — while a side question under identical conditions
+     * recovered transparently.
+     */
+    @Test
+    void overloadedPrimaryWithAFallbackModelRecapsViaTheFallback() {
+        Harness h = harness("Recapped on the fallback.");
+        h.client().failFirstWith(new FallbackTriggeredError("claude-sonnet-5", "claude-haiku-5"));
+        // What --fallback-model sets; buildCacheSharingRequest copies it onto the fork.
+        h.engine().getConfig().setFallbackModel("claude-haiku-5");
+        h.engine().forks().setLastCacheSafeForkRequest(
+            h.engine().forks().buildCacheSharingRequest(
+                List.of(new UserMessage("s1", MessageContent.ofText("saved turn"))),
+                "saved prompt", "user"));
+
+        AwaySummaryService.RecapResult result = h.service().synthesizeRecap(sampleMessages(4));
+
+        assertEquals(AwaySummaryService.Kind.OK, result.kind(),
+            "a configured fallback must rescue the recap, not fail it");
+        assertEquals("Recapped on the fallback.", result.text());
+        assertEquals(2, h.client().requests.size(), "primary attempt, then the fallback");
+        assertEquals("claude-haiku-5", h.client().requests.get(1).model(),
+            "the retry is aimed at the fallback model");
+        assertNull(h.client().requests.get(1).fallbackModel(),
+            "the fallback attempt clears its own fallback so it cannot recurse");
+    }
+
+    /**
+     * Without a fallback model there is nothing to retry, so the signal stays a
+     * failure rather than becoming an unbounded second attempt.
+     */
+    @Test
+    void overloadedPrimaryWithoutAFallbackModelStillFails() {
+        Harness h = harness("unused");
+        h.client().failFirstWith(new FallbackTriggeredError("claude-sonnet-5", "claude-haiku-5"));
+
+        assertEquals(AwaySummaryService.Kind.FAILED,
+            h.service().synthesizeRecap(conversationThatCalledATool()).kind());
+        assertEquals(1, h.client().requests.size(), "no fallback configured, no retry");
     }
 
     @Test

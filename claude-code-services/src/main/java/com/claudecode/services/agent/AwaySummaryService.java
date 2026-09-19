@@ -1,6 +1,7 @@
 package com.claudecode.services.agent;
 
 import com.claudecode.core.annotation.CacheTier;
+import com.claudecode.core.engine.ForkFallbackRetry;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.AssistantMessage;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -174,10 +176,23 @@ public class AwaySummaryService {
 
         try {
             long startedAt = System.currentTimeMillis();
-            Iterator<StreamingClient.StreamingEvent> stream =
-                streamingClient.createStream(request);
-            ForkedTextStream.Result result = ForkedTextStream.consume(stream);
-            recordCost(request, result, stream, startedAt);
+            // A fork carrying --fallback-model must honour it. The adapter
+            // signals an overloaded primary by throwing FallbackTriggeredError,
+            // a RuntimeException the broad catch below would otherwise swallow
+            // into "Couldn't generate a recap" — while the side question, which
+            // handles it, recovers transparently under the same conditions.
+            AtomicReference<StreamingClient.StreamRequest> attempted =
+                new AtomicReference<>(request);
+            AtomicReference<Iterator<StreamingClient.StreamingEvent>> attemptedStream =
+                new AtomicReference<>();
+            ForkedTextStream.Result result = ForkFallbackRetry.call(request, fork -> {
+                attempted.set(fork);
+                Iterator<StreamingClient.StreamingEvent> stream =
+                    streamingClient.createStream(fork);
+                attemptedStream.set(stream);
+                return ForkedTextStream.consume(stream);
+            });
+            recordCost(attempted.get(), result, attemptedStream.get(), startedAt);
             if (StringUtils.isBlank(result.text())) {
                 if (!result.requestedTools().isEmpty()) {
                     log.debug("[awaySummary] recap turn was spent calling tools: {}",
@@ -187,7 +202,11 @@ public class AwaySummaryService {
             }
             return RecapResult.ok(capRecapText(result.text().strip()));
         } catch (Exception failure) {
-            log.debug("[awaySummary] generation failed: {}", failure.toString());
+            // Warn, not debug: a recap that fails is user-visible ("Couldn't
+            // generate a recap") and this is the only record of why. Debug-level
+            // logging here is what kept the dropped Fast Mode state and the
+            // swallowed fallback signal invisible.
+            log.warn("[awaySummary] generation failed: {}", failure.toString());
             return RecapResult.failed();
         }
     }
@@ -220,21 +239,22 @@ public class AwaySummaryService {
      * Derives the recap fork from the saved main-loop request: prefix verbatim
      * (so the prompt cache still hits), recap prompt as a trailing user turn.
      * The snapshot is a main-loop request — it carries
-     * {@code skipCacheWrite=false} and {@code querySource="user"} — so this
-     * override of both is load-bearing, not cosmetic.
+     * {@code skipCacheWrite=false} and {@code querySource="user"} — so
+     * {@link StreamingClient.StreamRequest#asFork} overriding both is
+     * load-bearing, not cosmetic.
+     *
+     * <p>Deriving from the parent rather than re-listing the component list is
+     * also load-bearing: the positional form silently bound to a shorter
+     * convenience constructor and dropped {@code fastMode}/{@code onFastModeFailure},
+     * so a recap in a Fast Mode session went out without {@code speed: "fast"}
+     * and could never trigger the cooldown.
      */
     private static StreamingClient.StreamRequest appendRecapPrompt(
             StreamingClient.StreamRequest parent) {
         List<StreamingClient.StreamRequest.RequestMessage> messages =
             new ArrayList<>(parent.messages());
         messages.add(new StreamingClient.StreamRequest.RequestMessage("user", RECAP_PROMPT));
-        return new StreamingClient.StreamRequest(
-            parent.model(), parent.maxTokens(), parent.systemPrompt(), List.copyOf(messages),
-            true, parent.tools(), null, parent.effort(), parent.fallbackModel(),
-            parent.maxOutputTokensOverride(), parent.taskBudget(), parent.toolChoice(),
-            parent.onStreamingFallback(), parent.thinkingEnabled(), parent.sessionId(),
-            null, true, QUERY_SOURCE, parent.abortController(),
-            parent.thinkingBudgetTokens());
+        return parent.asFork(messages, QUERY_SOURCE, parent.abortController());
     }
 
     /**

@@ -226,7 +226,19 @@ public interface StreamingClient {
                 querySource, abortController, null);
         }
 
-        /** Pre-Fast-Mode canonical shape retained for existing callers. */
+        /**
+         * Pre-Fast-Mode canonical shape retained for existing callers.
+         *
+         * @deprecated This overload silently defaults {@code fastMode=false} and
+         *     {@code onFastModeFailure=null}, so a call one argument short of the
+         *     canonical shape still compiles and drops the Fast Mode pair. That is
+         *     exactly how the {@code /recap} fork and the cache-safe snapshot lost
+         *     it. No production code calls this any more; forks should derive from
+         *     their parent via {@link #asFork} / {@link #withModel} /
+         *     {@link #withFastMode}, and new requests should pass the full
+         *     canonical component list.
+         */
+        @Deprecated
         public StreamRequest(String model, int maxTokens, String systemPrompt,
                              List<RequestMessage> messages, boolean stream,
                              List<ToolDef> tools, JsonNode jsonSchema, String effort,
@@ -240,6 +252,65 @@ public interface StreamingClient {
                 fallbackModel, maxOutputTokensOverride, taskBudget, toolChoice,
                 onStreamingFallback, thinkingEnabled, sessionId, agentId, skipCacheWrite,
                 querySource, abortController, thinkingBudgetTokens, false, null);
+        }
+
+        /**
+         * Derives a fork from this request, preserving every component this
+         * record carries except the ones a fork must own.
+         *
+         * <p>Forks previously re-listed the whole component list positionally.
+         * That is a trap: the record grows a component, the fork site keeps
+         * compiling against a shorter convenience constructor (the 20-argument
+         * pre-Fast-Mode shape is still on this record), and the new component is
+         * silently replaced by that overload's default. It cost us
+         * {@code fastMode}/{@code onFastModeFailure} on both the {@code /recap}
+         * fork and the cache-safe snapshot it derives from — a Fast Mode session
+         * issued forks without {@code speed: "fast"} and with no cooldown
+         * callback, so a rate-limited fork never backed off. Deriving from the
+         * parent instead means the next component added is carried by default,
+         * and a fork that genuinely must override one says so by name.
+         *
+         * @param messages      fork conversation (prefix verbatim plus the fork turn)
+         * @param querySource   fork's retry classification, e.g. {@code "away_summary"}
+         * @param abortController fork's cancellation signal
+         * @return a fork request; {@code skipCacheWrite} is forced on, because a
+         *         throwaway fork must not move the main loop's cache breakpoint
+         */
+        public StreamRequest asFork(List<RequestMessage> messages, String querySource,
+                                    AbortController abortController) {
+            return new StreamRequest(
+                model, maxTokens, systemPrompt, List.copyOf(messages), true, tools,
+                null, effort, fallbackModel, maxOutputTokensOverride, taskBudget,
+                toolChoice, onStreamingFallback, thinkingEnabled, sessionId, null,
+                true, querySource, abortController, thinkingBudgetTokens,
+                fastMode, onFastModeFailure);
+        }
+
+        /**
+         * Copy of this request aimed at {@code model}, with the fallback cleared
+         * so a fallback attempt cannot recurse into another fallback.
+         */
+        public StreamRequest withModel(String model) {
+            return new StreamRequest(
+                model, maxTokens, systemPrompt, messages, stream, tools, jsonSchema,
+                effort, null, maxOutputTokensOverride, taskBudget, toolChoice,
+                onStreamingFallback, thinkingEnabled, sessionId, agentId,
+                skipCacheWrite, querySource, abortController, thinkingBudgetTokens,
+                fastMode, onFastModeFailure);
+        }
+
+        /**
+         * Copy of this request carrying the session's Fast Mode state and the
+         * cooldown callback the adapter invokes on a 429/529.
+         */
+        public StreamRequest withFastMode(boolean fastMode,
+                                          BiConsumer<Integer, Long> onFastModeFailure) {
+            return new StreamRequest(
+                model, maxTokens, systemPrompt, messages, stream, tools, jsonSchema,
+                effort, fallbackModel, maxOutputTokensOverride, taskBudget, toolChoice,
+                onStreamingFallback, thinkingEnabled, sessionId, agentId,
+                skipCacheWrite, querySource, abortController, thinkingBudgetTokens,
+                fastMode, onFastModeFailure);
         }
 
         public record RequestMessage(String role, Object content) {}

@@ -2,6 +2,7 @@ package com.claudecode.runtime.query;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import org.apache.commons.lang3.StringUtils;
@@ -73,6 +74,24 @@ public final class FastModeController {
     public synchronized FastModeCooldownReason cooldownReason() {
         expireCooldown();
         return cooldownReason;
+    }
+
+    /**
+     * The {@code onFastModeFailure} callback every Fast Mode request carries: on
+     * a 429/529 the session stops issuing fast requests at an endpoint that is
+     * already rejecting them.
+     *
+     * <p>Owned here rather than rebuilt at each request site so the backoff
+     * policy has one definition. Forks need it as much as the main turn does —
+     * when the cache-safe snapshot carried {@code onFastModeFailure=null}, a
+     * rate-limited {@code /recap} or {@code /btw} never entered the cooldown.
+     */
+    public BiConsumer<Integer, Long> failureHandler() {
+        return (status, retryAfterSeconds) -> enterCooldown(
+            Duration.ofSeconds(retryAfterSeconds == null
+                ? 1_800L : Math.max(600L, retryAfterSeconds)),
+            status == 529 ? FastModeCooldownReason.OVERLOADED
+                : FastModeCooldownReason.RATE_LIMIT);
     }
 
     public boolean available() {
