@@ -171,8 +171,23 @@ public interface QuerySession {
     }
 
     interface Forks {
+        /** Cache-sharing fork for {@code /compact} — {@code querySource="compact"}. */
         StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String compactPrompt);
+
+        /**
+         * Cache-sharing fork with an explicit query source. Rebuilds the main
+         * loop's system prompt and tool catalog around {@code messages} plus a
+         * trailing {@code forkPrompt} user turn, so a fork whose conversation
+         * carries {@code tool_use} blocks stays a valid request.
+         *
+         * <p>This is the rebuild path taken when
+         * {@link #getLastCacheSafeForkRequest()} returns {@code null} (after
+         * compaction/clear/resume, or on a sub-agent engine).
+         */
+        StreamingClient.StreamRequest buildCacheSharingRequest(
+            List<Message> messages, String forkPrompt, String querySource);
+
         StreamingClient.StreamRequest getLastCacheSafeForkRequest();
         void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request);
         Map<String, String> getReadFileState();

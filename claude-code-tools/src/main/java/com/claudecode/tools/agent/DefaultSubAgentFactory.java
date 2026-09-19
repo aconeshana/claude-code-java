@@ -634,8 +634,14 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         String model = resolvedSubAgentModel(effectiveRequest.model());
         final QuerySession[] engineBox = new QuerySession[1];
         MessageCompactor subCompact = compactFactory != null
-            ? compactFactory.createForSubAgent(agentId, sessionIdentity, model,
-                () -> engineBox[0].forks().getFileStateCache())
+            ? compactFactory.createForSubAgent(agentId, sessionIdentity,
+                () -> engineBox[0].forks().getFileStateCache(),
+                // Compaction forks the sub-agent's own session, so it carries
+                // that session's system prompt and tool catalog — a sub-agent
+                // that has called a tool would otherwise compact into a request
+                // whose tool_use blocks have no declared tools.
+                (messages, prompt, querySource) -> engineBox[0].forks()
+                    .buildCacheSharingRequest(messages, prompt, querySource))
             : null;
         QuerySessionFactory factory = Objects.requireNonNull(
             querySessionFactory, "QuerySessionFactory is not wired");

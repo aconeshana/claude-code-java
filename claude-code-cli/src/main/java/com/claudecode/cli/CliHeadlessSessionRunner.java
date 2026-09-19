@@ -346,7 +346,8 @@ final class CliHeadlessSessionRunner {
                 request.pluginRuntime()))
             .dream(CliRuntimeAdapters.newDreamPort())
             .insightsPipeline(insightsPipelineSupplier)
-            .recap(CliInteractiveSessionRunner.recapPort(request.llmClient()))
+            .recap(CliInteractiveSessionRunner.recapPort(
+                request.config().llmClient(), request::engine))
             .settingsManagement(settingsManagement)
             .mcpManagement(mcpManagement)
             .transcriptRecorder(message ->

@@ -1,11 +1,27 @@
 package com.claudecode.services.agent;
 
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.engine.SessionIdentity;
+import com.claudecode.core.engine.StreamingClient;
+import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.engine.ToolExecutor;
+import com.claudecode.core.engine.ToolResult;
+import com.claudecode.core.message.AssistantContent;
+import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageFactory;
+import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ToolResultBlock;
+import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.runtime.query.DefaultQuerySession;
+import com.claudecode.runtime.query.QuerySessionSpec;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Iterator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +33,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -32,12 +50,95 @@ class AwaySummaryServiceTest {
         }
     }
 
+    /** Records every fork request and streams back a single text block. */
+    private static final class RecordingStreamingClient implements StreamingClient {
+        final List<StreamRequest> requests = new ArrayList<>();
+        volatile String response;
+
+        RecordingStreamingClient(String response) {
+            this.response = response;
+        }
+
+        @Override
+        public Iterator<StreamingEvent> createStream(StreamRequest request) {
+            requests.add(request);
+            List<StreamingEvent> events = new ArrayList<>();
+            events.add(new StreamingEvent.MessageStartEvent(
+                "msg-recap", request.model(), List.of(), Usage.EMPTY));
+            if (response != null) {
+                events.add(new StreamingEvent.ContentBlockStartEvent(0, "text", null, null));
+                events.add(new StreamingEvent.ContentBlockDeltaEvent(0, "text_delta", response));
+                events.add(new StreamingEvent.ContentBlockStopEvent(0));
+            }
+            events.add(new StreamingEvent.MessageDeltaEvent("end_turn", Usage.EMPTY));
+            events.add(new StreamingEvent.MessageStopEvent());
+            return events.iterator();
+        }
+
+        @Override
+        public String getModel() {
+            return "stub-model";
+        }
+
+        StreamRequest onlyRequest() {
+            assertEquals(1, requests.size(), "the recap is a single forked turn");
+            return requests.getFirst();
+        }
+    }
+
+    private static final class BashOnlyToolExecutor implements ToolExecutor {
+        @Override
+        public ToolResult execute(String toolName, JsonNode input, ToolExecutionContext context) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions() {
+            return List.of(new StreamingClient.StreamRequest.ToolDef(
+                "Bash", "Run a command", new ObjectMapper().createObjectNode()));
+        }
+    }
+
+    /** A recap service over a live session, the shape both callers wire up. */
+    private record Harness(AwaySummaryService service, RecordingStreamingClient client,
+                           DefaultQuerySession engine) {
+    }
+
+    private static Harness harness(String response) {
+        RecordingStreamingClient client = new RecordingStreamingClient(response);
+        QuerySessionSpec config = QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("claude-sonnet-5")
+            .systemPrompt("main-loop-system-prompt")
+            .maxTokens(32_000)
+            .toolExecutor(new BashOnlyToolExecutor())
+            .tools(List.of("Bash"))
+            .sessionIdentity(SessionIdentity.of("session-recap"))
+            .build();
+        DefaultQuerySession engine = new DefaultQuerySession(config);
+        return new Harness(new AwaySummaryService(client, () -> engine), client, engine);
+    }
+
     private static List<Message> sampleMessages(int n) {
         List<Message> msgs = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             msgs.add(new UserMessage("uuid-" + i, MessageContent.ofText("message " + i)));
         }
         return msgs;
+    }
+
+    /** A conversation that already spent a turn calling a tool. */
+    private static List<Message> conversationThatCalledATool() {
+        ObjectMapper mapper = new ObjectMapper();
+        return List.of(
+            new UserMessage("u1", MessageContent.ofText("list the files")),
+            new AssistantMessage("a1", AssistantContent.of(List.of(
+                new TextBlock("Running it."),
+                new ToolUseBlock("toolu_1", "Bash",
+                    mapper.createObjectNode().put("command", "ls"))))),
+            new UserMessage("u2", MessageContent.ofBlocks(List.of(
+                new ToolResultBlock("toolu_1", List.of(new TextBlock("a.txt")), false)))),
+            new UserMessage("u3", MessageContent.ofText("thanks")));
     }
 
     private static Message awaySummaryMessage() {
@@ -60,52 +161,133 @@ class AwaySummaryServiceTest {
         System.setProperty("user.dir", cwd.toString());
     }
 
+    /**
+     * The bug this class is the regression guard for: the recap used to be a
+     * bare side query with {@code tools: []} and no system prompt, so every
+     * conversation that had already called a tool produced a request the
+     * Messages API rejects — {@code tool_use} blocks with no declared tools —
+     * and {@code /recap} answered "Couldn't generate a recap" forever.
+     */
+    @Test
+    void recapForkCarriesTheToolCatalogForAConversationThatCalledATool() {
+        Harness h = harness("Refactoring the parser.");
+
+        AwaySummaryService.RecapResult result =
+            h.service().synthesizeRecap(conversationThatCalledATool());
+
+        assertEquals(AwaySummaryService.Kind.OK, result.kind());
+        StreamingClient.StreamRequest request = h.client().onlyRequest();
+        assertEquals(List.of("Bash"), request.tools().stream()
+            .map(StreamingClient.StreamRequest.ToolDef::name).toList(),
+            "a history holding tool_use blocks is only valid alongside its tools");
+        assertFalse(request.systemPrompt().isEmpty(),
+            "the recap forks the main loop, system prompt included");
+        assertEquals("away_summary", request.querySource());
+        assertTrue(request.skipCacheWrite(),
+            "the recap is a throwaway fork; the prefix keeps the main loop's cache marker");
+        assertTrue(Strings.CS.contains(
+            request.messages().getLast().content().toString(),
+            "The user stepped away"));
+    }
+
+    /**
+     * 236 {@code JXn} prefers the saved main-loop parameters over a rebuild:
+     * reusing them verbatim is what keeps the prompt-cache prefix intact.
+     */
+    @Test
+    void recapPrefersTheSavedMainLoopRequestOverARebuild() {
+        Harness h = harness("Back to the parser.");
+        StreamingClient.StreamRequest.ToolDef savedTool =
+            new StreamingClient.StreamRequest.ToolDef(
+                "Read", "Read a file", new ObjectMapper().createObjectNode());
+        StreamingClient.StreamRequest saved = h.engine().forks().buildCacheSharingRequest(
+            List.of(new UserMessage("s1", MessageContent.ofText("saved turn"))),
+            "saved prompt", "user");
+        saved = new StreamingClient.StreamRequest(
+            saved.model(), saved.maxTokens(), "saved-system-prompt", saved.messages(),
+            true, List.of(savedTool), null, saved.effort(), saved.fallbackModel(),
+            null, null, null, null, saved.thinkingEnabled(), saved.sessionId(),
+            null, false, "user", saved.abortController(), saved.thinkingBudgetTokens());
+        h.engine().forks().setLastCacheSafeForkRequest(saved);
+
+        h.service().synthesizeRecap(sampleMessages(4));
+
+        StreamingClient.StreamRequest request = h.client().onlyRequest();
+        assertEquals("saved-system-prompt", request.systemPrompt(),
+            "the saved prefix is reused verbatim or the cache misses on every recap");
+        assertEquals(List.of("Read"), request.tools().stream()
+            .map(StreamingClient.StreamRequest.ToolDef::name).toList());
+        assertEquals(saved.messages().size() + 1, request.messages().size(),
+            "the recap prompt is appended, the prefix is untouched");
+        assertSame(saved.messages().getFirst(), request.messages().getFirst());
+        assertEquals("away_summary", request.querySource(),
+            "the snapshot is a main-loop request; querySource must be overridden");
+        assertTrue(request.skipCacheWrite(),
+            "the snapshot carries skipCacheWrite=false; the fork must override it");
+    }
+
+    /**
+     * 236 {@code $lT} refuses to rebuild when the conversation holds nothing
+     * summarizable, so the caller says "nothing to recap" instead of spending a
+     * request that can only fail.
+     */
+    @Test
+    void rebuildWithoutAnythingSummarizableReportsNoTurnWithoutCallingTheModel() {
+        Harness h = harness("unused");
+
+        List<Message> nothingToSay = List.of(
+            new UserMessage("m1", MessageContent.ofText("<local-command-stdout>ok</local-command-stdout>")));
+
+        assertEquals(AwaySummaryService.Kind.NO_TURN,
+            h.service().synthesizeRecap(nothingToSay).kind());
+        assertEquals(AwaySummaryService.Kind.NO_TURN,
+            h.service().synthesizeRecap(List.of()).kind());
+        assertTrue(h.client().requests.isEmpty(), "no request is worth sending");
+    }
+
     @Test
     void generateAwaySummary_nullOrEmpty_returnsNull() {
-        AwaySummaryService svc = new AwaySummaryService(new StubLlmClient("recap"));
-        assertNull(svc.generateAwaySummary(null));
-        assertNull(svc.generateAwaySummary(List.of()));
+        Harness h = harness("recap");
+        assertNull(h.service().generateAwaySummary(null));
+        assertNull(h.service().generateAwaySummary(List.of()));
     }
 
     @Test
     void generateAwaySummary_sendsConversationPlusPromptAndTrims() {
-        StubLlmClient client = new StubLlmClient("  The user is refactoring the parser.  ");
-        AwaySummaryService svc = new AwaySummaryService(client);
+        Harness h = harness("  The user is refactoring the parser.  ");
 
-        String result = svc.generateAwaySummary(sampleMessages(5));
+        String result = h.service().generateAwaySummary(sampleMessages(5));
 
         assertEquals("The user is refactoring the parser.", result);
-        // One query; its last message is the fixed 236 FlT prompt (JXn appends
-        // it after the conversation, it is not the first message).
-        assertEquals(1, client.prompts.size());
-        assertTrue(Strings.CS.contains(client.prompts.getFirst(), "stepped away"));
-        assertTrue(Strings.CS.contains(client.prompts.getFirst(), "under 40 words"));
-        assertEquals(6, client.requests.getFirst().messages().size(),
-            "5 conversation messages + 1 recap prompt");
+        // One forked turn; the fixed 236 FlT prompt closes it (JXn appends it
+        // after the conversation, it is not the first message).
+        StreamingClient.StreamRequest request = h.client().onlyRequest();
+        String wire = request.messages().getLast().content().toString();
+        assertTrue(Strings.CS.contains(wire, "stepped away"));
+        assertTrue(Strings.CS.contains(wire, "under 40 words"));
+        assertTrue(Strings.CS.contains(wire, "message 4"),
+            "the conversation is the cached prefix the recap prompt is appended to");
     }
 
     @Test
     void generateAwaySummary_llmReturnsNull_returnsNull() {
-        StubLlmClient client = new StubLlmClient(null);
-        AwaySummaryService svc = new AwaySummaryService(client);
-        assertNull(svc.generateAwaySummary(sampleMessages(3)));
+        Harness h = harness(null);
+        assertNull(h.service().generateAwaySummary(sampleMessages(3)));
     }
 
     @Test
     void generateAwaySummary_llmReturnsBlank_returnsNull() {
-        StubLlmClient client = new StubLlmClient("   ");
-        AwaySummaryService svc = new AwaySummaryService(client);
-        assertNull(svc.generateAwaySummary(sampleMessages(3)));
+        Harness h = harness("   ");
+        assertNull(h.service().generateAwaySummary(sampleMessages(3)));
     }
 
     @Test
     void generateAwaySummary_capsAt400CharsOnWordBoundary() {
-        String longRecap = ("word ".repeat(120)) + "tail";
-        StubLlmClient client = new StubLlmClient(longRecap);
-        AwaySummaryService svc = new AwaySummaryService(client);
+        Harness h = harness(("word ".repeat(120)) + "tail");
 
-        String result = svc.generateAwaySummary(sampleMessages(4));
+        String result = h.service().generateAwaySummary(sampleMessages(4));
 
+        assertNotNull(result);
         assertTrue(result.length() <= AwaySummaryService.RECAP_CHAR_CAP + 1,
             "cap 400 plus ellipsis");
         assertTrue(Strings.CS.endsWith(result, "…"));
@@ -131,14 +313,14 @@ class AwaySummaryServiceTest {
 
     @Test
     void shouldRecap_requiresThreeUserMessages() {
-        AwaySummaryService svc = new AwaySummaryService(new StubLlmClient("recap"));
+        AwaySummaryService svc = harness("recap").service();
         assertFalse(svc.shouldRecap(sampleMessages(2)), "236 Ze0=3 minimum user turns");
         assertTrue(svc.shouldRecap(sampleMessages(3)));
     }
 
     @Test
     void shouldRecap_afterRecapRequiresTwoNewUserMessages() {
-        AwaySummaryService svc = new AwaySummaryService(new StubLlmClient("recap"));
+        AwaySummaryService svc = harness("recap").service();
         List<Message> msgs = new ArrayList<>(sampleMessages(3));
         msgs.add(awaySummaryMessage());
         assertFalse(svc.shouldRecap(msgs), "236 Qe0=2 new user turns after a recap");
@@ -152,7 +334,7 @@ class AwaySummaryServiceTest {
 
     @Test
     void lastMessageIsAwaySummary_matches236Hqg() {
-        AwaySummaryService svc = new AwaySummaryService(new StubLlmClient("recap"));
+        AwaySummaryService svc = harness("recap").service();
         List<Message> msgs = new ArrayList<>(sampleMessages(3));
         assertFalse(svc.lastMessageIsAwaySummary(msgs));
 
@@ -166,26 +348,24 @@ class AwaySummaryServiceTest {
     @Test
     void maybePublish_disabled_isNoOp() throws IOException {
         setFlag("awaySummaryEnabled", false);
-        StubLlmClient client = new StubLlmClient("recap");
-        AwaySummaryService svc = new AwaySummaryService(client);
-        assertFalse(svc.isEnabled());
+        Harness h = harness("recap");
+        assertFalse(h.service().isEnabled());
 
         AtomicReference<String> published = new AtomicReference<>();
-        svc.maybePublishAwaySummary(sampleMessages(4), published::set);
+        h.service().maybePublishAwaySummary(sampleMessages(4), published::set);
 
         assertNull(published.get());
-        assertTrue(client.prompts.isEmpty());
+        assertTrue(h.client().requests.isEmpty());
     }
 
     @Test
     void maybePublish_enabled_publishes() throws IOException {
         setFlag("awaySummaryEnabled", true);
-        StubLlmClient client = new StubLlmClient("You were debugging the auth flow.");
-        AwaySummaryService svc = new AwaySummaryService(client);
-        assertTrue(svc.isEnabled());
+        Harness h = harness("You were debugging the auth flow.");
+        assertTrue(h.service().isEnabled());
 
         AtomicReference<String> published = new AtomicReference<>();
-        svc.maybePublishAwaySummary(sampleMessages(4), published::set);
+        h.service().maybePublishAwaySummary(sampleMessages(4), published::set);
 
         assertEquals("You were debugging the auth flow.", published.get());
     }
@@ -193,15 +373,14 @@ class AwaySummaryServiceTest {
     @Test
     void maybePublish_gatesFail_doesNotCallLlm() throws IOException {
         setFlag("awaySummaryEnabled", true);
-        StubLlmClient client = new StubLlmClient("recap");
-        AwaySummaryService svc = new AwaySummaryService(client);
+        Harness h = harness("recap");
 
         AtomicReference<String> published = new AtomicReference<>();
         // Fewer than 3 user messages → et0 gate → no LLM call.
-        svc.maybePublishAwaySummary(sampleMessages(2), published::set);
+        h.service().maybePublishAwaySummary(sampleMessages(2), published::set);
 
         assertNull(published.get());
-        assertTrue(client.prompts.isEmpty());
+        assertTrue(h.client().requests.isEmpty());
     }
 
     @Test

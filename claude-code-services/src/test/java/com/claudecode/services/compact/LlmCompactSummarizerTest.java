@@ -5,15 +5,10 @@ import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.api.ApiException;
-import com.claudecode.api.ApiMessage;
-import com.claudecode.api.CreateMessageRequest;
-import com.claudecode.api.LlmClient;
-import com.claudecode.api.StreamEvent;
 import com.claudecode.runtime.query.DefaultQuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.core.engine.SessionIdentity;
@@ -23,15 +18,12 @@ import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
-import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -82,35 +74,6 @@ class LlmCompactSummarizerTest {
             return List.of(new StreamingClient.StreamRequest.ToolDef(
                 "Read", "Read a file", new ObjectMapper().createObjectNode()));
         }
-    }
-
-    /** Captures the last request sent and returns a canned response. */
-    private static final class FakeLlmClient implements LlmClient {
-        CreateMessageRequest lastRequest;
-        ApiMessage response;
-        String modelSeenAtCallTime;
-
-        @Override
-        public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request) {
-            throw new UnsupportedOperationException("LlmCompactSummarizer must use non-streaming createMessage");
-        }
-
-        @Override
-        public ApiMessage createMessage(CreateMessageRequest request) {
-            lastRequest = request;
-            modelSeenAtCallTime = request.model();
-            return response;
-        }
-
-        @Override
-        public String getModel() { return "fake"; }
-    }
-
-    private static ApiMessage responseWithText(String text, Usage usage) {
-        return ApiMessage.builder()
-            .content(List.of(new TextBlock(text)))
-            .usage(usage)
-            .build();
     }
 
     @Test
@@ -266,65 +229,31 @@ class LlmCompactSummarizerTest {
             "reactive media stripping needs the SDK-style body, not the generic compact error text");
     }
 
-    @Test
-    void sendsConversationHistoryPlusCompactPromptAsFinalUserTurn() {
-        FakeLlmClient client = new FakeLlmClient();
-        client.response = responseWithText("the summary", Usage.EMPTY);
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
-
-        List<Message> messages = new ArrayList<>();
-        messages.add(new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("hello")));
-
-        summarizer.summarize(messages, "Please summarize.");
-
-        List<CreateMessageRequest.RequestMessage> sent = client.lastRequest.messages();
-        assertEquals(2, sent.size(), "history (1 turn) + trailing compact-prompt turn");
-        assertEquals("user", sent.getFirst().role());
-        assertEquals("hello", sent.getFirst().content());
-        assertEquals("user", sent.get(1).role());
-        assertEquals("Please summarize.", sent.get(1).content());
-    }
-
-    @Test
-    void returnsRealApiUsage() {
-        FakeLlmClient client = new FakeLlmClient();
-        Usage usage = new Usage(500, 100, 50, 20);
-        client.response = responseWithText("the summary", usage);
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
-
-        CompactSummarizer.SummaryResult result = summarizer.summarizeWithUsage(List.of(), "Please summarize.");
-
-        assertEquals("the summary", result.text());
-        assertEquals(usage, result.usage());
-    }
-
-    @Test
-    void concatenatesMultipleTextBlocks() {
-        FakeLlmClient client = new FakeLlmClient();
-        client.response = ApiMessage.builder()
-            .content(List.of(new TextBlock("part one "), new TextBlock("part two")))
-            .usage(Usage.EMPTY)
-            .build();
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
-
-        String text = summarizer.summarize(List.of(), "prompt");
-
-        // MessageConstants.getAssistantMessageText joins with "\n" and trims,
-
-        assertEquals("part one \npart two", text);
-    }
-
+    /**
+     * The history/prompt/usage/text-join assertions that used to live here on a
+     * non-streaming, tool-less path are covered by the fork tests above:
+     * {@code cacheSharingForkReusesMainRequestContractAndStreamsSummary} (wire
+     * shape and joined text) and
+     * {@code cumulativeStreamUsageDoesNotDoubleCountRepeatedOutputSnapshot}
+     * (usage). An empty response is not a "null summary" on the fork path — it
+     * throws, see
+     * {@code cacheSharingStreamWithoutAnyContentBlockReportsReleased197NoAssistantDetail}.
+     */
     @Test
     void resolvesModelAtCallTimeNotConstructionTime() {
-        FakeLlmClient client = new FakeLlmClient();
-        client.response = responseWithText("summary", Usage.EMPTY);
-        String[] currentModel = {"claude-sonnet-5"};
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> currentModel[0]);
+        FakeStreamingClient client = new FakeStreamingClient();
+        QuerySessionSpec config = QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("claude-sonnet-5")
+            .maxTokens(32_000)
+            .build();
+        DefaultQuerySession engine = new DefaultQuerySession(config);
+        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> engine);
 
-        currentModel[0] = "claude-opus-4-8"; // simulate a /model switch before /compact runs
+        config.setUserSpecifiedModel("claude-opus-4-8"); // a /model switch before /compact runs
         summarizer.summarize(List.of(), "prompt");
 
-        assertEquals("claude-opus-4-8", client.modelSeenAtCallTime);
+        assertEquals("claude-opus-4-8", client.lastRequest.model());
     }
 
     @Test
@@ -333,18 +262,9 @@ class LlmCompactSummarizerTest {
         // assistant message prefixed 'Prompt is too long' that the retry loop
         // matches on. The summarizer must translate the exception into that
         // marker or the PTL head-truncation retry can never fire.
-        LlmClient client = new LlmClient() {
-            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest r) {
-                throw new UnsupportedOperationException();
-            }
-            @Override public ApiMessage createMessage(CreateMessageRequest r) {
-                throw new ApiException(
-                    "API request failed: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
-                    + "\"message\":\"prompt is too long: 210000 tokens > 200000 maximum\"}}", 400);
-            }
-            @Override public String getModel() { return "fake"; }
-        };
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
+        LlmCompactSummarizer summarizer = forkSummarizerFailingWith(new ApiException(
+            "API request failed: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
+            + "\"message\":\"prompt is too long: 210000 tokens > 200000 maximum\"}}", 400));
 
         CompactSummarizer.SummaryResult result = summarizer.summarizeWithUsage(List.of(), "prompt");
 
@@ -358,20 +278,11 @@ class LlmCompactSummarizerTest {
         // "anthropic" protocol adapter) reject overflow with "...exceeds the
         // model's maximum context length..." rather than Anthropic's "prompt is
         // too long". Without this, /compact hard-fails instead of retrying.
-        LlmClient client = new LlmClient() {
-            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest r) {
-                throw new UnsupportedOperationException();
-            }
-            @Override public ApiMessage createMessage(CreateMessageRequest r) {
-                throw new ApiException(
-                    "API request failed: {\"object\":\"error\",\"message\":\"Requested token count "
-                    + "exceeds the model's maximum context length of 131072 tokens. You requested "
-                    + "a total of 135143 tokens: 103143 tokens from the input messages and 32000 "
-                    + "tokens for the completion.\",\"type\":\"BadRequestError\"}", 400);
-            }
-            @Override public String getModel() { return "fake"; }
-        };
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "deepseek-v4-flash");
+        LlmCompactSummarizer summarizer = forkSummarizerFailingWith(new ApiException(
+            "API request failed: {\"object\":\"error\",\"message\":\"Requested token count "
+            + "exceeds the model's maximum context length of 131072 tokens. You requested "
+            + "a total of 135143 tokens: 103143 tokens from the input messages and 32000 "
+            + "tokens for the completion.\",\"type\":\"BadRequestError\"}", 400));
 
         CompactSummarizer.SummaryResult result = summarizer.summarizeWithUsage(List.of(), "prompt");
 
@@ -381,31 +292,30 @@ class LlmCompactSummarizerTest {
 
     @Test
     void otherApiErrorsPropagate() {
-        LlmClient client = new LlmClient() {
-            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest r) {
-                throw new UnsupportedOperationException();
-            }
-            @Override public ApiMessage createMessage(CreateMessageRequest r) {
-                throw new ApiException("API request failed: authentication_error", 401);
-            }
-            @Override public String getModel() { return "fake"; }
-        };
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
+        LlmCompactSummarizer summarizer = forkSummarizerFailingWith(
+            new ApiException("API request failed: authentication_error", 401));
 
         assertThrows(ApiException.class,
             () -> summarizer.summarizeWithUsage(List.of(), "prompt"));
     }
 
-    @Test
-    void nullResponseYieldsNullTextAndEmptyUsage() {
-        FakeLlmClient client = new FakeLlmClient();
-        client.response = null;
-        LlmCompactSummarizer summarizer = new LlmCompactSummarizer(client, () -> "claude-sonnet-5");
+    /** A fork summarizer whose transport fails the request outright. */
+    private static LlmCompactSummarizer forkSummarizerFailingWith(RuntimeException failure) {
+        StreamingClient client = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                throw failure;
+            }
 
-        CompactSummarizer.SummaryResult result = summarizer.summarizeWithUsage(List.of(), "prompt");
-
-        assertNull(result.text());
-        assertEquals(Usage.EMPTY, result.usage());
+            @Override
+            public String getModel() { return "fake"; }
+        };
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("claude-sonnet-5")
+            .maxTokens(32_000)
+            .build());
+        return new LlmCompactSummarizer(client, () -> engine);
     }
 
     /**

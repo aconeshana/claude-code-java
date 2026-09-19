@@ -454,7 +454,7 @@ final class CliInteractiveSessionRunner {
                         .dream(CliRuntimeAdapters.newDreamPort())
 
                         .insightsPipeline(insightsPipelineSupplier)
-                        .recap(recapPort(llmClient))
+                        .recap(recapPort(client, () -> engine))
                         .settingsManagement(settingsManagement)
                         .mcpManagement(mcpManagement)
 // disableNonInteractive: hidden in print / --no-interactive mode.
@@ -594,7 +594,7 @@ final class CliInteractiveSessionRunner {
                         .name("interactive-optional-services")
                         .start(() -> installOptionalInteractiveServices(
                             optionalSettings.getNow(new OptionalInteractiveSettings(60_000, false)),
-                            lanternaRepl, hookEngine, llmClient, engine)));
+                            lanternaRepl, hookEngine, client, engine)));
                 toolRegistry.get("Bash")
                     .filter(BashTool.class::isInstance)
                     .map(BashTool.class::cast)
@@ -1190,14 +1190,14 @@ final class CliInteractiveSessionRunner {
             OptionalInteractiveSettings settings,
             LanternaReplScreen screen,
             HookEngine hooks,
-            LlmClient llmClient,
+            StreamingClient client,
             QuerySession engine) {
         screen.configureIdlePromptNotification(
             settings.idlePromptThresholdMs(),
             () -> hooks.dispatchNotification(
                 "Claude is waiting for your input", null, "idle_prompt"));
         if (!settings.awaySummaryEnabled()) return;
-        AwaySummaryService awaySummary = new AwaySummaryService(llmClient);
+        AwaySummaryService awaySummary = new AwaySummaryService(client, () -> engine);
         // Generation boundary for the focus-driven trigger (236 bQg): the
         // conversation gates (et0/hQg) live in the service, publishing and the
         // disable-hint counter live in the UI-side trigger.
@@ -1211,19 +1211,24 @@ final class CliInteractiveSessionRunner {
 
     /**
      * Adapter from the model-facing away-summary generation to the
-     * {@link RecapPort} consumed by {@code /recap}. The {@link AwaySummaryService}
-     * is constructed lazily per call because its model pipeline may be absent
-     * (headless/offline); the service's prompt and 400-token cap stay the single
-     * point of truth shared with the idle watcher.
+     * {@link RecapPort} consumed by {@code /recap}.
+     *
+     * <p>The recap runs as a fork of the main loop's own request — full system
+     * prompt and tool catalog — so it needs the live session, not just a bare
+     * client: a fork that dropped the tool catalog would be rejected outright by
+     * any conversation that had already called a tool. The service's prompt and
+     * 400-char cap stay the single point of truth shared with the idle watcher.
      */
-    static RecapPort recapPort(LlmClient llmClient) {
-        if (llmClient == null) return RecapPort.none();
+    static RecapPort recapPort(StreamingClient client, Supplier<QuerySession> engineSupplier) {
+        if (client == null || engineSupplier == null) return RecapPort.none();
+        AwaySummaryService awaySummary = new AwaySummaryService(client, engineSupplier);
         return messages -> {
-            if (messages == null || messages.isEmpty()) {
-                return RecapPort.Outcome.noTurn();
-            }
-            String text = new AwaySummaryService(llmClient).generateAwaySummary(messages);
-            return text != null ? RecapPort.Outcome.ok(text) : RecapPort.Outcome.failed();
+            AwaySummaryService.RecapResult result = awaySummary.synthesizeRecap(messages);
+            return switch (result.kind()) {
+                case OK -> RecapPort.Outcome.ok(result.text());
+                case NO_TURN -> RecapPort.Outcome.noTurn();
+                case FAILED -> RecapPort.Outcome.failed();
+            };
         };
     }
 

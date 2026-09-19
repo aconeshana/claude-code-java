@@ -226,9 +226,11 @@ class DefaultSubAgentFactoryTest {
     void compactFactoryReceivesLateBoundFileStateCacheAfterSubEngineConstruction() {
         AtomicReference<Supplier<FileStateCache>> cacheSupplier =
             new AtomicReference<>();
+        AtomicReference<CacheSharingForkBuilder> forkBuilder = new AtomicReference<>();
         var compactFactory = (SubAgentCompactServiceFactory)
-            (_, _, _, supplier) -> {
+            (_, _, supplier, fork) -> {
                 cacheSupplier.set(supplier);
+                forkBuilder.set(fork);
                 return null;
             };
         DefaultSubAgentFactory factory = new DefaultSubAgentFactory(
@@ -242,6 +244,10 @@ class DefaultSubAgentFactoryTest {
         assertNotNull(cacheSupplier.get());
         assertNotNull(cacheSupplier.get().get(),
             "the compact service must resolve the cache only after DefaultQuerySession exists");
+        assertNotNull(forkBuilder.get(),
+            "sub-agent compaction forks the sub-engine, so it needs a fork builder");
+        assertNotNull(forkBuilder.get().build(List.of(), "summarize", "compact"),
+            "the fork builder must reach the sub-engine built after this callback ran");
     }
 
     @Test

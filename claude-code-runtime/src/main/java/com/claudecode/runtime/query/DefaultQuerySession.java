@@ -772,10 +772,16 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     @Override
     public StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String compactPrompt) {
+        return buildCacheSharingRequest(messages, compactPrompt, "compact");
+    }
+
+    @Override
+    public StreamingClient.StreamRequest buildCacheSharingRequest(
+            List<Message> messages, String forkPrompt, String querySource) {
         List<Message> forkMessages = new ArrayList<>(messages.size() + 1);
         forkMessages.addAll(messages);
         forkMessages.add(new UserMessage(
-            UUID.randomUUID().toString(), MessageContent.ofText(compactPrompt)));
+            UUID.randomUUID().toString(), MessageContent.ofText(forkPrompt)));
         String claudeMdContext = QueryHelpers.buildClaudeMdUserContext(this);
         // config.model() may still hold a bare alias (e.g. "sonnet") set by
         // /model — the main query loop resolves this via
@@ -797,7 +803,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
             resolvedModel, config.maxTokens(), fetchSystemPromptParts(), requestMessages,
             true, toolDefs, null, resolvedEffort, config.fallbackModel(), null, null,
             null, null, config.isThinkingEnabled(), getSessionId(), config.agentId(),
-            true, "compact", getAbortController());
+            true, querySource, getAbortController());
     }
 
     @Override public void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request) {

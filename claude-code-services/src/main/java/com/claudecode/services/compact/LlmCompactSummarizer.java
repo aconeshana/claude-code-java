@@ -5,20 +5,13 @@ import com.claudecode.core.annotation.Explanation;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
-import com.claudecode.api.ApiMessage;
-import com.claudecode.api.ApiMessageTiming;
 import com.claudecode.api.ApiException;
-import com.claudecode.api.CreateMessageRequest;
-import com.claudecode.api.LlmClient;
-import com.claudecode.core.engine.ApiMessageFormatter;
+import com.claudecode.core.engine.CacheSharingForkBuilder;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.ApiErrorMessages;
-import com.claudecode.core.message.AssistantContent;
-import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
-import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
@@ -34,6 +27,11 @@ import java.util.function.Supplier;
 
 /**
  * {@link CompactSummarizer} backed by a real model call.
+ *
+ * <p>Forking the session is the only path: the summarization request reuses the
+ * session's system prompt, tool catalog and conversation prefix, which is both
+ * what keeps the prompt cache warm and what makes a history containing
+ * {@code tool_use} blocks a valid request at all.
  */
 @Explanation("""
     The original runs compaction as a real forked query (maxTurns:1) and therefore has to install \
@@ -45,29 +43,9 @@ import java.util.function.Supplier;
     interruption.""")
 public final class LlmCompactSummarizer implements CompactSummarizer {
 
-
-    private static final String SYSTEM_PROMPT =
-        "You are a helpful AI assistant tasked with summarizing conversations.";
-
-    private final LlmClient llmClient;
-    private final Supplier<String> modelSupplier;
     private final StreamingClient streamingClient;
     private final Supplier<QuerySession> engineSupplier;
-
-    /**
-     * @param llmClient     client used to run the summarization call
-     * @param modelSupplier resolves the model to use at call time (not a
-     *                      fixed string) so a mid-session {@code /model}
-     *                      switch is reflected on the next {@code /compact} —
-     *                      pass {@code config::model} where {@code config}
-     *                      is the engine's (mutable) {@code QuerySessionSpec}
-     */
-    public LlmCompactSummarizer(LlmClient llmClient, Supplier<String> modelSupplier) {
-        this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
-        this.modelSupplier = Objects.requireNonNull(modelSupplier, "modelSupplier");
-        this.streamingClient = null;
-        this.engineSupplier = null;
-    }
+    private final CacheSharingForkBuilder forkBuilder;
 
     /**
      * Creates the cache-sharing compact fork used by the main
@@ -76,10 +54,32 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
      */
     public LlmCompactSummarizer(StreamingClient streamingClient,
                                 Supplier<QuerySession> engineSupplier) {
-        this.llmClient = null;
-        this.modelSupplier = null;
         this.streamingClient = Objects.requireNonNull(streamingClient, "streamingClient");
         this.engineSupplier = Objects.requireNonNull(engineSupplier, "engineSupplier");
+        this.forkBuilder = (messages, prompt, querySource) -> {
+            QuerySession engine = engineSupplier.get();
+            if (engine == null) {
+                throw new IllegalStateException(
+                    "Compact cache-sharing fork requires a live QuerySession");
+            }
+            return engine.forks().buildCacheSharingRequest(messages, prompt, querySource);
+        };
+    }
+
+    /**
+     * Creates the cache-sharing compact fork for a sub-agent, which reaches its
+     * own session through {@code forkBuilder} rather than through a
+     * {@link QuerySession}: the sub-agent compact factory is declared in a
+     * module that cannot see the runtime session type.
+     *
+     * <p>{@link #prepareManualCompact()} is inert on this path — manual
+     * {@code /compact} is a main-session command, sub-agents only auto-compact.
+     */
+    public LlmCompactSummarizer(StreamingClient streamingClient,
+                                CacheSharingForkBuilder forkBuilder) {
+        this.streamingClient = Objects.requireNonNull(streamingClient, "streamingClient");
+        this.engineSupplier = null;
+        this.forkBuilder = Objects.requireNonNull(forkBuilder, "forkBuilder");
     }
 
     @Override
@@ -98,63 +98,12 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
     @Override
     @CacheTier(CacheTier.Tier.FORKED_PREFIX)
     public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
-        if (streamingClient != null) {
-            return summarizeWithCacheSharingFork(messages, compactPrompt);
-        }
-
-        List<CreateMessageRequest.RequestMessage> apiMessages = new ArrayList<>();
-        for (StreamingClient.StreamRequest.RequestMessage m : ApiMessageFormatter.toRequestMessages(messages)) {
-            apiMessages.add(new CreateMessageRequest.RequestMessage(m.role(), m.content()));
-        }
-        apiMessages.add(new CreateMessageRequest.RequestMessage("user", compactPrompt));
-
-        Supplier<String> legacyModelSupplier = Objects.requireNonNull(
-            modelSupplier, "legacy compact model supplier");
-        LlmClient legacyClient = Objects.requireNonNull(llmClient, "legacy compact client");
-        CreateMessageRequest request = CreateMessageRequest.builder()
-            .model(Objects.requireNonNull(legacyModelSupplier.get(), "compact model"))
-            .maxTokens((int) AutoCompactStrategy.SYSTEM_PROMPT_RESERVE)
-            .systemPrompt(SYSTEM_PROMPT)
-            .messages(apiMessages)
-            .stream(false)
-            // 236 compact skipCacheWrite:true - the conversation prefix keeps
-            // its cache markers (shared with the main loop); only the trailing
-            // compact prompt is left uncached.
-            .skipCacheWrite(true)
-            .querySource("compact")
-            .build();
-
-        ApiMessage response;
-        long startedAt = System.currentTimeMillis();
-        try {
-            response = legacyClient.createMessage(request);
-        } catch (RuntimeException e) {
-            // Prompt-too-long → PTL marker text so the caller's head-truncation
-
-            // synthetic assistant message prefixed 'Prompt is too long' and
-            // streamCompactSummary retries on that prefix — Java's Anthropic
-            // client throws instead, so translate here; anything else
-            // propagates as a normal compaction failure.
-            return translatePromptTooLong(e);
-        }
-        String text = extractText(response);
-        Usage usage = response != null && response.usage() != null
-            ? response.usage() : Usage.EMPTY;
-        long completedAt = System.currentTimeMillis();
-        SessionCostState.get().recordApiRequest(
-            response != null && response.model() != null ? response.model() : request.model(),
-            usage, completedAt - startedAt,
-            completedAt - ApiMessageTiming.lastAttemptStartMs(response, startedAt));
-        return new SummaryResult(text, usage);
+        return summarizeWithCacheSharingFork(messages, compactPrompt);
     }
 
     private SummaryResult summarizeWithCacheSharingFork(List<Message> messages, String compactPrompt) {
-        QuerySession engine = engineSupplier != null ? engineSupplier.get() : null;
-        if (engine == null) {
-            throw new IllegalStateException("Compact cache-sharing fork requires a live QuerySession");
-        }
         StreamingClient.StreamRequest request =
-            engine.forks().buildCacheSharingRequest(messages, compactPrompt);
+            forkBuilder.build(messages, compactPrompt, "compact");
 
         try {
             StreamingClient client = Objects.requireNonNull(
@@ -283,12 +232,5 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
 // Provider/proxy returned a non-JSON body; preserve icompatibility baseline text below.
         }
         return null;
-    }
-
-    private static String extractText(ApiMessage response) {
-        if (response == null || response.content() == null) return null;
-        AssistantMessage adapted = new AssistantMessage(
-            null, AssistantContent.of(response.content()));
-        return MessageConstants.getAssistantMessageText(adapted);
     }
 }

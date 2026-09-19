@@ -308,7 +308,7 @@ final class CliToolchainAssembler {
             }
         };
         SubAgentCompactServiceImpl subAgentCompactFactory = new SubAgentCompactServiceImpl(
-            llmClient, RuntimeSettings.loadAutoCompactEnabled());
+            client, RuntimeSettings.loadAutoCompactEnabled());
         SkillLoader sessionSkillLoader = new SkillLoader();
         Set<String> dynamicSkillDirTriggers = new DynamicSkillTriggerSet();
         DynamicSkillDiscovery dynamicSkillDiscovery = new DynamicSkillDiscovery(
