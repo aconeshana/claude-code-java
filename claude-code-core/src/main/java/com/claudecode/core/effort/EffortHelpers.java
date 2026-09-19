@@ -3,6 +3,7 @@ package com.claudecode.core.effort;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -346,6 +347,62 @@ public final class EffortHelpers {
             return ULTRACODE;
         }
         return getDisplayedEffortLevel(model, appStateEffort);
+    }
+
+    /**
+     * Everything a status surface needs to render the effort control: what the user picked,
+     * what it resolves to, and what else they may pick.
+     *
+     * <p>This exists because the fold/display split used to be two parallel helper
+     * <em>pairs</em> — {@link #getDisplayedEffortLevel} / {@link #getDisplayedEffortSelection}
+     * and {@link #supportedEffortLevels} / {@link #isUltracodeAvailable} — that each caller
+     * chose from independently. The TUI picked the ultracode-aware halves and the session-host
+     * projection picked the ultracode-blind ones, so a session set to {@code ultracode} in the
+     * TUI rendered as {@code xhigh} in webui and rejected {@code ultracode} with a hard 400.
+     * Selecting one helper from each pair correctly is not something a future pseudo-level
+     * should have to rediscover, so both front ends now call this instead.
+     *
+     * <p>{@link #effective} stays folded — {@code ultracode} resolves to {@code xhigh}, which is
+     * what actually reaches the wire and is deliberate (see {@link #ULTRACODE}). Only
+     * {@link #selection} and {@link #choices} carry the pseudo-level.
+     *
+     * @param selection the label to show for the current pick; {@code ultracode} survives here
+     * @param effective the real level the request will carry, already folded
+     * @param choices   the selectable values, including {@code ultracode} when available
+     */
+    public record EffortProjection(String selection, String effective, List<String> choices) {
+        public EffortProjection {
+            choices = List.copyOf(choices == null ? List.of() : choices);
+        }
+
+        /** Whether {@code value} is offered by this projection. */
+        public boolean offers(String value) {
+            return value != null && choices.contains(value);
+        }
+    }
+
+    /**
+     * Projects the effort control for one session. Shared by the TUI, the gateway/webui session
+     * host, and headless, so all three agree on what is available and how it is labelled.
+     *
+     * @param model            the active model
+     * @param appStateEffort   the configured effort value, or blank for auto
+     * @param workflowsEnabled whether dynamic-workflow orchestration is available, which is what
+     *                         gates the {@link #ULTRACODE} slot
+     * @param orgMaxLevel      the organization's effort ceiling, or {@code null} when uncapped
+     */
+    public static EffortProjection projectEffort(
+            String model, String appStateEffort, boolean workflowsEnabled, String orgMaxLevel) {
+        List<String> levels = supportedEffortLevels(model);
+        List<String> choices = new ArrayList<>(levels);
+        if (isUltracodeAvailable(model, workflowsEnabled, orgMaxLevel)
+                && !choices.contains(ULTRACODE)) {
+            choices.add(ULTRACODE);
+        }
+        return new EffortProjection(
+            getDisplayedEffortSelection(model, appStateEffort),
+            getDisplayedEffortLevel(model, appStateEffort),
+            choices);
     }
 
 

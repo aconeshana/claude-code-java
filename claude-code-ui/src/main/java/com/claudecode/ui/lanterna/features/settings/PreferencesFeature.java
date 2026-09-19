@@ -275,7 +275,7 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
                 model, commandContext.session().workflowsEnabled(), null);
         gui.getGUIThread().invokeLater(() -> {
             suppressInput(true);
-            effortDialog.show(current, supported, withUltracode, false, level -> {
+            effortDialog.show(current, supported, withUltracode, level -> {
                 suppressInput(false);
                 handleEffortResult(level);
             });

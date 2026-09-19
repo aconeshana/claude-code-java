@@ -205,7 +205,7 @@ final class CliHeadlessSessionFactory {
                 engine.configuration().getConfig()::isModelAllowed, custom));
     }
 
-    /** The engine's effort levels — the same resolution the TUI picker serves. */
+    /** The engine's effort levels — the same projection the TUI picker and webui serve. */
     private SessionHostEffortState effortState(QuerySession engine) {
         String model = engine.configuration().getConfig().model();
         if (!EffortHelpers.modelSupportsEffort(model)) {
@@ -213,11 +213,14 @@ final class CliHeadlessSessionFactory {
         }
         String configured = engine.configuration().getConfig().effortValue();
         String current = StringUtils.isBlank(configured) ? "auto" : configured;
-        String effective = EffortHelpers.getDisplayedEffortLevel(model, configured);
+        // One shared projection so webui offers and renders ultracode exactly as the TUI does;
+        // effective stays folded to the real level that reaches the wire.
+        EffortHelpers.EffortProjection projection = EffortHelpers.projectEffort(
+            model, configured, CliEngineAssembler.workflowsEnabled(), null);
         List<String> choices = new ArrayList<>();
         choices.add("auto");
-        choices.addAll(EffortHelpers.supportedEffortLevels(model));
-        return new SessionHostEffortState(current, effective, choices);
+        choices.addAll(projection.choices());
+        return new SessionHostEffortState(current, projection.effective(), choices);
     }
 
     /** One stable directory segment per distinct file name within a turn. */

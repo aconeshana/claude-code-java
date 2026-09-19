@@ -297,11 +297,20 @@ final class SessionHostPublisher {
         }
         String configured = queryEngine.configuration().getConfig().effortValue();
         String current = StringUtils.isBlank(configured) ? "auto" : configured;
-        String effective = EffortHelpers.getDisplayedEffortLevel(model, configured);
+        // The same projection the TUI effort dialog uses, off the same workflow reading, so a
+        // session set to ultracode in the TUI is offered and rendered identically in webui.
+        // effective stays folded to the real level that reaches the wire.
+        EffortHelpers.EffortProjection projection = EffortHelpers.projectEffort(
+            model, configured, workflowsEnabled(), null);
         List<String> choices = new ArrayList<>();
         choices.add("auto");
-        choices.addAll(EffortHelpers.supportedEffortLevels(model));
-        return new SessionHostEffortState(current, effective, choices);
+        choices.addAll(projection.choices());
+        return new SessionHostEffortState(current, projection.effective(), choices);
+    }
+
+    /** Whether dynamic-workflow orchestration is available, from the same context the TUI reads. */
+    private boolean workflowsEnabled() {
+        return commandContext != null && commandContext.session().workflowsEnabled();
     }
 
     private SessionHostEffortState setSessionEffort(String expectedSessionId, String selected) {

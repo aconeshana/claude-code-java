@@ -2,6 +2,7 @@ package com.claudecode.ui.lanterna.dialog;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -24,12 +25,37 @@ class EffortSliderLayoutTest {
 
         assertEquals(List.of(0, 8, 19, 28, 39), layout.labelStarts());
         assertEquals(List.of(1, 10, 20, 30, 40), layout.markerColumns());
-        assertEquals(List.of(5, 5, 5, 6), layout.spacers());
         assertEquals(42, layout.width());
         assertEquals("─".repeat(42), layout.trackChars());
         assertNull(layout.sublabelText());
         // No accent segment without ultracode, so every track cell renders dim.
         assertEquals(layout.width(), layout.accentStart());
+    }
+
+    /**
+     * The gaps upstream puts between labels, observed through {@code labelStarts} rather than
+     * through the builder's scratch spacer list — the starts are what the renderer actually
+     * draws at, so pinning them pins the geometry that can regress.
+     */
+    @Test
+    void labelGapsFollowTheUpstreamSpacerTable() {
+        EffortSliderLayout layout = EffortSliderLayout.compute(STANDARD, false);
+        assertEquals(List.of(5, 5, 5, 6), gapsBetweenLabels(layout));
+
+        // ultracode sits a wider gap out, to clear the ┆ divider.
+        EffortSliderLayout withUltracode = EffortSliderLayout.compute(STANDARD, true);
+        assertEquals(List.of(5, 5, 5, 6, 7), gapsBetweenLabels(withUltracode));
+    }
+
+    /** Blank cells between the end of each label and the start of the next. */
+    private static List<Integer> gapsBetweenLabels(EffortSliderLayout layout) {
+        List<Integer> gaps = new ArrayList<>();
+        List<EffortSliderLayout.Slot> slots = layout.slots();
+        for (int i = 1; i < slots.size(); i++) {
+            int previousEnd = layout.labelStarts().get(i - 1) + slots.get(i - 1).value().length();
+            gaps.add(layout.labelStarts().get(i) - previousEnd);
+        }
+        return gaps;
     }
 
     @Test
@@ -52,7 +78,6 @@ class EffortSliderLayoutTest {
 
         assertEquals(List.of(0, 8, 19, 28, 39, 49), layout.labelStarts());
         assertEquals(List.of(1, 10, 20, 30, 40, 53), layout.markerColumns());
-        assertEquals(List.of(5, 5, 5, 6, 7), layout.spacers());
         assertEquals(62, layout.width());
         assertEquals(44, layout.accentStart());
         assertEquals("xhigh + workflows", layout.sublabelText());

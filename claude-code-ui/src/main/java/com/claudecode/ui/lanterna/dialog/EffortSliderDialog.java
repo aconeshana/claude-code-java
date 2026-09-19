@@ -1,8 +1,5 @@
 package com.claudecode.ui.lanterna.dialog;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.effort.EffortHelpers;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
@@ -73,14 +70,22 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
             return t;
         });
 
-    private EffortSliderLayout layout =
-        EffortSliderLayout.compute(EffortHelpers.ORDERED_LEVELS, false);
-    private boolean active;
-    private boolean orgRestricted;
-    private int selectedIdx;
-    private long openedAtMs;
+    /**
+     * The whole of the slider's mutable state, as one immutable snapshot swapped wholesale.
+     *
+     * <p>{@code volatile} rather than guarded by this object's monitor: {@link #drawComponent}
+     * runs on the Lanterna GUI thread and must never block on the monitor that
+     * {@link #handleKey} and {@link #show} hold. A single reference read gives the renderer a
+     * self-consistent {@code (layout, selectedIdx)} pair by construction — see
+     * {@link EffortSliderState} for why holding them apart was a crash.
+     */
+    private volatile EffortSliderState state = EffortSliderState.IDLE;
+
+    /** Guarded by {@code this}; only ever touched by the synchronized writers. */
     private ScheduledFuture<?> animation;
-    private Consumer<String> onResult;
+
+    /** Interval {@link #animation} was scheduled at, so a change of accent can reschedule it. */
+    private long animationPeriodMs;
 
     public EffortSliderDialog() {
         super(new LinearLayout(Direction.VERTICAL).setSpacing(0));
@@ -112,46 +117,26 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
     /** Opens the slider with the active model's actual supported effort levels. */
     public synchronized void show(
             String initial, List<String> supportedLevels, Consumer<String> onResult) {
-        show(initial, supportedLevels, false, false, onResult);
+        show(initial, supportedLevels, false, onResult);
     }
 
     /**
-     * Opens the slider, optionally offering the {@code ultracode} slot and warning that the
-     * user's organization caps the available levels.
+     * Opens the slider, optionally offering the {@code ultracode} slot.
      *
      * @param withUltracode whether this session may select {@code ultracode}; callers decide
      *                      via {@link EffortHelpers#isUltracodeAvailable}
-     * @param orgRestricted whether to show the organization-cap notice. No caller passes
-     *                      {@code true} yet — nothing in this project reads a managed
-     *                      maximum-effort policy, so there is no source for it.
      */
     public synchronized void show(String initial, List<String> supportedLevels,
-            boolean withUltracode, boolean orgRestricted, Consumer<String> onResult) {
+            boolean withUltracode, Consumer<String> onResult) {
         List<String> levels = supportedLevels == null || supportedLevels.isEmpty()
             ? EffortHelpers.ORDERED_LEVELS : supportedLevels;
-        this.layout = EffortSliderLayout.compute(levels, withUltracode);
-        this.orgRestricted = orgRestricted;
-        this.selectedIdx = initialIndex(initial);
-        this.onResult = onResult;
-        this.active = true;
-        this.openedAtMs = System.currentTimeMillis();
+        state = EffortSliderState.opened(
+            initial, levels, withUltracode, onResult, System.currentTimeMillis());
         syncAnimation();
         invalidate();
     }
 
-    private int initialIndex(String initial) {
-        String wanted = initial == null ? "high" : initial;
-        List<Slot> slots = layout.slots();
-        for (int i = 0; i < slots.size(); i++) {
-            if (slots.get(i).value().equals(wanted)) return i;
-        }
-        for (int i = 0; i < slots.size(); i++) {
-            if (Strings.CS.equals("high", slots.get(i).value())) return i;
-        }
-        return 0;
-    }
-
-    @Override public boolean isActive() { return active; }
+    @Override public boolean isActive() { return state.active(); }
 
     /**
      * Intercept a key while {@link #isActive}. Sets {@code deliver=false}
@@ -161,18 +146,19 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
      * <p>Called from the host {@code WindowListener.onInput}.
      */
     @Override public synchronized void handleKey(KeyStroke key, AtomicBoolean deliver) {
-        if (!active) return;
+        EffortSliderState current = state;
+        if (!current.active()) return;
         KeyType t = key.getKeyType();
         if (t == KeyType.ARROW_LEFT || t == KeyType.ARROW_RIGHT) {
-            selectedIdx = InlineOverlay.cycleIndex(
-                selectedIdx, t == KeyType.ARROW_LEFT ? -1 : 1, layout.slots().size());
+            state = current.moved(t == KeyType.ARROW_LEFT ? -1 : 1);
             syncAnimation();
             invalidate();
             deliver.set(false);
             return;
         }
         if (t == KeyType.ENTER) {
-            resolve(layout.slots().get(selectedIdx).value());
+            Slot slot = current.selectedSlot();
+            resolve(slot == null ? null : slot.value());
             deliver.set(false);
             return;
         }
@@ -191,15 +177,15 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
     }
 
     private synchronized void resolve(String level) {
-        if (!active) return;
-        Consumer<String> cb = onResult;
+        EffortSliderState current = state;
+        if (!current.active()) return;
+        Consumer<String> cb = current.onResult();
         hide();
         if (cb != null) cb.accept(level);
     }
 
     private synchronized void hide() {
-        active = false;
-        onResult = null;
+        state = state.closed();
         syncAnimation();
         invalidate();
     }
@@ -209,64 +195,56 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
      * The timer only calls {@link #invalidate}, which sets a dirty flag and never touches the
      * component tree, so driving it from outside the GUI thread cannot invert lock order with
      * the screen refresh.
+     *
+     * <p>The interval follows the selected accent: the ripple redraws faster than it advances
+     * so the wavefront reads as continuous, while the shimmer and rainbow are driven one repaint
+     * per label frame. A single 80 ms clock for all three made {@code labelFrame}'s 100 ms
+     * division alias into an uneven 2-1-2 cadence with one repaint in five painting an identical
+     * frame; matching the clocks makes those two animations advance exactly one step per redraw.
      */
     private void syncAnimation() {
-        boolean wanted = active && switch (selectedAccent()) {
-            case RIPPLE, SHIMMER, RAINBOW -> true;
-            default -> false;
-        };
-        if (wanted && (animation == null || animation.isDone())) {
+        EffortSliderState current = state;
+        boolean wanted = current.animated();
+        long period = current.selectedAccent() == Accent.RIPPLE
+            ? EffortSliderEffects.RIPPLE_FRAME_MS : EffortSliderEffects.LABEL_FRAME_MS;
+        if (wanted && (animation == null || animation.isDone() || animationPeriodMs != period)) {
+            if (animation != null) animation.cancel(false);
+            animationPeriodMs = period;
             animation = ANIMATION.scheduleAtFixedRate(
-                this::invalidate, 0, EffortSliderEffects.RIPPLE_FRAME_MS, TimeUnit.MILLISECONDS);
+                this::invalidate, 0, period, TimeUnit.MILLISECONDS);
         } else if (!wanted && animation != null) {
             animation.cancel(false);
             animation = null;
+            animationPeriodMs = 0;
         }
-    }
-
-    private Accent selectedAccent() {
-        List<Slot> slots = layout.slots();
-        return selectedIdx < slots.size() ? slots.get(selectedIdx).accent() : Accent.PLAIN;
-    }
-
-    /** The cost note for the current selection; {@code ultracode} deliberately has none. */
-    private String costNote() {
-        if (selectedAccent() == Accent.RIPPLE) return null;
-        String note = EffortHelpers.getEffortLevelWarning(layout.slots().get(selectedIdx).value());
-        return StringUtils.isBlank(note) ? null : note;
-    }
-
-    private int bodyRows() {
-        // divider, Effort, blank, Faster/Smarter, track, labels, blank, footer
-        int rows = 8;
-        if (layout.sublabelText() != null) rows++;
-        if (costNote() != null) rows += NOTE_ROWS;
-        if (orgRestricted) rows++;
-        return rows;
     }
 
     /**
      * Collapse to zero size while idle so the parent {@link SmartLayout} hands
      * those rows back to {@link MessagePanel}. Same pattern as
      * {@link PermissionDialog#calculatePreferredSize}.
+     *
+     * <p>Unsynchronized: this runs during layout on the GUI thread and only reads one
+     * {@link EffortSliderState} snapshot, so it must not contend with {@link #handleKey}.
      */
     @Override
-    public synchronized TerminalSize calculatePreferredSize() {
-        if (!active) return new TerminalSize(0, 0);
+    public TerminalSize calculatePreferredSize() {
+        EffortSliderState s = state;
+        if (!s.active()) return new TerminalSize(0, 0);
         TerminalSize parent = super.calculatePreferredSize();
         // Wide enough for the slider plus padding; defer to parent for width
         // when it's larger (so the slider expands to fill the terminal).
-        int cols = Math.max(LEFT_PAD * 2 + layout.width(), parent.getColumns());
-        return new TerminalSize(cols, bodyRows());
+        int cols = Math.max(LEFT_PAD * 2 + s.layout().width(), parent.getColumns());
+        return new TerminalSize(cols, s.bodyRows());
     }
 
     /** Suppress focus traversal while idle; matches PermissionDialog. */
     @Override public Interactable nextFocus(Interactable fromThis) {
-        return active ? super.nextFocus(fromThis) : null;
+        return state.active() ? super.nextFocus(fromThis) : null;
     }
 
     @Override public Interactable previousFocus(Interactable fromThis) {
-        return active ? super.previousFocus(fromThis) : null;
+        return state.active() ? super.previousFocus(fromThis) : null;
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -289,25 +267,30 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
 
         @Override
         public TerminalSize getPreferredSize(SliderArea c) {
-            return new TerminalSize(LEFT_PAD * 2 + layout.width(), bodyRows());
+            EffortSliderState s = state;
+            return new TerminalSize(LEFT_PAD * 2 + s.layout().width(), s.bodyRows());
         }
 
         @Override
         public void drawComponent(TextGUIGraphics g, SliderArea c) {
-            if (!active) return;  // calculatePreferredSize collapses us; guard anyway
+            // One read of the volatile snapshot for the whole frame: every field below came
+            // from the same write, so the layout and the selection cannot disagree.
+            EffortSliderState s = state;
+            if (!s.active()) return;  // calculatePreferredSize collapses us; guard anyway
             g.fill(' ');
 
+            EffortSliderLayout layout = s.layout();
             TerminalSize size = g.getSize();
             int width = layout.width();
             // Centre the slider horizontally — the body component stretches to full
             // terminal width (LinearLayout.Alignment.FILL), so we compute leftX
             // inside drawComponent rather than relying on Panel positioning.
             int leftX = Math.max(LEFT_PAD, (size.getColumns() - width) / 2);
-            int marker = layout.markerColumns().get(selectedIdx);
+            int marker = s.markerColumn();
             // The ripple washes over the whole strip, but only while ultracode is selected.
-            Ripple ripple = selectedAccent() == Accent.RIPPLE
+            Ripple ripple = s.selectedAccent() == Accent.RIPPLE
                 ? new Ripple(marker,
-                    EffortSliderEffects.travel(System.currentTimeMillis() - openedAtMs))
+                    EffortSliderEffects.travel(System.currentTimeMillis() - s.openedAtMs()))
                 : null;
 
             g.setForegroundColor(LanternaTheme.divider());
@@ -315,10 +298,10 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
 
             drawTitle(g, leftX, width, ripple);
             drawFraming(g, leftX, width, ripple);
-            drawTrack(g, leftX, marker, ripple);
-            drawLabels(g, leftX, width, ripple);
-            int y = drawSublabel(g, leftX, width, ripple);
-            y = drawNotes(g, leftX, y);
+            drawTrack(g, s, leftX, marker, ripple);
+            drawLabels(g, s, leftX, width, ripple);
+            int y = drawSublabel(g, layout, leftX, width, ripple);
+            y = drawNotes(g, s, leftX, y);
 
             g.setForegroundColor(LanternaTheme.welcomeDim());
             g.disableModifiers(SGR.BOLD);
@@ -355,9 +338,10 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 4 — the dashed track with the selection marker punched into it. */
-        private void drawTrack(TextGUIGraphics g, int leftX, int marker, Ripple ripple) {
-            String track = layout.trackChars();
-            int accentStart = layout.accentStart();
+        private void drawTrack(TextGUIGraphics g, EffortSliderState s, int leftX, int marker,
+                Ripple ripple) {
+            String track = s.layout().trackChars();
+            int accentStart = s.layout().accentStart();
             for (int i = 0; i < track.length(); i++) {
                 if (i == marker) continue;
                 if (ripple != null) {
@@ -383,7 +367,9 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 5 — the level labels, left-anchored at their computed starts. */
-        private void drawLabels(TextGUIGraphics g, int leftX, int width, Ripple ripple) {
+        private void drawLabels(TextGUIGraphics g, EffortSliderState s, int leftX, int width,
+                Ripple ripple) {
+            EffortSliderLayout layout = s.layout();
             List<Slot> slots = layout.slots();
             if (ripple != null) {
                 // The gaps between labels ripple too, so lay the whole row out in one pass.
@@ -400,8 +386,8 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
             for (int i = 0; i < slots.size(); i++) {
                 Slot slot = slots.get(i);
                 int x = leftX + layout.labelStarts().get(i);
-                if (i == selectedIdx) {
-                    drawSelectedLabel(g, x, slot);
+                if (i == s.selectedIdx()) {
+                    drawSelectedLabel(g, x, slot, s.openedAtMs());
                 } else if (ripple == null) {
                     drawUnselectedLabel(g, x, slot);
                 }
@@ -417,7 +403,7 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Paint the selected label in its signature colour or animation. */
-        private void drawSelectedLabel(TextGUIGraphics g, int x, Slot slot) {
+        private void drawSelectedLabel(TextGUIGraphics g, int x, Slot slot, long openedAtMs) {
             String text = slot.value();
             long frame = EffortSliderEffects.labelFrame(System.currentTimeMillis() - openedAtMs);
             switch (slot.accent()) {
@@ -463,7 +449,8 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 6 — the ultracode sublabel, when that slot is present. Returns the next free row. */
-        private int drawSublabel(TextGUIGraphics g, int leftX, int width, Ripple ripple) {
+        private int drawSublabel(TextGUIGraphics g, EffortSliderLayout layout, int leftX,
+                int width, Ripple ripple) {
             if (layout.sublabelText() == null) return LABEL_ROW + 2;
             int y = LABEL_ROW + 1;
             int start = layout.sublabelStart();
@@ -478,18 +465,14 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
             return y + 2;
         }
 
-        /** The cost note and the organization-cap notice. Returns the footer row. */
-        private int drawNotes(TextGUIGraphics g, int leftX, int y) {
+        /** The cost note for the current selection. Returns the footer row. */
+        private int drawNotes(TextGUIGraphics g, EffortSliderState s, int leftX, int y) {
             g.disableModifiers(SGR.BOLD);
             g.setForegroundColor(LanternaTheme.welcomeDim());
-            String note = costNote();
+            String note = s.costNote();
             if (note != null) {
-                wrapAndDraw(g, note, leftX, y);
+                wrapAndDraw(g, note, s.layout().width(), leftX, y);
                 y += NOTE_ROWS + 1;
-            }
-            if (orgRestricted) {
-                g.putString(leftX, y, EffortHelpers.ORG_RESTRICTED_NOTICE);
-                y++;
             }
             return y;
         }
@@ -546,8 +529,7 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
          * drawn left-aligned at column {@code x} starting at row {@code y}. Truncates with no
          * marker when the text overflows.
          */
-        private void wrapAndDraw(TextGUIGraphics g, String text, int x, int y) {
-            int width = layout.width();
+        private void wrapAndDraw(TextGUIGraphics g, String text, int width, int x, int y) {
             String[] words = text.split("\\s+");
             StringBuilder line = new StringBuilder();
             int row = 0;

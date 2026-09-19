@@ -264,4 +264,73 @@ class EffortHelpersTest {
         assertFalse(Strings.CS.contains(text, "ultracode"));
         assertTrue(Strings.CS.contains(text, "/effort"));
     }
+
+    @Test
+    void projection_offersUltracodeWhenWorkflowsBackIt() {
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-8", null, true, null);
+        assertTrue(projection.choices().contains("ultracode"));
+        assertTrue(projection.offers("ultracode"));
+        // The real levels still come first, in capability order.
+        assertEquals(List.of("low", "medium", "high", "xhigh", "max", "ultracode"),
+            projection.choices());
+    }
+
+    @Test
+    void projection_hidesUltracodeWithoutWorkflows() {
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-8", null, false, null);
+        assertFalse(projection.choices().contains("ultracode"));
+        assertFalse(projection.offers("ultracode"));
+    }
+
+    @Test
+    void projection_hidesUltracodeWhenTheModelLacksXhigh() {
+        // Opus 4.6 has no xhigh, so there is nothing for ultracode to fold onto.
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-6", null, true, null);
+        assertFalse(projection.choices().contains("ultracode"));
+    }
+
+    @Test
+    void projection_hidesUltracodeUnderAnOrganizationCeiling() {
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-8", null, true, "high");
+        assertFalse(projection.choices().contains("ultracode"));
+    }
+
+    @Test
+    void projection_showsUltracodeAsTheSelectionButFoldsTheWireLevel() {
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-8", "ultracode", true, null);
+        // What the status surfaces render...
+        assertEquals("ultracode", projection.selection());
+        // ...versus what actually reaches the wire. The fold is deliberate.
+        assertEquals("xhigh", projection.effective());
+        assertEquals("xhigh",
+            EffortHelpers.resolveAppliedEffort("claude-opus-4-8", "ultracode"));
+    }
+
+    @Test
+    void projection_matchesTheTuiHelpersItReplaced() {
+        // The bug was the session host picking the ultracode-blind halves of two helper pairs
+        // while the TUI picked the aware ones. Both front ends now agree by construction.
+        String model = "claude-opus-4-8";
+        for (String configured : new String[] {null, "medium", "xhigh", "ultracode"}) {
+            EffortHelpers.EffortProjection projection =
+                EffortHelpers.projectEffort(model, configured, true, null);
+            assertEquals(EffortHelpers.getDisplayedEffortSelection(model, configured),
+                projection.selection(), "selection for " + configured);
+            assertEquals(EffortHelpers.getDisplayedEffortLevel(model, configured),
+                projection.effective(), "effective for " + configured);
+        }
+    }
+
+    @Test
+    void projection_ordinaryLevelsAreUnaffectedByTheUltracodeSlot() {
+        EffortHelpers.EffortProjection projection =
+            EffortHelpers.projectEffort("claude-opus-4-8", "medium", true, null);
+        assertEquals("medium", projection.selection());
+        assertEquals("medium", projection.effective());
+    }
 }

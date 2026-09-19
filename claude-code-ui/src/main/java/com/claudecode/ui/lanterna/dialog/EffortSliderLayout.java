@@ -28,7 +28,6 @@ record EffortSliderLayout(
         int width,
         List<Integer> labelStarts,
         List<Integer> markerColumns,
-        List<Integer> spacers,
         String trackChars,
         /** First column of the violet accent segment; equals {@link #width} when absent. */
         int accentStart,
@@ -75,6 +74,7 @@ record EffortSliderLayout(
     static EffortSliderLayout compute(List<String> levels, boolean withUltracode) {
         List<Slot> slots = new ArrayList<>();
         List<Integer> labelStarts = new ArrayList<>();
+        // Scratch bookkeeping: the count drives the SPACERS lookup and the cursor advance.
         List<Integer> spacers = new ArrayList<>();
         int cursor = 0;
         for (String level : levels) {
@@ -93,7 +93,7 @@ record EffortSliderLayout(
         if (!withUltracode) {
             return new EffortSliderLayout(
                 List.copyOf(slots), baseWidth, List.copyOf(labelStarts),
-                markerColumns(slots, labelStarts), List.copyOf(spacers),
+                markerColumns(slots, labelStarts),
                 String.valueOf(TRACK).repeat(baseWidth), baseWidth, null, 0);
         }
 
@@ -116,7 +116,7 @@ record EffortSliderLayout(
             + String.valueOf(TRACK).repeat(ACCENT_TRACK_LENGTH);
         return new EffortSliderLayout(
             List.copyOf(slots), baseWidth + 20, List.copyOf(labelStarts),
-            List.copyOf(markers), List.copyOf(spacers), track,
+            List.copyOf(markers), track,
             baseWidth + 2, EffortHelpers.ULTRACODE_SUBLABEL, baseWidth + 3);
     }
 

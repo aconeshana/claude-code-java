@@ -31,7 +31,15 @@ final class EffortSliderEffects {
     /** Ripple redraw interval. Faster than the label animations — the wave covers more cells. */
     static final long RIPPLE_FRAME_MS = 80;
 
-    /** Shimmer and rainbow redraw interval. */
+    /**
+     * Shimmer and rainbow redraw interval, and the divisor {@link #labelFrame} steps on.
+     *
+     * <p>These have to stay equal to each other: the repaint timer in {@code EffortSliderDialog}
+     * schedules at this period whenever a label animation is selected, so each repaint advances
+     * {@code labelFrame} by exactly one. Driving them at {@link #RIPPLE_FRAME_MS} instead made
+     * the two clocks alias — the frame counter stepped 2-1-2 across repaints and one repaint in
+     * five redrew an identical frame.
+     */
     static final long LABEL_FRAME_MS = 100;
 
     /** How far the wavefront advances per millisecond, in cells. */
