@@ -419,7 +419,7 @@ public final class ContextUsageAnalyzer {
 
         List<ToolIo> toolCallsByType = byTool.entrySet().stream()
             .map(e -> new ToolIo(e.getKey(), e.getValue()[0], e.getValue()[1]))
-            .sorted(Comparator.comparingLong((com.claudecode.commands.context.ContextData.ToolIo a) -> a.callTokens() + a.resultTokens()).reversed())
+            .sorted(Comparator.comparingLong((ContextData.ToolIo a) -> a.callTokens() + a.resultTokens()).reversed())
             .toList();
 
         long totalTokens;

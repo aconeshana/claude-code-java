@@ -351,7 +351,7 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
 
     private void refresh() {
         List<WorkflowRun> sorted = new ArrayList<>(runs.list());
-        sorted.sort(Comparator.comparingLong((com.claudecode.tools.workflows.WorkflowRun a) -> a.startTime()).reversed());
+        sorted.sort(Comparator.comparingLong(WorkflowRun::startTime).reversed());
         items = List.copyOf(sorted);
         selected = Math.min(selected, Math.max(0, items.size() - 1));
         reloadTranscriptWhenReleasedFingerprintChanges();

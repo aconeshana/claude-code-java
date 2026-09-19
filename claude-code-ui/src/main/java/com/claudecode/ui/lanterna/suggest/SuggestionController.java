@@ -426,7 +426,7 @@ public final class SuggestionController implements AutoCloseable {
         List<SuggestionPanel.Suggestion> result = new ArrayList<>();
         List<SkillEntry> recent = skills.stream()
             .filter(skill -> usageScores.getOrDefault(skill.name(), 0.0) > 0)
-            .sorted(Comparator.comparingDouble((com.claudecode.ui.lanterna.suggest.SuggestionController.SkillEntry a) -> usageScores.getOrDefault(a.name(), 0.0)).reversed())
+            .sorted(Comparator.comparingDouble((SuggestionController.SkillEntry a) -> usageScores.getOrDefault(a.name(), 0.0)).reversed())
             .limit(5).toList();
         Set<String> recentNames = new HashSet<>();
         recent.forEach(skill -> {

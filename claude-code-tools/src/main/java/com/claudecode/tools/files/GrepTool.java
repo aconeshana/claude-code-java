@@ -486,7 +486,7 @@ public class GrepTool extends AnnotatedTool<JsonNode, String> {
         if (Strings.CS.equals("files_with_matches", outputMode)) {
 
             List<String> sorted = new ArrayList<>(Arrays.asList(lines));
-            sorted.sort(Comparator.comparingLong((java.lang.String a) -> mtimeOf(a, cwd)).reversed());
+            sorted.sort(Comparator.comparingLong((String a) -> mtimeOf(a, cwd)).reversed());
             List<String> limited = sorted.subList(start, end);
             if (limited.isEmpty()) return "No files found";
             String limitInfo = formatLimitInfo(appliedLimit, appliedOffset);

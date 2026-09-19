@@ -390,7 +390,7 @@ public class SessionSelectorDialog extends BasicWindow {
         for (var entry : byGroup.entrySet()) {
             List<DisplayEntry> list = entry.getValue();
             // Sort by lastModified descending (newest first).
-            list.sort(Comparator.comparingLong((com.claudecode.ui.lanterna.dialog.SessionSelectorDialog.DisplayEntry a) -> a.info().lastModified()).reversed());
+            list.sort(Comparator.comparingLong((SessionSelectorDialog.DisplayEntry a) -> a.info().lastModified()).reversed());
             if (list.size() == 1) {
                 groups.add(new SessionGroup(entry.getKey(), list.getFirst(), List.of(), false));
             } else {

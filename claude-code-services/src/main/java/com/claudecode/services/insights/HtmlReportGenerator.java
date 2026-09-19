@@ -149,7 +149,7 @@ public final class HtmlReportGenerator {
                 .toList();
         } else {
             List<Map.Entry<String, Long>> sorted = new ArrayList<>(source.entrySet());
-            sorted.sort(Comparator.comparingLong((java.util.Map.Entry<java.lang.String, java.lang.Long> a) -> valueOf(a.getValue())).reversed());
+            sorted.sort(Comparator.comparingLong((Map.Entry<String, Long> a) -> valueOf(a.getValue())).reversed());
             entries = List.copyOf(sorted.subList(0, Math.min(maxItems, sorted.size())));
         }
 

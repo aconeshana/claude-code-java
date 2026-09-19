@@ -271,7 +271,7 @@ public final class ContextVisualizationRenderer {
         for (String source : SOURCE_DISPLAY_ORDER) {
             List<T> group = groups.remove(source);
             if (group != null) {
-                group.sort(Comparator.comparingLong((T a) -> tokensOf.applyAsLong(a)).reversed());
+                group.sort(Comparator.comparingLong(tokensOf::applyAsLong).reversed());
                 ordered.put(source, group);
             }
         }

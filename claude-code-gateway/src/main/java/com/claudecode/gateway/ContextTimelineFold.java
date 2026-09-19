@@ -317,7 +317,7 @@ final class ContextTimelineFold {
             iterator.remove();
         }
         if (!removed.isEmpty()) {
-            removed.sort(Comparator.comparingLong((com.claudecode.gateway.ContextTimelineFold.Node a) -> a.seq));
+            removed.sort(Comparator.comparingLong((ContextTimelineFold.Node a) -> a.seq));
             long goneSeq = pendingBoundarySeq != null ? pendingBoundarySeq : allocate();
             long goneTime = pendingBoundaryTime != null ? pendingBoundaryTime
                 : System.currentTimeMillis();
@@ -940,7 +940,7 @@ final class ContextTimelineFold {
         node.put("toolCalls", toolCalls);
         ObjectNode tools = node.putObject("tools");
         toolTotals.entrySet().stream()
-            .sorted(Comparator.comparingLong((java.util.Map.Entry<java.lang.String, com.claudecode.gateway.ContextTimelineFold.ToolTotals> a) -> a.getValue().ms).reversed())
+            .sorted(Comparator.comparingLong((Map.Entry<String, ContextTimelineFold.ToolTotals> a) -> a.getValue().ms).reversed())
             .limit(16)
             .forEach(entry -> {
                 ObjectNode row = tools.putObject(entry.getKey());
