@@ -7,6 +7,7 @@ import com.claudecode.core.message.UltraEffortEnterAttachment;
 import com.claudecode.core.message.UltraEffortExitAttachment;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -24,7 +25,7 @@ public final class UltraEffortAttachmentProvider implements AttachmentProvider {
     private final BooleanSupplier ultracodeActive;
 
     public UltraEffortAttachmentProvider(BooleanSupplier ultracodeActive) {
-        this.ultracodeActive = ultracodeActive;
+        this.ultracodeActive = Objects.requireNonNull(ultracodeActive, "ultracodeActive");
     }
 
     @Override
@@ -34,7 +35,9 @@ public final class UltraEffortAttachmentProvider implements AttachmentProvider {
 
     @Override
     public List<AttachmentPayload> collect(AttachmentContext ctx) {
-        boolean active = isActive();
+        // Read directly, like the other providers in this package: a settings read that throws
+        // is a real fault and must surface, not be swallowed into "the level is off".
+        boolean active = ultracodeActive.getAsBoolean();
         boolean announced = false;
         boolean seenPrior = false;
         int humanTurns = 0;
@@ -64,14 +67,5 @@ public final class UltraEffortAttachmentProvider implements AttachmentProvider {
         // Only worth saying "off" when the model was previously told it was on.
         if (seenPrior && announced) return List.of(new UltraEffortExitAttachment());
         return List.of();
-    }
-
-    private boolean isActive() {
-        if (ultracodeActive == null) return false;
-        try {
-            return ultracodeActive.getAsBoolean();
-        } catch (RuntimeException _) {
-            return false;
-        }
     }
 }

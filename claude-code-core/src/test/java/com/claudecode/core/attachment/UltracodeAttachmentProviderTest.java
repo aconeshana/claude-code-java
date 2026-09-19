@@ -43,10 +43,25 @@ class UltracodeAttachmentProviderTest {
     }
 
     @Test
-    void keywordTriggerSurvivesAFailingSettingsRead() {
+    void keywordTriggerLetsAFailingSettingsReadSurface() {
+        // A settings read that blows up is a real fault. Swallowing it into "feature off"
+        // turned a broken read into a silently missing attachment with nothing logged.
         var provider = new WorkflowKeywordAttachmentProvider(
             () -> true, () -> { throw new IllegalStateException("settings unreadable"); });
-        assertTrue(provider.collect(ctx(List.of(), "ultracode this")).isEmpty());
+        assertThrows(IllegalStateException.class,
+            () -> provider.collect(ctx(List.of(), "ultracode this")));
+    }
+
+    @Test
+    void providersRejectNullSuppliers() {
+        // Matches TaskReminderAttachmentProvider / TodoReminderAttachmentProvider: a missing
+        // supplier is a wiring bug at construction, not a silently disabled feature.
+        assertThrows(NullPointerException.class,
+            () -> new WorkflowKeywordAttachmentProvider(null, () -> true));
+        assertThrows(NullPointerException.class,
+            () -> new WorkflowKeywordAttachmentProvider(() -> true, null));
+        assertThrows(NullPointerException.class,
+            () -> new UltraEffortAttachmentProvider(null));
     }
 
     // ── Standing effort reminder ──────────────────────────────────────────

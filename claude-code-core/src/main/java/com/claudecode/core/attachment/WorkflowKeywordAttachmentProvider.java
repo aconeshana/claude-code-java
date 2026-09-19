@@ -4,6 +4,7 @@ import com.claudecode.core.message.AttachmentPayload;
 import com.claudecode.core.message.WorkflowKeywordAttachment;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -24,8 +25,9 @@ public final class WorkflowKeywordAttachmentProvider implements AttachmentProvid
      */
     public WorkflowKeywordAttachmentProvider(
             BooleanSupplier workflowsEnabled, BooleanSupplier keywordTriggerEnabled) {
-        this.workflowsEnabled = workflowsEnabled;
-        this.keywordTriggerEnabled = keywordTriggerEnabled;
+        this.workflowsEnabled = Objects.requireNonNull(workflowsEnabled, "workflowsEnabled");
+        this.keywordTriggerEnabled =
+            Objects.requireNonNull(keywordTriggerEnabled, "keywordTriggerEnabled");
     }
 
     @Override
@@ -35,18 +37,12 @@ public final class WorkflowKeywordAttachmentProvider implements AttachmentProvid
 
     @Override
     public List<AttachmentPayload> collect(AttachmentContext ctx) {
-        if (!enabled(workflowsEnabled) || !enabled(keywordTriggerEnabled)) return List.of();
+        // Suppliers are read directly, like the other providers in this package: a settings
+        // read that throws is a real fault and must surface, not be swallowed into "feature off".
+        if (!workflowsEnabled.getAsBoolean() || !keywordTriggerEnabled.getAsBoolean()) {
+            return List.of();
+        }
         if (!UltracodeKeyword.mentionedIn(ctx.input())) return List.of();
         return List.of(new WorkflowKeywordAttachment());
-    }
-
-    private static boolean enabled(BooleanSupplier supplier) {
-        if (supplier == null) return false;
-        try {
-            return supplier.getAsBoolean();
-        } catch (RuntimeException _) {
-            // A settings read that blows up must not take the turn down with it.
-            return false;
-        }
     }
 }
