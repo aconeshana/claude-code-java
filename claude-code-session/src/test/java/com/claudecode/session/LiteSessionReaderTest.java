@@ -1,6 +1,7 @@
 package com.claudecode.session;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.RandomAccessFile;
@@ -42,6 +43,47 @@ class LiteSessionReaderTest {
 
         assertEquals(result.head(), result.tail());
         assertEquals(Files.size(transcript), result.bytesRead());
+        assertEquals(0, result.tailOffset(), "a single-window file has nothing left to scan");
+    }
+
+    /**
+     * The backward scan that rescues a latching marker (see
+     * {@code SessionCatalog#resolveArchived}) once ordinary appends have pushed it
+     * out of the bounded tail window.
+     */
+    @Test
+    void latchedMarkerIsFoundBeforeTheTailWindow(@TempDir Path tempDir) throws Exception {
+        Path transcript = tempDir.resolve("grown.jsonl");
+        String marker = "{\"type\":\"archived\",\"archived\":true}";
+        Files.writeString(transcript,
+            marker + "\n" + filler(3L * LiteSessionReader.LITE_READ_BYTES));
+
+        long scanFrom = Files.size(transcript) - LiteSessionReader.LITE_READ_BYTES;
+
+        assertEquals(marker, LiteSessionReader.findLatchedMarker(
+            transcript, scanFrom, "\"type\":\"archived\""));
+        assertNull(LiteSessionReader.findLatchedMarker(
+            transcript, 0, "\"type\":\"archived\""), "nothing precedes offset 0");
+        assertNull(LiteSessionReader.findLatchedMarker(
+            transcript, scanFrom, "\"type\":\"absent\""));
+    }
+
+    @Test
+    void latchedMarkerScanGivesUpBeyondItsByteBudget(@TempDir Path tempDir) throws Exception {
+        Path transcript = tempDir.resolve("far.jsonl");
+        Files.writeString(transcript, "{\"type\":\"archived\",\"archived\":true}\n"
+            + filler(3L * LiteSessionReader.MARKER_SCAN_BYTES));
+
+        assertNull(LiteSessionReader.findLatchedMarker(
+                transcript, Files.size(transcript), "\"type\":\"archived\""),
+            "the scan must stay bounded rather than read back to the file start");
+    }
+
+    private static String filler(long atLeastBytes) {
+        String row = "{\"type\":\"user\",\"message\":{\"content\":\"" + "x".repeat(512) + "\"}}\n";
+        StringBuilder body = new StringBuilder();
+        while (body.length() < atLeastBytes) body.append(row);
+        return body.toString();
     }
 
     @Test

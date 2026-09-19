@@ -385,7 +385,7 @@ final class SessionCatalog {
                 && StringUtils.isBlank(cwd)) return Optional.empty();
         String gitBranch = firstNonBlank(lastString(tail, "gitBranch"), firstString(head, "gitBranch"));
         String tag = lastTypedString(tail, "tag", "tag");
-        boolean archived = Boolean.TRUE.equals(lastTypedBoolean(tail, "archived", "archived"));
+        boolean archived = resolveArchived(candidate, lite);
         long mtime = candidate.mtime() > 0 ? candidate.mtime() : lite.mtime();
         long ctime = candidate.ctime() > 0 ? candidate.ctime() : lite.ctime();
         Instant createdAt = parseInstant(firstString(head, "timestamp"), ctime);
@@ -393,6 +393,50 @@ final class SessionCatalog {
             summary, gitBranch, cwd, tag, lite.size(), customTitle, firstPrompt, archived);
         return Optional.of(new Entry(info, candidate.transcript(),
             firstNonBlank(candidate.projectPath(), cwd), aiTitle, candidate.alias()));
+    }
+
+    /**
+     * Resolves the latching {@code archived} flag, which — unlike the other metadata
+     * fields here — must survive arbitrary transcript growth after the marker was
+     * written.
+     *
+     * <p>{@code customTitle}, {@code gitBranch} and {@code tag} are last-wins
+     * overwrites: reading a stale value shows an older title, which the next edit
+     * corrects. {@code archived} is a latch with no such self-correction — archiving
+     * appends a single row and is documented as not otherwise touching the
+     * transcript, but nothing stops the user resuming the session afterwards. Once
+     * the conversation appends more than one tail window past the marker the row
+     * leaves {@link LiteSessionReader#LITE_READ_BYTES}, the flag reverts to
+     * {@code false}, and the session reappears in every listing with no way to
+     * re-hide it (it is not visible to be selected for archiving again).
+     *
+     * <p>A head fallback — the trick {@code customTitle} and {@code gitBranch} use —
+     * cannot work: the marker is append-only, so it is never in the head unless the
+     * file fits in a single window, in which case {@code tail} already <em>is</em>
+     * {@code head}. The persisted project index cannot be the authority either; it
+     * is explicitly a pure cache, and a resumed session's transcript counts as
+     * "moved", so it is re-enriched from disk and a stale {@code false} would
+     * overwrite the cached {@code true}.
+     *
+     * <p>Cost: bounded either way, and unchanged for the vast majority of sessions.
+     * The tail window alone settles any transcript that fits in one window, and any
+     * whose newest archive row is still inside it — on a real history that is nearly
+     * all of them. Only a transcript larger than the window can reach the backward
+     * scan, which adds at most {@link LiteSessionReader#MARKER_SCAN_BYTES} of
+     * sequential reads and stops on the first hit. The scan stays O(bounded read),
+     * never O(file size), so listing cannot degrade into a full read per session.
+     */
+    private static boolean resolveArchived(Candidate candidate,
+                                           LiteSessionReader.LiteSessionFile lite) {
+        Boolean windowed = lastTypedBoolean(lite.tail(), "archived", "archived");
+        if (windowed != null) return windowed;
+        // tailOffset == 0 means the window already covered the whole file.
+        if (lite.tailOffset() <= 0) return false;
+        String row = LiteSessionReader.findLatchedMarker(
+            candidate.transcript(), lite.tailOffset(),
+            "\"type\":\"archived\"", "\"type\": \"archived\"");
+        if (row == null) return false;
+        return Boolean.TRUE.equals(lastTypedBoolean(row, "archived", "archived"));
     }
 
     private static String firstPrompt(String head, Predicate<String> builtInCommand) {

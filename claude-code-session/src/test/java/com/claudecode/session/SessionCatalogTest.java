@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
@@ -165,6 +166,121 @@ class SessionCatalogTest {
         assertEquals(1, page.size());
         assertEquals("newer", page.getFirst().info().firstPrompt());
         assertEquals(newer, page.getFirst().transcript());
+    }
+
+    /**
+     * The archive flag is a latch, not a last-wins overwrite: archiving appends one
+     * row at the end, but resuming the session afterwards pushes that row out of the
+     * bounded tail window. Before the fix the flag silently reverted to false and the
+     * session reappeared in every listing with no way to re-hide it.
+     */
+    @Test
+    void archiveFlagSurvivesTranscriptGrowthPastTheTailWindow(@TempDir Path base)
+            throws Exception {
+        SessionManager manager = new SessionManager(base, "/repo/main");
+        String id = writeArchivedThenGrown(manager, "grown",
+            3L * LiteSessionReader.LITE_READ_BYTES);
+
+        SessionCatalog.Listing listing = SessionCatalog.forProject(manager, _ -> false);
+        SessionInfo info = find(listing.loadMore(10), id);
+
+        assertTrue(info.archived(),
+            "archived marker pushed out of the tail window must still be found");
+    }
+
+    @Test
+    void archiveFlagIsFoundInTheOrdinaryTailWindowAndDefaultsToFalse(@TempDir Path base)
+            throws Exception {
+        SessionManager manager = new SessionManager(base, "/repo/main");
+        String plain = write(manager, "plain", false,
+            "{\"type\":\"user\",\"message\":{\"content\":\"hello\"}}\n", 2_000);
+        String archived = write(manager, "archived", false,
+            """
+            {"type":"user","message":{"content":"hello"}}
+            {"type":"archived","archived":true,"sessionId":"x"}
+            """, 1_000);
+
+        List<SessionCatalog.Entry> page =
+            SessionCatalog.forProject(manager, _ -> false).loadMore(10);
+
+        assertFalse(find(page, plain).archived(), "a session never archived stays visible");
+        assertTrue(find(page, archived).archived());
+    }
+
+    /**
+     * There is no unarchive UI today, but {@code lastTypedBoolean} already reads
+     * {@code archived:false} as an explicit un-archive. Pin that both in the tail
+     * window and through the backward scan, so re-archiving after a resume latches.
+     */
+    @Test
+    void lastArchivedRowWinsAcrossResumesIncludingUnarchive(@TempDir Path base)
+            throws Exception {
+        SessionManager manager = new SessionManager(base, "/repo/main");
+        long pad = 3L * LiteSessionReader.LITE_READ_BYTES;
+
+        // archived -> grown -> unarchived (newest row wins, found in the tail).
+        String unarchived = writeArchivedThenGrown(manager, "unarchived", pad);
+        appendLine(manager, unarchived, "{\"type\":\"archived\",\"archived\":false,\"sessionId\":\"x\"}");
+
+        // archived -> grown -> unarchived -> grown -> archived again: the newest
+        // marker is out of the window, so the scan must pick the latest one.
+        String rearchived = writeArchivedThenGrown(manager, "rearchived", pad);
+        appendLine(manager, rearchived, "{\"type\":\"archived\",\"archived\":false}");
+        growBy(manager, rearchived, pad);
+        appendLine(manager, rearchived, "{\"type\":\"archived\",\"archived\":true}");
+        growBy(manager, rearchived, pad);
+
+        List<SessionCatalog.Entry> page =
+            SessionCatalog.forProject(manager, _ -> false).loadMore(10);
+
+        assertFalse(find(page, unarchived).archived(), "an explicit false un-archives");
+        assertTrue(find(page, rearchived).archived(),
+            "archive -> resume -> archive again must end up archived");
+    }
+
+    /**
+     * The catalog enriches every transcript under {@code ~/.claude/projects}, so the
+     * archive lookup must not degrade into a full-file read. Asserts the behaviour
+     * that matters — a marker beyond the scan budget is abandoned rather than chased
+     * to the start of the file.
+     */
+    @Test
+    void archiveScanStaysBoundedAndDoesNotReadTheWholeFile(@TempDir Path base)
+            throws Exception {
+        SessionManager manager = new SessionManager(base, "/repo/main");
+        // Marker sits far beyond LITE_READ_BYTES + MARKER_SCAN_BYTES.
+        String id = writeArchivedThenGrown(manager, "beyond-budget",
+            4L * LiteSessionReader.MARKER_SCAN_BYTES);
+
+        SessionCatalog.Listing listing = SessionCatalog.forProject(manager, _ -> false);
+
+        assertFalse(find(listing.loadMore(10), id).archived(),
+            "the scan must give up at its budget instead of reading the whole file");
+    }
+
+    /** Archived row, then {@code padding} bytes of ordinary conversation after it. */
+    private static String writeArchivedThenGrown(SessionManager manager, String seed,
+                                                 long padding) throws Exception {
+        String id = write(manager, seed, false,
+            """
+            {"type":"user","message":{"content":"hello"}}
+            {"type":"archived","archived":true,"sessionId":"x"}
+            """, 1_000);
+        growBy(manager, id, padding);
+        return id;
+    }
+
+    private static void growBy(SessionManager manager, String id, long padding)
+            throws Exception {
+        String row = "{\"type\":\"user\",\"message\":{\"content\":\"" + "x".repeat(512) + "\"}}\n";
+        StringBuilder filler = new StringBuilder();
+        while (filler.length() < padding) filler.append(row);
+        Files.writeString(manager.getSessionFile(id), filler.toString(), StandardOpenOption.APPEND);
+    }
+
+    private static void appendLine(SessionManager manager, String id, String line)
+            throws Exception {
+        Files.writeString(manager.getSessionFile(id), line + "\n", StandardOpenOption.APPEND);
     }
 
     private static SessionInfo find(List<SessionCatalog.Entry> entries, String id) {
