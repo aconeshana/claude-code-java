@@ -395,6 +395,24 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.core.message.UltraEffortEnterAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.UltraEffortExitAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.core.message.WorkflowKeywordAttachment",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "com.claudecode.core.message.BudgetUsdAttachment",
       "allDeclaredFields": true,
       "allPublicMethods": true,

@@ -170,7 +170,8 @@ final class CliToolchainAssembler {
             CustomModelJsonStore customModelCatalog,
             Set<String> dynamicSkillDirTriggers,
             List<Path> inlinePluginPaths,
-            List<Path> inlinePluginPathsWithoutMcp) {
+            List<Path> inlinePluginPathsWithoutMcp,
+            boolean workflowsEnabled) {
         Toolchain {
             // This is intentionally the live trigger set populated by Read/
             // Write/Edit during a turn; copying it would suppress the next
@@ -471,7 +472,7 @@ final class CliToolchainAssembler {
             permissionGate, skillToolProvider, taskToolProvider.taskBoard(),
             taskToolProvider.taskReminders(), lspIntegration, structuredOutputSchema,
             agentSummaryService, customModelCatalog, dynamicSkillDirTriggers, inlinePluginPaths,
-            inlinePluginPathsWithoutMcp);
+            inlinePluginPathsWithoutMcp, workflowsEnabled);
     }
 
     /**

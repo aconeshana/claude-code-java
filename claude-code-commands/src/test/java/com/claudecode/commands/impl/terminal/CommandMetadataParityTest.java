@@ -60,7 +60,11 @@ class CommandMetadataParityTest {
                 () -> assertEquals("<color|default>", new ColorCommand().argumentHint()),
                 () -> assertEquals("<optional custom summarization instructions>",
                     new CompactCommand().argumentHint()),
-                () -> assertEquals("[none|minimal|low|medium|high|xhigh|max|auto]",
+                // 236's hint is a getter over the focused model:
+                // `[${TYe(model).join("|")}${Cte(model)?"|ultracode":""}|auto]`. Java's command
+                // metadata has no model at hint time, so it publishes the superset; ultracode
+                // belongs in it because the gate is evaluated when the level is applied.
+                () -> assertEquals("[none|minimal|low|medium|high|xhigh|max|ultracode|auto]",
                     new EffortCommand().argumentHint()),
                 () -> assertEquals("[enable|disable [server-name]]",
                     new McpCommand(McpManagementPort.none()).argumentHint()),

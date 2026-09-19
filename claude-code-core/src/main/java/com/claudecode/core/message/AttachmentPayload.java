@@ -42,7 +42,10 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = HookAdditionalContextAttachment.class, name = "hook_additional_context"),
     @JsonSubTypes.Type(value = HookSuccessAttachment.class, name = "hook_success"),
     @JsonSubTypes.Type(value = HookErrorDuringExecutionAttachment.class, name = "hook_error_during_execution"),
-    @JsonSubTypes.Type(value = HookSystemMessageAttachment.class, name = "hook_system_message")
+    @JsonSubTypes.Type(value = HookSystemMessageAttachment.class, name = "hook_system_message"),
+    @JsonSubTypes.Type(value = WorkflowKeywordAttachment.class, name = "workflow_keyword_request"),
+    @JsonSubTypes.Type(value = UltraEffortEnterAttachment.class, name = "ultra_effort_enter"),
+    @JsonSubTypes.Type(value = UltraEffortExitAttachment.class, name = "ultra_effort_exit")
 })
 public sealed interface AttachmentPayload permits
     CompactFileReferenceAttachment, FileContentAttachment, ImageFileAttachment, PlanFileReferenceAttachment,
@@ -57,5 +60,6 @@ public sealed interface AttachmentPayload permits
     OutputTokenUsageAttachment, AsyncHookResponseAttachment, CommandPermissionsAttachment,
     GoalStatusAttachment,
     HookNonBlockingErrorAttachment, HookAdditionalContextAttachment,
-    HookSuccessAttachment, HookErrorDuringExecutionAttachment, HookSystemMessageAttachment {
+    HookSuccessAttachment, HookErrorDuringExecutionAttachment, HookSystemMessageAttachment,
+    WorkflowKeywordAttachment, UltraEffortEnterAttachment, UltraEffortExitAttachment {
 }

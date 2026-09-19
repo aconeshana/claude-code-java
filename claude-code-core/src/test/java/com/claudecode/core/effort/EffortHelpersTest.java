@@ -1,5 +1,6 @@
 package com.claudecode.core.effort;
 
+import com.claudecode.core.constants.Figures;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
@@ -227,5 +228,40 @@ class EffortHelpersTest {
         // Picked differs from default → keep regardless.
         assertEquals("low",
             EffortHelpers.resolvePickerEffortPersistence("low", "high", null, false));
+    }
+
+    @Test
+    void effortLevelToSymbol_givesUltracodeItsOwnGlyph() {
+        // ultracode folds to xhigh on the wire but must not borrow its circle in the UI.
+        assertEquals(Figures.EFFORT_XHIGH, EffortHelpers.effortLevelToSymbol("xhigh"));
+        assertEquals(Figures.EFFORT_MAX, EffortHelpers.effortLevelToSymbol("max"));
+        assertEquals(Figures.EFFORT_ULTRACODE, EffortHelpers.effortLevelToSymbol("ultracode"));
+        assertEquals(Figures.EFFORT_ULTRACODE, EffortHelpers.effortLevelToSymbol("ULTRACODE"));
+    }
+
+    @Test
+    void effortNotification_swapsTheWholeTailForUltracode() {
+        String model = "claude-opus-4-8"; // xhigh-capable, so ultracode can resolve
+        assertEquals(Figures.EFFORT_MEDIUM + " medium · /effort",
+            EffortHelpers.getEffortNotificationText("medium", model));
+
+        String ultra = EffortHelpers.getEffortNotificationText("ultracode", model);
+        assertEquals(Figures.EFFORT_ULTRACODE + " ultracode · "
+            + EffortHelpers.ULTRACODE_NOTIFICATION_DETAIL, ultra);
+        // The ordinary row's "· /effort" tail is replaced, not appended to.
+        assertFalse(Strings.CS.contains(ultra, "/effort"));
+    }
+
+    @Test
+    void effortNotification_absentWhenTheModelHasNoEffortControl() {
+        assertNull(EffortHelpers.getEffortNotificationText("ultracode", "claude-3-5-haiku-20241022"));
+    }
+
+    @Test
+    void effortNotification_degradesWhenUltracodeCannotApply() {
+        // Opus 4.6 has no xhigh, so ultracode cannot resolve and must not be announced.
+        String text = EffortHelpers.getEffortNotificationText("ultracode", "claude-opus-4-6");
+        assertFalse(Strings.CS.contains(text, "ultracode"));
+        assertTrue(Strings.CS.contains(text, "/effort"));
     }
 }

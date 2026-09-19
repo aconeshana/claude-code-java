@@ -181,6 +181,9 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
             this.modelDialog.setImageModelSettingReader(
                 () -> UiSettings.readUserStringFromSettings("imageModel"));
             this.modelDialog.setImageModelHandler(this::saveImageModel);
+            // Same gate the effort slider uses, so both surfaces offer ultracode together.
+            this.modelDialog.setWorkflowsAvailableReader(
+                () -> commandContext != null && commandContext.session().workflowsEnabled());
         }
         if (this.modelDialog != null && gui != null) {
             this.modelDialog.setGuiInvoker(task -> gui.getGUIThread().invokeLater(task));
@@ -263,12 +266,16 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
     @Override
     public void openEffort() {
         if (gui == null || effortDialog == null || queryEngine == null) return;
+        String model = queryEngine.configuration().getConfig().model();
         String current = queryEngine.configuration().getConfig().effortValue();
-        List<String> supported = EffortHelpers.supportedEffortLevels(
-            queryEngine.configuration().getConfig().model());
+        List<String> supported = EffortHelpers.supportedEffortLevels(model);
+        // The ultracode slot only appears when workflow orchestration can actually back it.
+        boolean withUltracode = commandContext != null
+            && EffortHelpers.isUltracodeAvailable(
+                model, commandContext.session().workflowsEnabled(), null);
         gui.getGUIThread().invokeLater(() -> {
             suppressInput(true);
-            effortDialog.show(current, supported, level -> {
+            effortDialog.show(current, supported, withUltracode, false, level -> {
                 suppressInput(false);
                 handleEffortResult(level);
             });

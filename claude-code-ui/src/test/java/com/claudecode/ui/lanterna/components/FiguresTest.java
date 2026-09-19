@@ -1,13 +1,13 @@
 package com.claudecode.ui.lanterna.components;
 
 import java.util.Locale;
+import java.util.Set;
 
 import org.apache.commons.lang3.Strings;
 import com.claudecode.core.constants.Figures;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class FiguresTest {
 
@@ -32,14 +32,16 @@ class FiguresTest {
 
     @Test
     void effortLevels_useDistinctGlyphs() {
-        assertNotEquals(Figures.EFFORT_LOW, Figures.EFFORT_MEDIUM);
-        assertNotEquals(Figures.EFFORT_MEDIUM, Figures.EFFORT_HIGH);
-        assertNotEquals(Figures.EFFORT_HIGH, Figures.EFFORT_MAX);
+        assertEquals(6, Set.of(
+            Figures.EFFORT_LOW, Figures.EFFORT_MEDIUM, Figures.EFFORT_HIGH,
+            Figures.EFFORT_XHIGH, Figures.EFFORT_MAX, Figures.EFFORT_ULTRACODE).size());
 
         assertEquals(0x25cb, Figures.EFFORT_LOW.codePointAt(0));
         assertEquals(0x25d0, Figures.EFFORT_MEDIUM.codePointAt(0));
         assertEquals(0x25cf, Figures.EFFORT_HIGH.codePointAt(0));
-        assertEquals(0x25c9, Figures.EFFORT_MAX.codePointAt(0));
+        assertEquals(0x25c9, Figures.EFFORT_XHIGH.codePointAt(0));
+        assertEquals(0x25c8, Figures.EFFORT_MAX.codePointAt(0));
+        assertEquals(0x2726, Figures.EFFORT_ULTRACODE.codePointAt(0));
     }
 
     @Test

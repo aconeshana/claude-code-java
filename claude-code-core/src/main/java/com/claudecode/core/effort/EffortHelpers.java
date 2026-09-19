@@ -25,6 +25,52 @@ public final class EffortHelpers {
 /** Sentinel returned by {@link #getEffortEnvOverride} when env is {@code auto}/{@code unset}. */
     public static final String ENV_UNSET = "__UNSET__";
 
+    /**
+     * Session-only pseudo-level: {@code xhigh} effort plus standing dynamic-workflow
+     * orchestration. Deliberately absent from {@link #LEVELS} and from every
+     * capability list — it is a selectable UI/command value that folds to a real
+     * level before anything reaches the wire.
+     *
+     * <p>Authoritative source: the 2.1.236 bundle's alias table {@code fNd},
+     * whose sole entry is {@code {ultracode: "xhigh"}}.
+     */
+    public static final String ULTRACODE = "ultracode";
+
+    /** The real level {@link #ULTRACODE} folds to on the wire (the 236 bundle's {@code fNd}). */
+    private static final String ULTRACODE_WIRE_LEVEL = "xhigh";
+
+    /**
+     * Bare meaning of {@link #ULTRACODE}, with no session-scope suffix. 236 renders the
+     * scope differently per surface, so callers append it: {@code /effort} help uses
+     * {@code "... (this session only)"}, the status line uses {@code "...; this session only"},
+     * and the confirmation line carries the scope in its own suffix before the colon.
+     */
+    public static final String ULTRACODE_DESCRIPTION =
+        "xhigh + dynamic workflow orchestration";
+
+    /** Session-scope suffix the status line appends to {@link #ULTRACODE_DESCRIPTION}. */
+    public static final String ULTRACODE_SESSION_SCOPE = "; this session only";
+
+    /** The effort slider's sublabel under the {@link #ULTRACODE} slot. */
+    public static final String ULTRACODE_SUBLABEL = "xhigh + workflows";
+
+    /**
+     * Detail the effort notification appends when {@link #ULTRACODE} is the selection. 236's
+     * {@code fFh} swaps the whole tail for it: the ordinary row ends in {@code " · /effort"},
+     * the ultracode row ends in this instead.
+     */
+    public static final String ULTRACODE_NOTIFICATION_DETAIL =
+        "xhigh effort + dynamic workflows for maximum thoroughness";
+
+    /** Shown when {@link #ULTRACODE} is asked for but {@link #isUltracodeAvailable} is false. */
+    public static final String ULTRACODE_UNAVAILABLE =
+        "ultracode is not available for this session (dynamic workflows are off, "
+        + "or the model / your organization does not allow xhigh effort)";
+
+    /** Shown by the slider when an organization ceiling hides the stronger levels. */
+    public static final String ORG_RESTRICTED_NOTICE =
+        "Higher effort levels are restricted by your organization.";
+
     private EffortHelpers() {}
 
     /**
@@ -58,6 +104,60 @@ public final class EffortHelpers {
 
     public static boolean isEffortLevel(String value) {
         return value != null && LEVELS.contains(value);
+    }
+
+    /** Whether {@code value} names the {@link #ULTRACODE} pseudo-level, case-insensitively. */
+    public static boolean isUltracode(String value) {
+        return value != null && Strings.CI.equals(ULTRACODE, value.trim());
+    }
+
+    /**
+     * Whether {@code value} is something the user may select — a real level or the
+     * {@link #ULTRACODE} pseudo-level. Use this for command/picker validation;
+     * use {@link #isEffortLevel} for anything that feeds the wire.
+     */
+    public static boolean isSelectableEffort(String value) {
+        return isEffortLevel(value) || isUltracode(value);
+    }
+
+    /**
+     * Folds the {@link #ULTRACODE} pseudo-level onto the real level it requests,
+     * leaving every other value untouched. Every path that produces a wire value
+     * runs through this, so {@code ultracode} can never reach the API.
+     */
+    public static String foldPseudoLevel(String value) {
+        return isUltracode(value) ? ULTRACODE_WIRE_LEVEL : value;
+    }
+
+    /**
+     * Whether the {@link #ULTRACODE} slot is offered at all — the 236 bundle's
+     * {@code Cte}: dynamic workflows must be available, and when a model is known
+     * it must support {@code xhigh} and the organization must permit it.
+     *
+     * @param model            the active model, or blank when not yet resolved
+     * @param workflowsEnabled whether dynamic-workflow orchestration is available
+     *                         (the bundle's {@code ZM})
+     * @param orgMaxLevel      the organization's effort ceiling, or {@code null}
+     *                         when uncapped (the bundle's {@code F1r})
+     */
+    public static boolean isUltracodeAvailable(
+            String model, boolean workflowsEnabled, String orgMaxLevel) {
+        if (!workflowsEnabled) return false;
+        if (StringUtils.isBlank(model)) return true;
+        if (!capabilitiesForModel(model).supports(ULTRACODE_WIRE_LEVEL)) return false;
+        return allowsLevel(ULTRACODE_WIRE_LEVEL, orgMaxLevel);
+    }
+
+    /**
+     * Whether {@code level} sits at or below an organization's ceiling — the 236
+     * bundle's {@code tpt}, comparing positions in {@link #ORDERED_LEVELS}
+     * (the bundle's {@code KF}). A blank or unrecognized ceiling means uncapped.
+     */
+    public static boolean allowsLevel(String level, String orgMaxLevel) {
+        if (StringUtils.isBlank(orgMaxLevel)) return true;
+        int cap = ORDERED_LEVELS.indexOf(orgMaxLevel);
+        int wanted = ORDERED_LEVELS.indexOf(level);
+        return cap < 0 || wanted < 0 || wanted <= cap;
     }
 
     /**
@@ -149,7 +249,9 @@ public final class EffortHelpers {
             : (StringUtils.isNotBlank(appStateEffort)
                 ? appStateEffort : getDefaultEffortForModel(model, customModel));
         if (StringUtils.isBlank(resolved)) return null;
-        String normalized = resolved.toLowerCase(Locale.ROOT);
+        // ultracode is a selectable pseudo-level, never a wire value: fold it to the
+        // real level it requests before the capability gate and the return.
+        String normalized = foldPseudoLevel(resolved.toLowerCase(Locale.ROOT));
         if (!isEffortLevel(normalized)) return null;
         if (capabilities.known() && !capabilities.supports(normalized)) return null;
         return normalized;
@@ -165,6 +267,7 @@ public final class EffortHelpers {
 
 
     public static String getEffortValueDescription(String level) {
+        if (isUltracode(level)) return ULTRACODE_DESCRIPTION;
         return switch (level) {
             case "none"    -> "Disable reasoning effort for supported GPT models";
             case "minimal" -> "Use the minimum reasoning supported by this GPT model";
@@ -190,24 +293,38 @@ public final class EffortHelpers {
     }
 
     /**
-     * Maps an effort level to its single-glyph indicator character.
+     * Maps an effort level to its single-glyph indicator character. {@link #ULTRACODE} keeps
+     * its own glyph rather than borrowing {@code xhigh}'s — 236's {@code Edo} branches on the
+     * pseudo-level before consulting the per-level table {@code kQi}.
      */
     public static String effortLevelToSymbol(String level) {
+        if (isUltracode(level)) return Figures.EFFORT_ULTRACODE;
         return switch (level == null ? "" : level) {
             case "none", "minimal" -> Figures.EFFORT_LOW;
             case "low"    -> Figures.EFFORT_LOW;
             case "medium" -> Figures.EFFORT_MEDIUM;
             case "high"   -> Figures.EFFORT_HIGH;
-            case "xhigh"  -> Figures.EFFORT_MAX;
+            case "xhigh"  -> Figures.EFFORT_XHIGH;
             case "max"    -> Figures.EFFORT_MAX;
             default       -> Figures.EFFORT_HIGH;
         };
     }
 
 
+    /**
+     * The transient effort hint shown beside the prompt, e.g. {@code "◐ medium · /effort"}.
+     * Returns {@code null} when the model has no effort control at all.
+     *
+     * <p>The {@link #ULTRACODE} row replaces the trailing {@code " · /effort"} with
+     * {@link #ULTRACODE_NOTIFICATION_DETAIL} rather than appending to it, matching 236's
+     * {@code fFh}, whose two branches share no tail.
+     */
     public static String getEffortNotificationText(String effortValue, String model) {
         if (!modelSupportsEffort(model)) return null;
-        String level = getDisplayedEffortLevel(model, effortValue);
+        String level = getDisplayedEffortSelection(model, effortValue);
+        if (isUltracode(level)) {
+            return Figures.EFFORT_ULTRACODE + " " + ULTRACODE + " · " + ULTRACODE_NOTIFICATION_DETAIL;
+        }
         return effortLevelToSymbol(level) + " " + level + " · /effort";
     }
 
@@ -217,8 +334,25 @@ public final class EffortHelpers {
         return resolved != null ? resolved : "high";
     }
 
+    /**
+     * The label status surfaces show for the user's current selection. Unlike
+     * {@link #getDisplayedEffortLevel}, {@code ultracode} survives here rather than
+     * appearing as the {@code xhigh} it folds to on the wire — matching 236, whose
+     * status line reads {@code Current effort level: ultracode (...)}. It degrades to
+     * the resolved level when the folded level is not actually usable.
+     */
+    public static String getDisplayedEffortSelection(String model, String appStateEffort) {
+        if (isUltracode(appStateEffort) && resolveAppliedEffort(model, appStateEffort) != null) {
+            return ULTRACODE;
+        }
+        return getDisplayedEffortLevel(model, appStateEffort);
+    }
+
 
     public static String toPersistableEffort(String value) {
+        // ultracode is session-scoped by contract: interactive toggles never persist it.
+        // Stated explicitly so adding it to a level list later cannot silently make it sticky.
+        if (isUltracode(value)) return null;
         if (Strings.CS.equals("none", value) || Strings.CS.equals("minimal", value)
                 || Strings.CS.equals("low", value) || Strings.CS.equals("medium", value)
                 || Strings.CS.equals("high", value) || Strings.CS.equals("xhigh", value)) {
@@ -243,7 +377,7 @@ public final class EffortHelpers {
 
 
     public static String convertEffortValueToLevel(String value) {
-        return isEffortLevel(value) ? value : "high";
+        return isSelectableEffort(value) ? value : "high";
     }
 
     /**

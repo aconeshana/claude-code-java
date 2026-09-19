@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.theme;
 
+import java.util.List;
 import java.util.Locale;
 
 import org.apache.commons.lang3.Strings;
@@ -182,7 +183,17 @@ public final class LanternaTheme {
     public static TextColor planTeal()     { return toLC(theme().planMode()); }
     public static TextColor permission()   { return toLC(theme().permission()); }
 
-
+    /**
+     * The seven-stop rainbow ramp, indexed cyclically so callers can scroll a hue across a
+     * string by adding a frame counter to the character index.
+     */
+    public static TextColor rainbow(int index) {
+        Theme t = theme();
+        List<RgbColor> ramp = List.of(
+            t.rainbow_red(), t.rainbow_orange(), t.rainbow_yellow(), t.rainbow_green(),
+            t.rainbow_blue(), t.rainbow_indigo(), t.rainbow_violet());
+        return toLC(ramp.get(Math.floorMod(index, ramp.size())));
+    }
 
     public static TextColor diffAdded()        { return toLC(theme().diffAdded()); }
 

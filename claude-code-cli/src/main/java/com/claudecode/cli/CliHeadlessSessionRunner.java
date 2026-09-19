@@ -66,7 +66,6 @@ import com.claudecode.tools.skills.SkillToolProvider;
 import com.claudecode.tools.workflows.BundledWorkflowLoader;
 import com.claudecode.tools.workflows.WorkflowCatalog;
 import com.claudecode.tools.workflows.WorkflowDefinition;
-import com.claudecode.tools.workflows.WorkflowFeatureGate;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -366,6 +365,7 @@ final class CliHeadlessSessionRunner {
             .messageAppender(request.engine().conversation()::appendTranscriptMessage)
             .contextDataCollector(request.contextDataCollector())
             .nonInteractive(true)
+            .workflowsEnabledSupplier(CliEngineAssembler::workflowsEnabled)
             .build();
         return new HeadlessCommands(registry, context, localCommandSdkPrelude);
     }
@@ -376,15 +376,19 @@ final class CliHeadlessSessionRunner {
         syncWorkflowCommands(registry, cwd, pluginRuntime, new WorkflowCommandSync());
     }
 
+    /**
+     * Whether dynamic-workflow orchestration is available, from settings, managed policy
+     * and environment. Shared by the workflow-command sync and the {@code ultracode}
+     * effort gate so the two can never disagree.
+     */
+    static boolean workflowsEnabled() {
+        return CliEngineAssembler.workflowsEnabled();
+    }
+
     static void syncWorkflowCommands(CommandRegistry registry, Path cwd,
                                      CliPluginRuntimeView pluginRuntime,
                                      WorkflowCommandSync commandSync) {
-        boolean enabled = WorkflowFeatureGate.evaluate(
-            SubprocessEnvironment.snapshot(),
-            Boolean.TRUE.equals(RuntimeSettings.readPolicyBoolean("disableWorkflows")),
-            RuntimeSettings.loadOptionalBoolean("enableWorkflows"),
-            true,
-            true);
+        boolean enabled = workflowsEnabled();
         if (!enabled) {
             registry.unregisterMatching("workflows"::equals);
             commandSync.sync(registry, List.of());

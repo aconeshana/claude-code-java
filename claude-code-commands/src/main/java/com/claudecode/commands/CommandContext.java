@@ -167,6 +167,7 @@ public record CommandContext(
         private Consumer<TagRemovalRequest> tagRemovalLauncher;
         private Consumer<String> gatewayLauncher;
         private boolean nonInteractive;
+        private Supplier<Boolean> workflowsEnabledSupplier;
 
         private Builder(String model, Supplier<List<Message>> messagesSupplier,
                 Runnable clearMessages, Consumer<String> setModel,
@@ -282,6 +283,16 @@ public record CommandContext(
         public Builder gatewayLauncher(Consumer<String> v) { gatewayLauncher = v; return this; }
         public Builder nonInteractive(boolean v) { nonInteractive = v; return this; }
 
+        /**
+         * Supplies whether dynamic-workflow orchestration is available, gating the
+         * {@code ultracode} effort level. Wired by the composition root, which owns the
+         * feature gate in {@code claude-code-tools}.
+         */
+        public Builder workflowsEnabledSupplier(Supplier<Boolean> v) {
+            workflowsEnabledSupplier = v;
+            return this;
+        }
+
         public CommandContext build() {
             CommandSessionState session = new CommandSessionState(
                 model, modelSupplier, messagesSupplier, clearMessages, setModel,
@@ -293,7 +304,8 @@ public record CommandContext(
                 onCompactProgress, verboseSupplier, apiBaseUrlSupplier,
                 statusRuntimePropertiesSupplier, configLiveSetters, modelValidator,
                 modelAllowed, resumeLauncher, sessionIdSwitcher, resetSessionCost,
-                contextDataCollector, mcpStatusSupplier, promptShellExecutor, nonInteractive);
+                contextDataCollector, mcpStatusSupplier, promptShellExecutor, nonInteractive,
+                workflowsEnabledSupplier);
             CommandApplicationPorts application = new CommandApplicationPorts(
                 doctor, dream, pluginRuntime, insightsPipeline, recap,
                 settingsManagement, mcpManagement, permissionCommands, sessionCommands,

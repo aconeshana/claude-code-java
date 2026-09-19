@@ -393,6 +393,7 @@ final class CliSessionAssembler {
             runtime.progressSink(), runtime.toolchain().lspIntegration(),
             runtime.toolchain().customModelCatalog(), runtime.output(),
             runtime.errorOutput(), runtime.restoration().pickerRequested(),
-            runtime.restoration().pickerSearchTerm()));
+            runtime.restoration().pickerSearchTerm(),
+            runtime.toolchain().workflowsEnabled()));
     }
 }

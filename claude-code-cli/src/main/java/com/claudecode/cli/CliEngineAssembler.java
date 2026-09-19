@@ -13,6 +13,10 @@ import com.claudecode.core.attachment.AsyncHookResponseAttachmentProvider;
 import com.claudecode.core.attachment.AtMentionedFilesProvider;
 import com.claudecode.core.attachment.AttachmentService;
 import com.claudecode.core.attachment.AutoModeReminderAttachmentProvider;
+import com.claudecode.core.attachment.UltraEffortAttachmentProvider;
+import com.claudecode.core.attachment.WorkflowKeywordAttachmentProvider;
+import com.claudecode.core.effort.EffortHelpers;
+import com.claudecode.tools.workflows.WorkflowFeatureGate;
 import com.claudecode.core.attachment.BudgetUsdAttachmentProvider;
 import com.claudecode.core.attachment.ChangedFilesProvider;
 import com.claudecode.core.attachment.CompactionReminderAttachmentProvider;
@@ -382,6 +386,17 @@ final class CliEngineAssembler {
 
                 new AutoModeReminderAttachmentProvider(
                     () -> permissionGate.currentMode().kind()),
+                // The ultracode keyword opts a single turn into orchestration; the ultracode
+                // effort level keeps it on for the session. Both need workflows available.
+                new WorkflowKeywordAttachmentProvider(
+                    CliEngineAssembler::workflowsEnabled,
+                    CliEngineAssembler::workflowKeywordTriggerEnabled),
+                new UltraEffortAttachmentProvider(() -> {
+                    QuerySession liveEngine = engineRef.get();
+                    String active = liveEngine != null
+                        ? liveEngine.configuration().getConfig().effortValue() : effort;
+                    return EffortHelpers.isUltracode(active);
+                }),
                 // Tier-1: todo_reminders (timed nudge)
                 new TodoReminderAttachmentProvider(),
                 new TaskReminderAttachmentProvider(() -> {
@@ -932,5 +947,26 @@ final class CliEngineAssembler {
         if (selected != null && (selected > 0 || selected == 0)) {
             config.setThinkingBudgetTokens(selected);
         }
+    }
+
+    /**
+     * Whether dynamic-workflow orchestration is available, from settings, managed policy and
+     * environment. This is the single reading shared by the Workflow tool's registration, the
+     * workflow slash commands, the {@code ultracode} effort gate and the keyword trigger, so
+     * none of them can disagree about whether workflows exist.
+     */
+    static boolean workflowsEnabled() {
+        return WorkflowFeatureGate.evaluate(
+            SubprocessEnvironment.snapshot(),
+            Boolean.TRUE.equals(RuntimeSettings.readPolicyBoolean("disableWorkflows")),
+            RuntimeSettings.loadOptionalBoolean("enableWorkflows"),
+            true,
+            true);
+    }
+
+    /** The {@code workflowKeywordTriggerEnabled} setting, which is on unless explicitly off. */
+    static boolean workflowKeywordTriggerEnabled() {
+        return !Boolean.FALSE.equals(
+            RuntimeSettings.loadOptionalBoolean("workflowKeywordTriggerEnabled"));
     }
 }

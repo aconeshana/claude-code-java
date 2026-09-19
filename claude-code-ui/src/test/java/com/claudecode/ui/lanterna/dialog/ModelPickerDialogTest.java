@@ -200,6 +200,48 @@ class ModelPickerDialogTest {
     }
 
     @Test
+    void ultracodeIsTheLastStopOfTheCycleWhenWorkflowsAreAvailable() {
+        AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setWorkflowsAvailableReader(() -> true);
+        show(d, "sonnet", null, result::set);
+        // high → xhigh → max → ultracode: the pseudo-level sits after the real levels.
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
+        assertEquals("ultracode", result.get().effort());
+    }
+
+    @Test
+    void ultracodeStaysOutOfTheCycleWithoutWorkflows() {
+        AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
+        ModelPickerDialog d = new ModelPickerDialog();
+        show(d, "sonnet", null, result::set); // no workflows reader installed
+        // high → xhigh → max → wraps straight back to low, never touching ultracode.
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true));
+        d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
+        assertEquals("low", result.get().effort());
+    }
+
+    @Test
+    void ultracodeRowRendersItsOwnGlyph() {
+        ModelPickerDialog d = new ModelPickerDialog();
+        d.setWorkflowsAvailableReader(() -> true);
+        show(d, "sonnet", "ultracode", _ -> {});
+        TerminalSize size = d.calculatePreferredSize();
+        d.setSize(size);
+        BasicTextImage image = new BasicTextImage(size);
+        d.draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
+
+        String rendered = String.join("\n", imageRows(image));
+        assertTrue(Strings.CS.contains(rendered, "✦ Ultracode effort"),
+            "the ultracode row uses ✦, not xhigh's ◉");
+    }
+
+    @Test
     void effortToggle_onNonEffortModel_isNoOp() {
         AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
         ModelPickerDialog d = new ModelPickerDialog();

@@ -26,7 +26,9 @@ public class EffortCommand implements AnnotatedCommand {
 
     public EffortCommand() {}
 
-    @Override public String argumentHint() { return "[none|minimal|low|medium|high|xhigh|max|auto]"; }
+    @Override public String argumentHint() {
+        return "[none|minimal|low|medium|high|xhigh|max|ultracode|auto]";
+    }
 
     @Override
     public boolean isImmediate() {
@@ -44,7 +46,7 @@ public class EffortCommand implements AnnotatedCommand {
             return CommandResult.of(helpText());
         }
         if (normalized.isEmpty()) {
-// No arg → prefer the interactive slider dialog.
+            // No arg → prefer the interactive slider dialog.
             if (context.presentation().effortDialogLauncher() != null) {
                 context.presentation().effortDialogLauncher().run();
                 return CommandResult.skip();
@@ -63,12 +65,27 @@ public class EffortCommand implements AnnotatedCommand {
         if (Strings.CS.equals("auto", normalized) || Strings.CS.equals("unset", normalized)) {
             return CommandResult.of(clearLevel(context));
         }
-        if (!EffortHelpers.isEffortLevel(normalized)) {
+        if (EffortHelpers.isUltracode(normalized) && !ultracodeAvailable(context)) {
+            // Say why rather than silently downgrading to xhigh — the user asked for
+            // standing workflow orchestration, and only half of that would arrive.
+            return CommandResult.of(EffortHelpers.ULTRACODE_UNAVAILABLE);
+        }
+        if (!EffortHelpers.isSelectableEffort(normalized)) {
 
             return CommandResult.of("Invalid argument: " + rawArgs
-                + ". Valid options are: none, minimal, low, medium, high, xhigh, max, auto");
+                + ". Valid options are: none, minimal, low, medium, high, xhigh, max,"
+                + " ultracode, auto");
         }
         return CommandResult.of(setLevel(context, normalized));
+    }
+
+    /**
+     * The 236 bundle's {@code Cte} gate, evaluated against this session: dynamic
+     * workflows must be on and the active model must allow {@code xhigh}.
+     */
+    private boolean ultracodeAvailable(CommandContext context) {
+        return EffortHelpers.isUltracodeAvailable(
+            context.session().model(), context.session().workflowsEnabled(), null);
     }
 
 
@@ -80,7 +97,7 @@ public class EffortCommand implements AnnotatedCommand {
             : context.application().settings().preferences().effortLevel();
         String effective;
         if (Strings.CS.equals("__UNSET__", envOverride)) {
-// env=auto/unset → suppress everything.
+            // env=auto/unset → suppress everything.
             effective = null;
         } else if (envOverride != null) {
             effective = envOverride;
@@ -88,10 +105,16 @@ public class EffortCommand implements AnnotatedCommand {
             effective = appStateEffort;
         }
         if (effective == null) {
-
             // getDisplayedEffortLevel returns 'high' fallback when nothing resolves.
             String modelDefault = EffortHelpers.getDisplayedEffortLevel(context.session().model(), null);
             return "Effort level: auto (currently " + modelDefault + ")";
+        }
+        if (EffortHelpers.isUltracode(effective)) {
+            // 236 spells the scope with a semicolon here, not the parenthesized suffix
+            // the help listing uses.
+            return "Current effort level: " + EffortHelpers.ULTRACODE
+                + " (" + EffortHelpers.ULTRACODE_DESCRIPTION
+                + EffortHelpers.ULTRACODE_SESSION_SCOPE + ")";
         }
 
         return "Current effort level: " + effective
@@ -177,7 +200,7 @@ public class EffortCommand implements AnnotatedCommand {
 
     private static String helpText() {
         return """
-            Usage: /effort [none|minimal|low|medium|high|xhigh|max|auto]
+            Usage: /effort [none|minimal|low|medium|high|xhigh|max|ultracode|auto]
 
             Effort levels:
             - none: Disable reasoning effort on supported GPT models
@@ -187,6 +210,7 @@ public class EffortCommand implements AnnotatedCommand {
             - high: Comprehensive implementation with extensive testing
             - xhigh: Extended high effort with deeper reasoning for harder tasks
             - max: Maximum capability on models that support it
+            - ultracode: xhigh + dynamic workflow orchestration (this session only)
             - auto: Use the default effort level for your model
 
             Run /effort with no argument to open the interactive slider.""";

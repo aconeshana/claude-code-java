@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -57,8 +58,21 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         boolean supportsEffort,
         EffortHelpers.EffortCapabilities capabilities,
         List<String> supportedLevels,
-        String defaultLevel
-    ) {}
+        String defaultLevel,
+        boolean ultracodeAvailable
+    ) {
+        /**
+         * The ←/→ cycle. 236's {@code HFh} appends {@code ultracode} after the real levels
+         * rather than inserting it into the capability list, so the pseudo-level can never
+         * reach a capability check or the wire.
+         */
+        List<String> effortCycle() {
+            if (!ultracodeAvailable) return supportedLevels;
+            List<String> cycle = new ArrayList<>(supportedLevels);
+            cycle.add(EffortHelpers.ULTRACODE);
+            return List.copyOf(cycle);
+        }
+    }
 
     /** A pickable option. {@code value == null} means "Default (recommended)". */
     record ModelOption(String value, String label, String description,
@@ -339,7 +353,8 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
                 .map(CustomModelConfig::modelName)
                 .collect(Collectors.toUnmodifiableSet());
         List<ModelOption> preparedOptions = filtered.stream()
-            .map(option -> prepareEffortMetadata(option, preparedDefaultModel, envLookup))
+            .map(option -> prepareEffortMetadata(
+                option, preparedDefaultModel, envLookup, readWorkflowsAvailable()))
             .toList();
         String preparedModelPreference = modelPreference == null ? null : preparedOptions.stream()
             .map(ModelOption::value)
@@ -364,14 +379,35 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
     /** Live image-model settings reader; installed by the composition layer. */
     private Supplier<String> imageModelSettingReader;
 
+    /**
+     * Whether dynamic workflow orchestration is available. Installed by the composition layer
+     * because the gate lives behind settings and policy the UI module must not reach into.
+     * Absent, the picker simply never offers the ultracode slot.
+     */
+    private BooleanSupplier workflowsAvailableReader;
+
     /** Installs the live image-model settings reader used by {@link #prepare}. */
     public void setImageModelSettingReader(Supplier<String> reader) {
         this.imageModelSettingReader = reader;
     }
 
+    /** Installs the workflow-availability gate that decides whether ultracode is offered. */
+    public void setWorkflowsAvailableReader(BooleanSupplier reader) {
+        this.workflowsAvailableReader = reader;
+    }
+
+    private boolean readWorkflowsAvailable() {
+        if (workflowsAvailableReader == null) return false;
+        try {
+            return workflowsAvailableReader.getAsBoolean();
+        } catch (RuntimeException _) {
+            return false;
+        }
+    }
+
     private static ModelOption prepareEffortMetadata(
             ModelOption option, String preparedDefaultModel,
-            Function<String, String> envLookup) {
+            Function<String, String> envLookup, boolean workflowsAvailable) {
         String focusModel = ADD_CUSTOM_MODEL_VALUE.equals(option.value())
             ? ""
             : option.value() != null
@@ -383,9 +419,11 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         List<String> levels = supports
             ? EffortHelpers.supportedEffortLevels(focusModel) : List.of();
         String defaultLevel = EffortHelpers.defaultEffortLevelForModel(focusModel);
+        boolean ultracode = supports
+            && EffortHelpers.isUltracodeAvailable(focusModel, workflowsAvailable, null);
         return new ModelOption(option.value(), option.label(), option.description(),
             new EffortOptionMetadata(
-                focusModel, supports, capabilities, levels, defaultLevel));
+                focusModel, supports, capabilities, levels, defaultLevel, ultracode));
     }
 
     /** Mounts a precomputed immutable snapshot; this method performs no I/O. */
@@ -578,14 +616,14 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         ModelOption opt = options.get(selectedIdx);
         EffortOptionMetadata metadata = opt.effortMetadata();
         if (!metadata.supportsEffort() || metadata.supportedLevels().isEmpty()) return;
+        List<String> cycle = metadata.effortCycle();
         String base = effort != null ? effort : metadata.defaultLevel();
-        int current = metadata.supportedLevels().indexOf(base);
+        int current = cycle.indexOf(base);
         if (current < 0) {
-            current = metadata.supportedLevels().indexOf(metadata.defaultLevel());
+            current = cycle.indexOf(metadata.defaultLevel());
             if (current < 0) current = 0;
         }
-        effort = metadata.supportedLevels().get(Math.floorMod(
-            current + Integer.signum(direction), metadata.supportedLevels().size()));
+        effort = cycle.get(Math.floorMod(current + Integer.signum(direction), cycle.size()));
         hasToggledEffort = true;
         invalidate();
     }
@@ -679,10 +717,15 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
         return -1;
     }
 
-    /** The effective model default shown when the current session level is incompatible. */
+    /**
+     * The effective label for the effort row: the current selection when this model can honour
+     * it, otherwise the model's own default. {@code ultracode} survives here only while the
+     * focused model still offers the slot — moving to a model without it falls back rather than
+     * showing a level the user cannot confirm.
+     */
     private String displayEffort(EffortOptionMetadata metadata) {
         if (effort == null) return metadata.defaultLevel();
-        return metadata.supportedLevels().contains(effort)
+        return metadata.effortCycle().contains(effort)
             ? effort : metadata.defaultLevel();
     }
 
@@ -700,7 +743,8 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
             boolean unknownCustom = customModelNames.contains(focusModel)
                 && !capabilities.known();
             boolean incompatibleCurrent = effort != null
-                && capabilities.known() && !capabilities.supports(effort);
+                && capabilities.known() && !capabilities.supports(effort)
+                && !(EffortHelpers.isUltracode(effort) && metadata.ultracodeAvailable());
             if (!hasToggledEffort && (unknownCustom || incompatibleCurrent)) {
                 // A level inherited from the previous model is not an explicit
                 // choice for this endpoint. Clear it to auto; the request router

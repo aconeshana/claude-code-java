@@ -58,7 +58,8 @@ public record CommandSessionState(
     Supplier<ContextData> contextDataCollector,
     Supplier<String> mcpStatusSupplier,
     PromptShellExecutor promptShellExecutor,
-    boolean nonInteractive
+    boolean nonInteractive,
+    Supplier<Boolean> workflowsEnabledSupplier
 ) {
     /**
      * The session's live working directory. Resolved per call rather than captured, because a
@@ -66,6 +67,21 @@ public record CommandSessionState(
      */
     public String workingDirectory() {
         return workingDirectorySupplier == null ? null : workingDirectorySupplier.get();
+    }
+
+    /**
+     * Whether dynamic-workflow orchestration is available this session — the gate the
+     * {@code ultracode} effort level depends on. Supplied by the composition root because
+     * the feature gate itself lives in {@code claude-code-tools}, which commands must not
+     * depend on. Absent supplier means "not available".
+     */
+    public boolean workflowsEnabled() {
+        if (workflowsEnabledSupplier == null) return false;
+        try {
+            return Boolean.TRUE.equals(workflowsEnabledSupplier.get());
+        } catch (RuntimeException _) {
+            return false;
+        }
     }
 
     public String model() {

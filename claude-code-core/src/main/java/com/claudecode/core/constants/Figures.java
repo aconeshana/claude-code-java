@@ -29,11 +29,15 @@ public final class Figures {
     /** ◯ — figures.circle, the un-viewed row bullet in the coordinator panel. */
     public static final String CIRCLE              = "◯";
 
-    // Effort levels
+    // Effort levels. Glyphs verified against the 2.1.236 bundle's figure table
+    // (eIu/h0n/O4s/tIu/rIu/g0n), which gives xhigh and max distinct circles.
     public static final String EFFORT_LOW          = "○"; // ○
     public static final String EFFORT_MEDIUM       = "◐"; // ◐
     public static final String EFFORT_HIGH         = "●"; // ●
-    public static final String EFFORT_MAX          = "◉"; // ◉
+    public static final String EFFORT_XHIGH        = "◉"; // ◉
+    public static final String EFFORT_MAX          = "◈"; // ◈
+    /** ✦ — the ultracode pseudo-level, which has no circle of its own. */
+    public static final String EFFORT_ULTRACODE    = "✦"; // ✦
 
     // Media / trigger status
     public static final String PLAY_ICON           = "▶"; // ▶

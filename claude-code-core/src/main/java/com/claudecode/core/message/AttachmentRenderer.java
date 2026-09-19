@@ -84,6 +84,9 @@ public final class AttachmentRenderer {
                 ? List.of()
                 : List.of(isMetaReminder(a.hookName() + " hook additional context: "
                     + String.join("\n", a.content())));
+            case WorkflowKeywordAttachment _ -> List.of(isMetaReminder(WORKFLOW_KEYWORD_TEXT));
+            case UltraEffortEnterAttachment a -> List.of(isMetaReminder(renderUltraEffortEnter(a)));
+            case UltraEffortExitAttachment _ -> List.of(isMetaReminder(ULTRA_EFFORT_EXIT_TEXT));
         };
     }
 
@@ -146,6 +149,9 @@ public final class AttachmentRenderer {
                 case HookAdditionalContextAttachment a -> a.content().isEmpty()
                     ? "" : a.hookName() + " hook additional context: "
                         + String.join("\n", a.content());
+                case WorkflowKeywordAttachment _ -> WORKFLOW_KEYWORD_TEXT;
+                case UltraEffortEnterAttachment a -> renderUltraEffortEnter(a);
+                case UltraEffortExitAttachment _ -> ULTRA_EFFORT_EXIT_TEXT;
             };
             if (!StringUtils.isBlank(text)) {
                 if (!sb.isEmpty()) sb.append("\n\n");
@@ -300,8 +306,25 @@ public final class AttachmentRenderer {
             they can make.""";
     }
 
-    private static String renderPostCompactInvokedSkillsText(InvokedSkillsAttachment a) {
-        if (a.skills().isEmpty()) return "";
+    /** Prompt text for a turn whose input mentioned the {@code ultracode} keyword. */
+    private static final String WORKFLOW_KEYWORD_TEXT =
+        "The user included the keyword \"ultracode\", opting this turn into multi-agent "
+        + "orchestration — use the Workflow tool to fulfill the request.";
+
+    private static final String ULTRA_EFFORT_EXIT_TEXT =
+        "Ultracode is off — the Workflow tool's standard opt-in rule applies again.";
+
+    private static String renderUltraEffortEnter(UltraEffortEnterAttachment attachment) {
+        if (Strings.CS.equals("sparse", attachment.reminderType())) {
+            return "Ultracode is still on — use the Workflow tool; see its Ultracode section.";
+        }
+        return "Ultracode is on: optimize for the most exhaustive, correct answer — not the "
+            + "fastest or cheapest. Use the Workflow tool on every substantive task; token cost "
+            + "is not a constraint. See the Workflow tool's **Ultracode** section and quality "
+            + "patterns. Solo only on conversational/trivial turns.";
+    }
+
+    private static String renderPostCompactInvokedSkillsText(InvokedSkillsAttachment a) {        if (a.skills().isEmpty()) return "";
         String prefix = """
             The following skills were invoked EARLIER in this session \
             (before the conversation was compacted), not on the current turn. They are shown \
