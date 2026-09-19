@@ -2,6 +2,8 @@ package com.claudecode.ui.lanterna.transcript;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.claudecode.tools.bash.BashTool;
+import com.claudecode.tools.powershell.PowerShellTool;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -124,5 +126,47 @@ class CollapsedShellCommandTest {
         assertThat(CollapsedShellCommand.isShellTool("BashOutput")).isFalse();
         assertThat(CollapsedShellCommand.isShellTool("Read")).isFalse();
         assertThat(CollapsedShellCommand.isShellTool(null)).isFalse();
+    }
+
+    /**
+     * The collapser used to keep its own copy of the cmdlet sets and never resolved aliases, so it
+     * called {@code gci}/{@code sls}/{@code dir} plain shell commands while the teammate task board
+     * — which does resolve them — called them searches. Delegating makes the two agree by
+     * construction; this pins that they do.
+     */
+    @Test
+    void powershellAliasesResolveExactlyAsTheToolsSideClassifierResolvesThem() {
+        assertThat(ps("gci .")).isEqualTo(new CollapsedShellCommand.Kind(true, true, false));
+        assertThat(ps("dir")).isEqualTo(new CollapsedShellCommand.Kind(true, true, false));
+        assertThat(ps("sls TODO *.java"))
+            .isEqualTo(new CollapsedShellCommand.Kind(true, false, false));
+
+        assertThat(ps("gci .")).isEqualTo(viaTools("gci ."));
+        assertThat(ps("sls TODO *.java")).isEqualTo(viaTools("sls TODO *.java"));
+        assertThat(ps("dir")).isEqualTo(viaTools("dir"));
+    }
+
+    private static CollapsedShellCommand.Kind ps(String command) {
+        return CollapsedShellCommand.classify("PowerShell", command);
+    }
+
+    /** The same answer, reached through the tools-side classifier the task board uses. */
+    private static CollapsedShellCommand.Kind viaTools(String command) {
+        PowerShellTool.SearchReadClassification c =
+            PowerShellTool.classifySearchOrReadCommand(command);
+        return new CollapsedShellCommand.Kind(c.isSearch(), c.isRead(), false);
+    }
+
+    /** Bash keeps its verbatim matching, and now reaches it through the shared classifier. */
+    @Test
+    void bashDelegationAgreesWithTheToolsSideClassifier() {
+        for (String command : new String[] {
+                "cat pom.xml", "ls -la /tmp", "grep -rn foo . | wc -l",
+                "cd /tmp && cat notes.txt", "npm test", "GREP -rn foo ." }) {
+            BashTool.SearchReadClassification c = BashTool.classifySearchOrReadCommand(command);
+            assertThat(bash(command))
+                .as("collapser and task board must agree about %s", command)
+                .isEqualTo(new CollapsedShellCommand.Kind(c.isSearch(), c.isRead(), c.isList()));
+        }
     }
 }
