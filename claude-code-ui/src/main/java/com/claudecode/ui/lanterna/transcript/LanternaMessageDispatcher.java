@@ -576,6 +576,34 @@ public class LanternaMessageDispatcher {
     }
 
     /**
+     * Whether {@link #dispatch(SDKMessage, MessagePanel, RenderingContext)} paints no transcript row
+     * at all for this message, so dispatching it is a pure no-op.
+     *
+     * <p>This class owns the routing table, so it owns the answer. Callers that must decide whether
+     * a message is worth reacting to — {@link MessageCollapser}, which would otherwise seal an open
+     * collapsed group for a message nobody can see — ask here instead of keeping a hand-copied
+     * second list that silently drifts from the switch. {@code dispatch} consults the same predicate
+     * for exactly these cases, so the two can only ever agree.
+     *
+     * <p>The message kinds routed to the switch's {@code default} arm (sentinels and the task /
+     * notification / status carriers this TUI has no renderer for) are deliberately <em>not</em>
+     * reported here. They render nothing today only by omission, and giving one of them a renderer
+     * later would turn this predicate into a lie with no compiler help. Suppression that is a design
+     * decision is enumerated; suppression that is incidental is not.
+     */
+    public static boolean rendersNothing(SDKMessage message) {
+        return switch (message) {
+            // Status bar owns the token/cost summary.
+            case SDKMessage.Result _ -> true;
+            // Rendered via the tool_result_success StreamEvent instead.
+            case SDKMessage.ToolUseSummary _ -> true;
+            // Status bar shows the model.
+            case SDKMessage.StreamRequestStart _ -> true;
+            default -> false;
+        };
+    }
+
+    /**
      * Dispatch with explicit {@link RenderingContext} — used when rendering
      * queued-preview messages that need dim/subtle styling.
      *
@@ -588,6 +616,8 @@ public class LanternaMessageDispatcher {
      *                regular non-queued path
      */
     public void dispatch(SDKMessage message, MessagePanel panel, RenderingContext ctx) {
+        // The deliberately-blank arms live in rendersNothing(), which MessageCollapser also reads.
+        if (rendersNothing(message)) return;
         switch (message) {
             case SDKMessage.Assistant assistant   -> renderAssistant(assistant, panel, ctx);
             case SDKMessage.StreamEvent event     -> renderStreamEvent(event, panel);
@@ -597,17 +627,14 @@ public class LanternaMessageDispatcher {
                 registerSystemLogicalMessage(notice, start, panel);
             }
             case SDKMessage.Error error           -> system.renderError(error, panel);
-            case SDKMessage.Result _         -> { /* status bar owns token/cost summary */ }
             case SDKMessage.Progress progress     -> renderProgress(progress, panel);
             case SDKMessage.ApiRetry retry        -> system.renderRetry(retry, panel);
-            case SDKMessage.ToolUseSummary _ -> { /* suppressed: rendered via tool_result_success StreamEvent */ }
             case SDKMessage.CompactBoundary _ -> system.renderCompactBoundary(panel);
             case SDKMessage.Attachment attachment -> {
                 int start = panel.snapshotLineCount();
                 system.renderAttachment(attachment, panel);
                 registerAttachmentLogicalMessage(attachment, start, panel);
             }
-            case SDKMessage.StreamRequestStart _ -> { /* suppress — status bar shows model */ }
             case SDKMessage.User user             -> users.render(user, panel);
             case SDKMessage.Tombstone tombstone   -> retract(tombstone.replacedUuid(), panel);
             default                              -> { /* sentinel/attachment — skip */ }

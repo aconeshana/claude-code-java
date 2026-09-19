@@ -365,7 +365,7 @@ public class MessageCollapser {
                             "tool_call_start", info), panel);
                     } else {
                         String[] parts = info.split("\\|", 3);
-                        if (parts.length > 1 && !parts[1].isBlank()) {
+                        if (parts.length > 1 && !org.apache.commons.lang3.StringUtils.isBlank(parts[1])) {
                             streamedFoldableToolIds.add(parts[1]);
                         }
                     }
@@ -399,10 +399,8 @@ public class MessageCollapser {
             return;
         }
 
-        // Messages the transcript renders as nothing must not seal the group. RawStreamEvent is
-        // emitted once per SSE frame for lossless stream-json consumers, so letting it reach
-        // flushPending() below closes the collapsed run between every two folded calls — the live
-        // symptom was one singleton group row per tool instead of one accumulating row.
+        // Messages the transcript renders as nothing must not seal the group — see
+        // isTranscriptInert for why each kind qualifies.
         if (isTranscriptInert(message)) {
             return;
         }
@@ -440,12 +438,28 @@ public class MessageCollapser {
      * Whether {@link LanternaMessageDispatcher#dispatch} paints nothing for this message, so
      * forwarding it is a no-op and flushing the collapsed group for it is pure damage.
      *
-     * <p>Only mid-stream carriers belong here. Turn-boundary messages such as
-     * {@code Result} are also render-inert but arrive when sealing the group is correct anyway.
+     * <p>The dispatcher owns the routing table, so
+     * {@link LanternaMessageDispatcher#rendersNothing} is the authority — this method only narrows
+     * it. A hand-copied list here is exactly how {@code StreamRequestStart} came to be missed:
+     * {@code QueryLoop} emits one at the top of every API request, i.e. between every two tool-use
+     * round trips, so treating it as live sealed the group after every folded call and rendered one
+     * singleton row per tool instead of one accumulating row.
+     *
+     * <p>Only mid-stream carriers belong here, which is where this narrows: {@code Result} is
+     * render-inert too, but it arrives at the turn boundary, where sealing the group is the correct
+     * outcome and letting it through to {@link #flushPending} is what produces it. The dispatcher's
+     * {@code default} arm suppresses sentinels and task/notification carriers by omission rather
+     * than by design, so {@code rendersNothing} does not claim them and neither does this.
+     *
+     * <p>{@code RawStreamEvent} is the one collapser-specific addition, and it is not a drift risk:
+     * it is the verbatim SSE frame republished for lossless {@code stream-json} consumers, one per
+     * frame, and the transcript is not among its consumers. It is inert here by its own definition
+     * rather than by the dispatcher's routing, so it is claimed locally.
      */
     private static boolean isTranscriptInert(SDKMessage message) {
         return message instanceof SDKMessage.RawStreamEvent
-            || message instanceof SDKMessage.ToolUseSummary;
+            || (LanternaMessageDispatcher.rendersNothing(message)
+                && !(message instanceof SDKMessage.Result));
     }
 
     /** 236's {@code se}: whether the group has anything thinking-related to show. */
@@ -720,6 +734,16 @@ public class MessageCollapser {
      * Runs the git-operation detection for a folded shell result. 236 keeps the git operations out
      * of the shell-command count — {@code Z = max(0, bashCount - gitOpBashCount)} — because they
      * render as their own "committed"/"pushed to" segments instead.
+     *
+     * <p>{@code hadGitOp} asks whether <em>this</em> group already has a badge, which is only true
+     * because {@link #flushReadSearchRun} now clears the git fields in the same breath as
+     * {@code gitOpBashCount}. While the fields outlived the group, a second group's commit saw
+     * the first group's badge, skipped the increment, and had its shell command described twice —
+     * once by its badge and once as "Ran 1 shell command".
+     *
+     * <p>Within a single group the guard stays deliberately at-most-once: a second commit in the
+     * same group overwrites {@code gitCommitSha} rather than adding a segment, so the badge still
+     * describes exactly one of the two calls and only that one may be subtracted.
      */
     private void absorbShellResult(String result) {
         if (lastBashCommand == null) return;
@@ -781,7 +805,27 @@ public class MessageCollapser {
             for (SDKMessage msg : pendingToolMessages) {
                 downstream.dispatch(msg, panel);
             }
-            // Append git badge after the tool result if a git operation was detected.
+        }
+        pendingToolMessages.clear();
+        // The badge for an unfolded Bash card belongs after that card's own rows. A folded git call
+        // was already painted and cleared by flushReadSearchRun above, so this is a no-op for it.
+        paintAndClearGitBadge(panel);
+        lastBashCommand = null;
+    }
+
+    /**
+     * Paints the pending git badge below whatever rows were just flushed, then clears the git
+     * fields whether or not a panel was there to paint on.
+     *
+     * <p>The clear is unconditional on purpose. The alternative — keeping the fields when there is
+     * no panel, hoping for a later paint — has no later paint to wait for: {@link #resetTurn} is the
+     * only caller that passes {@code null}, and it ends the turn. Holding the badge there would leak
+     * a previous turn's "Committed abc1234" onto the next turn's first group, which is worse than
+     * dropping it. The paint now happens at every flush that <em>has</em> a panel, so the only
+     * discarded badge is one that genuinely had nowhere to go.
+     */
+    private void paintAndClearGitBadge(MessagePanel panel) {
+        if (panel != null) {
             String gitBadge = buildGitBadge();
             if (gitBadge != null) {
                 panel.appendMixed(List.of(
@@ -789,9 +833,6 @@ public class MessageCollapser {
                 ));
             }
         }
-        pendingToolMessages.clear();
-        // Reset git fields after each flush
-        lastBashCommand = null;
         gitCommitSha    = null;
         gitCommitKind   = null;
         gitPushBranch   = null;
@@ -852,9 +893,13 @@ public class MessageCollapser {
         lastNonReadSearchToolName = null;
         activeRunLineIdx = -1;
         activeRunRowCount = 0;
-        // The git fields deliberately survive: a folded git Bash call sets them here, and
-        // flushPending() — which may run later, once the group has already been sealed — is what
-        // paints the badge and clears them.
+        // A folded git Bash call's badge belongs directly under the group row that just sealed, and
+        // this is the last moment that row's panel is in hand. The turn-end path is
+        // setLoading(false, panel) → here, and the only flushPending() that follows it is
+        // resetTurn()'s flushPending(null), so deferring the paint loses it outright. Clearing here
+        // also keeps gitOpBashCount — reset just above — honest: the next group in this turn starts
+        // with no badge set, so its own git op is counted rather than mistaken for this one's.
+        paintAndClearGitBadge(panel);
         emitPhrase();
     }
 

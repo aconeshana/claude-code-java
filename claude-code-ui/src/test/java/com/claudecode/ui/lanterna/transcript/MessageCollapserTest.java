@@ -10,8 +10,10 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.googlecode.lanterna.SGR;
 import org.junit.jupiter.api.Test;
 
@@ -459,6 +461,120 @@ class MessageCollapserTest {
             "the group must count both folded reads: " + rows.getFirst());
     }
 
+    /**
+     * {@code QueryLoop} emits a {@link SDKMessage.StreamRequestStart} at the top of every loop
+     * iteration, i.e. once per API request, i.e. between every two tool-use round trips. The status
+     * bar shows the model and the transcript paints nothing for it, so — exactly like
+     * {@link SDKMessage.RawStreamEvent} — it must not seal the collapsed group. Treating it as live
+     * sealed the run after every folded call and defeated the interleaved-folding fix outright.
+     */
+    @Test
+    void streamRequestStartBetweenFoldsDoesNotSealTheGroup() {
+        MessagePanel panel = new MessagePanel();
+        var collapser = new MessageCollapser(new LanternaMessageDispatcher(), /* verbose */ false);
+
+        foldRead(collapser, panel, "toolu_a", "/tmp/notes.txt");
+        collapser.dispatch(new SDKMessage.StreamRequestStart("claude-opus-5", 2), panel);
+        foldRead(collapser, panel, "toolu_b", "/tmp/data.txt");
+
+        List<String> rows = panel.snapshotStyledLines().stream()
+            .map(MessagePanel.StyledLine::text)
+            .filter(row -> Strings.CS.contains(row, "ctrl+o to expand"))
+            .toList();
+        assertEquals(1, rows.size(),
+            "an inter-request marker must not split one group into singletons: " + rows);
+        assertTrue(Strings.CS.contains(rows.getFirst(), "Reading 2 files"),
+            "the group must count both folded reads: " + rows.getFirst());
+    }
+
+    /** The dispatcher owns the list, so the collapser's view of it cannot drift. */
+    @Test
+    void theDispatcherReportsWhichMessagesPaintNothing() {
+        assertTrue(LanternaMessageDispatcher.rendersNothing(
+            new SDKMessage.StreamRequestStart("claude-opus-5", 1)));
+        assertTrue(LanternaMessageDispatcher.rendersNothing(
+            new SDKMessage.ToolUseSummary("summary", List.of())));
+        assertFalse(LanternaMessageDispatcher.rendersNothing(
+            new SDKMessage.StreamEvent("content_block_delta", "text")));
+    }
+
+    /**
+     * A folded {@code git commit}'s badge is painted by the flush that seals its group. The
+     * turn-end path is {@code setLoading(false, panel)} → {@code flushReadSearchRun(panel)}, and
+     * the only flush that follows it is {@code resetTurn()}'s {@code flushPending(null)} — so a
+     * badge deferred to {@code flushPending} is discarded unseen, which is what used to happen.
+     */
+    @Test
+    void aFoldedGitCommitPaintsItsBadgeByTheEndOfTheTurn() {
+        var collapser = new MessageCollapser(new LanternaMessageDispatcher(), /* verbose */ false);
+        var panel = new MessagePanel();
+        collapser.setLoading(true, panel);
+
+        foldGitCommit(collapser, panel, "commit-1", "git commit -m x", "abc1234");
+        collapser.setLoading(false, panel);
+
+        assertEquals(1, panel.searchLines("Committed abc1234").size(),
+            "the folded commit's badge must reach the transcript: "
+                + panel.snapshotStyledLines().stream()
+                    .map(MessagePanel.StyledLine::text).toList());
+    }
+
+    /** The badge must be painted exactly once, and must not survive into the following turn. */
+    @Test
+    void theGitBadgeDoesNotLeakIntoTheNextTurn() {
+        var collapser = new MessageCollapser(new LanternaMessageDispatcher(), /* verbose */ false);
+        var panel = new MessagePanel();
+        collapser.setLoading(true, panel);
+
+        foldGitCommit(collapser, panel, "commit-1", "git commit -m x", "abc1234");
+        collapser.setLoading(false, panel);
+        collapser.resetTurn();
+
+        collapser.setLoading(true, panel);
+        foldRead(collapser, panel, "toolu_next", "/tmp/notes.txt");
+        collapser.setLoading(false, panel);
+
+        assertEquals(1, panel.searchLines("Committed abc1234").size(),
+            "the badge is painted once and never replayed onto a later turn: "
+                + panel.snapshotStyledLines().stream()
+                    .map(MessagePanel.StyledLine::text).toList());
+    }
+
+    /**
+     * Two groups in one turn, each folding its own {@code git commit}. The git fields used to
+     * outlive the first group, so the second group's {@code hadGitOp} was already true, its
+     * {@code gitOpBashCount} never incremented, and {@code max(0, bashCount - gitOpBashCount)}
+     * described the same call twice — once as a badge and once as "Ran 1 shell command".
+     */
+    @Test
+    void aSecondGroupsGitCommitIsNotAlsoCountedAsAShellCommand() {
+        var collapser = new MessageCollapser(new LanternaMessageDispatcher(), /* verbose */ false);
+        var panel = new MessagePanel();
+
+        collapser.setLoading(true, panel);
+        foldGitCommit(collapser, panel, "commit-1", "git commit -m x", "abc1234");
+        collapser.setLoading(false, panel);
+
+        collapser.setLoading(true, panel);
+        foldGitCommit(collapser, panel, "commit-2", "git commit -m y", "def5678");
+        collapser.setLoading(false, panel);
+
+        List<String> rows = panel.snapshotStyledLines().stream()
+            .map(MessagePanel.StyledLine::text).toList();
+        assertTrue(rows.stream().noneMatch(row -> Strings.CS.contains(row, "shell command")),
+            "a git op is described by its badge, never also counted as a shell command: " + rows);
+        assertEquals(1, panel.searchLines("Committed abc1234").size(), rows.toString());
+        assertEquals(1, panel.searchLines("Committed def5678").size(), rows.toString());
+    }
+
+    private static void foldGitCommit(MessageCollapser collapser, MessagePanel panel,
+                                      String toolUseId, String command, String sha) {
+        collapser.dispatch(new SDKMessage.StreamEvent("tool_call_start",
+            "Bash|" + toolUseId + "|{\"command\":\"" + command + "\"}"), panel);
+        collapser.dispatch(new SDKMessage.StreamEvent("tool_result_success",
+            "Bash|[main " + sha + "] " + command), panel);
+    }
+
     private static void foldRead(MessageCollapser collapser, MessagePanel panel,
                                  String toolUseId, String path) {
         collapser.dispatch(new SDKMessage.StreamEvent("tool_streaming_start",
@@ -471,8 +587,8 @@ class MessageCollapserTest {
             "Read|" + toolUseId + "|{\"file_path\":\"" + path + "\"}"), panel);
     }
 
-    private static com.fasterxml.jackson.databind.node.ObjectNode input(String key, String value) {
-        return com.claudecode.core.serialization.JsonUtils.getMapper().createObjectNode()
+    private static ObjectNode input(String key, String value) {
+        return JsonUtils.getMapper().createObjectNode()
             .put(key, value);
     }
 
