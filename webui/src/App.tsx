@@ -11,6 +11,7 @@ import { useContextTimeline } from './store/contextTimeline'
 import { useConversations } from './store/conversations'
 import { useConversationView } from './store/conversationView'
 import { useSessions } from './store/sessions'
+import { useSidebarCollapse } from './store/sidebarCollapse'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
 import { ChatView } from './views/ChatView'
@@ -29,6 +30,7 @@ import { ContextView } from './views/context/ContextView'
  */
 export function App() {
   const [connected, setConnected] = useState<'connecting' | 'open' | 'error'>('connecting')
+  const sidebarCollapsed = useSidebarCollapse((state) => state.collapsed)
 
   useEffect(() => {
     captureTokenFromUrl()
@@ -92,7 +94,7 @@ export function App() {
   }
 
   return (
-    <AppFrame sidebar={<Sidebar />}>
+    <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed}>
       <ConversationRoot
         title={selectedId == null ? 'Claude Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}

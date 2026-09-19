@@ -2,7 +2,10 @@
  * `workspace` namespace dictionaries, ported from dsh ui-workspace's
  * locales.ts by subtraction: only the keys the session tree's rows and
  * overflow control consume (no search/view-options/workspace-CRD copy —
- * those features are not ported; see webui/UPSTREAM.md).
+ * those features are not ported; see webui/UPSTREAM.md). `newSession`,
+ * `refresh`, and the `toggle.*` pair belong to the sidebar shell itself
+ * (ui-sidebar's own locales.ts), not ui-workspace, but Sidebar.tsx already
+ * reads every sidebar-shell string from this one namespace.
  */
 import type { LocaleDict, LocaleId } from '../types'
 
@@ -35,6 +38,8 @@ export const workspaceZh = {
   'dialog.close.aria': '关闭对话框',
   'refresh': '刷新会话列表',
   'newSession': '新会话',
+  'toggle.collapse': '收起侧边栏',
+  'toggle.open': '展开侧边栏',
   'time.now': '刚刚',
   'time.minutes': '{n}分钟',
   'time.hours': '{n}小时',
@@ -70,6 +75,8 @@ export const workspaceEn: Record<keyof typeof workspaceZh, string> = {
   'dialog.close.aria': 'Close dialog',
   'refresh': 'Refresh session list',
   'newSession': 'New session',
+  'toggle.collapse': 'Collapse sidebar',
+  'toggle.open': 'Expand sidebar',
   'time.now': 'now',
   'time.minutes': '{n}min',
   'time.hours': '{n}h',

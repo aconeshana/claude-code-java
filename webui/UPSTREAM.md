@@ -220,7 +220,7 @@ Product-scope deviations (documented, not gaps):
 | `GeneralSection.module.css` | `ui-settings-general` | `src/client/GeneralSection.module.css` — the plain flex-column section wrapper each settings section is rendered in |
 | `PermissionRow.module.css` | `ui-permission-presets` | `src/client/PermissionRow.module.css` — the reusable settings-row visual pattern (`row`/`rowText`/`title`/`desc`/`selector`/`chevron`), reused in `SettingsPanel.tsx` for every field row via a local `SettingsRow` wrapper and a `MenuSelect` helper (the `Menu` primitive + `.selector`/`.chevron`) that replaces native `<select>` elements |
 | `ScheduleCatalogAction.module.css` | `ui-schedule` | `src/client/ScheduleCatalogAction.module.css` — the task-row visual pattern (`row`/`status`/`statusDot`/`prompt`/`metadata`), reused in `SchedulePanel.tsx`'s task list. The `.menu`/`.trigger`/`.count`/`.triggerOpen` classes in this file belong to upstream's read-only header-popover trigger and are not used here. |
-| `SidebarRoot.module.css` | `ui-sidebar` | `src/client/SidebarRoot.module.css` — the sidebar column frame `Sidebar.tsx` renders inside (`root`/`scroll`). `.newSession` (the 38px/12px-radius bar) and `.regionArea` (the seat that hosts the session browser, canceling the shell's edge inset so the nested scrollbar sits flush) **are** ported — `POST /api/sessions/open` already mints a session with no `session_id` (openapi.yaml), so this was a real backend-supported feature an earlier revision had wrongly dropped by omission, not a genuine gap. Still out of scope: the rail-collapse classes (`root.collapsed`, `logoRow`, `brand`, collapse keyframes) — our sidebar has no collapse/rail mode or brand wordmark. Its `.footArea` structure ("additive actions stack above Settings") is why `Sidebar.tsx` puts its settings trigger in the foot's `.settingsArea` seat; the `.footerActions` seat above it stays empty (upstream registers no default `sidebar.footer.action` occupant, and the schedule surface moved into the settings dialog on 2026-09-13 — see the Schedule seat deviation below). |
+| `SidebarRoot.module.css` | `ui-sidebar` | `src/client/SidebarRoot.module.css` — the sidebar column frame `Sidebar.tsx` renders inside (`root`/`scroll`). `.newSession` (the 38px/12px-radius bar) and `.regionArea` (the seat that hosts the session browser, canceling the shell's edge inset so the nested scrollbar sits flush) **are** ported — `POST /api/sessions/open` already mints a session with no `session_id` (openapi.yaml), so this was a real backend-supported feature an earlier revision had wrongly dropped by omission, not a genuine gap. The rail-collapse classes (`root.collapsed`, `logoRow`, `brand`, collapse keyframes) were similarly dropped by omission in that same earlier pass despite already being vendored verbatim in this file — collapse is now ported; see the "sidebar collapse" section below. Its `.footArea` structure ("additive actions stack above Settings") is why `Sidebar.tsx` puts its settings trigger in the foot's `.settingsArea` seat; the `.footerActions` seat above it stays empty (upstream registers no default `sidebar.footer.action` occupant, and the schedule surface moved into the settings dialog on 2026-09-13 — see the Schedule seat deviation below). |
 | `AppearanceRow.module.css` | `ui-theme` | `src/client/AppearanceRow.module.css` — the three-cube theme selector (`group`/`title`/`cubeRow`/`themeCube`/`selected`), rendered by a local `AppearanceRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts` |
 | `FontSizeRow.module.css` | `ui-theme` | `src/client/FontSizeRow.module.css` — the font-size stepper pill (`row`/`control`/`stepper`/`value`/`arrows`/`arrow`), rendered by a local `FontSizeRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts`. `EnterBehaviorRow.module.css`/`TranscriptViewRow.module.css` are **not** vendored separately — both rows are pixel-identical to the already-vendored `PermissionRow.module.css` row/selector pattern and reuse `SettingsPanel.tsx`'s existing `SettingsRow`/`MenuSelect` helpers. |
 
@@ -229,6 +229,54 @@ Product-scope deviations (documented, not gaps):
 | File here | Upstream package | Upstream file |
 |-----------|-------------------|----------------|
 | `WorkspaceBrowser.module.css` | `ui-workspace` | `src/client/WorkspaceBrowser.module.css` — the session-list seat: its own `.root` wrapper (declares `--dsh-session-list-edge-inset`, canceling `SidebarRoot.module.css`'s `.regionArea` negative margin so the nested scrollbar sits flush), `.sectionHeader`/`.sectionLabel`/`.headerActions`, `.listArea`/`.treeBody`/`.list`/`.fade`, and the grouped-project row shell (`.groupSection`, `.sessionOverflowButton`). `.sectionHeader` uses `justify-content: flex-end`; upstream's dropped `.searchSlot` (`flex: 1; max-width: 28px; margin-left: auto`) is what pushes `.sectionLabel` left / `.headerActions` right, so a local `Sidebar.module.css` `.headerActions { margin-left: auto }` reproduces just that split without the search UI itself. The flat "In one list" view and its view-options menu are not ported (no backend surface — see `session sidebar` scope note in `Sidebar.tsx`'s class Javadoc). **Overflow-control semantics** (fixed 2026-09-13): upstream's `sessionOverflowButton` is a LOCAL fold toggle over `expandedSessionGroups` — expanded renders every group row and flips the button to `sessions.collapse` ("Show less"), `aria-expanded` carries the state, and the header's collapse ALSO drops the group from `expandedSessionGroups`. An earlier revision had wrongly wired the button to `growPerPage` alone (refetch with a larger `?per_project=` page) with a rows/hiddenCount derivation that contradicted itself (`expanded && hiddenCount === 0` gating against `session_count`-based hiddenCount), so clicking "Show {n} more sessions" never unfolded the group. The port now mirrors the local toggle (`expandedGroups` + `toggled()`), with one recorded deviation: upstream's client holds every account row, while this port's rows are a gateway page, so expanding ALSO grows the page one step while `session_count > sessions.length` (the paged-out remainder counts in the button's `n`). |
+
+### Sidebar collapse (rail mode, ported 2026-09-18)
+
+`SidebarRoot.module.css`'s rail-collapse classes (`.collapsed`, `.logoRow`, `.brand*`,
+`.railIn`/`.fading`/`.wide` keyframes, `.quietBars`) were vendored verbatim from the
+start but never consumed — `webui/UPSTREAM.md` previously (wrongly) recorded this as an
+out-of-scope decision rather than an omission. `Sidebar.tsx` now ports
+`ui-sidebar/src/client/SidebarRoot.tsx`'s state machine against those existing classes:
+
+- **Collapse is a slide + crossfade, not a morph** (kept verbatim): expanded content
+  freezes at its current width (`lastWideWidth` ref) and fades out in place over 150ms
+  (`.fading`) while `AppFrame`'s grid track (`AppFrame.module.css`'s already-vendored
+  `transition: grid-template-columns`) slides/clips it; the rail layout (`.collapsed`)
+  only applies once the fade settles (`COLLAPSE_SETTLE_MS`), so nothing reflows
+  mid-slide. `everWide` gates `.railIn` so a cold collapsed render is static, not
+  crossfaded.
+- **Scrollbar pointer-linger** (kept verbatim): the column tracks `pointermove` against
+  its own `getBoundingClientRect()` (not `pointerleave`, since the Settings panel renders
+  as a fixed-position descendant) and keeps the thumb drawn for `SCROLLBAR_LINGER_MS`
+  (2000ms) after the pointer truly leaves the column's box.
+- **State home**: `store/sidebarCollapse.ts`, a `localStorage`-persisted boolean
+  (`webui-sidebar-collapsed`), mirroring the existing `store/theme.ts` /
+  `store/transcriptView.ts` pattern — upstream holds this in a cross-slot `ui-layout`
+  service (also shared with drag-resize and a right sidebar this app has neither of),
+  which has no equivalent here.
+- **`AppFrame.tsx`** grows a `collapsed` prop and switches the sidebar grid track between
+  `SIDEBAR_WIDTH` (260px) and a 56px rail width, matching `SidebarRoot.module.css`'s rail
+  geometry; the already-vendored `.frame` transition animates the slide.
+- **`ContextDashboardButton`** (`views/context/ContextDashboard.tsx`) and the Settings
+  trigger row already carried unused rail styling from earlier passes
+  (`lc-ov-entry-rail`; `SettingsRoot.module.css`'s `.trigger.rail`/`.triggerRow.railRow`)
+  — both now receive the real `wide` flag instead of always rendering wide.
+
+Product-scope deviations (documented, not gaps):
+
+- **No ported brand row.** Upstream's expanded logo row is a compound "brand mark + name,
+  doubling as a New Session shortcut" button, and the collapsed rail's toggle rests on the
+  brand mark, swapping to the panel icon on hover (`.collapsed .toggle:hover .panelIcon`).
+  This project's brand marks stay local by design (the already-vendored `FishLogo`/
+  `BrandWordmark` primitives remain unused, per `Local modifications` #1 below) — the
+  toggle button always renders the plain panel icon (`IconPanelLeftOutline16`) in both
+  states, with no hover-swap. New Session keeps its own button (unchanged position),
+  just gaining a `wide`-conditional label/icon-size/tooltip.
+- **The session browser unmounts entirely while collapsed**, rather than degrading to
+  upstream's rail icon column (`ui-workspace`'s own `!wide` rendering — a search icon and
+  grouping affordances this port's session tree has no equivalent of, consistent with the
+  already-recorded "no search/view-options" cuts above). `regionArea` itself stays
+  mounted (so the foot never moves); only its content is conditional on `wide`.
 
 **Session row "..." menu (Rename / Fork / Archive), ported from `ui-workspace`'s
 `Rows.tsx` `sessionMenuItems`.** `SessionNodeItem` in `SessionRows.tsx` opens a

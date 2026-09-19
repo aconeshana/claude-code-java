@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Button, IconNewChatOutline16, IconRefreshOutline16, IconSettingsOutline16, Input, Modal, Pill, RiskConfirmation } from '@primitives'
+import { Button, IconNewChatOutline16, IconPanelLeftOutline16, IconRefreshOutline16, IconSettingsOutline16, Input, Modal, Pill, RiskConfirmation, Tooltip } from '@primitives'
 import css from '@chat-styles/SidebarRoot.module.css'
 import browserCss from '@chat-styles/WorkspaceBrowser.module.css'
 import triggerCss from '@chat-styles/SettingsRoot.module.css'
 import localCss from './Sidebar.module.css'
+import { SIDEBAR_WIDTH } from './AppFrame'
 import { useSessions } from '../store/sessions'
+import { useSidebarCollapse } from '../store/sidebarCollapse'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
@@ -18,6 +20,12 @@ const COLLAPSED_SESSION_LIMIT = 5
 
 /** How often the rows' relative-time labels re-derive their "now". */
 const NOW_TICK_MS = 30_000
+
+/** Wide-content unmount delay; matches the 150ms wide-content fade-out (upstream's COLLAPSE_SETTLE_MS). */
+const COLLAPSE_SETTLE_MS = 150
+
+/** How long the column's scrollbars stay drawn after the pointer leaves it (upstream's SCROLLBAR_LINGER_MS). */
+const SCROLLBAR_LINGER_MS = 2000
 
 /**
  * Session sidebar: the /resume project→session tree over the vendored dsh
@@ -54,6 +62,23 @@ const NOW_TICK_MS = 30_000
  * dialog as its own nav section (see SchedulePanel.tsx) — upstream's own
  * schedule surface is a read-only conversation-header catalog, so no foot
  * trigger corresponds to it.
+ *
+ * Collapse (2026-09-18): ported SidebarRoot.tsx's rail state machine — the
+ * settle timer that unmounts wide content 150ms after a live collapse
+ * (`wide`/`settled`), the frozen-width fade (`lastWideWidth`) that lets the
+ * AppFrame grid track slide without reflowing content, the `everWide` guard
+ * that keeps a cold collapsed render static (no `.railIn` crossfade), and the
+ * scrollbar pointer-linger (`SCROLLBAR_LINGER_MS`) — all kept verbatim
+ * against the already-vendored `SidebarRoot.module.css` classes. Collapse
+ * state lives in `store/sidebarCollapse.ts`, a persisted local preference
+ * standing in for upstream's cross-slot `ui-layout` service (same pattern as
+ * `store/theme.ts`/`store/transcriptView.ts`). Product-scope cuts, recorded
+ * in webui/UPSTREAM.md: no ported brand+New-Session compound button or its
+ * rail hover-swap mark (this app's brand marks stay local by design — the
+ * toggle button always shows the panel icon); the session browser
+ * (`regionArea`) unmounts entirely while collapsed instead of degrading to
+ * upstream's rail icon column, since this port's tree has no search/grouping
+ * affordances to represent there.
  */
 export function Sidebar() {
   const projects = useSessions((state) => state.projects)
@@ -80,6 +105,66 @@ export function Sidebar() {
   const [deleteTarget, setDeleteTarget] = useState<CatalogSession | null>(null)
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
+
+  const collapsed = useSidebarCollapse((state) => state.collapsed)
+  const toggleCollapsed = useSidebarCollapse((state) => state.toggle)
+  // Wide content stays mounted while the collapse animates (fading via
+  // .fading), unmounts at settle, and remounts right away on expand
+  // (upstream's settled/wide pair).
+  const [settled, setSettled] = useState(collapsed)
+  useEffect(() => {
+    if (!collapsed) { setSettled(false); return }
+    const timer = window.setTimeout(() => { setSettled(true) }, COLLAPSE_SETTLE_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [collapsed])
+  const wide = !collapsed || !settled
+  // Freeze the content at its expanded width while it fades out: the AppFrame
+  // grid track then slides/clips it instead of reflowing it.
+  const lastWideWidth = useRef(SIDEBAR_WIDTH)
+  if (!collapsed) lastWideWidth.current = SIDEBAR_WIDTH
+  // Rail-in only crossfades a live collapse: a refresh straight into the
+  // collapsed state renders the rail statically (no delay-hidden controls).
+  const everWide = useRef(!collapsed)
+  if (!collapsed) everWide.current = true
+
+  // Scrollbars in the column follow the pointer (.quietBars rebinds them
+  // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
+  // leaves. A pointer that returns within that window cancels the pending
+  // hide rather than restarting from a hidden bar.
+  const column = useRef<HTMLDivElement>(null)
+  const [pointerInside, setPointerInside] = useState(false)
+  const lingerTimer = useRef<number | undefined>(undefined)
+  const armLinger = (): void => {
+    if (lingerTimer.current !== undefined) return
+    lingerTimer.current = window.setTimeout(() => {
+      lingerTimer.current = undefined
+      setPointerInside(false)
+    }, SCROLLBAR_LINGER_MS)
+  }
+  const cancelLinger = (): void => {
+    window.clearTimeout(lingerTimer.current)
+    lingerTimer.current = undefined
+  }
+  // Leaving is decided by the column's BOX, not by DOM containment, and only
+  // while the bars are drawn: the settings panel renders as a fixed-position
+  // descendant of this column, so a pointer moved onto it fires no
+  // `pointerleave` here.
+  useEffect(() => {
+    if (!pointerInside) return
+    const onMove = (event: PointerEvent): void => {
+      const rect = column.current?.getBoundingClientRect()
+      if (rect === undefined) return
+      const inside = event.clientX >= rect.left && event.clientX < rect.right
+        && event.clientY >= rect.top && event.clientY < rect.bottom
+      if (inside) cancelLinger()
+      else armLinger()
+    }
+    document.addEventListener('pointermove', onMove)
+    return () => {
+      document.removeEventListener('pointermove', onMove)
+      cancelLinger()
+    }
+  }, [pointerInside])
 
   // Relative-time labels re-derive their bucket on a slow tick, the same
   // "now" upstream's rows receive per render.
@@ -119,16 +204,44 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = useState<string[]>([])
 
   return (
-    <div className={css.root}>
-      <button
-        type="button"
-        className={css.newSession}
-        onClick={() => { void createSession(selectedProject?.project_path ?? null) }}
-      >
-        <IconNewChatOutline16 />
-        <span className={css.newSessionLabel}>{t('newSession')}</span>
-      </button>
+    <div
+      ref={column}
+      className={clsx(
+        css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn,
+        collapsed && wide && css.fading, !pointerInside && css.quietBars,
+      )}
+      style={wide ? { width: collapsed ? lastWideWidth.current : SIDEBAR_WIDTH } : undefined}
+      onPointerEnter={() => {
+        cancelLinger()
+        setPointerInside(true)
+      }}
+      onPointerLeave={() => { armLinger() }}
+    >
+      <div className={css.logoRow}>
+        <Tooltip label={collapsed ? t('toggle.open') : t('toggle.collapse')} delayMs={500}>
+          <button
+            type="button"
+            className={clsx(css.iconButton, css.toggle)}
+            aria-label={collapsed ? t('toggle.open') : t('toggle.collapse')}
+            onClick={() => { toggleCollapsed() }}
+          >
+            <IconPanelLeftOutline16 size={wide ? 16 : 18} />
+          </button>
+        </Tooltip>
+      </div>
+      <Tooltip label={t('newSession')} delayMs={500} disabled={wide}>
+        <button
+          type="button"
+          className={css.newSession}
+          aria-label={t('newSession')}
+          onClick={() => { void createSession(selectedProject?.project_path ?? null) }}
+        >
+          <IconNewChatOutline16 size={wide ? 14 : 18} />
+          {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('newSession')}</span>}
+        </button>
+      </Tooltip>
       <div className={css.regionArea}>
+        {wide && (
         <div className={browserCss.root}>
           <div className={browserCss.sectionHeader}>
             <span className={browserCss.sectionLabel}>{t('section.sessions')}</span>
@@ -207,27 +320,28 @@ export function Sidebar() {
             </div>
           </div>
         </div>
+        )}
       </div>
       <div className={css.footArea}>
         <div className={css.footerActions}>
-          <ContextDashboardButton />
+          <ContextDashboardButton wide={wide} />
         </div>
         <div className={css.settingsArea}>
-          <div className={triggerCss.triggerRow}>
+          <div className={clsx(triggerCss.triggerRow, !wide && triggerCss.railRow)}>
             <button
               type="button"
-              className={triggerCss.trigger}
+              className={clsx(triggerCss.trigger, !wide && triggerCss.rail)}
               onClick={() => { setSettingsOpen(true) }}
               aria-haspopup="dialog"
               aria-expanded={settingsOpen}
               aria-label="打开设置面板"
             >
               <IconSettingsOutline16 size={16} />
-              <span className={triggerCss.triggerLabel}>设置</span>
+              {wide && <span className={triggerCss.triggerLabel}>设置</span>}
             </button>
           </div>
         </div>
-        <Pill>Claude Code</Pill>
+        {wide && <Pill>Claude Code</Pill>}
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
       <Modal
