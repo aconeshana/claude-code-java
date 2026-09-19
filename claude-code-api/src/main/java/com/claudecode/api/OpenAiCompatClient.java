@@ -366,12 +366,12 @@ public class OpenAiCompatClient implements LlmClient {
             content.add(OpenAiWireSupport.chatText(text));
             return;
         }
-        if (item instanceof TextBlock text) {
-            content.add(OpenAiWireSupport.chatText(text.text()));
+        if (item instanceof TextBlock(String text1)) {
+            content.add(OpenAiWireSupport.chatText(text1));
             return;
         }
-        if (item instanceof ImageBlock image) {
-            content.add(OpenAiWireSupport.chatImage(image.source()));
+        if (item instanceof ImageBlock(JsonNode source)) {
+            content.add(OpenAiWireSupport.chatImage(source));
             return;
         }
         JsonNode block = JsonUtils.getMapper().valueToTree(item);
@@ -482,7 +482,10 @@ public class OpenAiCompatClient implements LlmClient {
                         new Delta.ThinkingDelta(delta.get("reasoning_content").asText()), chunk));
                 }
 
-                if (delta.has("content")) {
+                // hasNonNull, not has: chunks that carry only tool_calls usually still spell out
+                // "content": null, and NullNode.asText() is the string "null", which would stream a
+                // literal null into the transcript once per chunk.
+                if (delta.hasNonNull("content")) {
                     String content = delta.get("content").asText();
                     if (StringUtils.isNotEmpty(content)) {
                         closeReasoning(chunk, sink);
@@ -494,10 +497,14 @@ public class OpenAiCompatClient implements LlmClient {
                     }
                 }
 
-                if (delta.has("tool_calls")) {
+                if (delta.hasNonNull("tool_calls")) {
                     JsonNode toolCallsDelta = delta.get("tool_calls");
                     for (JsonNode tc : toolCallsDelta) {
-                        int index = tc.has("index") ? tc.get("index").asInt() : toolCalls.size();
+                        // hasNonNull, not has: NullNode.asInt() is 0, so an explicit
+                        // {"index":null} on a second parallel call would resolve to slot 0 and
+                        // overwrite the first call's id/name while concatenating its arguments
+                        // onto the first call's accumulator. A null index means "append".
+                        int index = tc.hasNonNull("index") ? tc.get("index").asInt() : toolCalls.size();
 
                         while (toolCalls.size() <= index) {
                             toolCalls.add(null);
@@ -508,8 +515,13 @@ public class OpenAiCompatClient implements LlmClient {
 
                         if (tc.hasNonNull("id")) toolCallIds.set(index, tc.get("id").asText());
 
-                        if (tc.has("function")) {
-                            if (tc.get("function").has("name")) {
+                        if (tc.hasNonNull("function")) {
+                            // Explicit JSON nulls, not absent keys: every continuation chunk from
+                            // some vLLM-style servers repeats {"name":null,"id":null} alongside the
+                            // arguments fragment, and NullNode.asText() is the string "null", which
+                            // would overwrite the name captured by the opening chunk and surface as
+                            // "No such tool available: null".
+                            if (tc.get("function").hasNonNull("name")) {
                                 String name = tc.get("function").get("name").asText();
                                 toolCallNames.set(index, name);
                                 String id = toolCallIds.get(index) != null ? toolCallIds.get(index)
@@ -517,7 +529,7 @@ public class OpenAiCompatClient implements LlmClient {
                                 toolCalls.set(index, new ToolUseBlock(id, name, JsonUtils.getMapper().createObjectNode()));
                             }
 
-                            if (tc.get("function").has("arguments")) {
+                            if (tc.get("function").hasNonNull("arguments")) {
                                 String args = tc.get("function").get("arguments").asText();
                                 String currentArgs = toolCallArgs.get(index);
                                 toolCallArgs.set(index, currentArgs + args);
@@ -603,8 +615,8 @@ public class OpenAiCompatClient implements LlmClient {
     private ApiMessage parseNonStreamingResponse(String responseBody) throws Exception {
         JsonNode root = JsonUtils.getMapper().readTree(responseBody);
 
-        String id = root.has("id") ? root.get("id").asText() : "chatcmpl_" + UUID.randomUUID();
-        String model = root.has("model") ? root.get("model").asText() : config.model();
+        String id = root.hasNonNull("id") ? root.get("id").asText() : "chatcmpl_" + UUID.randomUUID();
+        String model = root.hasNonNull("model") ? root.get("model").asText() : config.model();
         JsonNode choices = root.get("choices");
         String stopReason = "stop";
         List<ContentBlock> contentBlocks = new ArrayList<>();
@@ -617,18 +629,40 @@ public class OpenAiCompatClient implements LlmClient {
                     contentBlocks.add(new ThinkingBlock(message.get("reasoning_content").asText(), null));
                 }
 
-                if (message.has("content")) {
+                if (message.hasNonNull("content")) {
                     String content = message.get("content").asText();
                     if (StringUtils.isNotEmpty(content)) {
                         contentBlocks.add(new TextBlock(content));
                     }
                 }
 
-                if (message.has("tool_calls")) {
+                if (message.hasNonNull("tool_calls")) {
                     for (JsonNode tc : message.get("tool_calls")) {
-                        String name = tc.get("function").get("name").asText();
-                        String args = tc.get("function").get("arguments").asText();
-                        String toolId = tc.has("id") ? tc.get("id").asText() :
+                        // A tool call the model asked for must never be silently dropped: the
+                        // turn would then wait for a tool_result that can never arrive. Reject
+                        // it the way requireJsonArguments rejects unparseable arguments, and
+                        // name the field so the failure is not an opaque "Request failed: null"
+                        // from the NPE that tc.get("function").get(...) used to raise.
+                        if (!tc.hasNonNull("function")) {
+                            throw new ApiException(
+                                "OpenAI Chat tool call is missing its function object", 0);
+                        }
+                        JsonNode function = tc.get("function");
+                        // hasNonNull, not has: NullNode.asText() is the string "null", which
+                        // would reach the tool router as "No such tool available: null" —
+                        // the same hazard the streaming arm guards against.
+                        if (!function.hasNonNull("name")) {
+                            throw new ApiException(
+                                "OpenAI Chat tool call is missing its function name", 0);
+                        }
+                        String name = function.get("name").asText();
+                        // An absent or null arguments field is the server omitting a no-argument
+                        // call, not a malformed one; requireJsonArguments turns blank into {}.
+                        // Reading it through path(...).asText(default) keeps an explicit null
+                        // from becoming the string "null", which parses as a JSON null node
+                        // and would silently reach the tool as a null input instead of {}.
+                        String args = function.path("arguments").asText("");
+                        String toolId = tc.hasNonNull("id") ? tc.get("id").asText() :
                                 "toolu_" + UUID.randomUUID().toString().substring(0, 8);
 
                         JsonNode argsNode = requireJsonArguments(args, name);
@@ -636,8 +670,12 @@ public class OpenAiCompatClient implements LlmClient {
                     }
                 }
 
+                // isNull, not just a Java null check: the switch below passes an unrecognized
+                // reason straight through, so an explicit "finish_reason": null would make the
+                // stop reason the string "null" instead of leaving the "stop" default. The
+                // streaming arm already guards this the same way.
                 JsonNode finish = choice.get("finish_reason");
-                if (finish != null) {
+                if (finish != null && !finish.isNull()) {
                     stopReason = finish.asText();
                     stopReason = switch (stopReason) {
                         case "stop" -> "end_turn";
@@ -663,9 +701,11 @@ public class OpenAiCompatClient implements LlmClient {
     private static Usage parseUsage(JsonNode usage) {
         long inputTokens = usage.path("prompt_tokens").asLong();
         long cachedTokens = usage.path("prompt_tokens_details").path("cached_tokens").asLong();
+        // hasNonNull, not has: an explicit "total_tokens": null would otherwise report a
+        // boxed 0 total rather than leaving the total absent.
         return new Usage(Math.max(0, inputTokens - cachedTokens),
             usage.path("completion_tokens").asLong(), 0, cachedTokens,
-            usage.has("total_tokens") ? usage.path("total_tokens").asLong() : null);
+            usage.hasNonNull("total_tokens") ? usage.path("total_tokens").asLong() : null);
     }
 
     private static JsonNode requireJsonArguments(String arguments, String toolName) {

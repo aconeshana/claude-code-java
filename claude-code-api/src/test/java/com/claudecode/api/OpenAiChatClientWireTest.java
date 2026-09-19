@@ -203,6 +203,247 @@ class OpenAiChatClientWireTest {
         }
     }
 
+    /**
+     * vLLM-style servers repeat {@code {"id":null,"function":{"name":null,"arguments":"…"}}} on every
+     * continuation chunk. {@code NullNode.asText()} is the string {@code "null"}, so treating the
+     * present-but-null key as a value used to overwrite the real name and reach the tool router as
+     * {@code No such tool available: null}.
+     */
+    @Test
+    void keepsTheToolNameWhenContinuationChunksRepeatExplicitNulls() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "text/event-stream")
+                .body("""
+                    data: {"id":"chat_1","model":"chat-test","choices":[{"delta":{"tool_calls":[{"id":"call_q","index":0,"type":"function","function":{"name":"Read","arguments":""}}]},"finish_reason":null}]}
+
+                    data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"id":null,"index":0,"type":"function","function":{"name":null,"arguments":"{"}}]},"finish_reason":null}]}
+
+                    data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"id":null,"index":0,"type":"function","function":{"name":null,"arguments":"\\"file_path\\": \\"/tmp/notes.txt\\""}}]},"finish_reason":null}]}
+
+                    data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"id":null,"index":0,"type":"function","function":{"name":null,"arguments":"}"}}]},"finish_reason":"tool_calls"}]}
+
+                    data: [DONE]
+
+                    """).build());
+            server.start();
+
+            List<StreamEvent> events = new ArrayList<>();
+            chatClient(server).createMessageStream(CreateMessageRequest.builder()
+                .model("chat-test").stream(true).build()).forEachRemaining(events::add);
+
+            List<ToolUseBlock> tools = events.stream()
+                .filter(StreamEvent.ContentBlockStart.class::isInstance)
+                .map(StreamEvent.ContentBlockStart.class::cast)
+                .map(StreamEvent.ContentBlockStart::contentBlock)
+                .filter(ToolUseBlock.class::isInstance)
+                .map(ToolUseBlock.class::cast)
+                .toList();
+            assertFalse(tools.isEmpty(), "the streamed tool call must reach the consumer");
+            tools.forEach(tool -> {
+                assertEquals("Read", tool.name());
+                assertEquals("call_q", tool.id());
+            });
+            assertTrue(events.stream().anyMatch(e -> e instanceof StreamEvent.ContentBlockDelta delta
+                && delta.delta() instanceof Delta.InputJsonDelta input
+                && Strings.CS.contains(input.partialJson(), "/tmp/notes.txt")));
+            // The same chunks spell out "content": null; a literal "null" must never be streamed
+            // into the transcript as assistant text.
+            assertTrue(events.stream()
+                .filter(StreamEvent.ContentBlockDelta.class::isInstance)
+                .map(StreamEvent.ContentBlockDelta.class::cast)
+                .map(StreamEvent.ContentBlockDelta::delta)
+                .filter(Delta.TextDelta.class::isInstance)
+                .map(Delta.TextDelta.class::cast)
+                .noneMatch(text -> Strings.CS.contains(text.text(), "null")),
+                "explicit JSON nulls must not surface as assistant text");
+        }
+    }
+
+    /** The non-streaming arm shares the {@code NullNode.asText()} hazard. */
+    @Test
+    void dropsExplicitNullContentInsteadOfEmittingTheStringNull() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "application/json")
+                .body("""
+                    {"id":null,"model":null,"choices":[{"message":{"content":null,
+                     "tool_calls":[{"id":null,"type":"function",
+                       "function":{"name":"Read","arguments":"{\\"file_path\\":\\"/tmp/notes.txt\\"}"}}]},
+                     "finish_reason":"tool_calls"}]}
+                    """).build());
+            server.start();
+
+            ApiMessage message = chatClient(server).createMessage(CreateMessageRequest.builder()
+                .model("chat-test").stream(false).build());
+
+            assertTrue(message.content().stream().noneMatch(block -> block instanceof TextBlock text
+                && Strings.CS.contains(text.text(), "null")));
+            ToolUseBlock tool = message.content().stream()
+                .filter(ToolUseBlock.class::isInstance).map(ToolUseBlock.class::cast)
+                .findFirst().orElseThrow();
+            assertEquals("Read", tool.name());
+            assertTrue(Strings.CS.startsWith(tool.id(), "toolu_"),
+                "a missing id is synthesized rather than becoming the string null");
+            assertEquals("chat-test", message.model());
+        }
+    }
+
+    /**
+     * A second parallel tool call carrying an explicit {@code "index": null} must open its own
+     * slot. {@code NullNode.asInt()} is 0, so it used to land in slot 0, replace the first call's
+     * id and name, and concatenate its arguments onto the first call's accumulator — losing one
+     * tool call and leaving the survivor with unparseable arguments.
+     */
+    @Test
+    void appendsANewSlotWhenAParallelToolCallCarriesAnExplicitNullIndex() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "text/event-stream")
+                .body("""
+                    data: {"id":"chat_1","model":"chat-test","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"first","arguments":"{\\"file_path\\":\\"/a\\"}"}}]},"finish_reason":null}]}
+
+                    data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"index":null,"id":"call_b","type":"function","function":{"name":"second","arguments":"{\\"command\\":\\"ls\\"}"}}]},"finish_reason":"tool_calls"}]}
+
+                    data: [DONE]
+
+                    """).build());
+            server.start();
+
+            List<StreamEvent> events = new ArrayList<>();
+            chatClient(server).createMessageStream(CreateMessageRequest.builder()
+                .model("chat-test").stream(true).build()).forEachRemaining(events::add);
+
+            List<ToolUseBlock> tools = events.stream()
+                .filter(StreamEvent.ContentBlockStart.class::isInstance)
+                .map(StreamEvent.ContentBlockStart.class::cast)
+                .map(StreamEvent.ContentBlockStart::contentBlock)
+                .filter(ToolUseBlock.class::isInstance)
+                .map(ToolUseBlock.class::cast)
+                .toList();
+            assertEquals(List.of("call_a", "call_b"),
+                tools.stream().map(ToolUseBlock::id).toList(),
+                "the null-index call must append a slot rather than overwrite slot 0");
+            assertEquals(List.of("first", "second"),
+                tools.stream().map(ToolUseBlock::name).toList());
+
+            // Each call keeps its own arguments; the null-index call must not be concatenated
+            // onto the first call's accumulator as {"file_path":"/a"}{"command":"ls"}.
+            List<String> arguments = events.stream()
+                .filter(StreamEvent.ContentBlockDelta.class::isInstance)
+                .map(StreamEvent.ContentBlockDelta.class::cast)
+                .map(StreamEvent.ContentBlockDelta::delta)
+                .filter(Delta.InputJsonDelta.class::isInstance)
+                .map(Delta.InputJsonDelta.class::cast)
+                .map(Delta.InputJsonDelta::partialJson)
+                .toList();
+            assertEquals(List.of("{\"file_path\":\"/a\"}", "{\"command\":\"ls\"}"), arguments);
+        }
+    }
+
+    /**
+     * A tool call the model asked for is never silently dropped — a missing name or function
+     * object fails with a named diagnostic, the way {@code requireJsonArguments} rejects
+     * unparseable arguments. Above all, the literal string {@code "null"} must never become a
+     * tool name and reach the router as {@code No such tool available: null}.
+     */
+    @Test
+    void rejectsNonStreamingToolCallsWithAnExplicitNullNameOrMissingFunction() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "application/json")
+                .body("""
+                    {"id":"chat_1","model":"chat-test","choices":[{"message":{"content":null,
+                     "tool_calls":[{"id":"call_1","type":"function",
+                       "function":{"name":null,"arguments":"{}"}}]},
+                     "finish_reason":"tool_calls"}]}
+                    """).build());
+            server.start();
+
+            ApiException failure = assertThrows(ApiException.class, () -> chatClient(server)
+                .createMessage(CreateMessageRequest.builder()
+                    .model("chat-test").stream(false).build()));
+            assertTrue(Strings.CS.contains(failure.getMessage(), "function name"),
+                "the diagnostic must name the malformed field, not surface as Request failed: null");
+            assertFalse(Strings.CS.contains(failure.getMessage(), "No such tool"));
+        }
+
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "application/json")
+                .body("""
+                    {"id":"chat_1","model":"chat-test","choices":[{"message":{"content":null,
+                     "tool_calls":[{"id":"call_1","type":"function"}]},
+                     "finish_reason":"tool_calls"}]}
+                    """).build());
+            server.start();
+
+            // An absent function object used to NPE inside createMessage, which the generic
+            // catch turned into the opaque "Request failed: null".
+            ApiException failure = assertThrows(ApiException.class, () -> chatClient(server)
+                .createMessage(CreateMessageRequest.builder()
+                    .model("chat-test").stream(false).build()));
+            assertTrue(Strings.CS.contains(failure.getMessage(), "function object"));
+            assertFalse(Strings.CS.contains(failure.getMessage(), "Request failed: null"));
+        }
+    }
+
+    /**
+     * An explicit {@code "arguments": null} is the server spelling out a no-argument call. It must
+     * become {@code {}}, not the string {@code "null"} — which {@code requireJsonArguments} would
+     * happily parse into a JSON null node and hand to the tool as its input.
+     */
+    @Test
+    void treatsAnExplicitNullArgumentsFieldAsAnEmptyObject() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "application/json")
+                .body("""
+                    {"id":"chat_1","model":"chat-test","choices":[{"message":{"content":null,
+                     "tool_calls":[{"id":"call_1","type":"function",
+                       "function":{"name":"ListMcpResources","arguments":null}}]},
+                     "finish_reason":"tool_calls"}]}
+                    """).build());
+            server.start();
+
+            ApiMessage message = chatClient(server).createMessage(CreateMessageRequest.builder()
+                .model("chat-test").stream(false).build());
+
+            ToolUseBlock tool = message.content().stream()
+                .filter(ToolUseBlock.class::isInstance).map(ToolUseBlock.class::cast)
+                .findFirst().orElseThrow();
+            assertEquals("ListMcpResources", tool.name());
+            assertTrue(tool.input().isObject(), "a null arguments field must become {}, not a null node");
+            assertTrue(tool.input().isEmpty());
+        }
+    }
+
+    /**
+     * The switch that maps finish reasons passes unrecognized values through, so an explicit
+     * {@code "finish_reason": null} would otherwise make the stop reason the string "null".
+     */
+    @Test
+    void keepsTheDefaultStopReasonWhenFinishReasonIsExplicitlyNull() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200)
+                .addHeader("Content-Type", "application/json")
+                .body("""
+                    {"id":"chat_1","model":"chat-test",
+                     "choices":[{"message":{"content":"ok"},"finish_reason":null}],
+                     "usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":null}}
+                    """).build());
+            server.start();
+
+            ApiMessage message = chatClient(server).createMessage(CreateMessageRequest.builder()
+                .model("chat-test").stream(false).build());
+
+            assertFalse(Strings.CS.equals("null", message.stopReason()));
+            assertEquals("stop", message.stopReason());
+            assertNull(message.usage().reportedTotalTokens(),
+                "an explicit null total must stay absent rather than report a boxed 0");
+        }
+    }
+
     @Test
     void emitsParallelToolCallsWithStableIdsAndToolUseStopReason() throws Exception {
         try (MockWebServer server = new MockWebServer()) {
