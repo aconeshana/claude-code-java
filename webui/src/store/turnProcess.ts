@@ -175,10 +175,121 @@ function toTurnSlice(
   }
 }
 
+/** One turn slice's contribution to the view, cached across renders. */
+interface TurnContribution {
+  readonly anchorId: string
+  readonly turn: number
+  readonly counts: TurnProcessCounts
+  /** Row roles this slice claims, as (id, role) pairs. */
+  readonly roles: readonly (readonly [string, RowRole])[]
+  readonly memberIds: readonly string[]
+  readonly compactAnswerId: string | null
+  readonly inlineReasoningAnswerId: string | null
+}
+
+/**
+ * Per-turn memo replacing upstream's `ChatTurnProcessProjector` cache.
+ *
+ * The reduction rebuilds the whole `messages` array on every streamed block
+ * (a text delta rewrites the last row and therefore the array), so keying the
+ * caller's `useMemo` on `messages` alone still re-specs every settled turn per
+ * token. Settled rows do keep their object identity though, so a slice can be
+ * fingerprinted by the identities of the rows it actually reads: an unchanged
+ * fingerprint means the vendored rules would return exactly what they
+ * returned last time.
+ *
+ * Bounded by construction: one entry per turn of the live conversation, and
+ * the map is rebuilt (not appended to) on every derivation, so turns that
+ * leave the transcript leave the cache with them.
+ */
+type TurnCache = Map<number, { readonly key: string; readonly value: TurnContribution | null }>
+
+let lastCache: TurnCache = new Map()
+
+/**
+ * Identity fingerprint of the rows a slice reads.
+ *
+ * Row identity is the signal, not row content: the reducer replaces a row
+ * object whenever it edits it. `tool.completed` maps over every assistant row
+ * and rebuilds each one, so identity is conservative rather than exact — an
+ * unrelated tool completion invalidates more turns than strictly necessary,
+ * which costs a re-derive but can never serve a stale view.
+ */
+function sliceKey(
+  messages: readonly MessageState[], start: number, end: number,
+  turnRunning: boolean, isLastSlice: boolean,
+): string {
+  const ids: string[] = [String(start), String(end)]
+  for (let seq = start; seq < end; seq++) ids.push(identityToken(messages[seq]))
+  // The closed/open decision reads both flags, so they belong in the key.
+  ids.push(turnRunning ? 'running' : 'idle', isLastSlice ? 'last' : 'mid')
+  return ids.join('\u0000')
+}
+
+const identityTokens = new WeakMap<MessageState, string>()
+let nextIdentityToken = 0
+
+/** A stable per-object token, so row identity can live in a string key. */
+function identityToken(message: MessageState): string {
+  const existing = identityTokens.get(message)
+  if (existing !== undefined) return existing
+  nextIdentityToken += 1
+  const token = `r${nextIdentityToken}`
+  identityTokens.set(message, token)
+  return token
+}
+
+/** Run the vendored rules over one slice, or null when it contributes nothing. */
+function deriveContribution(slice: TurnSlice): TurnContribution | null {
+  const spec = processSpec(slice.input)
+  if (spec === null) return null
+  const presentation = derivePresentation(slice.input, spec)
+  // Upstream's seat gate: the control exists from the first process
+  // evidence but only shows once a closed turn has a final answer with
+  // process rows outside the answer step.
+  if (!presentation.turnClosed
+    || spec.answerAnchorSeq === null
+    || !presentation.hasExternalProcess) return null
+
+  const roles: (readonly [string, RowRole])[] = []
+  const memberIds: string[] = []
+  let compactAnswerId: string | null = null
+  let inlineReasoningAnswerId: string | null = null
+
+  for (const [seq, id] of slice.idsBySeq) {
+    if (seq === spec.answerAnchorSeq) {
+      roles.push([id, 'answer'])
+      if (presentation.compactAnswer) compactAnswerId = id
+      if (spec.inlineReasoning) inlineReasoningAnswerId = id
+      continue
+    }
+    if (seq < spec.processStartSeq || seq > spec.answerAnchorSeq) continue
+    roles.push([id, 'member'])
+    memberIds.push(id)
+  }
+
+  return {
+    anchorId: slice.userRow.kind === 'user' ? slice.userRow.id : `head-${slice.turn}`,
+    turn: slice.turn,
+    counts: {
+      toolCallCount: spec.toolCallCount,
+      messageCount: spec.messageCount,
+      subagentCount: spec.subagentCount,
+    },
+    roles,
+    memberIds,
+    compactAnswerId,
+    inlineReasoningAnswerId,
+  }
+}
+
 /**
  * Derive the fold view over one conversation's reduced messages: slice the
  * transcript into turns, run the vendored rules over each, and key the
  * resulting roles back to message ids.
+ *
+ * Per-turn results are memoized on the identity of the rows each turn reads,
+ * so a streaming delta re-runs the rules for the active turn only.
  */
 export function deriveTurnProcessView(
   conversation: ConversationState | undefined,
@@ -202,12 +313,15 @@ export function deriveTurnProcessView(
   const compactAnswers = new Set<string>()
   const inlineReasoningAnswers = new Set<string>()
   const seenTurns = new Set<number>()
+  // Rebuilt rather than mutated in place, so dropped turns drop their entries.
+  const nextCache: TurnCache = new Map()
 
   for (let boundary = 0; boundary < boundaries.length; boundary++) {
     const start = boundaries[boundary]
     const end = boundary + 1 < boundaries.length ? boundaries[boundary + 1] : messages.length
+    const isLastSlice = boundary + 1 === boundaries.length
     const slice = toTurnSlice(
-      messages, start, end, conversation.turnRunning, boundary + 1 === boundaries.length,
+      messages, start, end, conversation.turnRunning, isLastSlice,
     )
     if (slice === undefined) continue
     // The snapshot path back-fills turn numbers lazily; a turn number that
@@ -215,36 +329,25 @@ export function deriveTurnProcessView(
     if (seenTurns.has(slice.turn)) continue
     seenTurns.add(slice.turn)
 
-    const spec = processSpec(slice.input)
-    if (spec === null) continue
-    const presentation = derivePresentation(slice.input, spec)
-    // Upstream's seat gate: the control exists from the first process
-    // evidence but only shows once a closed turn has a final answer with
-    // process rows outside the answer step.
-    if (!presentation.turnClosed
-      || spec.answerAnchorSeq === null
-      || !presentation.hasExternalProcess) continue
+    const key = sliceKey(messages, start, end, conversation.turnRunning, isLastSlice)
+    const cached = lastCache.get(slice.turn)
+    const contribution = cached !== undefined && cached.key === key
+      ? cached.value
+      : deriveContribution(slice)
+    nextCache.set(slice.turn, { key, value: contribution })
+    if (contribution === null) continue
 
-    const anchorId = slice.userRow.kind === 'user' ? slice.userRow.id : `head-${slice.turn}`
-    controlTurns[anchorId] = slice.turn
-    counts[anchorId] = {
-      toolCallCount: spec.toolCallCount,
-      messageCount: spec.messageCount,
-      subagentCount: spec.subagentCount,
-    }
-
-    for (const [seq, id] of slice.idsBySeq) {
-      if (seq === spec.answerAnchorSeq) {
-        roles[id] = 'answer'
-        if (presentation.compactAnswer) compactAnswers.add(id)
-        if (spec.inlineReasoning) inlineReasoningAnswers.add(id)
-        continue
-      }
-      if (seq < spec.processStartSeq || seq > spec.answerAnchorSeq) continue
-      roles[id] = 'member'
-      memberTurns[id] = slice.turn
+    controlTurns[contribution.anchorId] = contribution.turn
+    counts[contribution.anchorId] = contribution.counts
+    for (const [id, role] of contribution.roles) roles[id] = role
+    for (const id of contribution.memberIds) memberTurns[id] = contribution.turn
+    if (contribution.compactAnswerId !== null) compactAnswers.add(contribution.compactAnswerId)
+    if (contribution.inlineReasoningAnswerId !== null) {
+      inlineReasoningAnswers.add(contribution.inlineReasoningAnswerId)
     }
   }
+
+  lastCache = nextCache
 
   return {
     roles,

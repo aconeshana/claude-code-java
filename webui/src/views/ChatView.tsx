@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@primitives'
 import type { ConversationState } from '../store/conversations'
 import { deriveTurnProcessView, useTurnProcess } from '../store/turnProcess'
+import { useTranscriptView } from '../store/transcriptView'
 import css from '@chat-styles/ChatView.module.css'
 import { MessageItem } from './MessageItem'
 import { TurnProcessControl } from './TurnProcessControl'
@@ -28,9 +29,19 @@ export function ChatView({ conversation }: { conversation: ConversationState | u
   const [following, setFollowing] = useState(true)
   const setOpen = useTurnProcess((state) => state.setOpen)
   const openTurns = useTurnProcess((state) => state.openTurns)
+  // The derivation reads the transcript mode too (it disables folding
+  // outright outside compact), so the view must re-derive when it flips —
+  // and the memo must depend on it, or a settings toggle would not repaint.
+  const transcriptMode = useTranscriptView((state) => state.mode)
+  // Keyed on the substrate the derivation actually reads, NOT on the
+  // conversation object: the reduction returns a fresh conversation (and a
+  // fresh messages array) on every streamed block, so a `conversation` key
+  // is dead during streaming. `deriveTurnProcessView` memoizes each turn
+  // internally, so the re-run this key admits re-specs the active turn only.
   const foldView = useMemo(
     () => deriveTurnProcessView(conversation, openTurns),
-    [conversation, openTurns],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- transcriptMode is read inside the derivation
+    [conversation?.messages, conversation?.turnRunning, openTurns, transcriptMode],
   )
 
   useEffect(() => {

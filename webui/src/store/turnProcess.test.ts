@@ -218,8 +218,85 @@ describe('turn-process fold over the live frame path', () => {
   })
 })
 
-describe('isSubagentDelegationTool', () => {
-  it('recognizes this product delegation tool and its alias', () => {
+describe('per-turn derivation memo', () => {
+  /** Build a settled turn that folds, plus a following turn to stream into. */
+  function twoSettledTurns(): void {
+    apply('turn.started', { display_text: '一', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案一', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+    apply('turn.started', { display_text: '二', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-3', 'Read', 'tu-2')
+    apply('output.text', { content: '答案二', message_id: 'msg-4' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 2 })
+  }
+
+  it('returns the same derived view whether or not the memo is warm', () => {
+    twoSettledTurns()
+    const cold = view()
+    const warm = view()
+    // The memo must be transparent: identical output, re-derived or cached.
+    expect(warm.roles).toEqual(cold.roles)
+    expect(warm.controlTurns).toEqual(cold.controlTurns)
+    expect(warm.counts).toEqual(cold.counts)
+    expect(warm.memberTurns).toEqual(cold.memberTurns)
+    expect([...warm.compactAnswers]).toEqual([...cold.compactAnswers])
+    expect([...warm.inlineReasoningAnswers]).toEqual([...cold.inlineReasoningAnswers])
+  })
+
+  it('reuses settled turns derived results across streaming deltas', () => {
+    // The whole point of the fix: a token delta rebuilds the messages array,
+    // so without a per-turn memo every settled turn is re-specced per token.
+    // The memo returns the *same* derived objects for untouched turns, which
+    // is the observable proof the vendored rules did not run again.
+    // (Spying on `processSpec` cannot show this: `turnProcess.ts` binds the
+    // import at module load, so a namespace spy is never consulted.)
+    twoSettledTurns()
+    apply('turn.started', { display_text: '三', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '流式片段', message_id: 'msg-5' })
+    const before = view()
+
+    apply('output.text', { content: '更多片段', message_id: 'msg-5' })
+    const after = view()
+
+    const settledAnchors = Object.keys(before.counts)
+    expect(settledAnchors.length).toBe(2)
+    for (const anchor of settledAnchors) {
+      // Identity, not just equality: a re-derive would allocate fresh objects.
+      expect(after.counts[anchor]).toBe(before.counts[anchor])
+    }
+  })
+
+  it('re-derives a turn whose own rows changed', () => {
+    apply('turn.started', { display_text: '一', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '中间', message_id: 'msg-2' })
+    // Still running: nothing folds yet.
+    expect(view().controlTurns).toEqual({})
+
+    apply('output.text', { content: '最终答案', message_id: 'msg-3' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    // The cached "no fold" answer must not survive the turn closing.
+    const rows = conversation().messages
+    expect(view().controlTurns[rows[0].id]).toBe(1)
+    expect(view().roles[rows[rows.length - 1].id]).toBe('answer')
+  })
+
+  it('re-derives when the transcript mode flips back to compact', () => {
+    twoSettledTurns()
+    const compact = view()
+    expect(Object.keys(compact.controlTurns).length).toBeGreaterThan(0)
+
+    useTranscriptView.getState().setMode('normal')
+    expect(view().controlTurns).toEqual({})
+
+    useTranscriptView.getState().setMode('compact')
+    expect(view().controlTurns).toEqual(compact.controlTurns)
+  })
+})
+
+describe('isSubagentDelegationTool', () => {  it('recognizes this product delegation tool and its alias', () => {
     // Deviation from upstream (subagent / subagent_*): the shipped name here
     // is Agent with the Task alias.
     expect(isSubagentDelegationTool('Agent')).toBe(true)

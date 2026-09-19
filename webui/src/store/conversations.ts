@@ -243,11 +243,16 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
     }
     case 'turn.completed': {
       // The completion frame carries the turn's durable-fold delta and wall
-      // time; land them on the closing assistant row (the turn tail chrome
-      // renders from there).
-      const messages = closeAssistant(state.messages, (last) => ({
-        ...last,
+      // time. The snapshot path stamps `turn` on EVERY assistant row of the
+      // turn (GatewayMessagesSnapshotHandler.assistantEntry), so the live
+      // path must too: a turn that ends on a tool call has no trailing
+      // answer row, and stamping only the last row would attach the turn
+      // tail to a different row before and after a reload.
+      const messages = closeTurn(state.messages, (row) => ({
+        ...row,
         ...(frame.data.turn !== undefined ? { turn: frame.data.turn } : {}),
+      }), (last) => ({
+        ...last,
         ...(frame.data.turn_usage !== undefined ? { turnUsage: frame.data.turn_usage } : {}),
         runMs: frame.data.elapsed_ms,
         ...(frame.data.ttft_ms !== undefined ? { ttftMs: frame.data.ttft_ms } : {}),
@@ -335,4 +340,43 @@ function closeAssistant(
   const last = messages[messages.length - 1]
   if (last == null || last.kind !== 'assistant' || !last.open) return messages
   return [...messages.slice(0, -1), edit == null ? { ...last, open: false } : { ...edit(last), open: false }]
+}
+
+/**
+ * Closes the running turn: applies {@code stampRow} to every assistant row of
+ * the turn and {@code editLast} to the closing row alone.
+ *
+ * One turn fans out into N assistant rows (one per step), and the snapshot
+ * path stamps the turn number on all of them, so the live path walks back to
+ * the turn's first row — the row after the most recent user row — rather than
+ * editing only the tail. Turn-scoped facts that belong to a single step
+ * (`turn_usage`, which the snapshot serves per step, plus the wall-clock
+ * facts the tail renders) stay on the closing row.
+ *
+ * Rows before the last user row belong to earlier turns and are left alone.
+ */
+function closeTurn(
+  messages: readonly MessageState[],
+  stampRow: (row: AssistantMessageState) => AssistantMessageState,
+  editLast: (last: AssistantMessageState) => AssistantMessageState,
+): readonly MessageState[] {
+  const lastIndex = messages.length - 1
+  const last = messages[lastIndex]
+  if (last == null || last.kind !== 'assistant' || !last.open) return messages
+
+  // The turn starts after the most recent user row; with none, the whole
+  // assistant prefix is one (pre-turn) run.
+  let start = 0
+  for (let index = lastIndex; index >= 0; index--) {
+    if (messages[index].kind === 'user') {
+      start = index + 1
+      break
+    }
+  }
+
+  return messages.map((message, index) => {
+    if (index < start || message.kind !== 'assistant') return message
+    const stamped = stampRow(message)
+    return index === lastIndex ? { ...editLast(stamped), open: false } : stamped
+  })
 }

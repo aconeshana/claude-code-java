@@ -119,6 +119,127 @@ describe('conversations frame reduction', () => {
     expect(last.ttftMs).toBeUndefined()
   })
 
+  it('stamps the turn number on every assistant step of the closing turn', () => {
+    // One turn fans out into N assistant rows (one per message_id). The
+    // snapshot path stamps `turn` on every one of them, so the live path
+    // must too — otherwise a reload moves the turn-tail chrome to a
+    // different row than the one it rendered on live.
+    store().applyFrame(frame('turn.started', 1, { display_text: 'go', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text', 2, { content: 'thinking out loud', message_id: 'm1' }))
+    store().applyFrame(frame('tool.started', 3, { name: 'Bash', tool_use_id: 'tu-1', input: {}, message_id: 'm2' }))
+    store().applyFrame(frame('tool.completed', 4, {
+      status: 'completed', tool_use_id: 'tu-1', result: { type: 'tool_result', data: 'ok' },
+    }))
+    store().applyFrame(frame('output.text', 5, { content: 'the answer', message_id: 'm3' }))
+    store().applyFrame(frame('turn.completed', 6, {
+      done: true, elapsed_ms: 400, user_cancel: false, turn: 2,
+    }))
+
+    const rows = useConversations.getState().conversations[SESSION].messages
+    const assistants = rows.filter((row) => row.kind === 'assistant')
+    expect(assistants).toHaveLength(3)
+    for (const row of assistants) {
+      if (row.kind !== 'assistant') throw new Error('expected an assistant row')
+      expect(row.turn).toBe(2)
+    }
+  })
+
+  it('keeps the single-step turn tail facts on the closing row only', () => {
+    // `turn_usage` is per step in the snapshot and the wall-clock facts
+    // belong to the turn's end, so they must not smear across every row.
+    store().applyFrame(frame('turn.started', 1, { display_text: 'go', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text', 2, { content: 'step one', message_id: 'm1' }))
+    store().applyFrame(frame('output.text', 3, { content: 'step two', message_id: 'm2' }))
+    store().applyFrame(frame('turn.completed', 4, {
+      done: true, elapsed_ms: 900, user_cancel: false, turn: 1, ttft_ms: 40,
+      turn_usage: {
+        uncached_input_tokens: 1, output_tokens: 2,
+        cache_write_tokens: 0, cache_read_tokens: 0, total_tokens: 3,
+      },
+    }))
+
+    const rows = useConversations.getState().conversations[SESSION].messages
+    const first = rows[1]
+    const last = rows[rows.length - 1]
+    if (first.kind !== 'assistant' || last.kind !== 'assistant') {
+      throw new Error('expected assistant rows')
+    }
+    expect(first.turn).toBe(1)
+    expect(first.runMs).toBeUndefined()
+    expect(first.turnUsage).toBeUndefined()
+    expect(first.ttftMs).toBeUndefined()
+    expect(last.runMs).toBe(900)
+    expect(last.ttftMs).toBe(40)
+    expect(last.turnUsage?.total_tokens).toBe(3)
+  })
+
+  it('leaves earlier turns untouched when closing the current one', () => {
+    store().applyFrame(frame('turn.started', 1, { display_text: 'first', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text', 2, { content: 'a1', message_id: 'm1' }))
+    store().applyFrame(frame('turn.completed', 3, { done: true, elapsed_ms: 10, user_cancel: false, turn: 1 }))
+    store().applyFrame(frame('turn.started', 4, { display_text: 'second', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text', 5, { content: 'a2', message_id: 'm2' }))
+    store().applyFrame(frame('turn.completed', 6, { done: true, elapsed_ms: 20, user_cancel: false, turn: 2 }))
+
+    const rows = useConversations.getState().conversations[SESSION].messages
+    const firstAnswer = rows[1]
+    const secondAnswer = rows[3]
+    if (firstAnswer.kind !== 'assistant' || secondAnswer.kind !== 'assistant') {
+      throw new Error('expected assistant rows')
+    }
+    // Turn 2's completion must not restamp turn 1's row.
+    expect(firstAnswer.turn).toBe(1)
+    expect(firstAnswer.runMs).toBe(10)
+    expect(secondAnswer.turn).toBe(2)
+    expect(secondAnswer.runMs).toBe(20)
+  })
+
+  it('a turn ending on a tool call stamps the same rows live as after a reload', async () => {
+    // The user-visible divergence: a turn whose last step is a tool call has
+    // no trailing answer row, so the tail chrome's gating facts must sit on
+    // the same rows in both paths.
+    store().applyFrame(frame('turn.started', 1, { display_text: 'run it', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text', 2, { content: 'let me run this', message_id: 'm1' }))
+    store().applyFrame(frame('tool.started', 3, { name: 'Bash', tool_use_id: 'tu-9', input: {}, message_id: 'm2' }))
+    store().applyFrame(frame('tool.completed', 4, {
+      status: 'completed', tool_use_id: 'tu-9', result: { type: 'tool_result', data: 'ok' },
+    }))
+    store().applyFrame(frame('turn.completed', 5, {
+      done: true, elapsed_ms: 50, user_cancel: false, turn: 3,
+    }))
+    const liveTurns = useConversations.getState().conversations[SESSION].messages
+      .filter((row) => row.kind === 'assistant')
+      .map((row) => (row.kind === 'assistant' ? row.turn : undefined))
+
+    // The gateway stamps `turn` on every assistant entry of the turn.
+    const snapshot: MessagesSnapshot = {
+      session_id: SESSION,
+      messages: [
+        { id: 'u1', role: 'user', text: 'run it', content: [] },
+        { id: 'm1', role: 'assistant', turn: 3, content: [{ type: 'text', text: 'let me run this' }] },
+        {
+          id: 'm2', role: 'assistant', turn: 3,
+          content: [{
+            type: 'tool_call',
+            tool: {
+              tool_use_id: 'tu-9', name: 'Bash', args: {}, status: 'executed', ready: true,
+              result: { type: 'tool_result', data: 'ok' },
+            },
+          }],
+        },
+      ],
+    } as unknown as MessagesSnapshot
+    const { fetchSnapshot } = await import('../api/client')
+    vi.mocked(fetchSnapshot).mockResolvedValue(snapshot)
+    await store().loadSnapshot(SESSION)
+    const reloadedTurns = useConversations.getState().conversations[SESSION].messages
+      .filter((row) => row.kind === 'assistant')
+      .map((row) => (row.kind === 'assistant' ? row.turn : undefined))
+
+    expect(liveTurns).toEqual([3, 3])
+    expect(reloadedTurns).toEqual(liveTurns)
+  })
+
   it('appends the submitted message immediately on turn.started', () => {
     store().applyFrame(frame('turn.started', 1, { display_text: '你好', permission_mode: 'ask', origin: 'chat' }))
     const conversation = useConversations.getState().conversations[SESSION]
