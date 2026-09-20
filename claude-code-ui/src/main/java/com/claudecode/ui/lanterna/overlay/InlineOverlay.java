@@ -55,6 +55,16 @@ public interface InlineOverlay {
     default void onBackdropRepainted() { }
 
     /**
+     * Whether this overlay wants the mouse wheel for itself.
+     *
+     * <p>Keyboard input is owned exclusively by the active overlay, but the wheel is a terminal
+     * gesture rather than a keybinding: a modal question card in the released client does not stop
+     * the user from scrolling the transcript behind it. The host therefore lets wheel events fall
+     * through to the scroll handler unless an overlay with its own scrollable body opts in here.</p>
+     */
+    default boolean consumesMouseWheel() { return false; }
+
+    /**
      * Handles a key while this overlay is active. Implementations should set
      * {@code deliver} to {@code false} when handled; the host additionally enforces
      * exclusive ownership for unhandled keys as an input-isolation boundary.

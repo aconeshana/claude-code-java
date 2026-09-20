@@ -61,6 +61,14 @@ import org.apache.commons.lang3.StringUtils;
  *   <li>Covers: {@code onRespondToClaude} — the {@code Chat about this} row resolves the prompt
  *       into a {@code deny}-with-feedback rather than an abort, with the body built by
  *       {@link ClarifyFeedback}. See {@link #clarify()}.</li>
+ *   <li>Covers: {@code C51} — the list card's container keys: Enter on the chat row, or its digit
+ *       {@code options.length + 2} pressed from anywhere on the card, clarifies; Escape cancels.
+ *       See {@link #listChatKey}.</li>
+ *   <li>Covers: {@code YjT} together with {@code Nys}'s {@code onDownFromLastItem} — the list
+ *       card's focus walk. Upward wraps from the first item to the last of {@code AjE} (the Other
+ *       row) because {@code Nys} passes no {@code onUpFromFirstItem}; downward never wraps, it
+ *       falls out of the selector into the Submit row (multi-select only) and then the chat row.
+ *       See {@link #moveFocusUp} and {@link #moveFocusDown}.</li>
  *   <li>src/components/permissions/AskUserQuestionPermissionRequest/use-multiple-choice-state.ts —
  *       which question is current and how a choice advances to the next one.</li>
  *   <li>src/components/CustomSelect/select.tsx — the plain list card's single-select keyboard:
@@ -76,7 +84,12 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>Not covered: the screen-reader projection ({@code hl()}), AFK timeouts ({@code C2g}), image
  * attachments ({@code R2g}), and actually launching {@code $EDITOR} on {@code ctrl+g} — the design
- * card advertises the chord, but no editor is spawned yet (TODO).
+ * card advertises the chord, but no editor is spawned yet (TODO). The list card therefore leaves
+ * {@code ctrl+g to edit in X} out of its footer rather than advertising a chord that does nothing.
+ *
+ * <p>Deviation: on the list card {@code Tab}/{@code Shift+Tab} are plain synonyms for
+ * {@code Down}/{@code Up}. The bundle gives them a third meaning there — {@code onInputModeToggle}
+ * in single select, focus-to-Submit in multi — which this port does not model.
  */
 public final class AskUserQuestionDialog extends Panel implements InlineOverlay {
 
@@ -212,7 +225,13 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
         return current >= questions.size();
     }
 
-    /** {@code Nys} — the design card, unless the terminal is too narrow for its preview column. */
+    /**
+     * {@code Nys} — the design card, unless the terminal is too narrow for its preview column.
+     *
+     * <p>Deviation: the width fallback is ours. {@code Nys} branches on the question alone and keeps
+     * the design card at any width, so a narrow terminal here swaps in the list card and the option
+     * previews go with it — {@code Nys}'s list branch renders no preview at all.
+     */
     private boolean useDesignCard() {
         return QuestionSanitizer.isDesignVariant(displayQuestions.get(current))
             && DesignQuestionView.fitsTerminal(terminalColumns());
@@ -240,6 +259,11 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
     private ReviewScreen.Context reviewContext() {
         return new ReviewScreen.Context(
             displayQuestions, answers, hideSubmitTab, terminalColumns());
+    }
+
+    private ListQuestionView.Context listContext() {
+        return new ListQuestionView.Context(questions.get(current), current, questions.size(),
+            terminalColumns(), terminalRows());
     }
 
     // ── InlineOverlay ────────────────────────────────────────────────────────
@@ -286,15 +310,19 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
     private void listKey(KeyStroke key) {
         QuestionState st = states.get(current);
         QuestionPresenter.Question q = questions.get(current);
+        if (st.chatFocused()) {
+            listChatKey(key, st, q);
+            return;
+        }
         int optionCount = q.options().size();       // focus index optionCount = Other
-        // Multi-select adds a Submit/Next row after Other (197 SelectMulti parity).
-        int itemCount = optionCount + (q.multiSelect() ? 2 : 1);
         switch (key.getKeyType()) {
             case ESCAPE -> resolve(new QuestionOutcome.Cancelled());
-            case ARROW_UP -> st.setFocus(InlineOverlay.cycleIndex(st.focus(), -1, itemCount));
-            case ARROW_DOWN -> st.setFocus(InlineOverlay.cycleIndex(st.focus(), +1, itemCount));
-            case TAB -> st.setFocus(InlineOverlay.cycleIndex(
-                st.focus(), key.isShiftDown() ? -1 : +1, itemCount));
+            case ARROW_UP -> moveFocusUp(st, q);
+            case ARROW_DOWN -> moveFocusDown(st, q);
+            case TAB -> {
+                if (key.isShiftDown()) moveFocusUp(st, q);
+                else moveFocusDown(st, q);
+            }
             case ARROW_LEFT -> {
                 if (st.focus() == optionCount) st.moveCursor(-1);
                 else switchTab(-1);
@@ -316,6 +344,71 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
             case ENTER -> handleEnter(key, st, q, optionCount);
             default -> { /* swallow while active */ }
         }
+    }
+
+    /**
+     * {@code C51} while the {@code Chat about this} row holds the focus: Enter (like its own digit)
+     * turns the request into a clarification, Escape still cancels, and Up hands the focus back to
+     * the selector without moving it.
+     */
+    private void listChatKey(KeyStroke key, QuestionState st, QuestionPresenter.Question q) {
+        switch (key.getKeyType()) {
+            case ARROW_UP -> st.setChatFocused(false);
+            case TAB -> {
+                if (key.isShiftDown()) st.setChatFocused(false);
+            }
+            case ENTER -> clarify();
+            case ESCAPE -> resolve(new QuestionOutcome.Cancelled());
+            case ARROW_LEFT -> switchTab(-1);
+            case ARROW_RIGHT -> switchTab(+1);
+            case CHARACTER -> {
+                Character c = key.getCharacter();
+                if (c != null && !key.isCtrlDown() && !key.isAltDown()
+                        && c - '0' == ListQuestionView.chatRowNumber(q)) {
+                    clarify();
+                }
+            }
+            default -> { /* swallow while active */ }
+        }
+    }
+
+    /**
+     * {@code YjT}'s {@code focus-next-option} together with {@code Nys}'s
+     * {@code onDownFromLastItem}: the selector runs out at the Other row and hands the focus
+     * downward — multi-select by way of its Submit row — to the chat row. Downward never wraps.
+     */
+    private void moveFocusDown(QuestionState st, QuestionPresenter.Question q) {
+        int optionCount = q.options().size();
+        if (q.multiSelect() && st.focus() == ListQuestionView.submitFocus(q)) {
+            st.setChatFocused(true);
+        } else if (st.focus() >= optionCount) {
+            if (q.multiSelect()) st.setFocus(ListQuestionView.submitFocus(q));
+            else st.setChatFocused(true);
+        } else {
+            st.setFocus(st.focus() + 1);
+        }
+        syncWindow(st, q);
+    }
+
+    /**
+     * {@code YjT}'s {@code focus-previous-option}: {@code Nys} passes no
+     * {@code onUpFromFirstItem}, so the first item wraps to the last of {@code AjE} — the Other
+     * row, since the Submit row sits outside the select.
+     */
+    private void moveFocusUp(QuestionState st, QuestionPresenter.Question q) {
+        st.setFocus(st.focus() == 0 ? q.options().size() : st.focus() - 1);
+        syncWindow(st, q);
+    }
+
+    /**
+     * Keeps {@code visibleFromIndex} in step with the focus. The Submit row is not a window item,
+     * so it pins the window to the Other row at the bottom instead of scrolling past it.
+     */
+    private void syncWindow(QuestionState st, QuestionPresenter.Question q) {
+        int items = ListQuestionView.itemCount(q);
+        st.setWindowStart(ListQuestionView.windowStart(st.windowStart(), items,
+            ListQuestionView.visibleItemCount(q, terminalRows()),
+            Math.min(st.focus(), items - 1)));
     }
 
     private void handleTextOrShortcut(KeyStroke key, QuestionState st,
@@ -347,7 +440,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
      * 197 use-select-input digits branch: keys 1-9 address options by their visible index while
      * the focus is NOT inside the input. A preset digit submits (single) / toggles (multi)
      * immediately; the input option's own digit focuses it, or submits it when it already holds
-     * text.
+     * text. {@code C51} adds one more: the chat row's digit clarifies from anywhere on the card.
      */
     private void selectByDigit(int index, QuestionState st, QuestionPresenter.Question q,
                                int optionCount) {
@@ -356,13 +449,17 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
                 st.toggle(index);
             } else {
                 st.setFocus(index);
+                syncWindow(st, q);
                 confirmCurrent(st, q);
             }
         } else if (index == optionCount) {
             st.setFocus(optionCount);
+            syncWindow(st, q);
             if (!q.multiSelect() && !st.textEmpty()) {
                 confirmCurrent(st, q);   // pre-filled Other submits on its digit
             }
+        } else if (index == optionCount + 1) {
+            clarify();                   // the "Chat about this" row's own digit
         }
     }
 
@@ -519,8 +616,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
                                 designContext(), states.get(current)));
                     }
                     return new TerminalSize(DEFAULT_TERMINAL_COLUMNS,
-                        ListQuestionView.preferredRows(
-                            questions.get(current), states.get(current), terminalColumns()));
+                        ListQuestionView.preferredRows(listContext(), states.get(current)));
                 }
 
                 @Override
@@ -531,8 +627,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
                     } else if (useDesignCard()) {
                         DesignQuestionView.draw(g, designContext(), states.get(current));
                     } else {
-                        ListQuestionView.draw(g, questions.get(current), states.get(current),
-                            current, questions.size());
+                        ListQuestionView.draw(g, listContext(), states.get(current));
                     }
                 }
             };

@@ -22,6 +22,9 @@ import org.apache.commons.lang3.StringUtils;
  *       bracketed paste all apply at the insertion point. See {@link #applyEdit(KeyStroke)}.</li>
  *   <li>Covers: {@code d$c}'s {@code g} (notes editing) and {@code m} (chat row focused) flags.
  *       See {@link #notesEditing()} and {@link #chatFocused()}.</li>
+ *   <li>Covers: {@code YjT}'s {@code visibleFromIndex} — the first item of the list card's option
+ *       window, remembered between key presses so scrolling moves the minimum needed to keep the
+ *       focused item on screen. See {@link #windowStart()}.</li>
  * </ul>
  *
  * <p>Deliberately mutable and deliberately not thread-safe: it is only ever touched from the
@@ -36,6 +39,7 @@ public final class QuestionState {
     private boolean chatFocused;
     private int cursor;
     private int focus;
+    private int windowStart;
 
     // ── selection ───────────────────────────────────────────────────────────
 
@@ -83,6 +87,19 @@ public final class QuestionState {
 
     public void setFocus(int value) {
         focus = value;
+    }
+
+    /**
+     * {@code YjT}'s {@code visibleFromIndex}: the first option-window item the list card paints.
+     * The view re-derives it on every paint through {@code ListQuestionView.windowStart}, so this
+     * only has to be a hint the host keeps in step with the focus.
+     */
+    public int windowStart() {
+        return windowStart;
+    }
+
+    public void setWindowStart(int value) {
+        windowStart = Math.max(0, value);
     }
 
     // ── design-card modes ───────────────────────────────────────────────────

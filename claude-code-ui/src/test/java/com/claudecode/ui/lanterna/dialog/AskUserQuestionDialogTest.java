@@ -40,6 +40,11 @@ import org.apache.commons.lang3.Strings;
  * cursor-anchored scroll window), preview propagation, multi-question flow, and
  * Esc cancel.
  *
+ * <p>Also covers the list card's focus walk: the option window shrinks with the terminal and puts
+ * dim {@code ↑}/{@code ↓} on its edges, {@code ↑} from the first item wraps to the Other row while
+ * downward never wraps (Other → Submit → {@code Chat about this}), and the chat row clarifies on
+ * Enter or on its own digit.
+ *
  * <p>Only a lone single-select question auto-submits ({@code I$c}); everything else
  * lands on {@code ReviewScreen} first, so those flows carry one closing Enter.
  * Questions routed to the design card have their own coverage in
@@ -138,7 +143,8 @@ class AskUserQuestionDialogTest {
         h.key(new KeyStroke(KeyType.ENTER));        // toggle A back off
         assertTrue(h.dialog.isActive(), "second Enter toggles off again");
         h.key(new KeyStroke(KeyType.ENTER));        // toggle A on
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // wraps inside AjE → the Other row
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         h.key(new KeyStroke(KeyType.ENTER));        // records the question
         h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("A", h.await().get("Q?").answer());
@@ -213,14 +219,19 @@ class AskUserQuestionDialogTest {
             q("First?", true, opt("F1", null), opt("F2", null)),
             q("Second?", true, opt("S1", null), opt("S2", null))));
         assertTrue(Strings.CS.contains(r.render(), "Next"), "non-last question shows Next");
-        r.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // F1 wraps to the Other row
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         String focused = r.render();
         assertTrue(Strings.CS.contains(focused, "❯    Next"), "submit row takes the pointer");
         r.key(new KeyStroke(KeyType.ENTER));        // nothing selected → ignored
         assertTrue(r.dialog.isActive(), "empty submit must be ignored");
-        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // wrap to F1
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // Submit → Other
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // Other → F2
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // F2 → F1
         r.key(new KeyStroke(KeyType.ENTER));        // toggle F1
-        r.key(new KeyStroke(KeyType.ARROW_UP));     // back to Submit row
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // F2
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Submit row
         r.key(new KeyStroke(KeyType.ENTER));        // advances to question 2
         assertTrue(Strings.CS.contains(r.render(), "Submit"), "last question shows Submit");
         r.close();
@@ -408,6 +419,9 @@ class AskUserQuestionDialogTest {
             screen.startScreen();
             gui = new MultiWindowTextGUI(new SameTextGUIThread.Factory(), screen);
             dialog.setTerminalColumnsSupplier(() -> columns);
+            // NZr sizes the option window from the terminal height, so the harness must report the
+            // virtual terminal's rows rather than leave the 40-row default in place.
+            dialog.setTerminalRowsSupplier(() -> rows);
             var window = new BasicWindow();
             window.setHints(Set.of(
                 Window.Hint.FULL_SCREEN,
@@ -513,11 +527,49 @@ class AskUserQuestionDialogTest {
     }
 
     @Test
-    void otherStaysVisibleWhenCardExceedsAssignedHeight() throws Exception {
-        // 4 options × (label + 2 wrapped CJK description lines) + header/question +
-        // Other/submit/hint = 17 rows squeezed into a 12-row window: SmartLayout clamps
-        // the overlay height, and the unfocused tail must not swallow Other (Ink shows
-        // the terminal tail; we anchor on the focused row instead).
+    void theOptionWindowShrinksAndShowsEdgeArrowsInAShortTerminal() throws Exception {
+        // NZr: a 14-row terminal leaves floor((14-8)/2) = 3 of the 5 AjE items on screen, and the
+        // window edges take iRl's dim arrows while more items sit beyond them.
+        Rendered r = new Rendered(40, 14, List.of(q("Where to?", true,
+            new QuestionPresenter.Option("Alpha", "desc", null),
+            new QuestionPresenter.Option("Bravo", "desc", null),
+            new QuestionPresenter.Option("Charlie", "desc", null),
+            new QuestionPresenter.Option("Delta", "desc", null))));
+
+        String top = r.render();
+        assertTrue(Strings.CS.contains(top, "❯ 1. [ ] Alpha"), "focus pointer on item 1");
+        assertTrue(Strings.CS.contains(top, "↓ 3. [ ] Charlie"),
+            "last visible row advertises more below; screen was:\n" + top);
+        assertFalse(Strings.CS.contains(top, "Delta"),
+            "the 4th item is outside the window; screen was:\n" + top);
+
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));    // focus Delta → window scrolls by one
+        String scrolled = r.render();
+        assertTrue(Strings.CS.contains(scrolled, "↑ 2. [ ] Bravo"),
+            "first visible row advertises more above; screen was:\n" + scrolled);
+        assertTrue(Strings.CS.contains(scrolled, "❯ 4. [ ] Delta"),
+            "the focused row keeps the pointer over the down arrow; screen was:\n" + scrolled);
+        assertFalse(Strings.CS.contains(scrolled, "Alpha"),
+            "the scrolled-off item must not be drawn; screen was:\n" + scrolled);
+
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));    // focus the Other row — the last AjE item
+        String onOther = r.render();
+        assertTrue(Strings.CS.contains(onOther, "❯ 5. [ ] 【T】ype something"),
+            "Other is reachable as the last window item; screen was:\n" + onOther);
+        assertTrue(Strings.CS.contains(onOther, "↑ 3. [ ] Charlie"),
+            "the window moved on by one and still advertises more above; screen was:\n" + onOther);
+        assertFalse(Strings.CS.contains(onOther, "Bravo"),
+            "Bravo scrolled out of the window; screen was:\n" + onOther);
+        r.close();
+    }
+
+    @Test
+    void theFooterSurvivesACardTallerThanItsAssignedHeight() throws Exception {
+        // Descriptions wrap to more rows than NZr's per-item estimate, so even a windowed card can
+        // outgrow the overlay. Ink would show the terminal tail; anchoring on the tail keeps the
+        // rule, the Chat about this row and the chord hint — the ways out — on screen.
         String desc = "去郊区森林公园走一条八公里左右的环线步道，沿途有溪流和开阔山顶草甸，天气好能看到天际线";
         Rendered r = new Rendered(40, 12, List.of(q("周末想去哪里玩？", true,
             new QuestionPresenter.Option("山野徒步", desc, null),
@@ -525,25 +577,20 @@ class AskUserQuestionDialogTest {
             new QuestionPresenter.Option("夜市美食", desc, null),
             new QuestionPresenter.Option("短途露营", desc, null))));
 
-        // focus starts on option 1 → top of the card is shown
-        assertTrue(Strings.CS.contains(r.render(), "1. [ ] 山野徒步"),
-            "top of the card must be visible initially");
+        String initial = r.render();
+        assertTrue(Strings.CS.contains(initial, "6. Chat about this"),
+            "the chat row must never be the clipped part; screen was:\n" + initial);
+        assertTrue(Strings.CS.contains(initial, "Enter to select"),
+            "the chord hint must stay visible; screen was:\n" + initial);
+        assertTrue(Strings.CS.contains(initial, "     Submit"),
+            "the submit row sits outside the window and stays visible; screen was:\n" + initial);
 
-        // arrow to option 4 → its label+description block stays visible
-        r.key(new KeyStroke(KeyType.ARROW_DOWN));
-        r.key(new KeyStroke(KeyType.ARROW_DOWN));
-        r.key(new KeyStroke(KeyType.ARROW_DOWN));
-        assertTrue(Strings.CS.contains(r.render(), "4. [ ] 短途露营"),
-            "focused option must stay visible while moving down");
-
-        // arrow to Other → bottom-anchored: Other input row and hint all visible
-        r.key(new KeyStroke(KeyType.ARROW_DOWN));
+        // the window holds 2 items here, so Other is two rows down
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // wraps straight onto the Other row
         String onOther = r.render();
         assertTrue(Strings.CS.contains(onOther, "【T】ype something"),
             "Other input row must be reachable and visible (dimmed placeholder, "
-                + "inverse cursor on its first char)");
-        // the multi-select hint exceeds 40 columns and clips its tail; assert its head
-        assertTrue(Strings.CS.contains(onOther, "tab to submit"), "hint row must be visible");
+                + "inverse cursor on its first char); screen was:\n" + onOther);
         r.type("想去海边");
         assertTrue(Strings.CS.contains(r.render(), "想去海边【 】"),
             "typed text on Other must be visible at the bottom");
@@ -663,7 +710,8 @@ class AskUserQuestionDialogTest {
         Harness h = new Harness(List.of(
             q("Q?", true, opt("A", null), opt("B", null), opt("C", null))));
         h.key(new KeyStroke('2', false, false));    // toggle B
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // wraps to the Other row
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         h.key(new KeyStroke(KeyType.ENTER));
         h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("B", h.await().get("Q?").answer());
@@ -675,7 +723,8 @@ class AskUserQuestionDialogTest {
         // characters typed while it is highlighted still land in the Other text.
         Harness h = new Harness(List.of(
             q("Q?", true, opt("A", null), opt("B", null))));
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // wraps to the Other row
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         h.type("typed from submit");
         h.key(new KeyStroke(KeyType.ENTER));        // Other text auto-selected → records
         h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
@@ -703,6 +752,67 @@ class AskUserQuestionDialogTest {
             q("Q?", false, opt("A", null), opt("B", null))));
         h.key(new KeyStroke(KeyType.ESCAPE));
         assertNull(h.await());
+        assertFalse(h.dialog.isActive());
+    }
+
+    // ── the Chat about this row (C51) and the non-wrapping downward walk ─────
+
+    @Test
+    void downFromTheLastItemWalksIntoSubmitThenChatWithoutWrapping() throws Exception {
+        Rendered r = new Rendered(60, 30, List.of(
+            q("Q?", true, opt("A", null), opt("B", null))));
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // B
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other — the last AjE item
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Submit row
+        assertTrue(Strings.CS.contains(r.render(), "❯    Submit"),
+            "down from the last item lands on Submit, not back on option 1");
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Chat about this
+        String onChat = r.render();
+        assertTrue(Strings.CS.contains(onChat, "❯ 4. Chat about this"),
+            "down from Submit lands on the chat row; screen was:\n" + onChat);
+        assertFalse(Strings.CS.contains(onChat, "❯ 1. "),
+            "the pointer leaves the select entirely; screen was:\n" + onChat);
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // nowhere left to go
+        assertTrue(Strings.CS.contains(r.render(), "❯ 4. Chat about this"),
+            "the chat row is the end of the walk — it never wraps to the top");
+        r.key(new KeyStroke(KeyType.ARROW_UP));     // back into the select, focus untouched
+        assertTrue(Strings.CS.contains(r.render(), "❯    Submit"),
+            "up from the chat row restores the selector focus where it was");
+        r.close();
+    }
+
+    @Test
+    void singleSelectDownFromTheLastItemSkipsStraightToTheChatRow() throws Exception {
+        Rendered r = new Rendered(60, 30, List.of(
+            q("Q?", false, opt("A", null), opt("B", null))));
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // B
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other
+        r.key(new KeyStroke(KeyType.ARROW_DOWN));   // no Submit row → the chat row
+        assertTrue(Strings.CS.contains(r.render(), "❯ 4. Chat about this"),
+            "a single-select card has no Submit row between Other and the chat row");
+        r.close();
+    }
+
+    @Test
+    void enterOnTheChatRowClarifiesInsteadOfAnswering() throws Exception {
+        Harness h = new Harness(List.of(
+            q("Q?", false, opt("A", null), opt("B", null))));
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // B
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // chat row
+        h.key(new KeyStroke(KeyType.ENTER));
+        var clarify = assertInstanceOf(QuestionOutcome.Clarify.class, h.outcome());
+        assertTrue(Strings.CS.contains(clarify.feedback(), "Q?"),
+            "the clarification feedback carries the question; was:\n" + clarify.feedback());
+        assertFalse(h.dialog.isActive());
+    }
+
+    @Test
+    void theChatRowsOwnDigitClarifiesFromAnywhereOnTheCard() throws Exception {
+        Harness h = new Harness(List.of(
+            q("Q?", false, opt("A", null), opt("B", null))));
+        h.key(new KeyStroke('4', false, false));    // options.length + 2 — the chat row
+        assertInstanceOf(QuestionOutcome.Clarify.class, h.outcome());
         assertFalse(h.dialog.isActive());
     }
 
@@ -750,12 +860,16 @@ class AskUserQuestionDialogTest {
     void enterWithoutChoiceIsIgnored() throws Exception {
         Harness h = new Harness(List.of(
             q("Q?", true, opt("A", null), opt("B", null))));
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // wrap to Submit row
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // wraps to the Other row
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         h.key(new KeyStroke(KeyType.ENTER));        // nothing selected → ignored
         assertTrue(h.dialog.isActive(), "empty multi-select submit must be ignored");
-        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // wrap to option A
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // Submit → Other
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // Other → B
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // B → A
         h.key(new KeyStroke(' ', false, false));    // toggle A
-        h.key(new KeyStroke(KeyType.ARROW_UP));     // back to Submit row
+        h.key(new KeyStroke(KeyType.ARROW_UP));     // wraps to the Other row
+        h.key(new KeyStroke(KeyType.ARROW_DOWN));   // Other → Submit row
         h.key(new KeyStroke(KeyType.ENTER));
         h.key(new KeyStroke(KeyType.ENTER));        // review screen → Submit answers
         assertEquals("A", h.await().get("Q?").answer());

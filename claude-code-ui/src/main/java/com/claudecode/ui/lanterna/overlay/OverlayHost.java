@@ -1,6 +1,8 @@
 package com.claudecode.ui.lanterna.overlay;
 
 import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.MouseAction;
+import com.googlecode.lanterna.input.MouseActionType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -77,11 +79,21 @@ public final class OverlayHost {
     public boolean route(KeyStroke key, AtomicBoolean deliver) {
         InlineOverlay active = activeOverlay();
         if (active == null) return false;
+        // The wheel is a terminal gesture, not a keybinding: the released client keeps scrolling
+        // the transcript while a question card is pending. Decline it here — untouched `deliver`
+        // included — so the window router reaches its own MOUSE_EVENT branch.
+        if (isMouseWheel(key) && !active.consumesMouseWheel()) return false;
         active.handleKey(key, deliver);
         // A modal surface owns the complete terminal input stream. Even a key
         // it does not understand must never fall through to the model prompt.
         deliver.set(false);
         return true;
+    }
+
+    private static boolean isMouseWheel(KeyStroke key) {
+        return key instanceof MouseAction mouse
+            && (mouse.getActionType() == MouseActionType.SCROLL_UP
+                || mouse.getActionType() == MouseActionType.SCROLL_DOWN);
     }
 
     private synchronized InlineOverlay activeOverlay() {
