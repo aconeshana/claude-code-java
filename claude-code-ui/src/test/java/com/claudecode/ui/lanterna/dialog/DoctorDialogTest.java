@@ -63,12 +63,84 @@ class DoctorDialogTest {
         assertFalse(d.isActive());
     }
 
+    /** A collector that parks until released, so LOADING can be observed deterministically. */
+    private static DoctorDialog gatedDialog(CountDownLatch release) {
+        return new DoctorDialog(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+            return emptyReport();
+        });
+    }
+
     @Test
     void show_synchronouslyTransitionsToLoading() {
-        DoctorDialog d = newDialog();
+        // Gate the collector rather than racing it: with the default collector the scan
+        // can reach REPORT before the assertion runs, which made this test fail only
+        // under full-suite load.
+        CountDownLatch release = new CountDownLatch(1);
+        DoctorDialog d = gatedDialog(release);
+        try {
+            d.show(() -> {});
+            assertEquals(DoctorDialog.PublicState.LOADING_S, d.visibleState());
+            assertTrue(d.isActive());
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void dismissDuringScan_isNotUndoneWhenTheScanFinishes() throws InterruptedException {
+        CountDownLatch release = new CountDownLatch(1);
+        DoctorDialog d = gatedDialog(release);
         d.show(() -> {});
-        assertEquals(DoctorDialog.PublicState.LOADING_S, d.visibleState());
-        assertTrue(d.isActive());
+
+        d.handleKey(new KeyStroke(KeyType.ESCAPE), new AtomicBoolean(true));
+        assertEquals(DoctorDialog.PublicState.HIDDEN_S, d.visibleState());
+
+        release.countDown();
+        assertFalse(becomesReport(d), "a scan that finishes after Esc must not reopen the dialog");
+    }
+
+    @Test
+    void reopeningDuringScan_ignoresTheAbandonedScan() throws InterruptedException {
+        CountDownLatch firstScan = new CountDownLatch(1);
+        CountDownLatch secondScan = new CountDownLatch(1);
+        AtomicInteger scans = new AtomicInteger();
+        DoctorDialog d = new DoctorDialog(() -> {
+            CountDownLatch gate = scans.incrementAndGet() == 1 ? firstScan : secondScan;
+            try {
+                gate.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+            return emptyReport();
+        });
+
+        d.show(() -> {});
+        d.handleKey(new KeyStroke(KeyType.ESCAPE), new AtomicBoolean(true));
+        d.show(() -> {});
+
+        // The abandoned first scan completes last; the dialog must still be waiting on
+        // the second one rather than showing a report nobody asked for.
+        firstScan.countDown();
+        assertFalse(becomesReport(d), "the superseded scan must not publish");
+
+        secondScan.countDown();
+        awaitReport(d);
+        assertEquals(DoctorDialog.PublicState.REPORT_S, d.visibleState());
+    }
+
+    /** True if the dialog reaches REPORT within a short grace period. */
+    private boolean becomesReport(DoctorDialog d) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 500;
+        while (System.currentTimeMillis() < deadline) {
+            if (d.visibleState() == DoctorDialog.PublicState.REPORT_S) return true;
+            Thread.sleep(10);
+        }
+        return false;
     }
 
     @Test
@@ -84,14 +156,7 @@ class DoctorDialogTest {
     @Test
     void loadingState_swallowsKeysWithoutChangingState() throws InterruptedException {
         CountDownLatch release = new CountDownLatch(1);
-        DoctorDialog d = new DoctorDialog(() -> {
-            try {
-                release.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-            }
-            return emptyReport();
-        });
+        DoctorDialog d = gatedDialog(release);
         try {
             d.show(() -> {});
             AtomicBoolean deliver = new AtomicBoolean(true);
@@ -119,14 +184,7 @@ class DoctorDialogTest {
         CountDownLatch release = new CountDownLatch(1);
         try {
             AtomicInteger dismissed = new AtomicInteger();
-            DoctorDialog d = new DoctorDialog(() -> {
-                try {
-                    release.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                }
-                return emptyReport();
-            });
+            DoctorDialog d = gatedDialog(release);
             d.setKeybindingsStore(store);
             d.show(dismissed::incrementAndGet);
 
@@ -199,17 +257,16 @@ class DoctorDialogTest {
     }
 
     @Test
-    void collectorFailure_stillReachesReportWithFallbackLine() {
+    void collectorFailure_stillReachesReportWithFallbackLine() throws InterruptedException {
         DoctorDialog d = new DoctorDialog(
             () -> { throw new RuntimeException("boom"); });
 
         CountDownLatch latch = new CountDownLatch(1);
         d.show(latch::countDown);
 
-        long deadline = System.currentTimeMillis() + 5000;
-        while (d.visibleState() == DoctorDialog.PublicState.LOADING_S) {
-            if (System.currentTimeMillis() > deadline) fail("timed out waiting for REPORT state");
-        }
+        // Spinning without yielding pegged a core for as long as the scan took, which
+        // starved the very thread this test waits on when the suite runs in parallel.
+        awaitReport(d);
 
         assertEquals(DoctorDialog.PublicState.REPORT_S, d.visibleState());
         assertEquals(1, d.lineCount());

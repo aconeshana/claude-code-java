@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
@@ -61,6 +62,13 @@ public final class DoctorDialog extends Panel implements InlineOverlay {
     private volatile List<ReportLine> lines = List.of();
     private volatile int scrollOffset = 0;
 
+    /**
+     * Identifies the scan a result belongs to. Bumped by every {@link #show}, so a
+     * scan that was still running when the user closed or reopened the dialog can
+     * recognise itself as stale and drop its result.
+     */
+    private final AtomicLong scanGeneration = new AtomicLong();
+
     private Runnable onDismiss;
 
     public DoctorDialog(DoctorPort doctor) {
@@ -89,23 +97,33 @@ public final class DoctorDialog extends Panel implements InlineOverlay {
         this.scrollOffset = 0;
         invalidate();
 
-        Thread.ofVirtual().name("doctor-scan").start(this::loadReport);
+        long generation = scanGeneration.incrementAndGet();
+        Thread.ofVirtual().name("doctor-scan").start(() -> loadReport(generation));
     }
 
     @Override public boolean isActive() { return state != State.HIDDEN; }
 
-    private void loadReport() {
+    private void loadReport(long generation) {
+        List<ReportLine> rendered;
         try {
-            DoctorReport report = doctor.collect();
-
-            this.lines = renderLines(report);
-            this.state = State.REPORT;
-            invalidate();
+            rendered = renderLines(doctor.collect());
         } catch (Throwable t) {
-            this.lines = List.of(ReportLine.error("Diagnostics failed to complete: " + t.getMessage()));
-            this.state = State.REPORT;
-            invalidate();
+            rendered = List.of(ReportLine.error("Diagnostics failed to complete: " + t.getMessage()));
         }
+        publish(generation, rendered);
+    }
+
+    /**
+     * Hand a finished scan to the UI, unless the dialog has moved on without it.
+     * Diagnostics can take seconds, and publishing unconditionally meant an Esc
+     * during the scan only appeared to close the dialog: the in-flight scan
+     * reopened it later with no user action behind it.
+     */
+    private synchronized void publish(long generation, List<ReportLine> rendered) {
+        if (generation != scanGeneration.get() || state != State.LOADING) return;
+        this.lines = rendered;
+        this.state = State.REPORT;
+        invalidate();
     }
 
     private static List<ReportLine> renderLines(DoctorReport report) {
