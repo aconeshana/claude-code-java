@@ -3,6 +3,8 @@ package com.claudecode.ui.lanterna.repl;
 import com.claudecode.runtime.shutdown.ShutdownPort;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.InvocationTargetException;
@@ -14,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Exit gesture and worktree-shutdown state-machine coverage. */
@@ -191,6 +194,27 @@ class ReplExitControllerTest {
     @Test
     void registersOnlyUserRequestedSuspendSignal() {
         assertEquals(List.of("TSTP"), ReplExitController.jobControlSignals());
+    }
+
+    @Test
+    void ctrlZIsRecognisedAsTheSuspendGesture() {
+        assertTrue(ReplExitController.isSuspendGesture(new KeyStroke('z', true, false)));
+    }
+
+    @Test
+    void suspendGestureIgnoresEverythingElseThatCouldReachTheInputPanel() {
+        // The tty hands us a plain keystroke, so this predicate is the only thing
+        // standing between Ctrl+Z and the prompt. Anything looser would eat real input.
+        assertFalse(ReplExitController.isSuspendGesture(new KeyStroke('z', false, false)),
+            "a typed z must stay typed");
+        assertFalse(ReplExitController.isSuspendGesture(new KeyStroke('Z', true, false)),
+            "ctrl+shift+z is the redo gesture, not suspend");
+        assertFalse(ReplExitController.isSuspendGesture(new KeyStroke('z', true, true)),
+            "ctrl+alt+z is a distinct chord");
+        assertFalse(ReplExitController.isSuspendGesture(new KeyStroke('c', true, false)),
+            "ctrl+c has its own handler");
+        assertFalse(ReplExitController.isSuspendGesture(new KeyStroke(KeyType.ESCAPE)));
+        assertFalse(ReplExitController.isSuspendGesture(null));
     }
 
     @Test

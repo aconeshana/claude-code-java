@@ -7,6 +7,8 @@ import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
 import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.googlecode.lanterna.gui2.Component;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -174,6 +176,24 @@ final class ReplExitController implements ReplFeature {
      */
     static List<String> jobControlSignals() {
         return List.of("TSTP");
+    }
+
+    /**
+     * Recognises Ctrl+Z as the tty would have, because the tty no longer does.
+     * The TUI runs with ISIG cleared, so this byte arrives as an ordinary
+     * keystroke instead of SIGTSTP and nothing stops the process unless we act
+     * on it. It is deliberately not a keybinding — the original lists ctrl+z as
+     * terminal-reserved, so it must not be rebindable or swallowed by whatever
+     * happens to hold focus.
+     */
+    static boolean isSuspendGesture(KeyStroke key) {
+        return key != null
+            && key.getKeyType() == KeyType.CHARACTER
+            && key.getCharacter() != null
+            && key.getCharacter() == 'z'
+            && key.isCtrlDown()
+            && !key.isAltDown()
+            && !key.isShiftDown();
     }
 
     private void registerSignal(String signalName, Runnable action, boolean warnOnFailure) {

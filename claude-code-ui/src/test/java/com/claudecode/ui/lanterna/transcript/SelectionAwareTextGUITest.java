@@ -171,6 +171,47 @@ class SelectionAwareTextGUITest {
     }
 
     @Test
+    void terminalGestureOutranksTheInlineOverlay() throws Exception {
+        Env e = env(20, 4);
+        AtomicInteger overlay = new AtomicInteger();
+        AtomicInteger gesture = new AtomicInteger();
+        e.gui.wireInlineOverlayInput(_ -> {
+            overlay.incrementAndGet();
+            return true;
+        });
+        e.gui.wireTerminalGestures(key -> {
+            if (key.getKeyType() != KeyType.CHARACTER || key.getCharacter() != 'z') return false;
+            gesture.incrementAndGet();
+            return true;
+        });
+
+        assertTrue(e.gui.handleInput(new KeyStroke('z', true, false)));
+        assertEquals(1, gesture.get());
+        assertEquals(0, overlay.get(), "a modal overlay must not be able to swallow suspend");
+
+        // Everything the gesture declines still reaches the overlay untouched.
+        assertTrue(e.gui.handleInput(new KeyStroke(KeyType.ARROW_DOWN)));
+        assertEquals(1, overlay.get());
+    }
+
+    @Test
+    void terminalGestureIsReachedFromInsideAReplayedTextBatch() throws Exception {
+        Env e = env(20, 4);
+        AtomicInteger gesture = new AtomicInteger();
+        e.gui.wireTerminalGestures(key -> {
+            if (key.getKeyType() != KeyType.CHARACTER || key.getCharacter() != 'z') return false;
+            gesture.incrementAndGet();
+            return true;
+        });
+        // The fast path declines, so the batch is replayed character by character —
+        // the gesture must still be seen rather than typed into the focused editor.
+        e.gui.wirePlainTextBatch((_, _) -> false);
+
+        assertTrue(e.gui.handleInput(new PlainTextKeyStroke("az")));
+        assertEquals(1, gesture.get());
+    }
+
+    @Test
     void unwiredGuiLeavesMouseEventsToNormalDispatch() throws Exception {
         Env e = env(20, 4);
         // No wireSelection: must not throw, falls through to super.

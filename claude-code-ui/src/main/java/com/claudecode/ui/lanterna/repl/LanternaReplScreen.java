@@ -1028,6 +1028,22 @@ public class LanternaReplScreen implements SlashHost {
         }
     }
 
+    /**
+     * Puts the tty back into raw mode after the shell had it. Lanterna applies those
+     * settings once, when it acquires the terminal, so a process that was stopped and
+     * resumed comes back to whatever the shell left behind — echoing keypresses and
+     * buffering them by line. Must run before the screen is started so the redraw
+     * lands on a terminal that is already ours again.
+     */
+    private void reapplyRawModeAfterHandoff() {
+        if (!(terminal instanceof CompactAnsiTerminal compact)) return;
+        try {
+            compact.reapplyRawMode();
+        } catch (Exception e) {
+            log.debug("[LANTERNA] raw-mode reapply failed (non-fatal)", e);
+        }
+    }
+
     private void suspendForJobControl() {
         disableMouseBeforeHandoff();
         try {
@@ -1060,6 +1076,7 @@ public class LanternaReplScreen implements SlashHost {
 
     private void resumeAfterJobControl() {
         try {
+            reapplyRawModeAfterHandoff();
             screen.startScreen();
             restoreMouseAfterHandoff();
             screen.refresh(RefreshType.COMPLETE);

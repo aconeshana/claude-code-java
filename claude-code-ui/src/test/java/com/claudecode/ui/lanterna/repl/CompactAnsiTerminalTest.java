@@ -9,8 +9,12 @@ import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.MouseCaptureMode;
+import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
+import java.io.ByteArrayInputStream;
+import java.io.OutputStream;
 import java.io.StringReader;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -193,6 +197,53 @@ class CompactAnsiTerminalTest {
         MouseAction wheel = (MouseAction) terminal.readInput();
         assertEquals(MouseActionType.SCROLL_UP, wheel.getActionType());
         assertEquals(4, wheel.getButton(), "wheel buttons are not remapped");
+    }
+
+    @Test
+    void resumingAfterJobControlPutsTheTtyBackIntoRawMode() throws Exception {
+        RecordingUnixTerminal tty = new RecordingUnixTerminal();
+        tty.settings.clear();
+
+        new CompactAnsiTerminal(tty).reapplyRawMode();
+
+        assertEquals(List.of("canonical:false", "echo:false", "signals:false"), tty.settings,
+            "a shell had the terminal while we were stopped; raw mode has to be reinstalled");
+    }
+
+    @Test
+    void reapplyingRawModeIsANoOpForATerminalThatNeverOwnedTermios() throws Exception {
+        List<String> calls = new ArrayList<>();
+
+        new CompactAnsiTerminal(fakeTerminal(calls)).reapplyRawMode();
+
+        assertEquals(List.of(), calls, "nothing to restore, and nothing to fail on");
+    }
+
+    /** A {@link UnixLikeTerminal} that books the tty settings instead of running stty. */
+    private static final class RecordingUnixTerminal extends UnixLikeTerminal {
+        // Not a field initialiser: the super constructor acquires the terminal, so these
+        // callbacks already fire before this subclass's own fields come into existence.
+        private List<String> settings;
+
+        RecordingUnixTerminal() throws Exception {
+            super(new ByteArrayInputStream(new byte[0]), OutputStream.nullOutputStream(),
+                StandardCharsets.UTF_8, CtrlCBehaviour.TRAP);
+        }
+
+        private void book(String setting) {
+            if (settings == null) settings = new ArrayList<>();
+            settings.add(setting);
+        }
+
+        @Override protected void registerTerminalResizeListener(Runnable onResize) { }
+        @Override protected void saveTerminalSettings() { book("save"); }
+        @Override protected void restoreTerminalSettings() { book("restore"); }
+        @Override protected void keyEchoEnabled(boolean enabled) { book("echo:" + enabled); }
+        @Override protected void canonicalMode(boolean enabled) { book("canonical:" + enabled); }
+        @Override protected void keyStrokeSignalsEnabled(boolean enabled) {
+            book("signals:" + enabled);
+        }
+        @Override protected TerminalSize findTerminalSize() { return new TerminalSize(120, 40); }
     }
 
     private static ExtendedTerminal fakeInputTerminal(

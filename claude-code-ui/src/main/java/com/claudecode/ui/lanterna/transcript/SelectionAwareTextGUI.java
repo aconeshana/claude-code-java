@@ -57,6 +57,7 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
     private volatile BiPredicate<Interactable, String> plainTextBatchHandler = (_, _) -> false;
     private volatile BiPredicate<Interactable, Integer> backspaceBatchHandler = (_, _) -> false;
     private volatile Predicate<KeyStroke> inlineOverlayInputHandler = _ -> false;
+    private volatile Predicate<KeyStroke> terminalGestureHandler = _ -> false;
 
     public SelectionAwareTextGUI(TextGUIThreadFactory guiThreadFactory, Screen screen) {
         super(guiThreadFactory, screen);
@@ -103,6 +104,16 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
         inlineOverlayInputHandler = handler != null ? handler : _ -> false;
     }
 
+    /**
+     * Wires the gestures a terminal would normally have handled for us, ahead of
+     * everything else. These are not keybindings and must not become rebindable:
+     * they are the escape hatches a user expects from any program occupying the
+     * terminal, so no overlay, modal or focused editor may swallow them first.
+     */
+    public void wireTerminalGestures(Predicate<KeyStroke> handler) {
+        terminalGestureHandler = handler != null ? handler : _ -> false;
+    }
+
     @Override
     public synchronized boolean processInput() throws IOException {
         inputBatchStart.run();
@@ -122,6 +133,9 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
      */
     @Override
     public synchronized boolean handleInput(KeyStroke key) {
+        // Ahead of the batch branches: a reserved gesture buried in a replayed run
+        // still has to reach its handler rather than the focused editor.
+        if (terminalGestureHandler.test(key)) return true;
         if (key instanceof PlainTextKeyStroke batch) {
             if (plainTextBatchHandler.test(getFocusedInteractable(), batch.text())) return true;
             // Modal/overlay/stateful editors decline the fast path. Replay the

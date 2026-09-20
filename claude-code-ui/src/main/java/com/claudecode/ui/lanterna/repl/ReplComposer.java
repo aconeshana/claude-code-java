@@ -568,6 +568,11 @@ final class ReplComposer {
                 && inputPanel.handleGuiBackspaceBatch(focused, count);
         });
         gui.wireInlineOverlayInput(scene.overlays()::routeDirect);
+        gui.wireTerminalGestures(key -> {
+            if (!ReplExitController.isSuspendGesture(key)) return false;
+            exit.handleJobControlSuspend("ctrl-z");
+            return true;
+        });
 
         String initialSessionName = StringUtils.trimToNull(launch.initialSessionName());
         if (initialSessionName != null) inputPanel.setAgentName(initialSessionName);

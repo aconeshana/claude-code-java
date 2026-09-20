@@ -14,6 +14,7 @@ import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.MouseCaptureMode;
 import com.googlecode.lanterna.terminal.TerminalResizeListener;
+import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -183,6 +184,19 @@ final class CompactAnsiTerminal implements ExtendedTerminal {
     @Override public void setClipboardOSC52(String base64) throws IOException { delegate.setClipboardOSC52(base64); }
     @Override public void queryDecMode(int mode) throws IOException { delegate.queryDecMode(mode); }
     @Override public void queryDeviceAttributes() throws IOException { delegate.queryDeviceAttributes(); }
+
+    /**
+     * Re-applies the tty's raw-mode settings after the process was stopped and resumed.
+     * The shell reconfigures the terminal for itself while we are suspended and nothing
+     * undoes that, so without this a resumed session runs on a cooked terminal: the
+     * kernel echoes every keypress and buffers input by line.
+     *
+     * <p>Only meaningful for a real tty; a terminal that never owned termios has
+     * nothing to restore.
+     */
+    void reapplyRawMode() throws IOException {
+        if (delegate instanceof UnixLikeTerminal unix) unix.reapplyTerminalSettings();
+    }
 
     private void syncCursorIfNeeded() throws IOException {
         if (!cursorSyncPending) return;
