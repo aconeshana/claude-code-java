@@ -1,0 +1,16 @@
+/* Chat-history image gallery: single large preview or a multi-image tile row (ui-attachment MessageImage.tsx's gallery/frame structure). */
+.gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+.frame {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin, var(--dsw-alias-border-l1));
+  border-radius: 16px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.frame[data-variant='single'] { max-width: 240px; max-height: 240px; }
+.frame[data-variant='tile'] { width: 64px; height: 64px; }
+.image { display: block; }
+.frame[data-variant='single'] .image { max-width: 240px; max-height: 240px; width: auto; height: auto; object-fit: contain; }
+.frame[data-variant='tile'] .image { width: 100%; height: 100%; object-fit: cover; }

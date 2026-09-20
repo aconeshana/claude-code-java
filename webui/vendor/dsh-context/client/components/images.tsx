@@ -53,7 +53,7 @@ export function imageRefOf(block: unknown): ImageRefLike | null {
  * not seed) ported onto the plugin's lc-* classes: body portal (a transformed/filtered ancestor cannot trap the fixed backdrop), blurred
  * mask, contain-fit image, circular close, Escape/mask close, focus restored to the opener.
  */
-function AttachmentLightbox(props: {
+export function AttachmentLightbox(props: {
   src: string
   alt: string
   labels: { dialog: string; close: string }

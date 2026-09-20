@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { MessagesSnapshot, MirrorFrame, SnapshotMessage, TurnUsage } from '../api/types'
+import type { MessageImageAttachment, MessagesSnapshot, MirrorFrame, SnapshotMessage, TurnUsage } from '../api/types'
 
 /**
  * Per-session conversation state: the snapshot is the authority, mirror
@@ -60,7 +60,8 @@ export type MessageState =
   | AssistantMessageState
   | { readonly kind: 'user'; readonly id: string; readonly text: string
     /** Durable transcript timestamp, epoch ms — the user row's leading clock. */
-    readonly time?: number }
+    readonly time?: number
+    readonly images?: readonly MessageImageAttachment[] }
 
 export interface ConversationState {
   readonly messages: readonly MessageState[]
@@ -122,8 +123,9 @@ function toMessageState(message: SnapshotMessage): MessageState {
     return {
       kind: 'user',
       id: message.id,
-      text: message.text,
+      text: message.text ?? '',
       ...(message.time !== undefined ? { time: message.time } : {}),
+      ...(message.images !== undefined ? { images: message.images } : {}),
     }
   }
   const textBlocks: string[] = []
@@ -171,6 +173,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         id: `live-user-${frame.id}`,
         text: frame.data.display_text,
         ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
+        ...(frame.data.images !== undefined ? { images: frame.data.images } : {}),
       }
       return {
         ...state,

@@ -4,6 +4,7 @@ import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.TextBlock;
@@ -149,8 +150,7 @@ final class GatewayMessagesSnapshotHandler {
             AssistantContent envelope = message.message();
             Usage usage = envelope == null ? null : envelope.usage();
             if (usage != null) {
-                entry.set("turn_usage", turnUsageBody(usage,
-                    envelope == null ? null : envelope.model()));
+                entry.set("turn_usage", turnUsageBody(usage, envelope.model()));
             }
         }
         ArrayNode content = entry.putArray("content");
@@ -186,19 +186,25 @@ final class GatewayMessagesSnapshotHandler {
         return node;
     }
 
-    /** One user message's textual content, when it carries any. */
+    /** One user message's textual and image content, when it carries any. */
     private static ObjectNode userEntry(UserMessage message) {
         MessageContent content = message.message();
         if (content == null) return null;
         String text = content.text();
+        ArrayNode images = JsonUtils.getMapper().createArrayNode();
         if (text == null && content.blocks() != null) {
             StringBuilder body = new StringBuilder();
             for (ContentBlock block : content.blocks()) {
                 if (block instanceof TextBlock(String text1)) body.append(text1);
+                else if (block instanceof ImageBlock image) addImage(images, image);
             }
             text = body.isEmpty() ? null : body.toString();
+        } else if (content.blocks() != null) {
+            for (ContentBlock block : content.blocks()) {
+                if (block instanceof ImageBlock image) addImage(images, image);
+            }
         }
-        if (StringUtils.isBlank(text)) return null;
+        if (StringUtils.isBlank(text) && images.isEmpty()) return null;
         ObjectNode entry = JsonUtils.getMapper().createObjectNode();
         if (message.uuid() != null) entry.put("id", message.uuid());
         entry.put("role", "user");
@@ -207,8 +213,25 @@ final class GatewayMessagesSnapshotHandler {
         // the clock before the copy/branch icons on user rows).
         message.timestamp().map(Instant::toEpochMilli)
             .ifPresent(time -> entry.put("time", time));
-        entry.put("text", text);
+        if (StringUtils.isNotBlank(text)) entry.put("text", text);
+        if (!images.isEmpty()) entry.set("images", images);
         return entry;
+    }
+
+    /**
+     * Appends one {@code {media_type, data}} entry from an {@link ImageBlock}'s
+     * base64 source — the same shape the webui submits images in, so the wire
+     * is symmetric in both directions.
+     */
+    private static void addImage(ArrayNode images, ImageBlock image) {
+        JsonNode source = image.source();
+        if (source == null) return;
+        String data = source.path("data").asText(null);
+        if (data == null) return;
+        ObjectNode node = images.addObject();
+        String mediaType = source.path("media_type").asText(null);
+        if (mediaType != null) node.put("media_type", mediaType);
+        node.put("data", data);
     }
 
     /**

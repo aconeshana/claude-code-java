@@ -14,6 +14,7 @@ import { useSessions } from '../store/sessions'
 import { ContextJumpButton } from './context/ContextJumpButton'
 import { MessageIconActions } from '../../vendor/dsh-stats-pills/MessageIconActions'
 import { TurnTimePanel, TurnUsagePanel } from '../../vendor/dsh-stats-pills/TurnUsagePanel'
+import { ImageGallery } from '../../vendor/ui-attachment/MessageImages'
 import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
 
 /**
@@ -38,7 +39,10 @@ export function MessageItem({ message, hideReasoning = false }: {
     return (
       <div className={css.userRow}>
         <div className={css.userStack}>
-          <div className={css.bubble}>{message.text}</div>
+          {message.images !== undefined && message.images.length > 0 && (
+            <ImageGallery images={message.images} />
+          )}
+          {message.text !== '' && <div className={css.bubble}>{message.text}</div>}
         </div>
         <MessageIconActions
           text={message.text}

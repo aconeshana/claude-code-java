@@ -927,6 +927,20 @@ components:
         content:
           type: array
           items: { $ref: '#/components/schemas/MessageContentBlock' }
+        text:
+          type: string
+          description: A user row's text, when it carries any (this schema also serves the user-row shape)
+        images:
+          type: array
+          items: { $ref: '#/components/schemas/MessageImageAttachment' }
+          description: Inline image attachments on a user row; absent when none
+    MessageImageAttachment:
+      type: object
+      required: [media_type, data]
+      description: One inline image, the same shape the client submits attachments in
+      properties:
+        media_type: { type: string, description: 'e.g. image/png, image/jpeg' }
+        data: { type: string, description: Base64-encoded image bytes }
     TurnUsage:
       type: object
       description: |
@@ -1093,6 +1107,10 @@ components:
         origin: { type: string }
         time: { type: integer, format: int64, description: The user row's leading clock, epoch ms }
         session_id: { type: string }
+        images:
+          type: array
+          items: { $ref: '#/components/schemas/MessageImageAttachment' }
+          description: Inline image attachments pasted into this turn, chip-id order; absent when none
     FrameOutputText:
       type: object
       required: [content, session_id]

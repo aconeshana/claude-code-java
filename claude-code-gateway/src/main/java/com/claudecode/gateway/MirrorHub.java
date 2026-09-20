@@ -5,6 +5,7 @@ import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
@@ -292,7 +293,28 @@ public final class MirrorHub {
         // Epoch ms for the live user row's leading clock label — the same
         // fact the snapshot path stamps on its user entries.
         payload.put("time", System.currentTimeMillis());
+        ArrayNode images = pastedImages(input);
+        if (!images.isEmpty()) payload.set("images", images);
         publish(sessionId, "turn.started", payload);
+    }
+
+    /**
+     * The turn's pasted images, chip-id order — the same {@code {media_type,
+     * data}} shape the snapshot path projects from {@code ImageBlock}, so
+     * the live and replay paths render identically.
+     */
+    private static ArrayNode pastedImages(UserInput input) {
+        ArrayNode images = JsonUtils.getMapper().createArrayNode();
+        input.pasted().entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(Map.Entry::getValue)
+            .filter(PastedContent::isImage)
+            .forEach(pasted -> {
+                ObjectNode node = images.addObject();
+                if (pasted.mediaType() != null) node.put("media_type", pasted.mediaType());
+                node.put("data", pasted.content());
+            });
+        return images;
     }
 
     private void onMessage(String sessionId, SDKMessage msg) {

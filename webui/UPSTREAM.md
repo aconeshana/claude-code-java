@@ -713,6 +713,47 @@ pick up a utility class.
 - **Dashboard has no workspace group chips** (no `useWorkspaces` seat); a card
   click selects the session through `useSessions.select`.
 
+### `vendor/ui-attachment/` — chat-history image gallery + lightbox
+
+Real image previews for pasted-image user turns, replacing the plain
+`[Image #N]` text placeholder that was the only rendering before this
+package existed. From `ui-attachment/src/client/MessageImage.tsx`
+(single/tile layout) and `ui-attachment/src/client/ImageLightbox.tsx`
+(click-to-enlarge), read via `gh api` before porting anything.
+
+| File here | Upstream source | Notes |
+|-----------|-----------------|-------|
+| `MessageImages.tsx` (`ImageGallery`) | `client/MessageImage.tsx` | The `single`/`tile` variant split is ported (one image renders large and uncropped; two or more render as a fixed square row). The click-opens-lightbox interaction is ported. `thumbnail` (upstream's third, 48px uncropped variant) is not needed here and is not ported. |
+| lightbox | `client/ImageLightbox.tsx` | Not re-ported: this app already has an adapted line-for-line port of the same upstream component at `vendor/dsh-context/client/components/images.tsx`'s `AttachmentLightbox` (portal to `document.body`, blurred mask, Escape/mask/close-button dismiss, focus restored to the opener), consuming the already-vendored `.lc-att-lightbox*` classes in `vendor/dsh-context/styles/attachments.css`. `AttachmentLightbox` was exported (it was previously private to that file) and is imported directly here so both call sites share one implementation and one set of tokens instead of a duplicate copy. |
+
+Product-scope deviations (documented, not gaps):
+
+- **Inline base64, not a durable attachment reference.** Upstream's
+  multimodal pipeline stores a normalized reference per image and loads
+  bytes lazily through an `ImageLoader` (an async `(attachment) =>
+  Promise<string>` the harness backend serves). This app has no such
+  store: the gateway projects the same base64 `{media_type, data}` shape
+  the client already submits attachments in, straight into the
+  `messages[]` snapshot row (`GatewayMessagesSnapshotHandler.userEntry`)
+  and the `turn.started` mirror frame (`MirrorHub.onTurnStart`). Images
+  are bounded by `ImageResizer`'s existing pre-send compression
+  (2000×2000px, ~3.75MB raw / 5MB base64 cap), so snapshot payload growth
+  stays bounded without a lazy-load path. `ImageLoader`, its `peek`
+  prefetch, and all loading/error/retry UI states are cut — the bytes are
+  already in hand when the row renders, so there is no load to await or
+  retry.
+- **`singleFit()`'s precomputed bounding box is not ported.** Upstream
+  computes a scaled box from stored width/height *before* the image
+  loads, so an async `ImageLoader` fetch has a jank-free placeholder to
+  grow into. This app's images arrive already inline (no async load, no
+  placeholder to reserve), and the wire payload carries no width/height
+  metadata at all (only `media_type`/`data`) — so sizing is plain CSS
+  (`max-width`/`max-height` + `object-fit: contain` for `single`,
+  `object-fit: cover` on a fixed 64px box for `tile`) instead of a ported
+  layout formula. The visual outcome (never upscale past the natural
+  size, cap the long edge, crop multi-image tiles to a square) is the
+  same; only the mechanism (CSS vs. precomputed JS box) differs.
+
 ## Local modifications
 
 Keep this list complete; each entry needs a reason.

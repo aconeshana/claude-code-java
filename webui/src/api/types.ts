@@ -111,7 +111,15 @@ export interface SnapshotUserMessage {
   readonly complete: boolean
   /** Durable transcript timestamp, epoch ms — the user row's leading clock. */
   readonly time?: number
-  readonly text: string
+  /** Absent on an image-only row (no accompanying text). */
+  readonly text?: string
+  readonly images?: readonly MessageImageAttachment[]
+}
+
+/** One inline image attachment — the same shape the client submits images in. */
+export interface MessageImageAttachment {
+  readonly media_type: string
+  readonly data: string
 }
 
 export type SnapshotMessage = SnapshotAssistantMessage | SnapshotUserMessage
@@ -133,6 +141,7 @@ export type MirrorFrame =
       readonly origin: string
       /** The user row's leading clock label, epoch ms. */
       readonly time?: number
+      readonly images?: readonly MessageImageAttachment[]
     } }
   | { readonly event: 'output.text'; readonly id: number; readonly data: {
       readonly session_id: string
