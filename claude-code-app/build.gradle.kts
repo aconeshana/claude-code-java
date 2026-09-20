@@ -149,6 +149,11 @@ val buildWebui = tasks.register<Exec>("buildWebui") {
             "tsconfig.json", "UPSTREAM.md")
         include("src/**")
         include("vendor/**")
+        // Brand assets (see docs/brand-assets.md). vite copies public/ verbatim
+        // into dist, so an icon edit changes the bundle without touching any
+        // file listed above — without this the task stays up-to-date and the
+        // JAR packages the previous icons.
+        include("public/**")
     })
     outputs.dir(webuiDir.dir("dist/webui"))
     // Skip (rather than fail) where pnpm is absent — the JAR then packages

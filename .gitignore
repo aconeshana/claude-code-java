@@ -103,3 +103,8 @@ webui/*.tsbuildinfo
 
 # Eclipse JDT language-server output (Cursor/VS Code Java extension); Gradle uses build/
 bin/
+
+# Large brand artwork masters (see docs/brand-assets.md). Both are rendered from
+# code-orb-master.svg and are deliberately untracked; regenerate rather than commit.
+artwork/icon-180.png
+artwork/icon-512.png

@@ -14,6 +14,8 @@ import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
+import { CodeOrbMark } from './brand/CodeOrbMark'
+import { PocoWordmark } from './brand/PocoWordmark'
 
 /** Session rows visible per project before the local overflow control (upstream's COLLAPSED_SESSION_LIMIT). */
 const COLLAPSED_SESSION_LIMIT = 5
@@ -73,12 +75,17 @@ const SCROLLBAR_LINGER_MS = 2000
  * state lives in `store/sidebarCollapse.ts`, a persisted local preference
  * standing in for upstream's cross-slot `ui-layout` service (same pattern as
  * `store/theme.ts`/`store/transcriptView.ts`). Product-scope cuts, recorded
- * in webui/UPSTREAM.md: no ported brand+New-Session compound button or its
- * rail hover-swap mark (this app's brand marks stay local by design — the
- * toggle button always shows the panel icon); the session browser
- * (`regionArea`) unmounts entirely while collapsed instead of degrading to
- * upstream's rail icon column, since this port's tree has no search/grouping
- * affordances to represent there.
+ * in webui/UPSTREAM.md: the session browser (`regionArea`) unmounts entirely
+ * while collapsed instead of degrading to upstream's rail icon column, since
+ * this port's tree has no search/grouping affordances to represent there.
+ *
+ * Brand (2026-09-20): the compound brand+New-Session button and the rail's
+ * hover-swap mark are ported, against the same vendored classes. Upstream
+ * fills both the mark and the name through `sidebar.brand.*` slots (falling
+ * back to a local-build badge when nothing registers); the slot plumbing is
+ * cut per the vendoring rules, so this port mounts its own art directly —
+ * `CodeOrbMark` and `PocoWordmark`, not upstream's whale and `deepseek`
+ * wordmark. Only the size contract (24px) is inherited.
  */
 export function Sidebar() {
   const projects = useSessions((state) => state.projects)
@@ -218,6 +225,27 @@ export function Sidebar() {
       onPointerLeave={() => { armLinger() }}
     >
       <div className={css.logoRow}>
+        {/* Expanded, the brand doubles as a New Session shortcut; collapsed,
+            that role falls to the toggle below, whose resting state is the
+            same mark. The identity is aria-hidden because the button already
+            carries the label — the art itself says nothing a reader needs. */}
+        {wide && (
+          <button
+            type="button"
+            className={clsx(css.brand, css.wide)}
+            aria-label={t('newSession')}
+            onClick={() => { void createSession(selectedProject?.project_path ?? null) }}
+          >
+            <span className={css.brandIdentity} aria-hidden="true">
+              <span className={css.brandMark}>
+                <CodeOrbMark size={24} />
+              </span>
+              <span className={css.brandName}>
+                <PocoWordmark size={24} />
+              </span>
+            </span>
+          </button>
+        )}
         <Tooltip label={collapsed ? t('toggle.open') : t('toggle.collapse')} delayMs={500}>
           <button
             type="button"
@@ -225,7 +253,17 @@ export function Sidebar() {
             aria-label={collapsed ? t('toggle.open') : t('toggle.collapse')}
             onClick={() => { toggleCollapsed() }}
           >
-            <IconPanelLeftOutline16 size={wide ? 16 : 18} />
+            {/* Rail resting state is the brand mark; hovering swaps in the
+                panel icon (the expand affordance). Expanded it is a plain
+                panel icon. The .panelIcon class is what the vendored
+                `.collapsed .toggle` hover rules key off — without it the
+                swap silently never happens. */}
+            {!wide && (
+              <span className={css.railMark} aria-hidden="true">
+                <CodeOrbMark size={24} />
+              </span>
+            )}
+            <IconPanelLeftOutline16 className={css.panelIcon} size={wide ? 16 : 18} />
           </button>
         </Tooltip>
       </div>

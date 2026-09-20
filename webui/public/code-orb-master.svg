@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Code Orb logo</title>
+  <defs>
+    <clipPath id="orb-clip">
+      <circle cx="256" cy="254" r="223"/>
+    </clipPath>
+  </defs>
+
+  <!-- The disc fills more of the frame than a 216-radius mark would: a wider
+       body under the same 24-unit keyline, so the logo holds an app tile. -->
+  <circle cx="256" cy="254" r="223" fill="#F6F6F4"/>
+
+  <g clip-path="url(#orb-clip)">
+    <!-- A flat red dome keeps the capture-device reference without gradients.
+         Its chord is the top edge of the band, so the two always meet. -->
+    <path d="M33 231.5A223 223 0 0 1 479 231.5H33Z" fill="#EC3431"/>
+
+    <!-- The continuous band reads as both an orb seam and a terminal bar.
+         Square-ended on purpose: the disc clips it well before any corner
+         radius would become visible, so rx would be dead geometry. -->
+    <rect x="24" y="231.5" width="464" height="44.5" fill="#16181A"/>
+
+    <!-- The hub sits above the orb centre so the glyph clears the band. The
+         pale ring is a single symmetric stroke; unlike a two-circle build no
+         inner refill disc is needed, because nothing overlaps its inner edge. -->
+    <circle cx="256" cy="248" r="76.5" fill="#16181A"/>
+    <circle cx="256" cy="248" r="76.5" stroke="#F6F6F4" stroke-width="8.5"/>
+
+    <!-- Code glyph with shared weight and rounded terminals. The chevrons sit
+         at a true 45 degrees and mirror about x=256; the slash is a shade
+         lighter so it does not crowd them. -->
+    <path d="M224.5 233.5L205 251L224.5 268.5" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M265.2 224.5L247.3 274.5" stroke="#FFFFFF" stroke-width="7.9" stroke-linecap="round"/>
+    <path d="M287.5 233.5L307 251L287.5 268.5" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- One consistent outer keyline. -->
+  <circle cx="256" cy="254" r="223" stroke="#16181A" stroke-width="24"/>
+</svg>

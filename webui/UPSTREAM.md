@@ -262,16 +262,29 @@ out-of-scope decision rather than an omission. `Sidebar.tsx` now ports
   (`lc-ov-entry-rail`; `SettingsRoot.module.css`'s `.trigger.rail`/`.triggerRow.railRow`)
   — both now receive the real `wide` flag instead of always rendering wide.
 
+**Sidebar brand row, ported from `SidebarRoot.tsx`'s `logoRow`.** Both halves are
+in place against the vendored classes: expanded, `.brand`/`.brandIdentity`/
+`.brandMark`/`.brandName` form the compound "brand mark + name" button that doubles
+as a New Session shortcut; collapsed, the toggle rests on the brand mark and swaps
+to the panel icon on hover (`.collapsed .toggle:hover .panelIcon` /
+`.collapsed .toggle:hover .railMark`). The structure, the classes and the 24px mark
+size are upstream's.
+
+The **art** is not, and deliberately so. Upstream fills the mark and the name
+through `sidebar.brand.mark` / `sidebar.brand.name` slots, falling back to a
+local-build badge (`.fallbackBrandName` / `.localBuildBrand` / `.buildVersion`)
+when nothing registers. The slot plumbing is cut per the vendoring rules, so this
+port mounts its own art directly — `src/views/brand/CodeOrbMark.tsx` and
+`src/views/brand/PocoWordmark.tsx` — rather than upstream's whale and `deepseek`
+wordmark, which were deleted (`Local modifications` #1). The local-build fallback
+is therefore unreachable here and its classes go unused; they stay in the vendored
+CSS untouched. `PocoWordmark` does keep upstream's `HARNESS` badge verbatim —
+rounded rect, seven letter paths, inverted-label fill — translated left because
+"poco" is four letters where `deepseek` was eight; its provenance is recorded in
+that file's doc comment.
+
 Product-scope deviations (documented, not gaps):
 
-- **No ported brand row.** Upstream's expanded logo row is a compound "brand mark + name,
-  doubling as a New Session shortcut" button, and the collapsed rail's toggle rests on the
-  brand mark, swapping to the panel icon on hover (`.collapsed .toggle:hover .panelIcon`).
-  This project's brand marks stay local by design (the already-vendored `FishLogo`/
-  `BrandWordmark` primitives remain unused, per `Local modifications` #1 below) — the
-  toggle button always renders the plain panel icon (`IconPanelLeftOutline16`) in both
-  states, with no hover-swap. New Session keeps its own button (unchanged position),
-  just gaining a `wide`-conditional label/icon-size/tooltip.
 - **The session browser unmounts entirely while collapsed**, rather than degrading to
   upstream's rail icon column (`ui-workspace`'s own `!wide` rendering — a search icon and
   grouping affordances this port's session tree has no equivalent of, consistent with the
@@ -758,9 +771,16 @@ Product-scope deviations (documented, not gaps):
 
 Keep this list complete; each entry needs a reason.
 
-1. `vendor/ui-primitives/index.ts` — unchanged so far. `FishLogo` /
-   `BrandWordmark` exports stay (other vendored components do not import
-   them) but the app never renders them; brand marks are local by design.
+1. `vendor/ui-primitives/index.ts` — the `FishLogo` and `BrandWordmark`
+   exports were **removed**, along with `FishLogo.tsx` and
+   `BrandWordmark.tsx` themselves (2026-09-20). Both were upstream *brand*
+   assets — the DeepSeek whale mark and the `deepseek` + `HARNESS` wordmark —
+   not reusable primitives, and this product ships its own brand. Vendoring
+   another project's brand art it can never render was the mistake; they had
+   sat unused since the initial pass. The brand row now renders
+   `src/views/brand/*` (see the "sidebar brand row" section above). Only the
+   `HARNESS` badge geometry survives, copied verbatim into
+   `PocoWordmark.tsx` and recorded there.
 2. `webui/src/global.css` — `body { --dsw-alias-separator-primary:
    var(--dsw-alias-label-caption); }` shims a token that is **dangling
    upstream itself** (`StatsPills.module.css` consumes it but the whole

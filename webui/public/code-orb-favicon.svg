@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <title>Code Orb favicon</title>
+  <defs>
+    <clipPath id="favicon-clip">
+      <circle cx="8" cy="7.94" r="7.04"/>
+    </clipPath>
+  </defs>
+
+  <!-- Re-cut for a 16 px browser tab rather than scaled down from the master:
+       the band is thinned and the glyph strokes carry 1.36x the master's
+       relative weight, because a mechanical reduction puts them under a
+       quarter pixel. 1.36 and not more — browsers pick this SVG for the tab, so
+       it renders at 16 px on 1x and 32 px on 2x; the hub is unreadable at 16
+       either way, so the weight is tuned for 32 and up, where heavier strokes
+       only close the gaps between the three glyphs. The hub's pale ring is
+       kept (the master's defining detail) but widened past its proportional
+       0.27 to 0.4 for the same reason — 0.27 vanishes at both sizes. -->
+  <circle cx="8" cy="7.94" r="7.04" fill="#F6F6F4"/>
+  <g clip-path="url(#favicon-clip)">
+    <path d="M1 7.38A7.04 7.04 0 0 1 15.04 7.38H1Z" fill="#EC3431"/>
+    <rect x=".75" y="7.38" width="14.5" height="1.33" fill="#16181A"/>
+    <circle cx="8" cy="7.85" r="2.43" fill="#16181A"/>
+    <circle cx="8" cy="7.85" r="2.43" stroke="#F6F6F4" stroke-width="0.4"/>
+
+    <!-- The master's own glyph, scaled 1.0165 onto this slightly larger hub and
+         then 1.06 again, re-centred with the master's deliberate 2% optical
+         drop below the hub's geometric centre. The extra 6% pays for the
+         heavier strokes: at 1.36x the master's relative weight the ink would
+         otherwise close the two tight wedges (slash-to-chevron at lower left
+         and upper right) to 76% of the master's. As cut, the wide wedges are
+         within 0.1% of the master's and the tight ones within 5%, and the
+         glyph still clears the hub's pale ring by 0.34. Do NOT hand-tune these
+         numbers — the earlier hand-cut slash leaned 1.44x the master's angle,
+         which is what crushed those two wedges. Regenerate from the master
+         instead (see docs/brand-assets.md). -->
+    <path d="M6.9394 7.3599L6.2828 7.9491L6.9394 8.5384" stroke="#FFFFFF" stroke-width=".34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8.3098 7.0569L7.7071 8.7404" stroke="#FFFFFF" stroke-width=".31" stroke-linecap="round"/>
+    <path d="M9.0606 7.3599L9.7172 7.9491L9.0606 8.5384" stroke="#FFFFFF" stroke-width=".34" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="8" cy="7.94" r="7.04" stroke="#16181A" stroke-width=".87"/>
+</svg>

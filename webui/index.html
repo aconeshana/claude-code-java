@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href="/webui/favicon.svg" />
+    <!-- Paths are relative to vite's `base` (/webui/), which vite prepends in
+         both dev and build. Writing the /webui/ prefix here would work in the
+         built bundle but resolve to /webui/webui/* under `vite dev`. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/code-orb-favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
     <title>Claude Code</title>
   </head>
   <body>
