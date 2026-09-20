@@ -1,6 +1,7 @@
 package com.claudecode.core.config;
 
 import com.claudecode.core.git.GitUtils;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.state.CwdState;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,6 +10,12 @@ import java.util.List;
 
 /**
  * Discovers project-level {@code .claude/<subdir>} directories.
+ *
+ * <ul>
+ *   <li>{@code src/utils/markdownConfigLoader.ts} — {@code getProjectDirsUpToHome()}, its
+ *       home and nearest-git-root stop boundaries, and the worktree fallback that adds the
+ *       canonical git root's directory when the linked worktree has none.</li>
+ * </ul>
  */
 public final class ClaudeConfigDirectories {
 
@@ -75,8 +82,17 @@ public final class ClaudeConfigDirectories {
         return null;
     }
 
+    /**
+     * Compares two boundary paths the way {@code getProjectDirsUpToHome} does.
+     *
+     * <p>Upstream absolutizes both sides and then compares through
+     * {@code normalizePathForComparison}, which folds case on Windows only. Folding
+     * unconditionally would end the upward walk early whenever an ancestor differs from the
+     * home or git-root boundary by case alone, which on a case-sensitive volume are two
+     * genuinely different directories, and the {@code .claude/<subdir>} folders above that
+     * point would silently never be discovered.
+     */
     private static boolean samePath(Path left, Path right) {
-        return left.toAbsolutePath().normalize().toString()
-            .equalsIgnoreCase(right.toAbsolutePath().normalize().toString());
+        return FileUtils.pathsEqual(left.toAbsolutePath(), right.toAbsolutePath());
     }
 }

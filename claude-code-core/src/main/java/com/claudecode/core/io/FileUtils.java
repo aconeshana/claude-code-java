@@ -34,6 +34,34 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Filesystem helpers shared across modules.
+ *
+ * <ul>
+ *   <li>{@code src/utils/fsOperations.ts} — {@code safeResolvePath},
+ *       {@code isDuplicatePath}, {@code resolveDeepestExistingAncestorSync}, and
+ *       {@code getPathsForPermissionCheck}.</li>
+ *   <li>{@code src/utils/file.ts} — {@code getFileModificationTime},
+ *       {@code normalizePathForComparison}, and {@code pathsEqual}.</li>
+ *   <li>{@code deleteRecursively} — Node/Bun {@code fs.rm(path, { recursive: true, force: true })}.</li>
+ *   <li>{@code writeString}/{@code writeBytes} — {@code fs.writeFileSync} combined with
+ *       {@code fs.mkdirSync(parent, { recursive: true })} (parent dirs are auto-created).</li>
+ *   <li>{@code atomicReplace} — same-directory temp write followed by atomic rename, with a
+ *       portable replace fallback.</li>
+ *   <li>{@code writeFully} — drains a {@link ByteBuffer} into a {@link FileChannel}.</li>
+ *   <li>{@code trySetOwnerOnlyPermissions} — best-effort POSIX {@code 0600} protection for
+ *       credential/cache files.</li>
+ *   <li>{@code copyFile}/{@code copyDirectory} — {@code fs.cp}/{@code fs.cpSync({ recursive: true })}.</li>
+ *   <li>{@code stripExtension} — mirrors Node {@code path.parse(name).name} (preserves dotfiles
+ *       such as {@code .gitignore}).</li>
+ *   <li>{@code stripSuffix} — case-insensitive removal of a trailing file-name suffix.</li>
+ *   <li>{@code listFiles} — {@code fs.readdirSync} with a glob / filter ({@code newDirectoryStream}).</li>
+ *   <li>{@code createTempFile}/{@code createTempDir} — {@code fs.mkdtempSync}/{@code fs.mkdtemp}.</li>
+ *   <li>{@code exists}/{@code isRegularFile} — thin guards around {@link Files}.</li>
+ * </ul>
+ *
+ * <p>{@code src/utils/file.ts#readFileSafe} and {@code #isDirEmpty} are deliberately absent: their
+ * only upstream callers are the diff detail view and the project-onboarding state, neither of which
+ * this port implements. The three inline "read or fall back" sites that exist today each keep their
+ * own log level and fallback value on purpose, so they must not be folded into a shared helper.
  */
 public final class FileUtils {
 
@@ -160,29 +188,10 @@ public final class FileUtils {
     }
 
 
-    public static String readStringOrNull(Path path) {
-        try {
-            return Files.readString(path, DEFAULT_CHARSET);
-        } catch (IOException | SecurityException e) {
-            LOG.debug("Could not read {}: {}", path, e.getMessage());
-            return null;
-        }
-    }
-
-
     public static long modificationTimeMillis(Path path) throws IOException {
         return Files.getLastModifiedTime(path).toMillis();
     }
 
-
-    public static boolean isDirectoryEmpty(Path path) {
-        if (!Files.exists(path)) return true;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(path)) {
-            return !entries.iterator().hasNext();
-        } catch (IOException | SecurityException _) {
-            return false;
-        }
-    }
 
     public static Optional<String> findSimilarFile(Path missingPath) {
         Path parent = missingPath.getParent();
@@ -228,6 +237,14 @@ public final class FileUtils {
         return similar.map(value -> message + " Did you mean " + value + "?").orElse(message);
     }
 
+    /**
+     * Normalizes a path for equality comparison, folding case only on Windows.
+     *
+     * <p>The authoritative formula is {@code $k} in the 2.1.236 bundle. Case is folded on Windows
+     * and nowhere else, so two paths that differ only in case stay distinct on a case-sensitive
+     * volume. 2.1.236 additionally strips trailing separators (guarding the filesystem root); that
+     * step is a no-op here because {@link Path} already drops them during parsing.
+     */
     public static String normalizePathForComparison(Path path) {
         String normalized = path.normalize().toString();
         return Platform.IS_WINDOWS
@@ -236,6 +253,7 @@ public final class FileUtils {
     }
 
 
+    /** Equality under {@link #normalizePathForComparison}; {@code U1o} in the 2.1.236 bundle. */
     public static boolean pathsEqual(Path first, Path second) {
         return normalizePathForComparison(first).equals(normalizePathForComparison(second));
     }
