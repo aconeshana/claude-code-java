@@ -26,7 +26,7 @@ import java.util.List;
  * <ul>
  *   <li>{@code src/commands/recap.ts} (236 binary chunk {@code Bbm}, command
  *       def {@code UlT} + handler {@code BlT}) — the command does not exist in
- *       the weflow tree; the binary is the only source</li>
+ *       the decompiled TS tree; the binary is the only source</li>
  * </ul>
  */
 @SlashCommand(

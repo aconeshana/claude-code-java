@@ -53,10 +53,11 @@ public final class TaskNotificationBridge {
         // The task id rides along so a notification still sitting in the queue at
         // turn end counts as pending background work (PendingBackgroundWork).
         // Priority is fixed NEXT: the 197 and 236 binaries enqueue every terminal
-        // task notification (bash, monitor, agent, workflow) at "next" — weflow's
-        // feature('MONITOR_TOOL') ? 'next' : 'later' matches neither shipped
-        // binary. NEXT also lets a mid-turn completion ride the current turn's
-        // queued-command drain (ceiling NEXT), as query.ts's snapshot does.
+        // task notification (bash, monitor, agent, workflow) at "next" — the
+        // decompiled TS tree's feature('MONITOR_TOOL') ? 'next' : 'later' matches
+        // neither shipped binary. NEXT also lets a mid-turn completion ride the
+        // current turn's queued-command drain (ceiling NEXT), as query.ts's
+        // snapshot does.
         queue.enqueuePendingNotification(new QueuedCommand(
             xml, null, "task-notification", QueuePriority.NEXT,
             true, null, false, false, null, null, task.agentId().orElse(null),

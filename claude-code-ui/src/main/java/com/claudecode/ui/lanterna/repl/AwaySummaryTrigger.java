@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@code src/hooks/useAwaySummary.ts} — blur/focus scheduling, abort on
  *       focus, disable-hint counter (236 binary {@code bQg}/{@code I()}; the
- *       weflow tree predates the 236 cache-age rework, the binary is
+ *       decompiled TS tree predates the 236 cache-age rework, the binary is
  *       authoritative)</li>
  * </ul>
  */

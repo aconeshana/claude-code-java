@@ -33,8 +33,8 @@ class TaskNotificationBridgeTest {
         assertEquals("task-notification", cmd.mode());
         assertEquals(QueuePriority.NEXT, cmd.priority(),
             "197/236 binaries enqueue the bash completion notification at fixed 'next'"
-                + " priority (weflow's feature('MONITOR_TOOL') ? 'next' : 'later' does not"
-                + " match either shipped binary)");
+                + " priority (the decompiled TS tree's feature('MONITOR_TOOL') ? 'next' : 'later'"
+                + " does not match either shipped binary)");
         String text = cmd.text();
         assertTrue(Strings.CS.contains(text, "<task-notification>"), text);
         assertTrue(Strings.CS.contains(text, "<task-id>" + task.id() + "</task-id>"), text);

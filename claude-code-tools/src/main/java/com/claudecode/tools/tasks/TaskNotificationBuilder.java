@@ -19,11 +19,12 @@ import java.util.Locale;
  * Tag spellings follow the shipped 2.1.197/2.1.236 binaries (hyphenated
  * {@code task-notification}/{@code task-id}/{@code tool-use-id}/{@code task-type}/
  * {@code output-file}); an earlier port's underscore variants matched neither the official
- * renderer nor its queue drain parser. Two weflow details do NOT match the 197 binary and are
- * intentionally not ported: the {@code feature('MONITOR_TOOL') ? 'next' : 'later'} priority
- * expression, and the {@code <total_tokens>} usage tag (197 parses {@code <subagent_tokens>}).
+ * renderer nor its queue drain parser. Two details from the decompiled TS tree do NOT match the
+ * 197 binary and are intentionally not ported: the
+ * {@code feature('MONITOR_TOOL') ? 'next' : 'later'} priority expression, and the
+ * {@code <total_tokens>} usage tag (197 parses {@code <subagent_tokens>}).
  * The {@code <worktree>} section appears in neither binary; it is kept for model usefulness
- * with the weflow ({@code worktreePath}) spelling.
+ * with the decompiled tree's ({@code worktreePath}) spelling.
  */
 public final class TaskNotificationBuilder {
 

@@ -60,8 +60,8 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@code src/services/awaySummary.ts} — recap generation over the recent
  *       conversation (236 binary {@code JXn}/{@code FlT}/{@code Hbm}; the
- *       weflow tree predates the 236 shared-execution rework, the binary is
- *       authoritative)</li>
+ *       decompiled TS tree predates the 236 shared-execution rework, the binary
+ *       is authoritative)</li>
  *   <li>{@code src/hooks/useAwaySummary.ts} — conversation gates
  *       {@code et0}/{@code hQg}/{@code qSs} and the disable-hint suffix</li>
  *   <li>{@code src/commands/recap.ts} — the rebuild gate and the

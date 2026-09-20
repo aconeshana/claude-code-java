@@ -19,10 +19,10 @@ import java.util.function.LongSupplier;
  * <ul>
  *   <li>{@code src/utils/hooks/sessionHooks.ts} — registering / clearing the
  *       goal's Stop prompt hook in the session layer.</li>
- *   <li>2.1.236 bundle {@code /goal} command (no weflow counterpart) — active
- *       goal bookkeeping (condition, iterations, tokens at start), completion
- *       statistics, and restoration from the last {@code goal_status}
- *       attachment on resume.</li>
+ *   <li>2.1.236 bundle {@code /goal} command (no counterpart in the decompiled
+ *       TS tree) — active goal bookkeeping (condition, iterations, tokens at
+ *       start), completion statistics, and restoration from the last
+ *       {@code goal_status} attachment on resume.</li>
  * </ul>
  */
 public final class GoalTracker {

@@ -62,7 +62,7 @@ class PreviewBoxTest {
     void anImpossiblyNarrowCeilingCollapsesToTheBareFrame() {
         PreviewBox.Rendered box = render("anything at all", 20, 1);
 
-        assertEquals(4, box.width(), "max(4, …) is the floor the weflow tree is missing");
+        assertEquals(4, box.width(), "max(4, …) is the floor the decompiled TS tree is missing");
         for (String line : lines(box)) {
             assertEquals(4, FormatUtils.displayWidth(line), line);
         }
@@ -105,7 +105,7 @@ class PreviewBoxTest {
 
     @Test
     void aLineTooWideForTheBoxIsWrappedRatherThanTruncated() {
-        // The weflow tree omits this wrap entirely; without it the tail of a long line is lost.
+        // The decompiled TS tree omits this wrap entirely; without it the tail of a long line is lost.
         String sentence = "wrap me ".repeat(20).strip();
         List<String> rows = lines(render(sentence, 20, 44));
 

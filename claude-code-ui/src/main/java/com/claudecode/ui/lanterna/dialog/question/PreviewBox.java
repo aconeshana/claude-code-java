@@ -16,7 +16,7 @@ import org.apache.commons.lang3.StringUtils;
  * The bordered preview pane of the {@code AskUserQuestion} design card: an option's preview
  * rendered as markdown inside a box whose width adapts to its content.
  *
- * <p>Authority is the {@code 2.1.236} bundle. The weflow tree's
+ * <p>Authority is the {@code 2.1.236} bundle. The decompiled TS tree's
  * {@code components/permissions/AskUserQuestionPermissionRequest/PreviewBox.tsx} describes the same
  * component but is wrong in two places — it lacks the per-line hard wrap and the {@code max(4, …)}
  * floor on the box width — so the geometry below follows the binary.
