@@ -122,11 +122,9 @@ public class PermissionDialog extends Panel {
     private Label planContentLabel;
     private Label editorHintLabel;
     private boolean exitPlanRequest;
-    private boolean enterPlanRequest;
     private TextColor currentAccent;
     private List<PermissionUpdate> primaryApprovalUpdates = List.of();
     private JsonNode approvalUpdatedInput;
-    private PermissionRequestBody requestBody;
     private Consumer<String> onPlanChanged = _ -> {};
     private Consumer<PlanClearApproval> onPlanClearApproval = _ -> {};
     private final List<String> specialBodyLines = new ArrayList<>();
@@ -199,7 +197,7 @@ public class PermissionDialog extends Panel {
         this.planContentLabel = null;
         this.editorHintLabel = null;
         this.exitPlanRequest = Strings.CS.equals("ExitPlanMode", ctx.toolName());
-        this.enterPlanRequest = Strings.CS.equals("EnterPlanMode", ctx.toolName());
+        boolean enterPlanRequest = Strings.CS.equals("EnterPlanMode", ctx.toolName());
         boolean emptyExitPlan = exitPlanRequest
             && StringUtils.isBlank(exactTextField(ctx.input(), "plan"));
         boolean clearContextExit = exitPlanRequest && !emptyExitPlan
@@ -207,7 +205,7 @@ public class PermissionDialog extends Panel {
         this.primaryApprovalUpdates = emptyExitPlan ? exitPlanSecondaryUpdates(ctx)
             : exitPlanRequest && !clearContextExit ? exitPlanPrimaryUpdates(ctx) : List.of();
         this.approvalUpdatedInput = null;
-        this.requestBody = prepared.body();
+        PermissionRequestBody requestBody = prepared.body();
         if (requestBody instanceof PermissionRequestBody.SedEdit sed) {
             this.approvalUpdatedInput = sed.updatedInput();
         }
@@ -284,29 +282,29 @@ public class PermissionDialog extends Panel {
         }
 
         // Command / path summary
-        if (requestBody instanceof PermissionRequestBody.FileChange change) {
-            addFileChangeBody(change);
-        } else if (requestBody instanceof PermissionRequestBody.NotebookEdit notebook) {
-            addNotebookEditBody(notebook);
-        } else if (requestBody instanceof PermissionRequestBody.SedEdit sed) {
-            addSedEditBody(sed);
-        } else if (requestBody instanceof PermissionRequestBody.Mcp mcp) {
-            addMcpBody(mcp);
-        } else if (requestBody instanceof PermissionRequestBody.Generic generic) {
-            if (!exitPlanRequest && !StringUtils.isBlank(generic.summary())) {
-                addComponent(new EmptySpace(new TerminalSize(0, 1)));
-                addComponent(new Label(indentWrapped(generic.summary(), 72, "   ")));
+        switch (requestBody) {
+            case PermissionRequestBody.FileChange change -> addFileChangeBody(change);
+            case PermissionRequestBody.NotebookEdit notebook -> addNotebookEditBody(notebook);
+            case PermissionRequestBody.SedEdit sed -> addSedEditBody(sed);
+            case PermissionRequestBody.Mcp mcp -> addMcpBody(mcp);
+            case PermissionRequestBody.Generic generic -> {
+                if (!exitPlanRequest && !StringUtils.isBlank(generic.summary())) {
+                    addComponent(new EmptySpace(new TerminalSize(0, 1)));
+                    addComponent(new Label(indentWrapped(generic.summary(), 72, "   ")));
+                }
+                if (!StringUtils.isBlank(generic.description())) {
+                    descriptionLabel = new Label("   " + generic.description());
+                    descriptionLabel.setForegroundColor(LanternaTheme.divider());
+                    addComponent(descriptionLabel);
+                }
             }
-            if (!StringUtils.isBlank(generic.description())) {
-                descriptionLabel = new Label("   " + generic.description());
-                descriptionLabel.setForegroundColor(LanternaTheme.divider());
-                addComponent(descriptionLabel);
+            default -> {
             }
         }
 
-// Explainer section — inserted here, initially invisible (zero-height) Main text
-// (explanation + reasoning) uses default white color Risk line uses green/yellow/red based
-// on riskLevel.
+        // Explainer section — inserted here, initially invisible (zero-height) Main text
+        // (explanation + reasoning) uses default white color Risk line uses green/yellow/red based
+        // on riskLevel.
         explainerLabel = new Label("");
         explainerLabel.setVisible(false);
         addComponent(explainerLabel);
