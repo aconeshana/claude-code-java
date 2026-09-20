@@ -337,7 +337,9 @@ class HeadlessSessionsInteropTest {
                     }
                 });
         // Prove the mirror stream is live before running the headless turn:
-        // one frame from the active session must arrive first.
+        // wait for the connection.ready marker before publishing, then one
+        // frame from the active session must arrive first.
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("connection.ready|");
         activeEvents.onTurnStart(UserInput.of("warmup", "warmup", null, "default"));
         String warmupFrame = events.poll(5, TimeUnit.SECONDS);
         // The active session's activation notice may arrive ahead of it.

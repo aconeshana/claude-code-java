@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.Strings;
@@ -823,7 +824,10 @@ public final class GatewayServer implements AutoCloseable {
         // connection cannot be reused (same keep-alive rule the smoke fake
         // server documents).
         drain(exchange);
-        long lastEventId = parseLastEventId(exchange);
+        // No cursor (absent or unparsable Last-Event-ID) starts live at the
+        // journal's current tip instead of replaying the whole ring — only an
+        // explicit cursor asks for missed-frame replay.
+        long lastEventId = parseLastEventId(exchange).orElseGet(mirror::latestId);
         // Optional session filter: frames from every followed session stream
         // by default; ?session_id= narrows the stream to one conversation view.
         String sessionFilter = queryParam(exchange, "session_id");
@@ -848,6 +852,13 @@ public final class GatewayServer implements AutoCloseable {
                     frame.event(), Long.toString(frame.id()), frame.data()));
             }
         }));
+        // A private, unjournaled marker: once a caller sees it, the live
+        // subscription above is guaranteed registered, so no frame published
+        // from this point on can be missed. Callers that raced ahead of the
+        // subscription (e.g. publishing right after opening the stream) can
+        // wait on this instead of depending on ring history to prove liveness.
+        connection.offer(SseFrameWriter.event(
+            "connection.ready", Long.toString(lastEventId), "{}"));
     }
 
     /** One query parameter's decoded value, or null when absent. */
@@ -899,13 +910,13 @@ public final class GatewayServer implements AutoCloseable {
         }
     }
 
-    private static long parseLastEventId(HttpExchange exchange) {
+    private static OptionalLong parseLastEventId(HttpExchange exchange) {
         String header = exchange.getRequestHeaders().getFirst("Last-Event-ID");
-        if (StringUtils.isEmpty(header)) return 0;
+        if (StringUtils.isEmpty(header)) return OptionalLong.empty();
         try {
-            return Long.parseLong(header.trim());
+            return OptionalLong.of(Long.parseLong(header.trim()));
         } catch (NumberFormatException _) {
-            return 0;
+            return OptionalLong.empty();
         }
     }
 

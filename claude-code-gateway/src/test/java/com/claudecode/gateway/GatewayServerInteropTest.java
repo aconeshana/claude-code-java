@@ -213,15 +213,14 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onTurnStart(UserInput.of("hello", "hello", null, "default"));
         hub.onMessage(textMessage("Hello from the turn"));
         hub.onTurnComplete(new TurnOutcome(
             false, false, 5L, null, null, null, "default"));
 
-        // The session-activation notice (published on activateLocal) may
-        // precede the turn frames; skip it.
-        assertThat(nextNonActivationFrame(events)).contains("turn.started");
+        assertThat(events.poll(5, TimeUnit.SECONDS)).contains("turn.started");
         assertThat(events.poll(5, TimeUnit.SECONDS)).contains("Hello from the turn");
         assertThat(events.poll(5, TimeUnit.SECONDS)).contains("turn.completed");
         source.cancel();
@@ -233,8 +232,9 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> first = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, first);
+        awaitReady(first);
         hub.onTurnStart(UserInput.of("one", "one", null, "default"));
-        assertThat(nextNonActivationFrame(first)).contains("turn.started");
+        assertThat(first.poll(5, TimeUnit.SECONDS)).contains("turn.started");
         String lastEventId = lastEventIdReference.get();
         source.cancel();
 
@@ -257,13 +257,14 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events, activeSessionId);
+        awaitReady(events);
 
         hub.onTurnStart(UserInput.of("hello", "hello", null, "default"));
         hub.onMessage(textMessage("Hello from the active session"));
         hub.onTurnComplete(new TurnOutcome(
             false, false, 5L, null, null, null, "default"));
 
-        String started = nextNonActivationFrame(events);
+        String started = events.poll(5, TimeUnit.SECONDS);
         assertThat(started).contains("turn.started")
             .contains("\"session_id\":\"" + activeSessionId + "\"");
         assertThat(events.poll(5, TimeUnit.SECONDS))
@@ -289,6 +290,7 @@ class GatewayServerInteropTest {
         });
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         // No complete fold at turn start: no baseline, the completion frame
         // stays without the delta fields. No stream output either, so the
@@ -296,7 +298,7 @@ class GatewayServerInteropTest {
         hub.onTurnStart(UserInput.of("one", "one", null, "default"));
         hub.onTurnComplete(new TurnOutcome(
             false, false, 5L, null, null, null, "default"));
-        String bare = nextNonActivationFrame(events);
+        String bare = events.poll(5, TimeUnit.SECONDS);
         assertThat(bare).contains("turn.started")
             .contains("\"time\":");
         assertThat(events.poll(5, TimeUnit.SECONDS))
@@ -350,6 +352,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onMessage(assistantMessage(List.of(
             new ToolUseBlock("toolu_bash_1", "Bash", null))));
@@ -402,6 +405,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onMessage(assistantMessage(List.of(
             new ToolUseBlock("toolu_big", "Bash", null))));
@@ -426,6 +430,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         SDKMessage.Assistant step = assistantMessage(List.of(
             new ThinkingBlock("weighing it", null),
@@ -463,6 +468,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onMessage(assistantMessage(List.of(
             new ToolUseBlock("toolu_agent_1", "Task", null))));
@@ -495,6 +501,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onMessage(assistantMessage(List.of(
             new ToolUseBlock("toolu_write_1", "Write", null))));
@@ -548,6 +555,7 @@ class GatewayServerInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(null, events);
+        awaitReady(events);
 
         hub.onMessage(new SDKMessage.Progress(new ProgressMessage(
             UUID.randomUUID().toString(), null, null, null,
@@ -570,19 +578,14 @@ class GatewayServerInteropTest {
     }
 
     /**
-     * Polls the next frame that is not a session-activation notice. The
-     * activation frame is published by {@code activateLocal} (startServer)
-     * and may still be in flight when the turn frames are asserted.
+     * Waits for the connection.ready marker, proving the live subscription
+     * registered in {@code streamMirror} is active — a test can only publish
+     * a hub event after this without racing the subscription's own setup.
      */
-    private static String nextNonActivationFrame(
-            LinkedBlockingQueue<String> events) throws InterruptedException {
+    private static void awaitReady(LinkedBlockingQueue<String> events)
+            throws InterruptedException {
         String frame = events.poll(5, TimeUnit.SECONDS);
-        assertThat(frame).as("expected a non-activation frame").isNotNull();
-        while (Strings.CS.contains(frame, "session.activated")) {
-            frame = events.poll(5, TimeUnit.SECONDS);
-            assertThat(frame).as("expected a non-activation frame").isNotNull();
-        }
-        return frame;
+        assertThat(frame).as("connection ready").startsWith("connection.ready|");
     }
 
     /** The frame for the given tool use id, skipping unrelated frames, 5s cap. */
