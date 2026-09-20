@@ -1,6 +1,7 @@
 package com.claudecode.runtime.sessionhost;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.FileUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
@@ -88,7 +89,7 @@ public final class RemoteAttachmentStore {
             LinkOption.NOFOLLOW_LINKS);
         try (SeekableByteChannel channel = openNewFile(target, options)) {
             ByteBuffer bytes = ByteBuffer.wrap(data);
-            while (bytes.hasRemaining()) channel.write(bytes);
+            FileUtils.writeFully(channel, bytes);
         }
     }
 

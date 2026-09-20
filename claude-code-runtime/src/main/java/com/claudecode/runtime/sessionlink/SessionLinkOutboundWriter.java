@@ -1,6 +1,7 @@
 package com.claudecode.runtime.sessionlink;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.FileUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
@@ -110,7 +111,7 @@ final class SessionLinkOutboundWriter implements AutoCloseable {
         byte[] encoded = codec.encode(frame);
         ByteBuffer buffer = ByteBuffer.allocate(encoded.length + 1);
         buffer.put(encoded).put((byte) '\n').flip();
-        while (buffer.hasRemaining()) channel.write(buffer);
+        FileUtils.writeFully(channel, buffer);
     }
 
     private static void complete(Pending pending, IOException failure) {

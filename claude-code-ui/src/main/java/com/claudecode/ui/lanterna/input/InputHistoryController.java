@@ -626,10 +626,9 @@ final class InputHistoryController {
     }
 
     private static int historyLoadTarget(int minimumCount) {
-        return Math.min(MAX_HISTORY,
-            Math.max(HISTORY_CHUNK_SIZE,
-                ((minimumCount + HISTORY_CHUNK_SIZE - 1) / HISTORY_CHUNK_SIZE)
-                    * HISTORY_CHUNK_SIZE));
+        int rounded = ((minimumCount + HISTORY_CHUNK_SIZE - 1) / HISTORY_CHUNK_SIZE)
+            * HISTORY_CHUNK_SIZE;
+        return Math.clamp(rounded, HISTORY_CHUNK_SIZE, MAX_HISTORY);
     }
 
     private void applySearchMatch(PromptHistory.Entry match) {

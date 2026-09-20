@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -409,7 +410,7 @@ public final class FileUtils {
     }
 
     /** Writes until {@code buffer} has no remaining bytes. */
-    public static void writeFully(FileChannel channel, ByteBuffer buffer) throws IOException {
+    public static void writeFully(WritableByteChannel channel, ByteBuffer buffer) throws IOException {
         int expected = buffer.remaining();
         int written = 0;
         while (buffer.hasRemaining()) {
@@ -417,6 +418,20 @@ public final class FileUtils {
         }
         if (written != expected) {
             throw new IOException("Incomplete write: " + written + "/" + expected + " bytes");
+        }
+    }
+
+    /** Reads until {@code buffer} has no remaining space, throwing on premature EOF. */
+    public static void readFully(FileChannel channel, ByteBuffer buffer) throws IOException {
+        int expected = buffer.remaining();
+        int read = 0;
+        while (buffer.hasRemaining()) {
+            int chunk = channel.read(buffer);
+            if (chunk < 0) break;
+            read += chunk;
+        }
+        if (read != expected) {
+            throw new IOException("Incomplete read: " + read + "/" + expected + " bytes");
         }
     }
 

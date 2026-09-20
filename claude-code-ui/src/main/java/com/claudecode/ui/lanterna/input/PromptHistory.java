@@ -122,7 +122,7 @@ public class PromptHistory implements AutoCloseable {
     }
 
     /** Lazy global newest-first reader used by the legacy reverse-i-search path. */
-    final class HistoryReader implements AutoCloseable {
+    public final class HistoryReader implements AutoCloseable {
         private final List<RawEntry> pendingSnapshot;
         private final Set<EntryIdentity> pendingIdentities;
         private final Object readLock = new Object();
@@ -420,7 +420,7 @@ public class PromptHistory implements AutoCloseable {
                 pendingFlush = null;
                 if (closed.get()) return;
             }
-            flushAsyncWithRetries(0);
+            flushAsyncWithRetries();
         }, flushDelayMs, TimeUnit.MILLISECONDS);
     }
 
@@ -474,7 +474,7 @@ public class PromptHistory implements AutoCloseable {
     }
 
 
-    HistoryReader openGlobalHistoryReader() {
+    public HistoryReader openGlobalHistoryReader() {
         return new HistoryReader();
     }
 
@@ -759,8 +759,7 @@ public class PromptHistory implements AutoCloseable {
             long start = position - count;
             byte[] chunk = new byte[count];
             channel.position(start);
-            ByteBuffer buffer = ByteBuffer.wrap(chunk);
-            while (buffer.hasRemaining() && channel.read(buffer) > 0) {}
+            FileUtils.readFully(channel, ByteBuffer.wrap(chunk));
             position = start;
 
             byte[] data = new byte[chunk.length + partial.length];
@@ -941,19 +940,19 @@ public class PromptHistory implements AutoCloseable {
     }
 
 
-    private void flushAsyncWithRetries(int retries) {
+    private void flushAsyncWithRetries() {
         synchronized (lifecycleLock) {
-            if (closed.get() || retries > 5) return;
+            if (closed.get()) return;
             if (!flushing.compareAndSet(false, true)) return;
             Thread worker = Thread.ofVirtual().name("history-flush").unstarted(
-                () -> runFlushLoop(retries));
+                this::runFlushLoop);
             activeFlush = worker;
             worker.start();
         }
     }
 
-    private void runFlushLoop(int firstAttempt) {
-        int attempt = firstAttempt;
+    private void runFlushLoop() {
+        int attempt = 0;
         boolean retryBudgetExhausted = false;
         try {
             while (true) {
@@ -995,7 +994,7 @@ public class PromptHistory implements AutoCloseable {
                 synchronized (pending) {
                     needsAnotherFlush = !pending.isEmpty();
                 }
-                if (needsAnotherFlush) flushAsyncWithRetries(0);
+                if (needsAnotherFlush) flushAsyncWithRetries();
             }
         }
     }
@@ -1111,9 +1110,10 @@ public class PromptHistory implements AutoCloseable {
             }
         }
 
+        // Fail fast on an unwritable file before paying for lock acquisition below.
         try (FileChannel ignored = FileChannel.open(historyFile,
             StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
-
+            // Probe only; flushPendingLocked() reopens the channel for the actual write.
         }
     }
 
