@@ -153,8 +153,8 @@ class CompactAnsiTerminalTest {
     @Test
     void sgrLeftClickFromRawBytesArrivesAsLanternaButtonOne() throws Exception {
         // xterm SGR: Cb=0 is the left/primary button on press ('M') and release ('m'),
-        // Cb=32 is a left-button drag. Lanterna's decoder reports Cb=0 as button 2;
-        // the footer pills and coordinator rows only react to button 1.
+        // Cb=32 is a left-button drag. The footer pills and coordinator rows only react
+        // to button 1, so this guards the fork's SGR-to-MouseAction button mapping.
         CompactAnsiTerminal terminal = new CompactAnsiTerminal(
             fakeTerminal(new ArrayList<>()),
             new FastTerminalInputDecoder(

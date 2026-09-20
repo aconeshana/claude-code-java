@@ -7,6 +7,8 @@ import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
 import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.googlecode.lanterna.gui2.Component;
+import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -85,7 +87,7 @@ final class ReplExitController implements ReplFeature {
             transcript,
             stop,
             jobControlActions,
-            () -> JvmSignals.raise("STOP"),
+            JvmSignals::suspendSelf,
             code -> Runtime.getRuntime().halt(code),
             System::currentTimeMillis);
     }
@@ -191,7 +193,16 @@ final class ReplExitController implements ReplFeature {
         jobControlSuspended = true;
         log.info("[LANTERNA] {} received — releasing terminal before suspension", reason);
         jobControlActions.beforeSuspend();
-        suspendProcess.run();
+        try {
+            suspendProcess.run();
+        } catch (RuntimeException failure) {
+            // The terminal is already released but the process kept running, so the user
+            // would be left staring at a blank screen with no way back. Rebuilding the UI
+            // is strictly better than honouring a suspend that never happened.
+            jobControlSuspended = false;
+            log.warn("[LANTERNA] suspend failed — restoring the terminal instead", failure);
+            jobControlActions.afterResume();
+        }
     }
 
     void handleContinueSignal() {
@@ -263,7 +274,7 @@ final class ReplExitController implements ReplFeature {
         private static final Class<?> SIGNAL_CLASS = load("sun.misc.Signal");
         private static final Class<?> HANDLER_CLASS = load("sun.misc.SignalHandler");
         private static final Method HANDLE = method("handle", SIGNAL_CLASS, HANDLER_CLASS);
-        private static final Method RAISE = method("raise", SIGNAL_CLASS);
+        private static final Field DEFAULT_HANDLER = defaultHandlerField();
 
         private JvmSignals() {}
 
@@ -285,12 +296,45 @@ final class ReplExitController implements ReplFeature {
             invokeStatic(HANDLE, signal, handler);
         }
 
-        static void raise(String name) {
+        /**
+         * Stops this process the way a shell expects a job to stop: hand SIGTSTP back to
+         * the kernel, then have a short-lived {@code kill} deliver it.
+         *
+         * <p>{@code Signal.raise} cannot do this. It refuses any signal the JVM holds no
+         * Java handler for, so SIGSTOP is out — and restoring SIG_DFL for SIGTSTP, which is
+         * precisely what makes the kernel stop us, drops the signal from that same registry.
+         * The handler is put back once SIGCONT resumes the process.
+         */
+        static void suspendSelf() {
             try {
-                Object signal = SIGNAL_CLASS.getConstructor(String.class).newInstance(name);
-                invokeStatic(RAISE, signal);
+                Object signal = SIGNAL_CLASS.getConstructor(String.class).newInstance("TSTP");
+                Object previous = invokeStatic(HANDLE, signal, DEFAULT_HANDLER.get(null));
+                try {
+                    deliverSuspendSignal();
+                } finally {
+                    invokeStatic(HANDLE, signal, previous);
+                }
             } catch (ReflectiveOperationException | LinkageError e) {
                 throw new IllegalStateException("JVM signal support is unavailable", e);
+            }
+        }
+
+        private static void deliverSuspendSignal() {
+            try {
+                Process kill = new ProcessBuilder("/usr/bin/env", "kill", "-s", "TSTP",
+                        Long.toString(ProcessHandle.current().pid()))
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+                int status = kill.waitFor();
+                if (status != 0) {
+                    throw new IllegalStateException("kill -s TSTP exited with " + status);
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("could not deliver SIGTSTP", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while suspending", e);
             }
         }
 
@@ -310,10 +354,18 @@ final class ReplExitController implements ReplFeature {
             }
         }
 
-        private static void invokeStatic(Method method, Object... args)
+        private static Field defaultHandlerField() {
+            try {
+                return HANDLER_CLASS.getField("SIG_DFL");
+            } catch (NoSuchFieldException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        private static Object invokeStatic(Method method, Object... args)
                 throws ReflectiveOperationException {
             try {
-                method.invoke(null, args);
+                return method.invoke(null, args);
             } catch (InvocationTargetException e) {
                 if (e.getCause() instanceof ReflectiveOperationException reflectionFailure) {
                     throw reflectionFailure;

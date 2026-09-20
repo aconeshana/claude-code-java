@@ -5,6 +5,7 @@ import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.ui.lanterna.dialog.WorktreeExitDialog;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -190,6 +191,64 @@ class ReplExitControllerTest {
     @Test
     void registersOnlyUserRequestedSuspendSignal() {
         assertEquals(List.of("TSTP"), ReplExitController.jobControlSignals());
+    }
+
+    @Test
+    void failedSuspendRebuildsTheTerminalInsteadOfLeavingItTornDown() {
+        List<String> events = new ArrayList<>();
+        FakeActions actions = new FakeActions();
+        ReplExitController controller = new ReplExitController(
+            ShutdownPort.noop(),
+            actions,
+            () -> null,
+            null,
+            _ -> {},
+            _ -> {},
+            () -> {},
+            new ReplExitController.JobControlActions() {
+                @Override public void beforeSuspend() { events.add("terminal:suspend"); }
+                @Override public void afterResume() { events.add("terminal:resume"); }
+            },
+            () -> {
+                events.add("process:stop");
+                throw new IllegalStateException("JVM signal support is unavailable");
+            },
+            _ -> {},
+            System::currentTimeMillis);
+
+        controller.handleJobControlSuspend("sigtstp");
+
+        assertEquals(List.of(
+            "terminal:suspend", "process:stop", "terminal:resume"), events);
+
+        // The failure must not latch: a later suspend has to be attempted again.
+        controller.handleJobControlSuspend("sigtstp");
+        assertEquals(List.of(
+            "terminal:suspend", "process:stop", "terminal:resume",
+            "terminal:suspend", "process:stop", "terminal:resume"), events);
+    }
+
+    @Test
+    void signalRaiseCannotDeliverASuspendToThisProcess() {
+        // Why suspendSelf() shells out to kill(1): Signal.raise refuses any signal the JVM
+        // holds no Java handler for. SIGSTOP can never be handled, and SIGTSTP stops being
+        // "handled" the moment SIG_DFL is restored — which is exactly the state needed for
+        // the kernel to stop us. Raising either was a silent no-op that tore down the UI.
+        assertEquals("Unhandled signal: SIGSTOP", raiseFailureMessage("STOP"));
+        assertEquals("Unhandled signal: SIGTSTP", raiseFailureMessage("TSTP"));
+    }
+
+    private static String raiseFailureMessage(String name) {
+        try {
+            Class<?> signalClass = Class.forName("sun.misc.Signal");
+            Object signal = signalClass.getConstructor(String.class).newInstance(name);
+            signalClass.getMethod("raise", signalClass).invoke(null, signal);
+            return "raise succeeded";
+        } catch (InvocationTargetException e) {
+            return e.getCause().getMessage();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
     }
 
     private static final class Fixture {

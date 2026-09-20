@@ -224,28 +224,7 @@ final class CompactAnsiTerminal implements ExtendedTerminal {
                     || mouseCaptureMode == MouseCaptureMode.CLICK_RELEASE)) {
             return null;
         }
-        return normalizeButton(mouse);
-    }
-
-    /**
-     * Lanterna's SGR decoder ({@code MouseCharacterPattern}, upstream and fork alike) reports
-     * xterm button code 0 — the left/primary button — as {@link MouseAction#getButton()} 2 and
-     * code 1 (middle) as 1, the reverse of the mapping its own Javadoc promises
-     * (left = 1, middle = 2). Every clickable footer surface checks for button 1, so without
-     * this swap a real left click on the tasks pill, the ≡ button, or a coordinator row is
-     * silently ignored while a middle click activates them. Wheel and button-less events are
-     * untouched.
-     */
-    @Explanation("Restores Lanterna's documented left=1/middle=2 button contract over its SGR decoder")
-    private static KeyStroke normalizeButton(MouseAction mouse) {
-        int button = switch (mouse.getButton()) {
-            case 1 -> 2;
-            case 2 -> 1;
-            default -> mouse.getButton();
-        };
-        if (button == mouse.getButton()) return mouse;
-        return new MouseAction(mouse.getActionType(), button, mouse.getPosition(),
-            mouse.isCtrlDown(), mouse.isAltDown(), mouse.isShiftDown());
+        return mouse;
     }
 
 }

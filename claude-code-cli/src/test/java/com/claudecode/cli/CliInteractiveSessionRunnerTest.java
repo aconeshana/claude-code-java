@@ -25,7 +25,12 @@ class CliInteractiveSessionRunnerTest {
         assertTrue(Strings.CS.contains(source, "finalizePendingAsyncHooks"));
         assertTrue(Strings.CS.contains(source, "finally {"),
             "REPL failures must use the same teardown path as normal returns");
-        assertTrue(Strings.CS.contains(source, "finally {\n                finalizeInteractiveSession("),
+        // Collapse whitespace first: the constraint is that the cleanup helper is the first
+        // statement of the finally block, not that the block sits at any particular nesting
+        // depth. Matching the raw source pinned an indentation level and broke the moment an
+        // unrelated reformat corrected it.
+        String withoutLayout = source.replaceAll("\\s+", " ");
+        assertTrue(Strings.CS.contains(withoutLayout, "finally { finalizeInteractiveSession("),
             "the runner's try/finally must invoke the shared cleanup helper");
         String coordinator = Files.readString(Path.of(
             "src/main/java/com/claudecode/cli/CliInteractiveStartupCoordinator.java"));

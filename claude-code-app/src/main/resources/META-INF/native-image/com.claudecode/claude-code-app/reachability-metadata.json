@@ -1127,10 +1127,16 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "com.claudecode.session.ProjectIndexSnapshot$CachedDir[]"
+    },
+    {
       "type": "com.claudecode.session.ProjectIndexSnapshot$CachedSession",
       "allDeclaredFields": true,
       "allPublicMethods": true,
       "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.session.ProjectIndexSnapshot$CachedSession[]"
     },
     {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$Manifest",
@@ -2931,7 +2937,12 @@
       ]
     },
     {
-      "type": "sun.misc.SignalHandler"
+      "type": "sun.misc.SignalHandler",
+      "fields": [
+        {
+          "name": "SIG_DFL"
+        }
+      ]
     },
     {
       "type": "sun.security.pkcs12.PKCS12KeyStore",
