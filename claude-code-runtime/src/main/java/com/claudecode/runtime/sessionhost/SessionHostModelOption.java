@@ -5,6 +5,11 @@ import java.util.Objects;
 
 /**
  * One model choice exposed by an application-owned semantic session.
+ *
+ * <p>{@code defaultOption} is retained at {@code false} for every choice
+ * {@link SessionHostModelOptions} builds: the {@code Default (recommended)}
+ * row is gone, but Session Link's {@code models[].default} key stays on the
+ * wire so existing clients keep parsing the payload unchanged.
  */
 @Explanation("Session-scoped model metadata for semantic remote endpoints")
 public record SessionHostModelOption(

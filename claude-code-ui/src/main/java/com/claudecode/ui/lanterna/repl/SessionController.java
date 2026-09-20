@@ -192,29 +192,6 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
                       Runnable markExistingSession,
                       Consumer<String> terminalTitle,
                       Consumer<String> cancelSessionInteractions,
-                      Runnable sessionActivated) {
-        this(gui, screen, queryEngine, commandContext, messagePanel, messageHistory,
-            collapser, inputPanel, permissionGate,
-            sessionLifecycle, conversationReset, resetTopicTitle,
-            markExistingSession, terminalTitle, cancelSessionInteractions,
-            null, sessionActivated, null, null, null);
-    }
-
-    SessionController(WindowBasedTextGUI gui,
-                      Screen screen,
-                      QuerySession queryEngine,
-                      CommandContext commandContext,
-                      MessagePanel messagePanel,
-                      MessageHistory messageHistory,
-                      MessageCollapser collapser,
-                      InputPanel inputPanel,
-                      Supplier<PermissionGate> permissionGate,
-                      SessionLifecycle sessionLifecycle,
-                      ConversationResetPort conversationReset,
-                      Runnable resetTopicTitle,
-                      Runnable markExistingSession,
-                      Consumer<String> terminalTitle,
-                      Consumer<String> cancelSessionInteractions,
                       Runnable renderFreshConversationWelcome,
                       Runnable sessionActivated,
                       InteractiveSessionPort sessions,
@@ -402,28 +379,6 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         }
     }
 
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     private void onGuiThread(Runnable uiWork) {
         if (gui == null) {
             uiWork.run();
@@ -446,20 +401,11 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         if (uiFailure != null) throw uiFailure;
     }
 
-/** Loads the five most recent sessions for the welcome card. */
-    @Explanation("Lanterna uses the Pokémon welcome card without a recent-activity feed")
-    List<InteractiveSessionPort.SessionEntry> recentSessions() {
-        try {
-            return sessions.recentSessions(commandContext.session().workingDirectory(), 5);
-        } catch (Exception _) {
-            return List.of();
-        }
-    }
-
     /** Detect current git branch via {@code git rev-parse --abbrev-ref HEAD}. */
     private String detectGitBranch() {
-        String branch = GitUtils.currentBranch(
-            Path.of(commandContext.session().workingDirectory()));
+        String cwd = commandContext.session().workingDirectory();
+        if (cwd == null) cwd = System.getProperty("user.dir");
+        String branch = GitUtils.currentBranch(Path.of(cwd));
         return Strings.CS.equals("HEAD", branch) ? null : branch;
     }
 
@@ -1535,8 +1481,10 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
 
     private boolean detectMultipleWorktrees() {
         try {
+            String cwd = commandContext.session().workingDirectory();
+            if (cwd == null) cwd = System.getProperty("user.dir");
             Process p = new ProcessBuilder("git", "worktree", "list", "--porcelain")
-                .directory(new File(commandContext.session().workingDirectory()))
+                .directory(new File(cwd))
                 .redirectErrorStream(true).start();
             try { p.getOutputStream().close(); } catch (IOException _) {}
             String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

@@ -7,6 +7,7 @@ import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
 import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
@@ -267,20 +268,27 @@ final class SessionHostPublisher {
 
     private SessionHostModelState currentSessionModelState(String expectedSessionId) {
         requireActiveHostSession(expectedSessionId);
-        String current = queryEngine.configuration().getConfig().modelPreference();
+        QuerySessionSpec config = queryEngine.configuration().getConfig();
+        String preference = config.modelPreference();
         List<CustomModelConfig> custom = customModels != null ? customModels.list() : List.of();
-        return new SessionHostModelState(current == null ? "default" : current,
-            SessionHostModelOptions.build(current, queryEngine.configuration().getConfig()::isModelAllowed,
+        // Same seat and same gate as the headless path
+        // (CliHeadlessSessionFactory.modelState): the two must not diverge, or
+        // the webui model list changes shape depending on which session it
+        // happens to be addressing.
+        return new SessionHostModelState(
+            SessionHostModelOptions.currentSelection(preference, config.model()),
+            SessionHostModelOptions.build(preference, config::isModelAllowed,
                 custom, showBuiltInModelFamilies));
     }
 
     private SessionHostModelState setSessionModel(String expectedSessionId, String selected) {
         requireActiveHostSession(expectedSessionId);
         SessionHostModelState available = currentSessionModelState(expectedSessionId);
-        if (available.models().stream().noneMatch(option -> selected.equals(option.name()))) {
+        if (!SessionHostModelOptions.isSelectable(available.models(), selected)) {
             throw new IllegalArgumentException("model is not available for this session");
         }
-        String preference = Strings.CS.equals("default", selected) ? null : selected;
+        String preference = Strings.CS.equals(
+            SessionHostModelOptions.DEFAULT_SELECTION, selected) ? null : selected;
         queryEngine.configuration().setModel(preference);
         // Session Host model changes match SDK set_model: update only this
         // QuerySession/session. Reusing applyModelSelection() here wrote

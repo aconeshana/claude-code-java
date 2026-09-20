@@ -73,6 +73,7 @@ final class CliHeadlessSessionFactory {
     private final String resolvedModel;
     private final String mainCwd;
     private final CustomModelCatalog customModels;
+    private final boolean showBuiltInModelFamilies;
 
     CliHeadlessSessionFactory(
             StreamingClient client,
@@ -81,7 +82,8 @@ final class CliHeadlessSessionFactory {
             PermissionGate sharedGate,
             String resolvedModel,
             String mainCwd,
-            CustomModelCatalog customModels) {
+            CustomModelCatalog customModels,
+            boolean showBuiltInModelFamilies) {
         this.client = client;
         this.toolRegistry = toolRegistry;
         this.querySessionFactory = querySessionFactory;
@@ -89,6 +91,7 @@ final class CliHeadlessSessionFactory {
         this.resolvedModel = resolvedModel;
         this.mainCwd = mainCwd;
         this.customModels = customModels;
+        this.showBuiltInModelFamilies = showBuiltInModelFamilies;
     }
 
     /** One assembled headless session: the host record plus its engine. */
@@ -162,15 +165,15 @@ final class CliHeadlessSessionFactory {
 
                 @Override public SessionHostModelState set(String selected) {
                     SessionHostModelState available = modelState(engine);
-                    if (available.models().stream().noneMatch(
-                            option -> Strings.CS.equals(selected, option.name()))) {
+                    if (!SessionHostModelOptions.isSelectable(
+                            available.models(), selected)) {
                         throw new IllegalArgumentException(
                             "model is not available for this session");
                     }
-                    // Null keeps the Default row while requests use the concrete
+                    // Clearing the preference lets requests resolve the concrete
                     // default — the same preference semantics as the TUI picker.
-                    String preference = Strings.CS.equals("default", selected)
-                        ? null : selected;
+                    String preference = Strings.CS.equals(
+                        SessionHostModelOptions.DEFAULT_SELECTION, selected) ? null : selected;
                     engine.configuration().setModel(preference);
                     return modelState(engine);
                 }
@@ -195,14 +198,22 @@ final class CliHeadlessSessionFactory {
         return new Assembled(host, engine, abort, projectPath);
     }
 
-    /** The model catalogue over the engine's live preference — the same projection the TUI /model picker serves. */
+    /**
+     * The model catalogue over the engine's live preference — the same
+     * projection, and the same {@code showBuiltInModelFamilies} gate, the TUI
+     * /model picker and {@code SessionHostPublisher} serve. Omitting the gate
+     * here is what let a custom-endpoint session advertise the official
+     * families alongside its own catalogue.
+     */
     private SessionHostModelState modelState(QuerySession engine) {
-        String current = engine.configuration().getConfig().modelPreference();
+        QuerySessionSpec config = engine.configuration().getConfig();
+        String preference = config.modelPreference();
         List<CustomModelConfig> custom =
             customModels != null ? customModels.list() : List.of();
-        return new SessionHostModelState(current == null ? "default" : current,
-            SessionHostModelOptions.build(current,
-                engine.configuration().getConfig()::isModelAllowed, custom));
+        return new SessionHostModelState(
+            SessionHostModelOptions.currentSelection(preference, config.model()),
+            SessionHostModelOptions.build(preference, config::isModelAllowed, custom,
+                showBuiltInModelFamilies));
     }
 
     /** The engine's effort levels — the same projection the TUI picker and webui serve. */
@@ -225,10 +236,9 @@ final class CliHeadlessSessionFactory {
 
     /** One stable directory segment per distinct file name within a turn. */
     private static String submissionMessageId(
-            SessionHostSubmission.Attachment file) {
-        String name = StringUtils.isBlank(file.fileName())
+        SessionHostSubmission.Attachment file) {
+        return StringUtils.isBlank(file.fileName())
             ? "remote" : file.fileName();
-        return name;
     }
 
     /** The permission gate for a headless session in {@code projectPath}. */

@@ -81,7 +81,7 @@ class CliHeadlessGatewaySessionsTest {
             new EmptyStreamingClient(), new ToolRegistry(), new DefaultQuerySessionFactory(),
             new PermissionGate(
                 ToolPermissionContext.of(mainProject)),
-            "claude-sonnet-5", mainProject.toString(), null);
+            "claude-sonnet-5", mainProject.toString(), null, true);
         return new CliHeadlessGatewaySessions(factory, mainProject.toString());
     }
 
@@ -384,7 +384,7 @@ class CliHeadlessGatewaySessionsTest {
             new DefaultQuerySessionFactory(),
             new PermissionGate(
                 ToolPermissionContext.of(mainProject)),
-            "m", mainProject.toString(), null);
+            "m", mainProject.toString(), null, true);
         PermissionGate crossGate =
             factory.gateFor(otherProject.toString());
         // toRealPath resolves the macOS /var → /private/var symlink divergence.

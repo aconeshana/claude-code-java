@@ -15,38 +15,48 @@ import java.util.function.Predicate;
 
 /**
  * Builds the model choices projected by Session Link endpoints.
+ *
+ * <p>Every choice names a concrete model: there is no {@code Default
+ * (recommended)} row, because a remote picker that offers it has to render
+ * "Default" as the seated selection too, which tells the user nothing about
+ * which model actually reaches the wire. Callers report the resolved model id
+ * as {@code current} instead. {@code "default"} stays accepted by the
+ * {@code set} side as a legacy input — a Session Link client that round-trips
+ * an older {@code current} must not be rejected.
  */
 @Explanation("Projects the native /model catalogue onto semantic remote endpoints")
 public final class SessionHostModelOptions {
 
+    /**
+     * The legacy {@code "default"} input every {@code set} side keeps
+     * accepting: it no longer appears in {@link #build}'s choices, but a
+     * Session Link client that round-trips an older {@code current} still
+     * sends it, and it means "clear the preference".
+     */
+    public static final String DEFAULT_SELECTION = "default";
+
     private SessionHostModelOptions() {}
 
-    public static List<SessionHostModelOption> build(
-            String current,
-            Predicate<String> allowed,
-            List<CustomModelConfig> customModels) {
-        return build(current, allowed, customModels, true);
-    }
-
+    /**
+     * The choices for one session. {@code includeBuiltIns} is the caller's
+     * provider/credential gate ({@code ModelAvailability.showBuiltInModelFamilies}):
+     * there is deliberately no overload that defaults it, because a caller
+     * that silently gets {@code true} advertises official families a custom
+     * endpoint cannot serve, duplicating its own catalogue entries.
+     */
     public static List<SessionHostModelOption> build(
             String current,
             Predicate<String> allowed,
             List<CustomModelConfig> customModels,
             boolean includeBuiltIns) {
-        List<SessionHostModelOption> candidates = new ArrayList<>();
-        if (includeBuiltIns) {
-            candidates.add(option("default", "Default (recommended)",
-                "Use the default model (currently "
-                    + ModelNames.displayName(ModelNames.defaultMainLoopModel()) + ")",
-                "default", true));
-        }
-        ModelCatalog.pickerFamilies(includeBuiltIns, SubprocessEnvironment::get).stream()
-            .map(SessionHostModelOptions::familyOption)
-            .forEach(candidates::add);
+        List<SessionHostModelOption> candidates =
+            ModelCatalog.pickerFamilies(includeBuiltIns, SubprocessEnvironment::get).stream()
+                .map(SessionHostModelOptions::familyOption)
+                .toList();
         Predicate<String> predicate = allowed != null ? allowed : _ -> true;
         List<SessionHostModelOption> selected = new ArrayList<>();
         candidates.stream()
-            .filter(option -> option.defaultOption() || safelyAllowed(predicate, option.name()))
+            .filter(option -> safelyAllowed(predicate, option.name()))
             .forEach(selected::add);
         if (customModels != null) {
             for (CustomModelConfig custom : customModels) {
@@ -56,7 +66,13 @@ public final class SessionHostModelOptions {
                 }
             }
         }
+        // The current-model fallback row carries the same guard the TUI picker
+        // applies (ModelPickerDialog.buildOptions): with built-ins gated off,
+        // a built-in selection must not reappear as a candidate — this endpoint
+        // cannot call it, and offering it is how the official families leak
+        // back alongside the custom catalogue.
         if (StringUtils.isNotBlank(current)
+                && (includeBuiltIns || !ModelCatalog.isBuiltInSelection(current))
                 && selected.stream().noneMatch(option ->
                     ModelCatalog.sameModel(current, option.name()))) {
             selected.add(option(current,
@@ -69,6 +85,34 @@ public final class SessionHostModelOptions {
         LinkedHashMap<String, SessionHostModelOption> unique = new LinkedHashMap<>();
         selected.forEach(option -> unique.putIfAbsent(option.name(), option));
         return List.copyOf(unique.values());
+    }
+
+    /**
+     * The seated model id for a remote picker: {@code modelPreference} when the
+     * user picked something, otherwise {@code effectiveModel} — the concrete id
+     * that actually reaches the wire. {@code opusplan} survives verbatim
+     * because it resolves to two different models by mode, so its own choice
+     * row is the only honest seat for it.
+     */
+    public static String currentSelection(String modelPreference, String effectiveModel) {
+        if (Strings.CI.equals("opusplan", StringUtils.trimToEmpty(modelPreference))) {
+            return "opusplan";
+        }
+        return StringUtils.isNotBlank(modelPreference)
+            ? modelPreference.strip() : StringUtils.trimToEmpty(effectiveModel);
+    }
+
+    /**
+     * True when {@code selected} names one of {@code options} or is
+     * {@link #DEFAULT_SELECTION}. Callers guard their {@code set} side with
+     * this so the legacy input can never be rejected by an unlisted-choice
+     * check.
+     */
+    public static boolean isSelectable(
+            List<SessionHostModelOption> options, String selected) {
+        if (Strings.CS.equals(DEFAULT_SELECTION, selected)) return true;
+        return options != null && options.stream()
+            .anyMatch(option -> Strings.CS.equals(selected, option.name()));
     }
 
     private static SessionHostModelOption familyOption(ModelCatalog.Family family) {

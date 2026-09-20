@@ -8,11 +8,15 @@
  *   title, trailing relative time that swaps to row actions on hover, and the
  *   "..." row menu (rename/fork/archive/delete — see below) ported from
  *   upstream's `sessionMenuItems`.
+ * - `sessionStatuses` — the pending-interaction-first status ordering, for the
+ *   two kinds this gateway produces (approval, question). `plan-review` and the
+ *   running/subagent counts have no wire equivalent, so the remainder folds to
+ *   the active/headless readings described on `sessionStatus`.
  * - `timeLabel`/`displayTitle` helpers (search-result and hover-card variants
  *   dropped — no search, no HoverCard in this port).
  * Dropped by subtraction (no backend surface): workspace rename/delete menus,
  * drag-and-drop reorder wiring, HoverCard previews, schedule indicator,
- * subagent/pending-interaction statuses, the visually-hidden status labels.
+ * subagent statuses, the visually-hidden status labels.
  * Close-headless is the one row action this gateway has that upstream
  * expresses as a menu item instead — it stays a bare trailing icon, not a
  * menu entry. Delete is this project's own extension (no upstream
@@ -27,6 +31,7 @@ import {
 } from '@primitives'
 import type { MenuEntry, StateDotState } from '@primitives'
 import type { CatalogSession } from '../api/types'
+import type { PendingInteraction } from '../store/approvals'
 import css from '@chat-styles/WorkspaceRows.module.css'
 import localCss from './Sidebar.module.css'
 
@@ -44,16 +49,21 @@ export function timeLabel(updatedAt: number, now: number, t: RowTranslate): stri
 }
 
 /**
- * Session status presentation, reduced from upstream's sessionStatuses: this
- * gateway exposes only active (the TUI's conversation) and headless_open (a
- * gateway headless session); running/idle/pending-interaction states have no
- * wire equivalent. The selected headless session shows as ongoing — it is the
- * one live mirror stream the webui is attached to.
+ * Session status presentation, reduced from upstream's sessionStatuses: a
+ * pending interaction is primary and outranks everything, exactly as upstream
+ * orders it — a session waiting on the user is the one state you must not have
+ * to hunt for. Below that this gateway exposes only active (the TUI's
+ * conversation) and headless_open (a gateway headless session); running/idle
+ * have no wire equivalent. The selected headless session shows as ongoing — it
+ * is the one live mirror stream the webui is attached to.
  */
 export function sessionStatus(
   session: CatalogSession,
   selected: boolean,
+  pending?: PendingInteraction,
 ): { state: StateDotState; labelKey: string } {
+  if (pending === 'approval') return { state: 'warning', labelKey: 'status.waitingApproval' }
+  if (pending === 'question') return { state: 'warning', labelKey: 'status.waitingAnswer' }
   if (session.active) return { state: 'done', labelKey: 'status.completed' }
   if (session.headless_open) {
     return { state: selected ? 'ongoing' : 'done', labelKey: selected ? 'status.running' : 'status.idle' }
@@ -103,11 +113,17 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle }: {
  * own action (closing a headless session) rendered with upstream's bare 16px
  * trailing-icon grammar, outside the menu.
  */
-export function SessionNodeItem({ session, selected, now, onOpen, onClose, onRename, onFork, onArchive, onDelete, t }: {
+export function SessionNodeItem({ session, selected, now, pending, onOpen, onClose, onRename, onFork, onArchive, onDelete, t }: {
   session: CatalogSession
   selected: boolean
   /** Epoch ms for relative-time formatting. */
   now: number
+  /**
+   * What this session is waiting on, upstream's `node.pendingInteraction`. It
+   * arrives as a prop because this gateway's catalog rows carry no interaction
+   * field — the mirror stream's asks do.
+   */
+  pending?: PendingInteraction | undefined
   onOpen: (session: CatalogSession) => void
   onClose: (session: CatalogSession) => void
   /** Opens the rename dialog for this session. */
@@ -120,8 +136,10 @@ export function SessionNodeItem({ session, selected, now, onOpen, onClose, onRen
   onDelete: (session: CatalogSession) => void
   t: RowTranslate
 }) {
-  const status = sessionStatus(session, selected)
-  const showStatus = session.active || session.headless_open
+  const status = sessionStatus(session, selected, pending)
+  // A session waiting on the user lights up whether or not it is live: the ask
+  // can only be answered here, so hiding the dot would strand it.
+  const showStatus = pending != null || session.active || session.headless_open
   const [menuOpen, setMenuOpen] = useState(false)
   const title = displayTitle(session)
   const menuItems: readonly MenuEntry[] = [

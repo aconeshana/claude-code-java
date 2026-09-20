@@ -319,6 +319,42 @@ and `DELETE /api/sessions/{id}`, backed by
 `SessionOperationsService.renameSession`/`forkSession` (already existed) and
 new `archiveSession`/`deleteSession` methods.
 
+**Session row pending-interaction status, restored from `ui-workspace`'s
+`Rows.tsx` `sessionStatuses` (2026-09-20).** An earlier pass recorded
+"pending-interaction statuses" as dropped by subtraction; that was an omission,
+not a scope cut — this gateway does produce pending interactions, they just had
+no sidebar surface, so an approval raised in one session was invisible from any
+other. `sessionStatus()` in `SessionRows.tsx` now follows upstream's ordering,
+where a pending interaction is the **primary** status and outranks
+running/completed: `approval` → `{ state: 'warning', label:
+t('status.waitingApproval') }` and `question` → `{ state: 'warning', label:
+t('status.waitingAnswer') }`, with both label strings copied verbatim from
+`ui-workspace/src/client/locales.ts` into `i18n/dictionaries/workspace.ts`
+(`等待审批`/`Waiting for approval`, `等待回答`/`Waiting for answer`). This
+consumes the already-vendored `ui-primitives/StateDot.tsx`'s `'warning'` state
+and the existing 16px `css.slot`, so no vendored file changed and no new DOM
+grammar was invented.
+
+Two recorded deviations:
+
+- **The pending data source differs.** Upstream reads `node.pendingInteraction`
+  off the session node itself; this gateway's `CatalogSession` carries no such
+  field, so the status comes from the mirror stream's `PermissionAsk.session_id`
+  via `store/approvals.ts`'s `pendingInteractions()` and arrives as a
+  `SessionNodeItem` prop. `showStatus` was widened to `pending != null ||
+  session.active || session.headless_open`, so a waiting session lights up even
+  when it is neither live nor selected.
+- **`plan-review` is still missing.** Upstream's third pending kind has no wire
+  equivalent here; `PendingInteraction` is the two-value union `'approval' |
+  'question'`. Upstream's `runningSubagentCount` secondary status and the
+  visually-hidden status labels remain dropped as before.
+
+The matching client-side rule is that the card itself is **never** shown
+outside its own session: `App.tsx` reads `pendingAskFor(asks, selectedId)`,
+which has no fallback to another session's ask. An earlier `?? asks[0]`
+fallback rendered session B's approval under session A's composer, so opening
+a fresh session hijacked an authorization the user never triggered there.
+
 ### `vendor/chat-styles/` — reasoning row & tool-call row
 
 | File here | Upstream package | Upstream file |

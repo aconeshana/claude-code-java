@@ -379,7 +379,8 @@ final class CliInteractiveSessionRunner {
             CliHeadlessGatewaySessions headlessSessions = new CliHeadlessGatewaySessions(
                 new CliHeadlessSessionFactory(
                     client, toolRegistry, input.querySessionFactory(),
-                    permissionGate, resolvedModel, interactiveCwd, customModelCatalog),
+                    permissionGate, resolvedModel, interactiveCwd, customModelCatalog,
+                    showBuiltInModelFamilies),
                 interactiveCwd);
             interactiveRuntime.bindHeadlessSessions(headlessSessions);
             CliGatewayRuntime gatewayRuntime = new CliGatewayRuntime(

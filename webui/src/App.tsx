@@ -5,7 +5,7 @@ import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
 import type { UserContentBlock } from './api/types'
 import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
 import { useTranslate } from './i18n/useTranslate'
-import { useApprovals } from './store/approvals'
+import { pendingAskFor, useApprovals } from './store/approvals'
 import { useAuth } from './store/auth'
 import { useContextTimeline } from './store/contextTimeline'
 import { useConversations } from './store/conversations'
@@ -68,7 +68,7 @@ export function App() {
   const conversation = useConversations((state) =>
     state.conversations[selectedId ?? ''])
   const asks = useApprovals((state) => state.asks)
-  const visibleAsk = asks.find((ask) => ask.session_id === selectedId) ?? asks[0]
+  const visibleAsk = pendingAskFor(asks, selectedId)
 
   const onSubmit = useCallback((content: string | readonly UserContentBlock[]) => {
     void submitTurn(selectedId, content).catch((failure: unknown) => {
