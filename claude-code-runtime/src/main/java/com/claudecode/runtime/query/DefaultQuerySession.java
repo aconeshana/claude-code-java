@@ -189,7 +189,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     private volatile TranscriptSink transcriptSink;
     /** Optional adapter notification immediately before each main model request starts. */
     private volatile Runnable beforeModelRequestCallback;
-/** {@code /rewind} "Restore code" backend — {@code null} when disabled (see {@link QuerySessionSpec#fileHistoryEnabled}). */
+    /** {@code /rewind} "Restore code" backend — {@code null} when disabled (see {@link QuerySessionSpec#fileHistoryEnabled}). */
     private final FileHistoryManager fileHistoryManager;
     /**
      * The id of the user message that started the turn currently executing tools — set by {@link
@@ -272,7 +272,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     @Override public Iterator<SDKMessage> submitMessage(Object prompt, SubmitOptions options) {
         config.headlessTurnProfiler().startTurn();
         awaitStartupReadiness();
-// Reset abort signal before each new query.
+        // Reset abort signal before each new query.
         softInterruptRequested.set(false);
         abortController.reset();
         beginPermissionDenialTurn();
@@ -488,7 +488,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         // CLAUDE.md / memory content deliberately does NOT go into the system
 
         // message's <system-reminder> (getUserContext → prependUserContext),
-// which QueryLoop.buildClaudeMdUserContext matches (it reads
+        // which QueryLoop.buildClaudeMdUserContext matches (it reads
         // the same claudeMdContentSupplier). Keeping it out of `system` also
         // keeps the cached system prefix stable when memory files change
         // mid-session.
@@ -521,7 +521,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
                 // Prompt enrichment is best-effort — never block the query.
             }
         }
-// Live cwd (not config.workingDirectory, which is frozen at QuerySessionSpec
+        // Live cwd (not config.workingDirectory, which is frozen at QuerySessionSpec
         // construction time) — a mid-session worktree switch (EnterWorktreeTool /
         // ExitWorktreeTool / /resume restore) mutates System.setProperty("user.dir", ...)
         // and env_info_simple needs to reflect it on the very next turn, same reasoning
@@ -565,8 +565,6 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         if (hasAppendSystemPrompt) {
             sb.append("\n\n").append(append);
         }
-
-
 
         // each system-context entry as "<key>: <value>" appended after the
         // prompt parts — so the block goes on the wire with a "gitStatus: "
@@ -939,7 +937,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         return attributionSkill;
     }
 
-/** Plugin attribution paired with {@link #getAttributionSkill}. */
+    /** Plugin attribution paired with {@link #getAttributionSkill}. */
     @Override public String getAttributionPlugin() {
         return attributionPlugin;
     }
@@ -1432,6 +1430,22 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         lastCacheSafeForkRequest = null;
     }
 
+    /**
+     * Installs the prefix a rewind keeps. Unlike {@link #loadMessages(List)} this preserves the
+     * selector-only pre-compact interval, because the fullscreen renderer holds one transcript
+     * list whose pre-compact prefix survives any slice taken after the compact boundary.
+     */
+    @Override public void loadRewoundMessages(
+            List<Message> retainedScrollback, List<Message> activeMessages) {
+        synchronized (mutableMessages) {
+            rewindScrollbackMessages = retainedScrollback == null
+                ? List.of() : List.copyOf(retainedScrollback);
+            mutableMessages.clear();
+            if (activeMessages != null) mutableMessages.addAll(activeMessages);
+        }
+        lastCacheSafeForkRequest = null;
+    }
+
     /** Replace active messages after a successful full compact while retaining one UI interval. */
     @Override public void loadCompactedMessages(List<Message> messages) {
         synchronized (mutableMessages) {
@@ -1455,10 +1469,27 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
 
     private void replaceCompactedMessages(
             List<Message> messages, List<Message> retainedRewindMessages) {
-        rewindScrollbackMessages = retainedRewindMessages == null
-            ? List.of() : List.copyOf(retainedRewindMessages);
+        rewindScrollbackMessages = retainedScrollback(messages, retainedRewindMessages);
         mutableMessages.clear();
         if (messages != null) mutableMessages.addAll(messages);
+    }
+
+    /**
+     * Drops from the retained interval every message the compaction re-anchored after the
+     * boundary, so the preserved segment is moved rather than duplicated. Without this the
+     * segment would appear twice in {@link #getMessagesForRewind()} — once in the interval and
+     * once in the active list — and a rewind that sliced the combined view would resurrect the
+     * same {@code tool_use} / {@code tool_result} ids twice.
+     */
+    private static List<Message> retainedScrollback(
+            List<Message> compacted, List<Message> retained) {
+        if (retained == null || retained.isEmpty()) return List.of();
+        if (compacted == null || compacted.isEmpty()) return List.copyOf(retained);
+        Set<String> reanchored = new HashSet<>();
+        for (Message message : compacted) {
+            if (message.uuid() != null) reanchored.add(message.uuid());
+        }
+        return retained.stream().filter(m -> !reanchored.contains(m.uuid())).toList();
     }
 
 

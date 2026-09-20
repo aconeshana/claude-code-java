@@ -697,15 +697,59 @@ class QueryEngineTest {
         UserMessage summary = new UserMessage("summary", MessageContent.ofText("summary"));
 
         engine.loadCompactedMessages(
-            List.of(boundary, first, summary),
+            List.of(boundary, summary, selected),
             List.of(first));
 
-        assertEquals(List.of(boundary, first, summary), engine.getMessages());
-        assertEquals(List.of(first, boundary, first, summary), engine.getMessagesForRewind());
+        assertEquals(List.of(boundary, summary, selected), engine.getMessages());
+        assertEquals(List.of(first, boundary, summary, selected), engine.getMessagesForRewind());
         assertTrue(engine.hasCompactionOccurred());
 
         engine.loadCompactedMessages(List.of(boundary, summary), List.of());
 
         assertEquals(List.of(boundary, summary), engine.getMessagesForRewind());
+    }
+
+    @Test
+    void theRetainedIntervalDropsWhateverTheCompactionReanchored() {
+        UserMessage dropped = new UserMessage("dropped", MessageContent.ofText("dropped"));
+        UserMessage preserved = new UserMessage("preserved", MessageContent.ofText("preserved"));
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(NOOP_CLIENT)
+            .initialMessages(List.of(dropped, preserved))
+            .build());
+        SystemMessage boundary = new SystemMessage(
+            "boundary", "compact_boundary", "info", "current");
+        UserMessage summary = new UserMessage("summary", MessageContent.ofText("summary"));
+
+        engine.loadCompactedMessages(List.of(boundary, summary, preserved));
+
+        assertEquals(List.of(dropped, boundary, summary, preserved),
+            engine.getMessagesForRewind(),
+            "the preserved segment is re-anchored after the boundary, never listed twice");
+    }
+
+    @Test
+    void loadRewoundMessagesKeepsTheSelectorOnlyIntervalThatLoadMessagesDrops() {
+        UserMessage dropped = new UserMessage("dropped", MessageContent.ofText("dropped"));
+        SystemMessage boundary = new SystemMessage(
+            "boundary", "compact_boundary", "info", "current");
+        UserMessage summary = new UserMessage("summary", MessageContent.ofText("summary"));
+        UserMessage prompt = new UserMessage("prompt", MessageContent.ofText("prompt"));
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(NOOP_CLIENT)
+            .initialMessages(List.of(dropped))
+            .build());
+        engine.loadCompactedMessages(List.of(boundary, summary));
+        engine.getMutableMessages().add(prompt);
+
+        engine.loadRewoundMessages(List.of(dropped), List.of(boundary, summary));
+
+        assertEquals(List.of(boundary, summary), engine.getMessages());
+        assertEquals(List.of(dropped, boundary, summary), engine.getMessagesForRewind());
+
+        engine.loadMessages(List.of(boundary, summary));
+
+        assertEquals(List.of(boundary, summary), engine.getMessagesForRewind(),
+            "a resume rebuilds the whole store, so no selector-only interval survives it");
     }
 }

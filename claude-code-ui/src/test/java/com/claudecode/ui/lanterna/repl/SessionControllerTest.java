@@ -1079,6 +1079,67 @@ class SessionControllerTest {
     }
 
     @Test
+    void rewindAfterCompactionKeepsOnlyTheLiveConversationPrefix() {
+        UserMessage dropped = realUser("pre-compact prompt");
+        UserMessage preserved = realUser("preserved prompt");
+        SystemMessage boundary = new SystemMessage(
+            "boundary", "compact_boundary", "info", "Conversation compacted");
+        UserMessage summary = new UserMessage("summary", MessageContent.ofText("summary"));
+        UserMessage picked = realUser("resend this prompt");
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(NOOP_CLIENT)
+            .initialMessages(List.of(dropped, preserved))
+            .build());
+        engine.loadCompactedMessages(List.of(boundary, summary, preserved));
+        engine.getMutableMessages().add(picked);
+        SessionController controller = new SessionController(
+            null, null, engine, null, new MessagePanel(), new MessageHistory(),
+            new MessageCollapser(null, false) {
+                @Override public void resetTurn() {}
+            }, new InputPanel(), null, null, null, null, null, null);
+
+        // The selector view intentionally prepends the interval the compaction dropped; the
+        // segment it preserved is re-anchored after the boundary instead of being listed twice.
+        assertEquals(List.of(dropped, boundary, summary, preserved, picked),
+            engine.conversation().getMessagesForRewind());
+
+        controller.editMessageFromActions(picked.uuid());
+
+        assertEquals(List.of(boundary, summary, preserved),
+            engine.conversation().getMessages(),
+            "rewinding a post-compact pick must not resurrect the dropped pre-compact interval");
+        assertEquals(List.of(dropped, boundary, summary, preserved),
+            engine.conversation().getMessagesForRewind(),
+            "236 slices one transcript store, so the pre-compact prefix survives the rewind");
+    }
+
+    @Test
+    void rewindSliceFallsBackToTheSelectorViewOnlyForPreCompactPicks() {
+        UserMessage dropped = realUser("pre-compact prompt");
+        UserMessage preserved = realUser("preserved prompt");
+        SystemMessage boundary = new SystemMessage(
+            "boundary", "compact_boundary", "info", "Conversation compacted");
+        List<Message> active = List.of(boundary, preserved);
+        List<Message> view = List.of(dropped, boundary, preserved);
+
+        SessionController.RewindSlice live =
+            SessionController.rewindSlice(active, view, preserved);
+        assertEquals(List.of(dropped), live.retainedScrollback());
+        assertEquals(List.of(boundary), live.retainedActive());
+        assertEquals(List.of(dropped, boundary), live.retained());
+        assertEquals(List.of(preserved), live.sliced());
+
+        SessionController.RewindSlice preCompact =
+            SessionController.rewindSlice(active, view, dropped);
+        assertEquals(List.of(), preCompact.retainedScrollback(),
+            "a pick that predates the compaction unwinds it, leaving no scrollback behind");
+        assertEquals(List.of(), preCompact.retained());
+        assertEquals(view, preCompact.sliced());
+
+        assertNull(SessionController.rewindSlice(active, view, realUser("unknown")));
+    }
+
+    @Test
     void summarizeFromReplacesTheVisibleTailWithThe197SummaryCard() throws Exception {
         UserMessage first = realUser("first prompt");
         UserMessage selected = realUser("selected prompt");
@@ -1112,8 +1173,10 @@ class SessionControllerTest {
         assertFalse(Strings.CS.contains(rendered, "later response"), rendered);
         assertTrue(Strings.CS.contains(rendered, "Summarized conversation"), rendered);
         assertFalse(Strings.CS.contains(rendered, "Conversation compacted"), rendered);
-        assertEquals(List.of(first, boundary, first, summary),
-            engine.conversation().getMessagesForRewind());
+        assertEquals(List.of(boundary, first, summary),
+            engine.conversation().getMessagesForRewind(),
+            "a FROM compact re-anchors the kept prefix after the boundary, so the retained "
+                + "interval must not list it a second time");
     }
 
     @Test

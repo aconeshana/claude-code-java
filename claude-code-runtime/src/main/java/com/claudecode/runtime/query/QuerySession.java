@@ -74,6 +74,17 @@ public interface QuerySession {
         List<SystemMessage> drainNotifications();
         MessageQueueManager getMessageQueue();
         void loadMessages(List<Message> messages);
+        /**
+         * Installs the prefix a rewind keeps, mirroring the single transcript store the
+         * fullscreen renderer slices: {@code retainedScrollback} replaces the selector-only
+         * pre-compact interval and {@code activeMessages} replaces the live conversation.
+         * A pick inside the live list keeps the scrollback, while a pick inside the scrollback
+         * unwinds the compaction and leaves no scrollback behind.
+         */
+        default void loadRewoundMessages(
+                List<Message> retainedScrollback, List<Message> activeMessages) {
+            loadMessages(activeMessages);
+        }
         default void loadCompactedMessages(List<Message> messages) { loadMessages(messages); }
         default void loadCompactedMessages(
                 List<Message> messages, List<Message> retainedRewindMessages) {

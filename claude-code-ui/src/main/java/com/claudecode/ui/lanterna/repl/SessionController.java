@@ -984,17 +984,18 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
      * input with the picked message's text + image chips.
      */
     private void restoreConversationTo(UserMessage selected) {
-        List<Message> liveMessages = List.copyOf(
-            queryEngine.conversation().getMessagesForRewind());
-        int idx = lastIdentityIndexOf(liveMessages, selected);
-        if (idx >= 0) {
-            List<Message> retainedMessages = new ArrayList<>(liveMessages.subList(0, idx));
-            List<Message> slicedMessages = new ArrayList<>(
-                liveMessages.subList(idx, liveMessages.size()));
+        RewindSlice slice = rewindSlice(
+            queryEngine.conversation().getMessages(),
+            queryEngine.conversation().getMessagesForRewind(),
+            selected);
+        if (slice != null) {
+            List<Message> retainedMessages = slice.retained();
+            List<Message> slicedMessages = slice.sliced();
             RewindModelUnwind.Result modelUnwind = rewindModelUnwind(
                 retainedMessages, slicedMessages);
             rebaseTranscriptAfterRewind(retainedMessages);
-            queryEngine.conversation().loadMessages(retainedMessages);
+            queryEngine.conversation().loadRewoundMessages(
+                slice.retainedScrollback(), slice.retainedActive());
             rewindStateReset.run();
             applyRewindModelUnwind(modelUnwind);
 
@@ -1040,6 +1041,67 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
             if (messages.get(index) == selected) return index;
         }
         return -1;
+    }
+
+    /**
+     * How a rewind slices the single transcript the fullscreen renderer holds: the selector-only
+     * pre-compact interval it keeps, the live-conversation prefix it keeps, and the tail it drops.
+     */
+    record RewindSlice(
+            List<Message> retainedScrollback, List<Message> retainedActive, List<Message> sliced) {
+
+        /** The whole prefix the rewind keeps, in transcript order. */
+        List<Message> retained() {
+            if (retainedScrollback.isEmpty()) return retainedActive;
+            List<Message> combined =
+                new ArrayList<>(retainedScrollback.size() + retainedActive.size());
+            combined.addAll(retainedScrollback);
+            combined.addAll(retainedActive);
+            return combined;
+        }
+    }
+
+    /**
+     * Pure slice logic behind {@link #restoreConversationTo}: resolves {@code selected} against the
+     * live conversation first and only falls back to the selector view when the pick predates the
+     * last compaction, in which case the rewind also unwinds that compaction.
+     *
+     * <p>The two lists must never be concatenated into the active conversation.
+     * {@code getMessagesForRewind()} is a selector-only view that prepends the pre-compact interval
+     * the compaction dropped; installing the combined prefix re-inflates the context that had just
+     * been compacted away, so the very next request is rejected as invalid. A live pick keeps that
+     * interval as scrollback instead, which is what slicing one transcript list amounts to, since
+     * the interval sits entirely before the compact boundary.
+     */
+    static RewindSlice rewindSlice(
+            List<Message> activeMessages, List<Message> rewindView, Message selected) {
+        int activeIndex = lastIdentityIndexOf(activeMessages, selected);
+        if (activeIndex >= 0) {
+            return new RewindSlice(
+                scrollbackOf(activeMessages, rewindView),
+                new ArrayList<>(activeMessages.subList(0, activeIndex)),
+                new ArrayList<>(activeMessages.subList(activeIndex, activeMessages.size())));
+        }
+        int viewIndex = lastIdentityIndexOf(rewindView, selected);
+        if (viewIndex < 0) return null;
+        return new RewindSlice(
+            List.of(),
+            new ArrayList<>(rewindView.subList(0, viewIndex)),
+            new ArrayList<>(rewindView.subList(viewIndex, rewindView.size())));
+    }
+
+    /**
+     * The interval {@code rewindView} prepends to the live conversation, recovered from the two
+     * lists alone. Returns nothing unless the view really ends with the active conversation.
+     */
+    private static List<Message> scrollbackOf(
+            List<Message> activeMessages, List<Message> rewindView) {
+        int prefix = rewindView.size() - activeMessages.size();
+        if (prefix <= 0) return List.of();
+        if (!activeMessages.isEmpty() && rewindView.get(prefix) != activeMessages.getFirst()) {
+            return List.of();
+        }
+        return new ArrayList<>(rewindView.subList(0, prefix));
     }
 
     private RewindModelUnwind.Result rewindModelUnwind(
@@ -1418,17 +1480,20 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         if (selectedIndex < 0) return null;
 
         UserMessage selected = (UserMessage) messages.get(selectedIndex);
-        List<Message> retainedMessages = new ArrayList<>(messages.subList(0, selectedIndex));
-        List<Message> slicedMessages = new ArrayList<>(messages.subList(selectedIndex, messages.size()));
+        RewindSlice slice = rewindSlice(
+            messages, queryEngine.conversation().getMessagesForRewind(), selected);
+        if (slice == null) return null;
+        List<Message> retainedMessages = slice.retained();
         RewindModelUnwind.Result modelUnwind = rewindModelUnwind(
-            retainedMessages, slicedMessages);
+            retainedMessages, slice.sliced());
         rebaseTranscriptAfterRewind(retainedMessages);
 
         // Use the same conversation-state restore as the manual picker: model overrides and
         // nested-memory attachment triggers must unwind together with the message list. Waiting
         // keeps the model view, transcript surface, and later turn-complete row atomic.
         onGuiThread(() -> {
-            queryEngine.conversation().loadMessages(retainedMessages);
+            queryEngine.conversation().loadRewoundMessages(
+                slice.retainedScrollback(), slice.retainedActive());
             rewindStateReset.run();
             applyRewindModelUnwind(modelUnwind);
             queryEngine.forks().clearNestedMemoryAttachmentTriggers();
