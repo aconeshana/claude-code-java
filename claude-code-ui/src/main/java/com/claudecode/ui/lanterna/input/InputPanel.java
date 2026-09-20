@@ -932,7 +932,7 @@ public class InputPanel extends Panel {
     }
 
     /** Wire a PromptHistory so Up/Down arrows navigate history. */
-    public void setPromptHistory(PromptHistory history) {
+    public void setPromptHistory(PromptHistoryView history) {
         historyController.setPromptHistory(history);
     }
 

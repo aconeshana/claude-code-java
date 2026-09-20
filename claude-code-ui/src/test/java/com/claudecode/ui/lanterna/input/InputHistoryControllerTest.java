@@ -130,7 +130,7 @@ class InputHistoryControllerTest {
             capturedModeFilter = modeFilter;
             return CompletableFuture.completedFuture(entries.stream().limit(limit).toList());
         }
-        @Override HistoryReader openGlobalHistoryReader() {
+        @Override public HistoryReader openGlobalHistoryReader() {
             return new HistoryReader(entries);
         }
         @Override public CompletableFuture<Integer> countEntriesAsync(

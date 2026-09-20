@@ -34,7 +34,7 @@ import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
 import com.claudecode.ui.lanterna.bashmode.BashModeExecutor;
 import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.input.PromptHistory;
+import com.claudecode.ui.lanterna.input.PromptHistoryView;
 import com.claudecode.ui.lanterna.slash.PromptInvocationAdapter;
 import com.claudecode.ui.lanterna.slash.SlashCommandDispatcher;
 
@@ -89,7 +89,7 @@ final class ReplSubmissionCoordinator {
         InteractiveSessionPort interactiveSessions) {}
 
     private final InputPanel input;
-    private final PromptHistory history;
+    private final PromptHistoryView history;
     private final CommandRegistry commands;
     private final CommandContext commandContext;
     private final ImmediateCommandUiAdapter immediate;
@@ -104,7 +104,7 @@ final class ReplSubmissionCoordinator {
     private boolean routingInteractiveStartupPrompt;
     private volatile boolean lastSubmittedInputWasInteractiveStartupPrompt;
 
-    ReplSubmissionCoordinator(InputPanel input, PromptHistory history, CommandRegistry commands,
+    ReplSubmissionCoordinator(InputPanel input, PromptHistoryView history, CommandRegistry commands,
                               CommandContext commandContext, ImmediateCommandUiAdapter immediate,
                               BashModeExecutor bash, SlashCommandDispatcher slash,
                               String projectRoot, TurnSubmission submission,

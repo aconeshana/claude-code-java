@@ -74,7 +74,7 @@ import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
 import com.claudecode.ui.lanterna.features.ReplFeature;
 import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.input.PromptHistory;
+import com.claudecode.ui.lanterna.input.PromptHistoryView;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessageCollapser;
@@ -1357,7 +1357,7 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
      * @return true when something was undone; false (with a transcript hint) when there was no
      *         submitted input to restore
      */
-    boolean undoLastSubmission(String lastInput, PromptHistory history) {
+    boolean undoLastSubmission(String lastInput, PromptHistoryView history) {
         if (StringUtils.isEmpty(lastInput)) {
             messagePanel.appendLine("  [Nothing to undo]", LanternaTheme.welcomeDim());
             try { screen.refresh(); } catch (Exception _) { /* non-fatal */ }
@@ -1388,14 +1388,14 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
      * pops the prompt-history entry, rewinds through {@link #rewindToBeforeLastRealUserMessage()},
      * and restores the typed source text (not the wire text) into the prompt.
      */
-    ConversationOps conversationOps(PromptHistory promptHistory) {
+    ConversationOps conversationOps(PromptHistoryView promptHistory) {
         return new TurnEngineConversationOps(promptHistory);
     }
 
     private final class TurnEngineConversationOps implements ConversationOps {
-        private final PromptHistory promptHistory;
+        private final PromptHistoryView promptHistory;
 
-        private TurnEngineConversationOps(PromptHistory promptHistory) {
+        private TurnEngineConversationOps(PromptHistoryView promptHistory) {
             this.promptHistory = promptHistory;
         }
 

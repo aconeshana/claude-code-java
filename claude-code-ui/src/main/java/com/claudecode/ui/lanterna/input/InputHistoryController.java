@@ -1,18 +1,24 @@
 package com.claudecode.ui.lanterna.input;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.message.PastedContent;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.gui2.TextBox;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 /**
  * Up/Down/Ctrl+R history navigation for {@link InputPanel}, extracted so the index / draft / cache
@@ -27,7 +33,7 @@ final class InputHistoryController {
 
     private final InputEditingSurface box;
 
-    private PromptHistory promptHistory;
+    private PromptHistoryView promptHistory;
     private String historySessionId = null;
     private String historyProject = null;
     private Supplier<List<PromptHistory.Entry>> liveHistorySupplier;
@@ -46,7 +52,7 @@ final class InputHistoryController {
     private static final Object HISTORY_LOAD_LOCK = new Object();
     private static CompletableFuture<List<PromptHistory.Entry>> pendingHistoryLoad;
     private static int pendingHistoryLoadTarget;
-    private static PromptHistory pendingHistorySource;
+    private static PromptHistoryView pendingHistorySource;
     private static String pendingHistoryProject;
     private static String pendingHistorySessionId;
     private static String pendingHistoryModeFilter;
@@ -82,7 +88,7 @@ final class InputHistoryController {
         this.box = box;
     }
 
-    void setPromptHistory(PromptHistory history) {
+    void setPromptHistory(PromptHistoryView history) {
         if (this.promptHistory == history) return;
         this.promptHistory = history;
         invalidateHistoryContext();
@@ -196,7 +202,9 @@ final class InputHistoryController {
         }
         List<PromptHistory.Entry> liveHistory = liveHistorySupplier == null
             ? null : liveHistorySupplier.get();
-        if (liveHistory != null) mergeLiveHistory(liveHistory);
+        if (liveHistory != null) {
+            mergeLiveHistory(liveHistory);
+        }
         if (historyIndex == 0) {
             if (liveHistory != null) {
                 historyTotal = historyCache == null ? 0 : historyCache.size();
@@ -219,7 +227,9 @@ final class InputHistoryController {
         }
 
         int loadTarget = historyLoadTarget(target + 1);
-        if (liveHistory != null) return TextBox.Result.HANDLED;
+        if (liveHistory != null) {
+            return TextBox.Result.HANDLED;
+        }
         loadHistoryEntries(loadTarget, historyModeFilter).whenComplete((entries, failure) ->
             box.invokeLater(() -> completeHistoryUp(
                 requestGeneration, contextGeneration, target, loadTarget, entries, failure)));
@@ -443,7 +453,7 @@ final class InputHistoryController {
 
     private CompletableFuture<List<PromptHistory.Entry>> loadHistoryEntries(
             int minimumCount, String modeFilter) {
-        PromptHistory history = promptHistory;
+        PromptHistoryView history = promptHistory;
         if (history == null) return CompletableFuture.completedFuture(List.of());
         int target = historyLoadTarget(minimumCount);
         String project = historyProject != null

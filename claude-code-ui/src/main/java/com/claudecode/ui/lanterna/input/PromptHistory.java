@@ -38,7 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class PromptHistory implements AutoCloseable {
+public class PromptHistory implements PromptHistoryView, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PromptHistory.class);
     private static final int MAX_HISTORY = 100;
@@ -274,7 +274,7 @@ public class PromptHistory implements AutoCloseable {
 
     // ── Construction ──────────────────────────────────────────────────────────
 
-/** Default: uses. */
+    /** Default: uses. */
     public PromptHistory() {
         this(ClaudePaths.HISTORY_JSONL);
     }
@@ -313,6 +313,7 @@ public class PromptHistory implements AutoCloseable {
      * The interactive REPL uses this overload so Enter remains an in-memory
      * operation before the asynchronous history flush starts.
      */
+    @Override
     public void addEntry(String text, String sessionId, String cwd, String project,
                          Map<Integer, PastedContent> pastedContents) {
         if (shouldSkipCurrentSessionHistory()) return;
@@ -402,7 +403,7 @@ public class PromptHistory implements AutoCloseable {
                         process.destroyForcibly();
                     }
                 } catch (IOException _) {
-// Probe failure keeps the conservative default: not exported.
+                    // Probe failure keeps the conservative default: not exported.
                 } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     process.destroyForcibly();
@@ -447,6 +448,7 @@ public class PromptHistory implements AutoCloseable {
     /**
      * Undoes the most recent {@link #addEntry} call.
      */
+    @Override
     public void removeLastEntry() {
         if (suppressedDuplicate) {
             suppressedDuplicate = false;
@@ -474,6 +476,7 @@ public class PromptHistory implements AutoCloseable {
     }
 
 
+    @Override
     public HistoryReader openGlobalHistoryReader() {
         return new HistoryReader();
     }
@@ -582,6 +585,7 @@ public class PromptHistory implements AutoCloseable {
         return counts[1];
     }
 
+    @Override
     public CompletableFuture<Integer> countEntriesAsync(String project, String modeFilter) {
         return CompletableFuture.supplyAsync(() -> {
             int count = countEntries(project, modeFilter);
@@ -628,6 +632,7 @@ public class PromptHistory implements AutoCloseable {
     }
 
     /** Reads only the requested arrow-history chunk on a virtual thread. */
+    @Override
     public CompletableFuture<List<Entry>> getEntriesWithPastedAsync(
             int limit, String project, String sessionId, String modeFilter) {
         if (limit >= MAX_HISTORY) {
@@ -857,7 +862,7 @@ public class PromptHistory implements AutoCloseable {
                     // Inline small paste
                     content = v.path("content").asText();
                 } else if (v.hasNonNull("contentHash")) {
-// Large paste: retrieve from PasteStore.
+                    // Large paste: retrieve from PasteStore.
                     String hash = v.path("contentHash").asText();
                     content = PasteStore.retrievePastedText(hash);
 
@@ -967,7 +972,7 @@ public class PromptHistory implements AutoCloseable {
                     return;
                 }
                 attempt++;
-// Wait OUTSIDE the pending lock. close notifies this monitor,
+                // Wait OUTSIDE the pending lock. close notifies this monitor,
                 // so shutdown never pays the whole 500 ms retry back-off.
                 synchronized (lifecycleLock) {
                     if (!closed.get()) {
@@ -988,7 +993,7 @@ public class PromptHistory implements AutoCloseable {
             }
             // Cover an add that arrived after the final pending check but
             // before flushing=false. Exhausted failures intentionally wait
-// for the next user prompt, matching the compatibility retry contract.
+            // for the next user prompt, matching the compatibility retry contract.
             if (!retryBudgetExhausted && !closed.get()) {
                 boolean needsAnotherFlush;
                 synchronized (pending) {
@@ -1131,7 +1136,7 @@ public class PromptHistory implements AutoCloseable {
                         Files.delete(lockDirectory);
                         continue;
                     } catch (IOException _) {
-// The owner may have refreshed or.
+                        // The owner may have refreshed or.
                     }
                 }
             }
@@ -1167,7 +1172,7 @@ public class PromptHistory implements AutoCloseable {
                     Files.setLastModifiedTime(directory,
                         FileTime.fromMillis(System.currentTimeMillis()));
                 } catch (IOException failure) {
-// matches proper-lockfile's onCompromised callback.
+                    // matches proper-lockfile's onCompromised callback.
                     LOG.error("History lock compromised: {}", failure.getMessage());
                 }
             }, HISTORY_LOCK_UPDATE_MS, HISTORY_LOCK_UPDATE_MS, TimeUnit.MILLISECONDS);

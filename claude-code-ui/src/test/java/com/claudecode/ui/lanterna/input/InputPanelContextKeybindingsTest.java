@@ -148,7 +148,7 @@ class InputPanelContextKeybindingsTest {
                     return CompletableFuture.completedFuture(List.of(new Entry(
                         "git status", "s1", 1L, "/proj", "/proj", Map.of())));
                 }
-                @Override HistoryReader openGlobalHistoryReader() {
+                @Override public HistoryReader openGlobalHistoryReader() {
                     return new HistoryReader(List.of(new Entry(
                         "git status", "s1", 1L, "/proj", "/proj", Map.of())));
                 }

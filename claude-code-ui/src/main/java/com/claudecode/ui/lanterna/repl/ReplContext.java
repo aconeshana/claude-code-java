@@ -3,7 +3,7 @@ package com.claudecode.ui.lanterna.repl;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.runtime.query.QuerySession;
-import com.claudecode.ui.lanterna.input.PromptHistory;
+import com.claudecode.ui.lanterna.input.PromptHistoryView;
 import com.claudecode.ui.lanterna.slash.SlashHost;
 import com.claudecode.ui.lanterna.suggest.DirectorySuggestionService;
 import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
@@ -47,7 +47,7 @@ record ReplContext(
     MessageCollapser collapser,
     ToolPresentationSnapshotStore presentationSnapshots,
     MessageHistory messageHistory,
-    PromptHistory promptHistory,
+    PromptHistoryView promptHistory,
     String historyProjectRoot,
     DirectorySuggestionService directorySuggestions,
     SessionHostPublisher sessionHostPublisher,
