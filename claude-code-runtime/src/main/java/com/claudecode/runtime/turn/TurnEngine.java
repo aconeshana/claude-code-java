@@ -243,11 +243,6 @@ public final class TurnEngine {
         publishInputQueue();
     }
 
-    /** Immutable snapshot of the session queue, in insertion order — for adapters and diagnostics. */
-    public List<QueuedCommand> queuedCommandsSnapshot() {
-        return queue().snapshot();
-    }
-
     /**
      * Pull every human-editable command back into one prompt draft. Meta commands
      * and task notifications remain queued for automatic processing.

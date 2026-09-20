@@ -367,10 +367,6 @@ final class ContextTimelineFold {
         return null;
     }
 
-    List<AgentRecord> agents() {
-        return List.copyOf(agentsByCall.values());
-    }
-
     // ---------------------------------------------------------------- fold
 
     private List<Node> fold(Message message) {

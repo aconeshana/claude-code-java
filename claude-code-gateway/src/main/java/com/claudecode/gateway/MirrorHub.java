@@ -100,8 +100,6 @@ public final class MirrorHub {
         new CopyOnWriteArrayList<>();
     /** Per-session subscriptions: the active session plus open headless ones. */
     private final Map<String, AutoCloseable> subscriptions = new ConcurrentHashMap<>();
-    /** The session each subscription follows, for frame attribution. */
-    private final Map<String, String> sessionIds = new ConcurrentHashMap<>();
     /** Each followed session's project root, for transcript-path projection. */
     private final Map<String, String> sessionProjectDirs = new ConcurrentHashMap<>();
     /**
@@ -186,7 +184,6 @@ public final class MirrorHub {
         closeSubscription(sessionId);
         subscriptions.put(sessionId, session.events().subscribe(
             attributedSink(sessionId, () -> true)));
-        sessionIds.put(sessionId, sessionId);
         sessionProjectDirs.put(sessionId, session.info().workDir());
     }
 
@@ -675,7 +672,6 @@ public final class MirrorHub {
 
     private void closeSubscription(String sessionId) {
         AutoCloseable subscription = subscriptions.remove(sessionId);
-        sessionIds.remove(sessionId);
         sessionProjectDirs.remove(sessionId);
         turnBaselines.remove(sessionId);
         turnStartClocks.remove(sessionId);

@@ -94,7 +94,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     private final SubAgentCompactServiceFactory compactFactory;
     private volatile QuerySessionFactory querySessionFactory;
     private volatile Supplier<List<SkillListingEntry>> skillListingSupplier;
-    private volatile Supplier<List<Skill>> skillSupplier;
+    private final Supplier<List<Skill>> skillSupplier;
     private volatile Supplier<Boolean> includeGitInstructionsSupplier;
     private volatile Function<Path, String> claudeMdContentLoader;
     private volatile boolean usingThirdPartyServices;
@@ -613,9 +613,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         // The sub-engine's own ToolExecution will stamp toolUseId onto each
 
         // sets the parent's toolUseID on re-emitted bash_progress ticks).
-        final SubAgentRequest.ProgressCallback progressCb = progressCallback;
         final String parentTuid = agentId;
-        ToolExecutionContext.ProgressSink baseSink = flatteningProgressSink(progressCb);
+        ToolExecutionContext.ProgressSink baseSink = flatteningProgressSink(progressCallback);
         ToolExecutionContext.ProgressSink nestedSink = (baseSink == ToolExecutionContext.ProgressSink.NOOP)
             ? baseSink
             : update -> baseSink.accept(update.withIdentity(update.toolUseId(), parentTuid));
