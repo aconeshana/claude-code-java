@@ -1020,8 +1020,12 @@ public class MessageCollapser {
             MessagePanel panel) {
         TextColor color = active ? TextColor.ANSI.DEFAULT : LanternaTheme.welcomeDim();
         List<MessagePanel.Segment> header = new ArrayList<>();
+        // 236's Tse renders this leading dot with isUnresolved hardcoded true whenever the
+        // group is active, which forces dimColor:true and color:undefined — the dot never
+        // reaches the resolved success/error-colored branch in this summary row, so it stays
+        // dim/gray while spinning rather than the assistant's brand accent color.
         header.add(new MessagePanel.Segment(active ? Figures.BLACK_CIRCLE + " " : "  ",
-            active ? LanternaTheme.assistantDot() : color));
+            LanternaTheme.welcomeDim()));
 
         // 236 pushes this segment first, which is what makes every count part below read as a
         // comma-joined, lower-cased continuation: "Thinking for 24s, searching for 3 patterns…".
