@@ -230,201 +230,208 @@ final class CliInteractiveSessionRunner {
         CompletableFuture<OptionalInteractiveSettings> optionalSettings =
             CliStartupTasks.supply("interactive-optional-settings",
                 CliInteractiveSessionRunner::loadOptionalInteractiveSettings);
-        CliHookEffectSink hookEffects = new CliHookEffectSink(
+
+        // Enter REPL loop — use Lanterna full-screen UI
+        try (CliHookEffectSink hookEffects = new CliHookEffectSink(
             engine, transcriptRecorder, skillToolProvider.getSkillLoader(), fileWatcher,
-            shellOutput, input.errorOutput(), true, false);
-
-            // Enter REPL loop — use Lanterna full-screen UI
-            try {
-                CliInteractiveSessionLauncher.Preparation interactivePreparation =
-                    CliInteractiveSessionLauncher.prepare(
-                        engine, input.querySessionFactory(), client, resolvedModel,
-                        () -> teamMemoryEnabled, permissionGate,
-                        mcpRuntime, toolRegistry, input.errorOutput());
-                CommandRegistry cmdRegistry = interactivePreparation.commandRegistry();
-                hookEffects.bindCommandRegistry(cmdRegistry);
-                CliInteractiveStartupCoordinator.Result startup =
-                    CliInteractiveStartupCoordinator.start(
-                        engine, hookEngine, fileWatcher, hookEffects,
-                        input.setupTrigger(), input.errorOutput(), cmdRegistry,
-                        Path.of(System.getProperty("user.dir")), pluginRuntime,
-                        promptInventory);
-                Function<String, String> sideQuestionRunner =
-                    interactivePreparation.sideQuestionRunner();
-                CliInteractiveReplAssembler.Bindings replBindings =
-                    CliInteractiveReplAssembler.create(engine, compactService, sideQuestionRunner);
-                AtomicReference<LanternaReplScreen> screenRef = replBindings.screenRef();
-                CliSessionHostRuntime sessionHostRuntime = CliSessionHostRuntime.prepare(
-                    engine, screenRef, System.getProperty("user.dir"));
-                ReplCommandUiBridge commandUi = replBindings.commandUi();
-                Consumer<String> btwLauncher = replBindings.btwLauncher();
-                Consumer<String> colorSetter = replBindings.colorSetter();
-                Consumer<PokemonProfile> pokemonSetter =
-                    replBindings.pokemonSetter();
-                Consumer<String> effortSetter = replBindings.effortSetter();
-                Supplier<String> effortGetter = replBindings.effortGetter();
-                Runnable effortLauncher = replBindings.effortLauncher();
-                Consumer<String> exportLauncher = replBindings.exportLauncher();
-                Consumer<String> themeLauncher = replBindings.themeLauncher();
-                BiFunction<CommandContext, String, CommandResult> themeApplyFromDialog =
-                    replBindings.themeApplyFromDialog();
-                Runnable configLauncher = replBindings.configLauncher();
-                Runnable statusLauncher = replBindings.statusLauncher();
-                Runnable usageLauncher = replBindings.usageLauncher();
-                Runnable permissionsLauncher = replBindings.permissionsLauncher();
-                Runnable agentsLauncher = replBindings.agentsLauncher();
-                Consumer<String> addDirLauncher = replBindings.addDirLauncher();
-                CommandContext.AddDirApply addDirApply = replBindings.addDirApply();
-                ConfigLiveSetters configLiveSetters = replBindings.configLiveSetters();
-                Runnable rewindLauncher = replBindings.rewindLauncher();
-                // Reuse the SideQuery installed before the headless exits for
-                // rename/session-search/permission-explainer services.
-
-
-                // llmClient isn't available (offline, cred-less tests).
-                Function<List<Message>, String> titleGenerator = null;
-                if (sideQuery != null) {
-                    SessionTitleGenerator gen = new SessionTitleGenerator(sideQuery);
-                    titleGenerator = gen::generate;
+            shellOutput, input.errorOutput(), true, false)) {
+            CliInteractiveSessionLauncher.Preparation interactivePreparation =
+                CliInteractiveSessionLauncher.prepare(
+                    engine, input.querySessionFactory(), client, resolvedModel,
+                    () -> teamMemoryEnabled, permissionGate,
+                    mcpRuntime, toolRegistry, input.errorOutput());
+            CommandRegistry cmdRegistry = interactivePreparation.commandRegistry();
+            hookEffects.bindCommandRegistry(cmdRegistry);
+            CliInteractiveStartupCoordinator.Result startup =
+                CliInteractiveStartupCoordinator.start(
+                    engine, hookEngine, fileWatcher, hookEffects,
+                    input.setupTrigger(), input.errorOutput(), cmdRegistry,
+                    Path.of(System.getProperty("user.dir")), pluginRuntime,
+                    promptInventory);
+            Function<String, String> sideQuestionRunner =
+                interactivePreparation.sideQuestionRunner();
+            CliInteractiveReplAssembler.Bindings replBindings =
+                CliInteractiveReplAssembler.create(engine, compactService, sideQuestionRunner);
+            AtomicReference<LanternaReplScreen> screenRef = replBindings.screenRef();
+            CliSessionHostRuntime sessionHostRuntime = CliSessionHostRuntime.prepare(
+                engine, screenRef, System.getProperty("user.dir"));
+            ReplCommandUiBridge commandUi = replBindings.commandUi();
+            Consumer<String> btwLauncher = replBindings.btwLauncher();
+            Consumer<String> colorSetter = replBindings.colorSetter();
+            Consumer<PokemonProfile> pokemonSetter =
+                replBindings.pokemonSetter();
+            Consumer<String> effortSetter = replBindings.effortSetter();
+            Supplier<String> effortGetter = replBindings.effortGetter();
+            Runnable effortLauncher = replBindings.effortLauncher();
+            Consumer<String> exportLauncher = replBindings.exportLauncher();
+            Consumer<String> themeLauncher = replBindings.themeLauncher();
+            BiFunction<CommandContext, String, CommandResult> themeApplyFromDialog =
+                replBindings.themeApplyFromDialog();
+            Runnable configLauncher = replBindings.configLauncher();
+            Runnable statusLauncher = replBindings.statusLauncher();
+            Runnable usageLauncher = replBindings.usageLauncher();
+            Runnable permissionsLauncher = replBindings.permissionsLauncher();
+            Runnable agentsLauncher = replBindings.agentsLauncher();
+            Consumer<String> addDirLauncher = replBindings.addDirLauncher();
+            CommandContext.AddDirApply addDirApply = replBindings.addDirApply();
+            ConfigLiveSetters configLiveSetters = replBindings.configLiveSetters();
+            Runnable rewindLauncher = replBindings.rewindLauncher();
+            // Reuse the SideQuery installed before the headless exits for
+            // rename/session-search/permission-explainer services.
+            // llmClient isn't available (offline, cred-less tests).
+            Function<List<Message>, String> titleGenerator = null;
+            if (sideQuery != null) {
+                SessionTitleGenerator gen = new SessionTitleGenerator(sideQuery);
+                titleGenerator = gen::generate;
+            }
+            // First-real-prompt terminal title helper — separate from /rename's
+            // fire-and-forget; metadata/config reads and the whole network
+            // handshake therefore stay off Lanterna's submit thread.
+            Function<String, CompletableFuture<String>> sessionTitleGenerator = null;
+            if (llmClient != null
+                && !isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_DISABLE_TERMINAL_TITLE"))) {
+                TerminalSessionTitleGenerator gen =
+                    new TerminalSessionTitleGenerator(llmClient, resolvedModel);
+                sessionTitleGenerator = prompt -> {
+                    CompletableFuture<String> result = new CompletableFuture<>();
+                    Thread.ofVirtual().name("session-title-submit").start(() -> {
+                        try {
+                            String effort = EffortHelpers.resolveAppliedEffort(
+                                resolvedModel, engine.configuration().getConfig().effortValue());
+                            String sessionId = engine.conversation().getSessionId();
+                            gen.generateAsync(prompt, sessionId,
+                                    LlmClientAdapter.requestMetadata(sessionId), effort)
+                                .whenComplete((title, failure) -> {
+                                    if (failure != null) {
+                                        result.complete(null);
+                                    } else {
+                                        result.complete(title);
+                                    }
+                                });
+                        } catch (RuntimeException _) {
+                            result.complete(null);
+                        }
+                    });
+                    return result;
+                };
+            }
+            // Shared post-compact durability hook: after any compact (manual /compact via
+            // CommandContext, or auto-compact via QuerySession.postCompactCallback) re-append
+            // session metadata to JSONL EOF so customTitle/agentName/agentColor/tag stay within
+            // the 64KB tail-scan window used by readLiteMetadata.
+            Runnable reAppendMetadata = () -> {
+                String sid = engine.conversation().getSessionId();
+                if (StringUtils.isBlank(sid)) {
+                    return;
                 }
-                // First-real-prompt terminal title helper — separate from /rename's
+                try {
 
-                // fire-and-forget; metadata/config reads and the whole network
-                // handshake therefore stay off Lanterna's submit thread.
-                Function<String, CompletableFuture<String>> sessionTitleGenerator = null;
-                if (llmClient != null
-                        && !isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_DISABLE_TERMINAL_TITLE"))) {
-                    TerminalSessionTitleGenerator gen =
-                        new TerminalSessionTitleGenerator(llmClient, resolvedModel);
-                    sessionTitleGenerator = prompt -> {
-                        CompletableFuture<String> result = new CompletableFuture<>();
-                        Thread.ofVirtual().name("session-title-submit").start(() -> {
-                            try {
-                                String effort = EffortHelpers.resolveAppliedEffort(
-                                    resolvedModel, engine.configuration().getConfig().effortValue());
-                                String sessionId = engine.conversation().getSessionId();
-                                gen.generateAsync(prompt, sessionId,
-                                        LlmClientAdapter.requestMetadata(sessionId), effort)
-                                    .whenComplete((title, failure) -> {
-                                        if (failure != null) result.complete(null);
-                                        else result.complete(title);
-                                    });
-                            } catch (RuntimeException _) {
-                                result.complete(null);
-                            }
-                        });
-                        return result;
-                    };
+                    new SessionManager(
+                        System.getProperty("user.dir"))
+                        .reAppendSessionMetadata(sid);
+                } catch (Exception _) { /* best-effort */ }
+            };
+            Runnable postCompact = () -> {
+                LoopPromptResolver.global().resetDeliveredState();
+                transcriptRecorder.clearCompactionCaches(engine.conversation().getSessionId(),
+                    2_000);
+                reAppendMetadata.run();
+            };
+            Runnable manualPostCompact = () -> {
+                LoopPromptResolver.global().resetDeliveredState();
+                var transcript = engine.execution().getTranscriptSink();
+                if (transcript != null) {
+                    String commandMessageId = engine.conversation().getMessages().stream()
+                        .filter(UserMessage.class::isInstance)
+                        .map(UserMessage.class::cast)
+                        .filter(message -> message.message() != null
+                            && message.message().isText()
+                            && Strings.CS.startsWith(message.message().text(),
+                            "<command-name>/compact"))
+                        .map(UserMessage::uuid)
+                        .reduce((_, second) -> second)
+                        .orElse(null);
+                    transcript.prepareManualCompactMetadata(
+                        engine.conversation().getSessionId(), commandMessageId);
+                    transcriptRecorder.clearCompactionCaches(
+                        engine.conversation().getSessionId(), 2_000);
                 }
-                // Shared post-compact durability hook: after any compact (manual /compact via
-                // CommandContext, or auto-compact via QuerySession.postCompactCallback) re-append
-                // session metadata to JSONL EOF so customTitle/agentName/agentColor/tag stay within
-                // the 64KB tail-scan window used by readLiteMetadata.
-                Runnable reAppendMetadata = () -> {
-                    String sid = engine.conversation().getSessionId();
-                    if (StringUtils.isBlank(sid)) return;
-                    try {
+            };
+            engine.execution().setPostCompactCallback(postCompact);
+            engine.execution().setOnCompactProgress(commandUi::compactProgress);
 
-                        new SessionManager(
-                            System.getProperty("user.dir"))
-                            .reAppendSessionMetadata(sid);
-                    } catch (Exception _) { /* best-effort */ }
-                };
-                Runnable postCompact = () -> {
-                    LoopPromptResolver.global().resetDeliveredState();
-                    transcriptRecorder.clearCompactionCaches(engine.conversation().getSessionId(), 2_000);
-                    reAppendMetadata.run();
-                };
-                Runnable manualPostCompact = () -> {
-                    LoopPromptResolver.global().resetDeliveredState();
-                    var transcript = engine.execution().getTranscriptSink();
-                    if (transcript != null) {
-                        String commandMessageId = engine.conversation().getMessages().stream()
-                            .filter(UserMessage.class::isInstance)
-                            .map(UserMessage.class::cast)
-                            .filter(message -> message.message() != null
-                                && message.message().isText()
-                                && Strings.CS.startsWith(message.message().text(), "<command-name>/compact"))
-                            .map(UserMessage::uuid)
-                            .reduce((_, second) -> second)
-                            .orElse(null);
-                        transcript.prepareManualCompactMetadata(
-                            engine.conversation().getSessionId(), commandMessageId);
-                        transcriptRecorder.clearCompactionCaches(
-                            engine.conversation().getSessionId(), 2_000);
-                    }
-                };
-                engine.execution().setPostCompactCallback(postCompact);
-                engine.execution().setOnCompactProgress(commandUi::compactProgress);
+            // /model: register a ModelCommand with a live current-model
+            // supplier (dynamic "(currently X)" description) — overwrites the
+            // no-arg one from CommandFactory. Its applyFromDialog binds the
+            // picker's confirm path; ModelValidator gives /model <name> a
+            // live-API id check (null llmClient → skip, e.g. streaming override).
+            ModelCommand modelCmd = new ModelCommand(
+                () -> engine.configuration().getConfig().model());
+            cmdRegistry.register(modelCmd);
+            final ModelValidator modelValidator =
+                llmClient != null ? new ModelValidator(llmClient) : null;
 
-                // /model: register a ModelCommand with a live current-model
-                // supplier (dynamic "(currently X)" description) — overwrites the
-                // no-arg one from CommandFactory. Its applyFromDialog binds the
-                // picker's confirm path; ModelValidator gives /model <name> a
-                // live-API id check (null llmClient → skip, e.g. streaming override).
-                ModelCommand modelCmd = new ModelCommand(() -> engine.configuration().getConfig().model());
-                cmdRegistry.register(modelCmd);
-                final ModelValidator modelValidator =
-                    llmClient != null ? new ModelValidator(llmClient) : null;
+            final LlmClient insightsClient = llmClient;
+            final QuerySessionSpec insightsConfig = config;
+            String interactiveCwd = System.getProperty("user.dir");
+            CliInteractiveRuntimeAssembler interactiveRuntime =
+                new CliInteractiveRuntimeAssembler(cmdRegistry::isBuiltInCommandName);
+            CliHeadlessGatewaySessions headlessSessions = new CliHeadlessGatewaySessions(
+                new CliHeadlessSessionFactory(
+                    client, toolRegistry, input.querySessionFactory(),
+                    permissionGate, resolvedModel, interactiveCwd, customModelCatalog),
+                interactiveCwd);
+            interactiveRuntime.bindHeadlessSessions(headlessSessions);
+            CliGatewayRuntime gatewayRuntime = new CliGatewayRuntime(
+                sessionHostRuntime.registry(),
+                gatewayCatalog(interactiveRuntime.projects()),
+                headlessSessions,
+                sessionHostRuntime.interactions(),
+                headlessSessions.messagesPort(interactiveCwd),
+                gatewaySettings(interactiveCwd),
+                gatewaySchedule(),
+                gatewayModels(customModelCatalog),
+                gatewayCommands(cmdRegistry),
+                gatewaySessionContext(sessionHostRuntime.registry(), engine,
+                    headlessSessions, interactiveCwd, contextDataCollector,
+                    toolRegistry::getContextAnalysisToolDefinitions),
+                gatewaySessionActions());
+            DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
+                permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
+            CliSettingsManagementAdapter settingsManagement =
+                new CliSettingsManagementAdapter();
+            var pluginMarketplace = PluginMarketplaceAdapter.standard(interactiveCwd, () ->
+                pluginRuntime != null
+                    ? pluginRuntime.currentSnapshot().errors() : List.of(), () ->
+                pluginRuntime != null
+                    ? pluginRuntime.currentSnapshot().mcpServers() : List.of());
+            var mcpManagement = new CliMcpManagementAdapter(
+                Path.of(interactiveCwd), mcpRuntime::clientRuntime,
+                toolRegistry, cmdRegistry, pluginMarketplace);
+            Supplier<InsightsPort>
+                insightsPipelineSupplier = () -> insightsClient == null ? null
+                : CliHeadlessSessionRunner.insightsAdapter(
+                    new InsightsPipeline(insightsClient, () -> {
+                        String override = RuntimeSettings.loadInsightsModel();
+                        if (override != null) {
+                            return override;
+                        }
+                        String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
+                        return StringUtils.isNotBlank(env) ? env
+                            : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
+                    }, cmdRegistry::isBuiltInCommandName));
 
-                final LlmClient insightsClient = llmClient;
-                final QuerySessionSpec insightsConfig = config;
-                String interactiveCwd = System.getProperty("user.dir");
-                CliInteractiveRuntimeAssembler interactiveRuntime =
-                    new CliInteractiveRuntimeAssembler(cmdRegistry::isBuiltInCommandName);
-                CliHeadlessGatewaySessions headlessSessions = new CliHeadlessGatewaySessions(
-                    new CliHeadlessSessionFactory(
-                        client, toolRegistry, input.querySessionFactory(),
-                        permissionGate, resolvedModel, interactiveCwd, customModelCatalog),
-                    interactiveCwd);
-                interactiveRuntime.bindHeadlessSessions(headlessSessions);
-                CliGatewayRuntime gatewayRuntime = new CliGatewayRuntime(
-                    sessionHostRuntime.registry(),
-                    gatewayCatalog(interactiveRuntime.projects()),
-                    headlessSessions,
-                    sessionHostRuntime.interactions(),
-                    headlessSessions.messagesPort(interactiveCwd),
-                    gatewaySettings(interactiveCwd),
-                    gatewaySchedule(),
-                    gatewayModels(customModelCatalog),
-                    gatewayCommands(cmdRegistry),
-                    gatewaySessionContext(sessionHostRuntime.registry(), engine,
-                        headlessSessions, interactiveCwd, contextDataCollector,
-                        toolRegistry::getContextAnalysisToolDefinitions),
-                    gatewaySessionActions());
-                DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
-                    permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
-                CliSettingsManagementAdapter settingsManagement =
-                    new CliSettingsManagementAdapter();
-                var pluginMarketplace = PluginMarketplaceAdapter.standard(interactiveCwd, () ->
-                    pluginRuntime != null
-                        ? pluginRuntime.currentSnapshot().errors() : List.of(), () ->
-                    pluginRuntime != null
-                        ? pluginRuntime.currentSnapshot().mcpServers() : List.of());
-                var mcpManagement = new CliMcpManagementAdapter(
-                    Path.of(interactiveCwd), mcpRuntime::clientRuntime,
-                    toolRegistry, cmdRegistry, pluginMarketplace);
-                Supplier<InsightsPort>
-                    insightsPipelineSupplier = () -> insightsClient == null ? null
-                        : CliHeadlessSessionRunner.insightsAdapter(
-                            new InsightsPipeline(insightsClient, () -> {
-                            String override = RuntimeSettings.loadInsightsModel();
-                            if (override != null) return override;
-                            String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
-                            return StringUtils.isNotBlank(env) ? env
-                                : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
-                        }, cmdRegistry::isBuiltInCommandName));
-
-
-                CommandContext cmdContext =
-                    CommandContext.builder(
+            CommandContext cmdContext =
+                CommandContext.builder(
                         resolvedModel,
                         () -> engine.conversation().getMessages(),
                         commandUi::clearConversation,
                         m -> {
                             engine.configuration().setModel(m);
                             LanternaReplScreen s = screenRef.get();
-                            if (s != null) s.applyModelSelection(m);
+                            if (s != null) {
+                                s.applyModelSelection(m);
+                            }
                         },
                         engine.execution()::getTotalUsage,
                         // Real cost — prices the running usage by the LIVE model
@@ -432,218 +439,221 @@ final class CliInteractiveSessionRunner {
                         // Previously stubbed to 0.0, so /cost and /status showed
                         // $0.0000 despite CostCalculator having full pricing.
                         u -> CostCalculator.forModel(ModelNames
-                            .parseUserSpecifiedModel(engine.configuration().getConfig().model())).calculateCost(u),
+                                .parseUserSpecifiedModel(engine.configuration().getConfig().model()))
+                            .calculateCost(u),
                         System.getProperty("user.dir"),
                         false)
-                        .workingDirectorySupplier(() -> System.getProperty("user.dir"))
-                        .modelSupplier(engine.configuration().getConfig()::model)
-                        .modelAllowed(ModelAllowlist::isAllowed)
-                        .loadMessages(engine.conversation()::loadMessages)
-                        .loadCompactedMessages(engine.conversation()::loadCompactedMessages)
-                        .currentSessionId(() -> engine.conversation().getSessionId())
-                        .permissionCommands(new CliPermissionCommandAdapter(permissionGate))
-                        .sessionCommands(new CliSessionCommandAdapter(
-                            CliProjectSwitch::currentProjectRoot))
-                        .toolingCommands(interactiveRuntime.toolingCommands())
-                        .promptShellExecutor(CliHeadlessSessionRunner.newPromptShellExecutor(
-                            engine, toolRegistry, permissionGate))
-                        .sideQuestionRunner(sideQuestionRunner)
-                        .compactService(() -> compactService)
-                        .pluginRuntime(pluginRuntime)
-                        .doctor(doctorPort)
-                        .dream(CliRuntimeAdapters.newDreamPort())
+                    .workingDirectorySupplier(() -> System.getProperty("user.dir"))
+                    .modelSupplier(engine.configuration().getConfig()::model)
+                    .modelAllowed(ModelAllowlist::isAllowed)
+                    .loadMessages(engine.conversation()::loadMessages)
+                    .loadCompactedMessages(engine.conversation()::loadCompactedMessages)
+                    .currentSessionId(() -> engine.conversation().getSessionId())
+                    .permissionCommands(new CliPermissionCommandAdapter(permissionGate))
+                    .sessionCommands(new CliSessionCommandAdapter(
+                        CliProjectSwitch::currentProjectRoot))
+                    .toolingCommands(interactiveRuntime.toolingCommands())
+                    .promptShellExecutor(CliHeadlessSessionRunner.newPromptShellExecutor(
+                        engine, toolRegistry, permissionGate))
+                    .sideQuestionRunner(sideQuestionRunner)
+                    .compactService(() -> compactService)
+                    .pluginRuntime(pluginRuntime)
+                    .doctor(doctorPort)
+                    .dream(CliRuntimeAdapters.newDreamPort())
 
-                        .insightsPipeline(insightsPipelineSupplier)
-                        .recap(recapPort(client, () -> engine))
-                        .settingsManagement(settingsManagement)
-                        .mcpManagement(mcpManagement)
-// disableNonInteractive: hidden in print / --no-interactive mode.
-                        .nonInteractive(printMode || noInteractive)
-                        .workflowsEnabledSupplier(input::workflowsEnabled)
-                        .btwDialogLauncher(btwLauncher)
-                        .sessionColorSetter(colorSetter)
-                        .pokemonSetter(pokemonSetter)
-                        .pokemonStatusPresenter(commandUi::showWelcomePokemon)
-                        .pokemonHatchLauncher(commandUi::openPokemonHatch)
-                        .effortValueSetter(effortSetter)
-                        .effortValueSupplier(effortGetter)
-                        .effortDialogLauncher(effortLauncher)
-                        .exportDialogLauncher(exportLauncher)
-                        .hooksDialogLauncher(commandUi::openHooks)
-                        .sandboxDialogLauncher(commandUi::openSandbox)
-                        .titleGenerator(titleGenerator)
-                        .postCompactCallback(manualPostCompact)
-                        .postCompactTranscriptCallback(() -> transcriptRecorder.recordLastPrompt(
-                            engine.conversation().getSessionId(), "/compact"))
-                        .transcriptRecorder(m -> transcriptRecorder.record(engine.conversation().getSessionId(), m))
-                        .openMessageSelector(rewindLauncher)
-                        .hookDispatcher(hookEngine)
-                        .goalGate(CliRuntimeAdapters.newGoalGate(
-                            interactiveCwd, printMode || noInteractive))
-                        .messageAppender(engine.conversation()::appendTranscriptMessage)
-                        .goalDialogLauncher(commandUi::openGoal)
-                        .sessionIdSwitcher(commandUi::switchActiveSession)
-                        .resetSessionCost(commandUi::resetSessionCost)
-                        .onCompactProgress(commandUi::compactProgress)
-                        .verboseSupplier(() -> verbose)
-                        .memoryDialogLauncher(commandUi::openMemoryDialog)
-                        .openEditor(commandUi::openFileInEditor)
-                        .doctorDialogLauncher(commandUi::openDoctor)
-                        .apiBaseUrlSupplier(() -> resolvedBaseUrl)
-                        .statusRuntimePropertiesSupplier(() ->
-                            CliRuntimeAdapters.statusRuntimeProperties(
-                                resolvedApiProvider, resolvedBaseUrl, apiKey))
-                        .configLiveSetters(configLiveSetters)
-                        .themeDialogLauncher(themeLauncher)
-                        .configDialogLauncher(configLauncher)
-                        .themeApplyFromDialog(themeApplyFromDialog)
-                        .statusDialogLauncher(statusLauncher)
-                        .usageDialogLauncher(usageLauncher)
-                        // /model picker wiring: launcher opens the Lanterna picker,
-                        // applyFromDialog is the confirm path (model + optional effort),
-                        // modelValidator is the live-API id check for /model <name>.
-                        .modelDialogLauncher(commandUi::openModelPicker)
-                        .modelApplyFromDialog(modelCmd::applyFromDialog)
-                        .modelValidator(name -> {
-                            if (!ModelAllowlist.isAllowed(name)) {
-                                return ModelAllowlist.rejectionMessage(name);
-                            }
-                            if (modelValidator == null) return null;
-                            var r = modelValidator.validate(name);
-                            return r.valid() ? null : r.error();
-                        })
-                        .addDirDialogLauncher(addDirLauncher)
-                        .addDirValidator(path -> {
-                            var snapshot = new CliPermissionCommandAdapter(permissionGate).snapshot();
-                            return AddDirCommand.validate(path, System.getProperty("user.dir"),
-                                snapshot.workingDirectories());
-                        })
-                        .addDirApply(addDirApply)
-                        .mcpStatusSupplier(() -> mcpRuntime.clientRuntime().connectionSummary())
-                        .permissionsDialogLauncher(permissionsLauncher)
-                        .agentsDialogLauncher(agentsLauncher)
-                        .resumeLauncher(commandUi::resumeSession)
-                        .contextDataCollector(contextDataCollector)
-                        .contextVisualizerLauncher(commandUi::showContextVisualization)
-                        .copyPickerLauncher(commandUi::openCopyPicker)
-                        .copyApplyFromDialog((text, filename, saveAlways, writeOnly) ->
-                            CopyCommand.applyCopy(text, filename, saveAlways, writeOnly,
-                                settingsManagement.preferences()))
-                        .diffDialogLauncher(commandUi::openDiff)
-                        .helpDialogLauncher(commandUi::openHelp)
-                        .pluginDialogLauncher(commandUi::openPluginPanel)
-                        .skillsDialogLauncher(commandUi::openSkills)
-                        .statsDialogLauncher(commandUi::openStats)
-                        .tagRemovalLauncher(commandUi::openTagRemoval)
-                        .gatewayLauncher(_ -> commandUi.startWebGateway())
-                        .tasksDialogLauncher(commandUi::openTasks)
-                        .workflowsDialogLauncher(commandUi::openWorkflows)
-                        .build();
-                var permissionExplainer = sideQuery != null
-                    ? new PermissionExplainerService(sideQuery, resolvedModel) : null;
-                CliRuntimeAdapters.configureUiSettingsBackend();
-                SessionLifecycle sessionLifecycle = CliSessionRestoreCoordinator.newSessionLifecycle(
-                    engine, transcriptRecorder, permissionGate, settingsReload);
-                HookConfigurationPort hookConfiguration =
-                    CliRuntimeAdapters.newHookConfigurationPort(settingsReload, hookEngine);
-                var memoryCatalog = CliRuntimeAdapters.newMemoryCatalog(interactiveCwd);
-                WorktreeService.setMemoryFileCacheClearer(memoryCatalog::clearCache);
-                mcpRuntime.clientRuntime().setMessageQueue(engine.conversation().getMessageQueue());
-                Consumer<String> skillHookRegistrar = rawHooks -> {
-                        HooksSettings parsed = HooksSettings.fromYaml(rawHooks);
-                        if (parsed != HooksSettings.EMPTY) {
-                            hookEngine.registry().addExtraHooks(parsed);
+                    .insightsPipeline(insightsPipelineSupplier)
+                    .recap(recapPort(client, () -> engine))
+                    .settingsManagement(settingsManagement)
+                    .mcpManagement(mcpManagement)
+                    // disableNonInteractive: hidden in print / --no-interactive mode.
+                    .nonInteractive(printMode || noInteractive)
+                    .workflowsEnabledSupplier(input::workflowsEnabled)
+                    .btwDialogLauncher(btwLauncher)
+                    .sessionColorSetter(colorSetter)
+                    .pokemonSetter(pokemonSetter)
+                    .pokemonStatusPresenter(commandUi::showWelcomePokemon)
+                    .pokemonHatchLauncher(commandUi::openPokemonHatch)
+                    .effortValueSetter(effortSetter)
+                    .effortValueSupplier(effortGetter)
+                    .effortDialogLauncher(effortLauncher)
+                    .exportDialogLauncher(exportLauncher)
+                    .hooksDialogLauncher(commandUi::openHooks)
+                    .sandboxDialogLauncher(commandUi::openSandbox)
+                    .titleGenerator(titleGenerator)
+                    .postCompactCallback(manualPostCompact)
+                    .postCompactTranscriptCallback(() -> transcriptRecorder.recordLastPrompt(
+                        engine.conversation().getSessionId(), "/compact"))
+                    .transcriptRecorder(
+                        m -> transcriptRecorder.record(engine.conversation().getSessionId(), m))
+                    .openMessageSelector(rewindLauncher)
+                    .hookDispatcher(hookEngine)
+                    .goalGate(CliRuntimeAdapters.newGoalGate(
+                        interactiveCwd, printMode || noInteractive))
+                    .messageAppender(engine.conversation()::appendTranscriptMessage)
+                    .goalDialogLauncher(commandUi::openGoal)
+                    .sessionIdSwitcher(commandUi::switchActiveSession)
+                    .resetSessionCost(commandUi::resetSessionCost)
+                    .onCompactProgress(commandUi::compactProgress)
+                    .verboseSupplier(() -> verbose)
+                    .memoryDialogLauncher(commandUi::openMemoryDialog)
+                    .openEditor(commandUi::openFileInEditor)
+                    .doctorDialogLauncher(commandUi::openDoctor)
+                    .apiBaseUrlSupplier(() -> resolvedBaseUrl)
+                    .statusRuntimePropertiesSupplier(() ->
+                        CliRuntimeAdapters.statusRuntimeProperties(
+                            resolvedApiProvider, resolvedBaseUrl, apiKey))
+                    .configLiveSetters(configLiveSetters)
+                    .themeDialogLauncher(themeLauncher)
+                    .configDialogLauncher(configLauncher)
+                    .themeApplyFromDialog(themeApplyFromDialog)
+                    .statusDialogLauncher(statusLauncher)
+                    .usageDialogLauncher(usageLauncher)
+                    // /model picker wiring: launcher opens the Lanterna picker,
+                    // applyFromDialog is the confirm path (model + optional effort),
+                    // modelValidator is the live-API id check for /model <name>.
+                    .modelDialogLauncher(commandUi::openModelPicker)
+                    .modelApplyFromDialog(modelCmd::applyFromDialog)
+                    .modelValidator(name -> {
+                        if (!ModelAllowlist.isAllowed(name)) {
+                            return ModelAllowlist.rejectionMessage(name);
                         }
-                    };
-                var applicationPorts = interactiveRuntime.application(
-                    commandUi, hookConfiguration, mcpManagement,
-                    CliRuntimeAdapters.newCompactWarningProvider(compactService),
-                    sessionLifecycle,
-                    PromptCacheBreakDetection::resetPromptCacheBreakDetection,
-                    memoryCatalog,
-                    outputStyleService,
-                    doctorPort,
-                    pluginMarketplace,
-                    CliRuntimeAdapters.newStatusLinePort(interactiveCwd),
-                    CliRuntimeAdapters.newStartupTrustPort(),
-                    CliRuntimeAdapters.newShutdownPort(engine, shellOutput),
-                    CliRuntimeAdapters.newTurnAwakeGuard(), taskBoard);
-                var featureRuntime = interactiveRuntime.features(
-                    permissionGate, toolRegistry,
-                    () -> startup.skills().toCompletableFuture().getNow(List.of()),
-                    skillHookRegistrar, permissionExplainer);
-                var launchState = interactiveRuntime.launch(
-                    UserKeybindingsStore.create(), dangerouslySkipPermissions, initialPrompt,
-                    initialSessionName, restoredSession, sessionTitleGenerator,
-                    showBuiltInModelFamilies, customModelCatalog,
-                    ExternalTips::getNextTip,
-                    sessionHostRuntime.registry(), sessionHostRuntime.interactions(),
-                    sessionHostRuntime.collaboration(), sessionHostRuntime,
-                    gatewayRuntime);
-                ReplWiring wiring = interactiveRuntime.assemble(
-                    applicationPorts, featureRuntime, launchState,
-                    new ReplStartupReadiness(startup.inputSemanticReady(),
-                        promptInventory.timeline()::mark));
-                LanternaReplScreen lanternaRepl =
-                    new LanternaReplScreen(engine, cmdRegistry, cmdContext, wiring);
-                screenRef.set(lanternaRepl);
-                hookEffects.bindUi(lanternaRepl::postSystemMessage,
-                    lanternaRepl::applyHookSessionTitle);
-                CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
-                    .thenRun(() -> Thread.ofVirtual()
-                        .name("interactive-optional-services")
-                        .start(() -> installOptionalInteractiveServices(
-                            optionalSettings.getNow(new OptionalInteractiveSettings(60_000, false)),
-                            lanternaRepl, hookEngine, client, engine)));
-                toolRegistry.get("Bash")
-                    .filter(BashTool.class::isInstance)
-                    .map(BashTool.class::cast)
-                    .ifPresent(bash -> bash.setSudoPasswordInteraction(
-                        sessionHostRuntime.interactions()));
-                sessionHostRuntime.interactions().register(
-                    InteractionFeatures.SUDO_PASSWORD,
-                    new TuiSudoPasswordPresenter(
-                        sessionHostRuntime.interactions(), lanternaRepl::promptSudoPassword));
-                if (input.startupResumePicker()) {
-                    lanternaRepl.requestStartupResumePicker(input.startupResumeSearchTerm());
+                        if (modelValidator == null) {
+                            return null;
+                        }
+                        var r = modelValidator.validate(name);
+                        return r.valid() ? null : r.error();
+                    })
+                    .addDirDialogLauncher(addDirLauncher)
+                    .addDirValidator(path -> {
+                        var snapshot = new CliPermissionCommandAdapter(permissionGate).snapshot();
+                        return AddDirCommand.validate(path, System.getProperty("user.dir"),
+                            snapshot.workingDirectories());
+                    })
+                    .addDirApply(addDirApply)
+                    .mcpStatusSupplier(() -> mcpRuntime.clientRuntime().connectionSummary())
+                    .permissionsDialogLauncher(permissionsLauncher)
+                    .agentsDialogLauncher(agentsLauncher)
+                    .resumeLauncher(commandUi::resumeSession)
+                    .contextDataCollector(contextDataCollector)
+                    .contextVisualizerLauncher(commandUi::showContextVisualization)
+                    .copyPickerLauncher(commandUi::openCopyPicker)
+                    .copyApplyFromDialog((text, filename, saveAlways, writeOnly) ->
+                        CopyCommand.applyCopy(text, filename, saveAlways, writeOnly,
+                            settingsManagement.preferences()))
+                    .diffDialogLauncher(commandUi::openDiff)
+                    .helpDialogLauncher(commandUi::openHelp)
+                    .pluginDialogLauncher(commandUi::openPluginPanel)
+                    .skillsDialogLauncher(commandUi::openSkills)
+                    .statsDialogLauncher(commandUi::openStats)
+                    .tagRemovalLauncher(commandUi::openTagRemoval)
+                    .gatewayLauncher(_ -> commandUi.startWebGateway())
+                    .tasksDialogLauncher(commandUi::openTasks)
+                    .workflowsDialogLauncher(commandUi::openWorkflows)
+                    .build();
+            var permissionExplainer = sideQuery != null
+                ? new PermissionExplainerService(sideQuery, resolvedModel) : null;
+            CliRuntimeAdapters.configureUiSettingsBackend();
+            SessionLifecycle sessionLifecycle = CliSessionRestoreCoordinator.newSessionLifecycle(
+                engine, transcriptRecorder, permissionGate, settingsReload);
+            HookConfigurationPort hookConfiguration =
+                CliRuntimeAdapters.newHookConfigurationPort(settingsReload, hookEngine);
+            var memoryCatalog = CliRuntimeAdapters.newMemoryCatalog(interactiveCwd);
+            WorktreeService.setMemoryFileCacheClearer(memoryCatalog::clearCache);
+            mcpRuntime.clientRuntime().setMessageQueue(engine.conversation().getMessageQueue());
+            Consumer<String> skillHookRegistrar = rawHooks -> {
+                HooksSettings parsed = HooksSettings.fromYaml(rawHooks);
+                if (parsed != HooksSettings.EMPTY) {
+                    hookEngine.registry().addExtraHooks(parsed);
                 }
-                lanternaRepl.setModel(resolvedModel);
-                lanternaRepl.setVerbose(verbose);
-                // Bind the progress sink to the REPL (engine config was built earlier,
-                // so the sink is late-bound via setScreen).
-                progressSink.setScreen(lanternaRepl);
-                // Install the REPL-bound LSP recommendation trigger only after
-                // the screen exists; its lifecycle and response persistence stay
-                // encapsulated in CliLspIntegration.
-                lspIntegration.attachRecommendationTrigger(engine, lanternaRepl);
-                lanternaRepl.sessionHostReady().thenRunAsync(() -> {
-                    try {
-                        sessionHostRuntime.start();
-                    } catch (RuntimeException failure) {
-                        log.warn("Session Host IM endpoint could not start", failure);
-                    }
-                });
-// Register /mcp now that the client manager exists (see ReplWiring).
-                McpCommand mcpCmd = new McpCommand(mcpManagement);
-                mcpCmd.setDialogLauncher(commandUi::openMcp);
-                cmdRegistry.registerBuiltIn(mcpCmd);
-                lanternaRepl.setToolNames(toolRegistry.getAll().stream()
-                    .map(Tool::name)
-                    .collect(Collectors.toList()));
-                try {
-                    lanternaRepl.run();
-                    return 0;
-                } finally {
-                    sessionHostRuntime.close();
-                    gatewayRuntime.close();
-                }
-            } catch (Exception e) {
-                log.error("Lanterna UI failed", e);
-                return 1;
-            } finally {
-                finalizeInteractiveSession(agentSummaryService, hookEngine);
-                hookEffects.close();
+            };
+            var applicationPorts = interactiveRuntime.application(
+                commandUi, hookConfiguration, mcpManagement,
+                CliRuntimeAdapters.newCompactWarningProvider(compactService),
+                sessionLifecycle,
+                PromptCacheBreakDetection::resetPromptCacheBreakDetection,
+                memoryCatalog,
+                outputStyleService,
+                doctorPort,
+                pluginMarketplace,
+                CliRuntimeAdapters.newStatusLinePort(interactiveCwd),
+                CliRuntimeAdapters.newStartupTrustPort(),
+                CliRuntimeAdapters.newShutdownPort(engine, shellOutput),
+                CliRuntimeAdapters.newTurnAwakeGuard(), taskBoard);
+            var featureRuntime = interactiveRuntime.features(
+                permissionGate, toolRegistry,
+                () -> startup.skills().toCompletableFuture().getNow(List.of()),
+                skillHookRegistrar, permissionExplainer);
+            var launchState = interactiveRuntime.launch(
+                UserKeybindingsStore.create(), dangerouslySkipPermissions, initialPrompt,
+                initialSessionName, restoredSession, sessionTitleGenerator,
+                showBuiltInModelFamilies, customModelCatalog,
+                ExternalTips::getNextTip,
+                sessionHostRuntime.registry(), sessionHostRuntime.interactions(),
+                sessionHostRuntime.collaboration(), sessionHostRuntime,
+                gatewayRuntime);
+            ReplWiring wiring = interactiveRuntime.assemble(
+                applicationPorts, featureRuntime, launchState,
+                new ReplStartupReadiness(startup.inputSemanticReady(),
+                    promptInventory.timeline()::mark));
+            LanternaReplScreen lanternaRepl =
+                new LanternaReplScreen(engine, cmdRegistry, cmdContext, wiring);
+            screenRef.set(lanternaRepl);
+            hookEffects.bindUi(lanternaRepl::postSystemMessage,
+                lanternaRepl::applyHookSessionTitle);
+            CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
+                .thenRun(() -> Thread.ofVirtual()
+                    .name("interactive-optional-services")
+                    .start(() -> installOptionalInteractiveServices(
+                        optionalSettings.getNow(new OptionalInteractiveSettings(60_000, false)),
+                        lanternaRepl, hookEngine, client, engine)));
+            toolRegistry.get("Bash")
+                .filter(BashTool.class::isInstance)
+                .map(BashTool.class::cast)
+                .ifPresent(bash -> bash.setSudoPasswordInteraction(
+                    sessionHostRuntime.interactions()));
+            sessionHostRuntime.interactions().register(
+                InteractionFeatures.SUDO_PASSWORD,
+                new TuiSudoPasswordPresenter(
+                    sessionHostRuntime.interactions(), lanternaRepl::promptSudoPassword));
+            if (input.startupResumePicker()) {
+                lanternaRepl.requestStartupResumePicker(input.startupResumeSearchTerm());
             }
+            lanternaRepl.setModel(resolvedModel);
+            lanternaRepl.setVerbose(verbose);
+            // Bind the progress sink to the REPL (engine config was built earlier,
+            // so the sink is late-bound via setScreen).
+            progressSink.setScreen(lanternaRepl);
+            // Install the REPL-bound LSP recommendation trigger only after
+            // the screen exists; its lifecycle and response persistence stay
+            // encapsulated in CliLspIntegration.
+            lspIntegration.attachRecommendationTrigger(engine, lanternaRepl);
+            lanternaRepl.sessionHostReady().thenRunAsync(() -> {
+                try {
+                    sessionHostRuntime.start();
+                } catch (RuntimeException failure) {
+                    log.warn("Session Host IM endpoint could not start", failure);
+                }
+            });
+            // Register /mcp now that the client manager exists (see ReplWiring).
+            McpCommand mcpCmd = new McpCommand(mcpManagement);
+            mcpCmd.setDialogLauncher(commandUi::openMcp);
+            cmdRegistry.registerBuiltIn(mcpCmd);
+            lanternaRepl.setToolNames(toolRegistry.getAll().stream()
+                .map(Tool::name)
+                .collect(Collectors.toList()));
+            try {
+                lanternaRepl.run();
+                return 0;
+            } finally {
+                sessionHostRuntime.close();
+                gatewayRuntime.close();
+            }
+        } catch (Exception e) {
+            log.error("Lanterna UI failed", e);
+            return 1;
+        } finally {
+            finalizeInteractiveSession(agentSummaryService, hookEngine);
+        }
 
     }
 
