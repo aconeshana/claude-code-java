@@ -17,7 +17,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * In-process MCP JSON-RPC server reached through SDK {@code mcp_message} control requests.
-{@code createSdkMcpServer} behavior.</li></ul>
+ *
+ * <ul><li>{@code entrypoints/agentSdkTypes.ts} — the {@code createSdkMcpServer}
+ * contract: an {@code McpSdkServerConfigWithInstance} whose tools run in the
+ * host process rather than over a spawned transport. Only the declaration
+ * exists upstream ({@code throw new Error('not implemented')}), so the
+ * JSON-RPC dispatch, the pending-call registry, and the close semantics below
+ * have no TS body to mirror and are this port's own.</li></ul>
  */
 public final class SdkMcpServer implements AutoCloseable {
     private final String name;
@@ -97,7 +103,19 @@ public final class SdkMcpServer implements AutoCloseable {
         String key = id.asText();
         AbortController abort = new AbortController();
         CompletableFuture<JsonNode> response = new CompletableFuture<>();
-        calls.put(key, new PendingCall(abort, response));
+        PendingCall pending = new PendingCall(abort, response);
+        calls.put(key, pending);
+        // handle()'s closed check ran before this publish, so a close() that
+        // swept the registry in between never saw this call: nobody would
+        // signal its abort, nobody would complete its future, and its handler
+        // would still run on a closed server. Re-checking after the put closes
+        // that window from the other side, so whichever order the two threads
+        // interleave in, exactly one of them terminates the call.
+        if (closed) {
+            calls.remove(key);
+            terminate(pending);
+            return response;
+        }
         Thread.startVirtualThread(() -> {
             try {
                 SdkMcpToolResult result = tool.handler().call(arguments,
@@ -138,11 +156,26 @@ public final class SdkMcpServer implements AutoCloseable {
 
     @Override public void close() {
         closed = true;
-        calls.values().forEach(call -> {
-            call.abort().abort();
-            call.response().completeExceptionally(
-                new IllegalStateException("SDK MCP server was removed"));
-        });
+        calls.values().forEach(SdkMcpServer::terminate);
         calls.clear();
+    }
+
+    /**
+     * Fails {@code call}'s response and only then signals its abort.
+     *
+     * <p>The order is the point, not an incidental detail. Aborting first
+     * wakes the handler thread, which races back to {@code response.complete}
+     * while this method is still on its way to {@code completeExceptionally};
+     * a {@link CompletableFuture} keeps whichever completion lands first, so a
+     * server that had already been closed could still answer successfully, and
+     * which of the two happened depended on thread scheduling. Failing first
+     * makes the outcome deterministic. A call that genuinely finished before
+     * the close is unaffected either way, because its own {@code complete} had
+     * already won.
+     */
+    private static void terminate(PendingCall call) {
+        call.response().completeExceptionally(
+            new IllegalStateException("SDK MCP server was removed"));
+        call.abort().abort();
     }
 }
