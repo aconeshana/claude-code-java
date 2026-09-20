@@ -114,9 +114,8 @@ class DynamicClientRegistrationTest {
     @Test
     void register_throwsMcpException_onNon2xx() throws Exception {
         fakeAs = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        fakeAs.createContext("/register", exchange -> {
-            respond(exchange, 401, "{\"error\":\"unauthorized\"}");
-        });
+        fakeAs.createContext("/register", exchange ->
+            respond(exchange, 401, "{\"error\":\"unauthorized\"}"));
         fakeAs.start();
 
         String endpoint = "http://127.0.0.1:" + fakeAs.getAddress().getPort() + "/register";

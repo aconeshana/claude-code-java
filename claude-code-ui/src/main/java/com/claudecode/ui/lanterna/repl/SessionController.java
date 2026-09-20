@@ -1161,9 +1161,8 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         MessageCompactor cs = queryEngine.execution().getCompactService();
         if (cs == null) {
             final String msg = "compaction service is not available in this session.";
-            completeSummarizeOnGuiThread(completion, () -> {
-                onFailure.accept(msg);
-            });
+            completeSummarizeOnGuiThread(completion, () ->
+                onFailure.accept(msg));
             return completion;
         }
         // Snapshot the message list — partial compact must run against a stable
@@ -1278,9 +1277,8 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
             } catch (Exception e) {
                 final String msg = exceptionDetail(e);
                 if (notify != null) notify.accept(new CompactProgressEvent.CompactEnd());
-                completeSummarizeOnGuiThread(completion, () -> {
-                    onFailure.accept(msg);
-                });
+                completeSummarizeOnGuiThread(completion, () ->
+                    onFailure.accept(msg));
             }
         });
         return completion;

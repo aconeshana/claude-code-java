@@ -129,9 +129,8 @@ class OAuthTokenClientTest {
     @Test
     void error_response_throwsMcpException() throws Exception {
         as = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        as.createContext("/token", exchange -> {
-            respond(exchange, 400, "{\"error\":\"invalid_grant\"}");
-        });
+        as.createContext("/token", exchange ->
+            respond(exchange, 400, "{\"error\":\"invalid_grant\"}"));
         as.start();
 
         var client = new OAuthTokenClient(new OkHttpClient());
@@ -146,10 +145,9 @@ class OAuthTokenClientTest {
     @Test
     void errorDescriptionIsSurfacedAsTheControlError() throws Exception {
         as = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        as.createContext("/token", exchange -> {
+        as.createContext("/token", exchange ->
             respond(exchange, 400,
-                "{\"error\":\"invalid_grant\",\"error_description\":\"WIRE_OAUTH_TOKEN_EXCHANGE_FAILED\"}");
-        });
+                "{\"error\":\"invalid_grant\",\"error_description\":\"WIRE_OAUTH_TOKEN_EXCHANGE_FAILED\"}"));
         as.start();
 
         var client = new OAuthTokenClient(new OkHttpClient());
@@ -181,9 +179,8 @@ class OAuthTokenClientTest {
     @Test
     void missingAccessToken_throwsMcpException() throws Exception {
         as = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        as.createContext("/token", exchange -> {
-            respond(exchange, 200, "{\"expires_in\":3600}");
-        });
+        as.createContext("/token", exchange ->
+            respond(exchange, 200, "{\"expires_in\":3600}"));
         as.start();
 
         var client = new OAuthTokenClient(new OkHttpClient());
