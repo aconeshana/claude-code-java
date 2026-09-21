@@ -934,3 +934,21 @@ export const IconArchiveOutline20 = ({ size = 20, className }: IconProps) => (
     <path d="M12.7962 12.5661V11.0832H7.20548V12.5661L12.7962 12.5661Z" fill="currentColor" />
   </svg>
 )
+
+/**
+ * The permission shield contour on the 16 grid (design set 1556), stroked at
+ * {@link SHIELD_OUTLINE_STROKE}. The composer's permission selector composes
+ * its mode marks (check, pencil, exclamation) over this same path inside one
+ * svg, so the geometry lives here once.
+ */
+export const SHIELD_OUTLINE_PATH = 'M8.20554 0.899994L14.7901 3.36857V7.01026C14.7901 12 11.0466 14.2103 8.20554 15.3C5.36446 14.2103 1.62012 12 1.62012 7.01026V3.36857L8.20554 0.899994Z'
+
+/** Stroke width of {@link SHIELD_OUTLINE_PATH}. */
+export const SHIELD_OUTLINE_STROKE = '1.31831'
+
+/** Permission row glyph of the composer menu: the shield contour alone, without a mode mark. */
+export const IconShieldOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d={SHIELD_OUTLINE_PATH} stroke="currentColor" strokeWidth={SHIELD_OUTLINE_STROKE} strokeLinejoin="round" />
+  </svg>
+)

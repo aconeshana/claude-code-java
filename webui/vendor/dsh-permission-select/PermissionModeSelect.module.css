@@ -1,0 +1,84 @@
+/* PermissionModeSelect trigger chrome — a verbatim metric copy of upstream's
+   packages/client/ui-permission-presets/src/client/PermissionSelect.module.css
+   (fetched via `gh api repos/deepseek-ai/deepseek-harness/contents/...` and
+   diffed field-by-field against this file; see webui/UPSTREAM.md). The
+   dropdown card itself is the shared Menu primitive
+   (vendor/ui-primitives/Menu.module.css) — upstream's PermissionSelect.tsx
+   opens the same shared Menu component with no `align` prop, so it inherits
+   Menu's own `align='start'` default (left-aligned to the trigger). This
+   file must NOT pass align="end" for the same reason. */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: 24px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.trigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.trigger:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+.triggerIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* The shared 16px shield glyph renders one step smaller on the exposed
+   trigger; the dropdown rows keep the full 16px. */
+.triggerIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.triggerLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  composes: chevron;
+  transform: rotate(180deg);
+}
+
+/* Narrow composer: the trigger collapses to icon + chevron so the row keeps
+   fitting. Only triggers that actually carry a mode glyph drop their label —
+   matches upstream's `:has(.triggerIcon)` qualifier so a host-configured mode
+   without an icon keeps its text as the sole identifier. Same 460px cut as
+   dsh-model-select/ModelSelect.module.css's matching @container rule on the
+   same anonymous InputBar .row container. */
+@container (max-width: 460px) {
+  .trigger:has(.triggerIcon) .triggerLabel {
+    display: none;
+  }
+}

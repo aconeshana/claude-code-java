@@ -351,7 +351,8 @@ public class LanternaReplScreen implements SlashHost {
                 @Override public void statusLineChanged() {
                     if (statusLineController != null) statusLineController.scheduleUpdate();
                 }
-            });
+            },
+            this.permissionGate);
         Path stableProjectRoot = CwdState.getOriginalCwd();
         this.historyProjectRoot = PromptHistory.resolveProject(stableProjectRoot != null
             ? stableProjectRoot.toString() : System.getProperty("user.dir"));

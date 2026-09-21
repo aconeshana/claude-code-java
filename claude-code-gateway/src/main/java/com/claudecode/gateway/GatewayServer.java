@@ -90,6 +90,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayModelsHandler modelsApi;
     private final GatewayCommandsHandler commandsApi;
     private final GatewaySessionContextHandler sessionContextApi;
+    private final GatewayPermissionModeHandler permissionModeApi;
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
     private final AtomicBoolean started = new AtomicBoolean();
@@ -171,6 +172,19 @@ public final class GatewayServer implements AutoCloseable {
             GatewaySettingsPort settings, GatewaySchedulePort schedule,
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, actions,
+            new GatewayPermissionModePort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -238,6 +252,7 @@ public final class GatewayServer implements AutoCloseable {
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
+        this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -696,6 +711,23 @@ public final class GatewayServer implements AutoCloseable {
                     sessionContextApi.handleGet(exchange);
                 } else {
                     sessionContextApi.handlePost(exchange);
+                }
+            });
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/session/permission-mode", path)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            serve(exchange, () -> {
+                if (get) {
+                    permissionModeApi.handleGet(exchange);
+                } else {
+                    permissionModeApi.handlePost(exchange);
                 }
             });
             return;

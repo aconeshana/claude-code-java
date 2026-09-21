@@ -474,3 +474,29 @@ export interface SessionContextSelectResponse {
   readonly metrics: SessionMetrics | null
 }
 
+// ---------------------------------------------------------------------------
+// GET/POST /api/session/permission-mode — active session permission-mode chip
+// ---------------------------------------------------------------------------
+
+export type PermissionModeValue = 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk'
+
+export interface PermissionModeChoice {
+  readonly value: PermissionModeValue
+  readonly title: string
+  readonly short_title: string
+  readonly symbol: string
+  readonly color_key: string
+  readonly available: boolean
+}
+
+export interface SessionPermissionMode {
+  readonly current: PermissionModeValue
+  readonly modes: readonly PermissionModeChoice[]
+  readonly bypass_permissions_available: boolean
+  readonly bypass_permissions_disabled_by_policy: boolean
+}
+
+export interface SessionPermissionModeResponse {
+  readonly permission_mode: SessionPermissionMode | null
+}
+

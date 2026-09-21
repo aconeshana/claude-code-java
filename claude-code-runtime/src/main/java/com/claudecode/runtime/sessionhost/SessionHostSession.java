@@ -16,14 +16,16 @@ public record SessionHostSession(
         Function<SessionHostSubmission, CompletionStage<Void>> submitter,
         SessionHostModelController models,
         SessionHostEffortController efforts,
-        SessionHostCompactController compacts) {
+        SessionHostCompactController compacts,
+        SessionHostPermissionController permissions) {
 
     public SessionHostSession(
             SessionHostInfo info,
             SessionEventHub events,
             Function<SessionHostSubmission, CompletionStage<Void>> submitter) {
         this(info, events, submitter, SessionHostModelController.unsupported(),
-            SessionHostEffortController.unsupported(), SessionHostCompactController.unsupported());
+            SessionHostEffortController.unsupported(), SessionHostCompactController.unsupported(),
+            SessionHostPermissionController.unsupported());
     }
 
     public SessionHostSession(
@@ -32,7 +34,7 @@ public record SessionHostSession(
             Function<SessionHostSubmission, CompletionStage<Void>> submitter,
             SessionHostModelController models) {
         this(info, events, submitter, models, SessionHostEffortController.unsupported(),
-            SessionHostCompactController.unsupported());
+            SessionHostCompactController.unsupported(), SessionHostPermissionController.unsupported());
     }
 
     public SessionHostSession(
@@ -41,7 +43,19 @@ public record SessionHostSession(
             Function<SessionHostSubmission, CompletionStage<Void>> submitter,
             SessionHostModelController models,
             SessionHostEffortController efforts) {
-        this(info, events, submitter, models, efforts, SessionHostCompactController.unsupported());
+        this(info, events, submitter, models, efforts, SessionHostCompactController.unsupported(),
+            SessionHostPermissionController.unsupported());
+    }
+
+    public SessionHostSession(
+            SessionHostInfo info,
+            SessionEventHub events,
+            Function<SessionHostSubmission, CompletionStage<Void>> submitter,
+            SessionHostModelController models,
+            SessionHostEffortController efforts,
+            SessionHostCompactController compacts) {
+        this(info, events, submitter, models, efforts, compacts,
+            SessionHostPermissionController.unsupported());
     }
 
     public SessionHostSession {
@@ -51,6 +65,7 @@ public record SessionHostSession(
         Objects.requireNonNull(models, "models");
         Objects.requireNonNull(efforts, "efforts");
         Objects.requireNonNull(compacts, "compacts");
+        Objects.requireNonNull(permissions, "permissions");
     }
 
     public CompletionStage<Void> submit(SessionHostSubmission submission) {

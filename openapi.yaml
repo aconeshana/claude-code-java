@@ -659,6 +659,52 @@ paths:
               schema: { $ref: '#/components/schemas/SessionContext' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/permission-mode:
+    get:
+      tags: [Sessions]
+      summary: One session's live permission-mode selection
+      description: |
+        Feeds the webui composer's permission-mode chip — the remote
+        counterpart of the TUI Shift+Tab cycle. The addressed session
+        follows the same routing as /api/session/context: an open headless
+        session id, the active TUI session's own id, or blank for the
+        active TUI session. Any other id has no live PermissionGate to
+        report and renders null.
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active TUI session
+      responses:
+        '200':
+          description: The current mode and selectable modes; null without a live target
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPermissionModeResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Sessions]
+      summary: Change one session's permission mode
+      description: |
+        Applies through the addressed session's live PermissionGate — the
+        same control path the TUI Shift+Tab cycle and the SDK
+        set_permission_mode control request drive. bypassPermissions is
+        rejected (400) when the session was not launched with
+        --dangerously-skip-permissions or policy disables it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionPermissionModeSelectRequest' }
+      responses:
+        '200':
+          description: The refreshed permission-mode state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPermissionModeResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/session/context/timeline:
     get:
       tags: [Sessions]
@@ -1620,6 +1666,50 @@ components:
             the values the session's effort.choices currently offers, which includes
             "ultracode" when dynamic workflows are available; anything else is 400.
       description: Exactly one of model or effort must be present
+    SessionPermissionModeResponse:
+      type: object
+      properties:
+        permission_mode:
+          allOf: [ { $ref: '#/components/schemas/SessionPermissionMode' } ]
+          nullable: true
+    SessionPermissionMode:
+      type: object
+      required: [current, modes, bypass_permissions_available, bypass_permissions_disabled_by_policy]
+      properties:
+        current: { type: string }
+        modes:
+          type: array
+          items: { $ref: '#/components/schemas/PermissionModeChoice' }
+        bypass_permissions_available:
+          type: boolean
+          description: False when the process was not launched with --dangerously-skip-permissions, or policy disabled it
+        bypass_permissions_disabled_by_policy:
+          type: boolean
+          description: Distinguishes a policy-disabled bypassPermissions from a launch-flag-gated one
+    PermissionModeChoice:
+      type: object
+      required: [value, title, short_title, symbol, color_key, available]
+      properties:
+        value:
+          type: string
+          enum: [default, plan, acceptEdits, bypassPermissions, dontAsk]
+        title: { type: string }
+        short_title: { type: string }
+        symbol: { type: string }
+        color_key: { type: string }
+        available:
+          type: boolean
+          description: False only for bypassPermissions when unavailable; every other mode is always available
+    SessionPermissionModeSelectRequest:
+      type: object
+      required: [mode]
+      properties:
+        session_id:
+          type: string
+          description: The session to address; absent means the active TUI session
+        mode:
+          type: string
+          enum: [default, plan, acceptEdits, bypassPermissions, dontAsk]
     CommandEntry:
       type: object
       required: [name, kind]

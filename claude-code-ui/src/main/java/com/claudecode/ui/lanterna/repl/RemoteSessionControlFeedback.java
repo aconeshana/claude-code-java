@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.repl;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import java.util.Locale;
 
@@ -22,6 +23,16 @@ final class RemoteSessionControlFeedback {
             message.append(" (currently ").append(state.effective()).append(')');
         }
         message.append(" for this session");
+        return appendChannel(message, channel).append('.').toString();
+    }
+
+    static String permissionModeChanged(PermissionMode mode, String channel) {
+        StringBuilder message = new StringBuilder("Permission mode is now ")
+            .append(mode.title()).append(" for this session");
+        return appendChannel(message, channel).append('.').toString();
+    }
+
+    private static StringBuilder appendChannel(StringBuilder message, String channel) {
         String normalizedChannel = channel == null ? "" : channel.trim().toLowerCase(Locale.ROOT);
         if (!StringUtils.isBlank(normalizedChannel)) {
             message.append(" (via ")
@@ -29,6 +40,6 @@ final class RemoteSessionControlFeedback {
                 .append(normalizedChannel.substring(1))
                 .append(')');
         }
-        return message.append('.').toString();
+        return message;
     }
 }

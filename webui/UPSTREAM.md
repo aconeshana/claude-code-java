@@ -96,6 +96,111 @@ Product-scope deviations (documented, not gaps):
   stays clickable mid-turn (upstream disables on `busy` selecting state
   only).
 
+### `vendor/dsh-permission-select/PermissionModeSelect.tsx` — composer permission-mode chip
+
+The TUI's Shift+Tab cycle (`PermissionModeCycle.java`) has no webui
+counterpart; the composer's `.modes` slot held only a static hint string.
+
+Upstream: `packages/client/ui-permission-presets/src/client/PermissionSelect.tsx`
++ `PermissionSelect.module.css` — the composer-chip sibling of
+`PermissionRow.tsx` (the Settings-panel row already vendored for
+`SettingsPanel.tsx`, see "Product-scope deviations" below). Both files were
+fetched verbatim via
+`gh api repos/deepseek-ai/deepseek-harness/contents/<path> --jq '.content' | base64 -d`,
+along with `packages/client/ui-conversation/src/client/skeleton/InputBar.tsx`
+(+ `.module.css`) and `packages/client/ui-primitives/src/Menu.tsx` +
+`src/icons/index.tsx`, after **two** prior revisions were caught shipping
+plausible-but-unverified code:
+
+1. The first revision skipped straight to a from-scratch component modeled
+   on `dsh-model-select/ModelSelect.tsx`'s bespoke `createPortal` positioning
+   without fetching `PermissionSelect.tsx` at all.
+2. The second revision claimed to have corrected this onto the shared `Menu`
+   primitive, but the claim itself was still inference dressed as fact — it
+   had not actually fetched `PermissionSelect.tsx`'s content, and shipped
+   `align="end"` (wrong: real upstream passes no `align` prop and inherits
+   `Menu`'s own `align='start'` default — confirmed by grepping the real
+   `Menu.tsx`) and mounted the trigger in `InputBar.tsx`'s `.trailing` group
+   next to `ModelSelect` (wrong: real upstream's `InputBar.tsx` renders
+   `conversation.input.permission` inside `.tools`'s `.modes` sub-container,
+   immediately after the `+`/attach button, well before `.trailing`'s
+   model-select + send group). Both mistakes produced a right-aligned menu
+   positioned near the model selector — the user caught this with two
+   screenshots showing the real upstream's left-aligned menu anchored next
+   to the `+`/attach cluster at the bottom-left.
+
+Corrected against the actually-fetched source:
+
+- **Position**: `PermissionModeSelect` now mounts inside `InputBar.tsx`'s
+  `.modes` container (`src/views/InputBar.tsx`), matching upstream's
+  `renderSlot('conversation.input.permission', ...)` placement right after
+  the `+` button.
+- **Alignment**: the `<Menu>` call no longer passes `align` — it inherits
+  `Menu.tsx`'s real default (`align = 'start'`, confirmed at
+  `vendor/ui-primitives/Menu.tsx:84`), so the dropdown opens left-aligned to
+  the trigger, matching the real upstream and the user's reference screenshot.
+- **Trigger CSS metrics** (`PermissionModeSelect.module.css`) now copy the
+  real `PermissionSelect.module.css` field-for-field: `display: inline-flex`
+  (not `flex`), `max-width: 220px` (fixed, not a `min()` clamp),
+  `.triggerIcon svg { width: 14px; height: 14px }` (the shared 16px glyph
+  shrinks one step on the trigger only — dropdown rows keep 16px), and the
+  narrow-composer label-collapse is qualified `.trigger:has(.triggerIcon)
+  .triggerLabel` (only a trigger that actually carries a glyph drops its
+  label at the `@container (max-width: 460px)` cut — an earlier revision
+  collapsed unconditionally).
+- **Icons.** The prior "no shield-glyph SVG set exists in `@primitives`" claim
+  was itself unverified and turned out to be false: real upstream's
+  `permissionGlyphs` compose a shared `SHIELD_OUTLINE_PATH`/
+  `SHIELD_OUTLINE_STROKE` contour that IS exported from the primitives
+  package (`ui-primitives/src/icons/index.tsx`). Both constants plus
+  `IconShieldOutline16` are now vendored verbatim into
+  `vendor/ui-primitives/icons/index.tsx`. `PermissionModeSelect.tsx` builds
+  its own five glyphs on this shared contour, reusing upstream's exact inner
+  paths where the assistant's `PermissionMode` states line up semantically:
+  PLAN (deny writes / allow reads) reuses upstream's read-only check mark;
+  ACCEPT_EDITS (auto-accept edits) reuses upstream's workspace-write pencil
+  glyph; BYPASS_PERMISSIONS (skip every check) reuses upstream's
+  danger-full-access exclamation mark. DEFAULT gets the bare shield contour
+  (`IconShieldOutline16`, no upstream "ask every time" preset to borrow a mark
+  from); DONT_ASK renders no icon, mirroring upstream's own pattern of
+  leaving its second risky preset (`auto`) icon-less.
+- **Preset catalog** is still not ported as a dynamic catalog — Menu items
+  carry the assistant's five externally-selectable modes
+  (`SdkControlBroker`'s valid-external-mode allow-list excludes `auto`, the
+  internal classifier's own state), not a host-configurable
+  `usePermissionCatalog` list. This is a legitimate cut: the assistant's
+  `PermissionMode` is a fixed compile-time enum
+  (`claude-code-permissions/.../PermissionMode.java`), not a host-supplied
+  catalog, so there is no catalog/badge system to carry.
+- **Risk confirmation** is `RiskConfirmation` (`@primitives`, already
+  vendored), the same primitive `Sidebar.tsx`'s delete-session flow uses.
+  Selecting `bypassPermissions`/`dontAsk` (`PermissionMode.ColorKey.ERROR` —
+  the TUI's own risky-mode marker) opens the confirmation instead of calling
+  select directly — structurally the same gate real upstream applies before
+  its own `danger-full-access`/`auto` presets; cancelling leaves the mode
+  unchanged.
+- **Color-token substitution** (layered on top of the borrowed shield
+  geometry — upstream's own icons carry no color axis, shape alone
+  distinguishes its three presets). The TUI colors modes via
+  `LanternaTheme.colorFor(PermissionMode)`: `PLAN_MODE`→teal,
+  `AUTO_ACCEPT`→purple, `ERROR`→red, `WARNING`→amber. `design-platform.css`
+  defines no teal or purple tokens, so `PermissionModeSelect.tsx`'s
+  `colorFor()` substitutes the closest available semantic token instead of
+  inventing a raw color: `PLAN_MODE`→`--dsw-alias-state-business-primary`
+  (brand blue), `AUTO_ACCEPT`→`--dsw-alias-state-success-primary` (green —
+  fits "accept" semantically), `ERROR`→`--dsw-alias-state-error-primary` and
+  `WARNING`→`--dsw-alias-state-warn-primary` (exact TUI parity). Verified via
+  `grep -n "alias-state-business-primary\|alias-state-success-primary\|alias-state-error-primary\|alias-state-warn-primary" vendor/theme/styles/design-platform.css`.
+- Tokens on the trigger chrome itself (`--dsw-alias-label-secondary`,
+  `--dsw-alias-interactive-bg-hover`, `--dsw-alias-border-l3`,
+  `--dsw-alias-label-dimmed`, `--dsw-alias-label-caption`) verified the same
+  way against `vendor/theme/styles/design-platform.css`.
+- Backend surface: `GET`/`POST /api/session/permission-mode`
+  (`GatewayPermissionModeHandler`), addressed the same way as
+  `/api/session/context` (empty `session_id` = active TUI session, a known
+  headless id = that session). Copy: `src/i18n/dictionaries/permissionMode.ts`
+  (own namespace — not a translation of any dsh dictionary).
+
 ### `vendor/dsh-stats-pills/` — session-stat pills & turn-tail pills
 
 Two pill groups from ui-chat: the composer-dock **StatsPills** (session

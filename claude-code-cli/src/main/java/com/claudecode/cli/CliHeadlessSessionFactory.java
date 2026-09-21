@@ -11,17 +11,22 @@ import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.state.CwdState;
 import com.claudecode.permissions.PermissionGate;
+import com.claudecode.permissions.PermissionMode;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
+import com.claudecode.runtime.sessionhost.SessionHostCompactController;
 import com.claudecode.runtime.sessionhost.SessionHostEffortController;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostModelController;
 import com.claudecode.runtime.sessionhost.SessionHostModelOptions;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionController;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionOptions;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.turn.SessionEventHub;
@@ -156,6 +161,7 @@ final class CliHeadlessSessionFactory {
         HeadlessTurnDriver driver = new HeadlessTurnDriver(engine, events,
             file -> RemoteAttachmentStore.persist(projectPath, sessionId,
                 submissionMessageId(file), file).toString());
+        PermissionGate gate = gateFor(projectPath);
         SessionHostSession host = new SessionHostSession(
             info, events, driver::submit,
             new SessionHostModelController() {
@@ -193,6 +199,31 @@ final class CliHeadlessSessionFactory {
                         ? null : selected;
                     engine.configuration().getConfig().setEffortValue(configured);
                     return effortState(engine);
+                }
+            },
+            SessionHostCompactController.unsupported(),
+            new SessionHostPermissionController() {
+                @Override public SessionHostPermissionState get() {
+                    return SessionHostPermissionOptions.build(gate);
+                }
+
+                @Override public SessionHostPermissionState set(String selected) {
+                    if (!SessionHostPermissionOptions.isSelectable(selected)) {
+                        throw new IllegalArgumentException(
+                            "permission mode is not available for this session");
+                    }
+                    PermissionMode parsed = PermissionGate.parseMode(selected);
+                    if (!gate.trySetMode(parsed)) {
+                        // Same two rejection reasons SdkInboundControlHandler
+                        // reports for the SDK control-request path.
+                        String reason = gate.isBypassPermissionsModeDisabledByPolicy()
+                            ? "because it is disabled by settings or configuration"
+                            : "because the session was not launched with "
+                                + "--dangerously-skip-permissions";
+                        throw new IllegalArgumentException(
+                            "Cannot set permission mode to bypassPermissions " + reason);
+                    }
+                    return SessionHostPermissionOptions.build(gate);
                 }
             });
         return new Assembled(host, engine, abort, projectPath);
@@ -248,11 +279,12 @@ final class CliHeadlessSessionFactory {
         // and a headless session has no UI to answer with. The gate matches
         // the main gate's construction (CliToolchainAssembler.createPermissionGate)
         // with only the cwd/settings roots swapped to this session's project.
-        if (Path.of(projectPath).toAbsolutePath().normalize()
+        Path path = Path.of(projectPath);
+        if (path.toAbsolutePath().normalize()
                 .equals(Path.of(mainCwd).toAbsolutePath().normalize())) {
             return sharedGate;
         }
-        Path cwdPath = Path.of(projectPath).toAbsolutePath().normalize();
+        Path cwdPath = path.toAbsolutePath().normalize();
         return new PermissionGate(
             ToolPermissionContext.builder()
                 .workingDirectory(cwdPath)

@@ -40,7 +40,9 @@ import { sectionRows } from '../../vendor/dsh-composer-menu/sectionRows'
 import { ModelSelect } from '../../vendor/dsh-model-select/ModelSelect'
 import { ContextMeter } from '../../vendor/dsh-context-meter/ContextMeter'
 import { StatsPills } from '../../vendor/dsh-stats-pills/StatsPills'
+import { PermissionModeSelect } from '../../vendor/dsh-permission-select/PermissionModeSelect'
 import { useSessionContext } from '../store/sessionContext'
+import { usePermissionMode } from '../store/permissionMode'
 import { useTranslate } from '../i18n/useTranslate'
 import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
 import css from '@chat-styles/InputBar.module.css'
@@ -114,6 +116,9 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
   const refreshSessionContext = useSessionContext((state) => state.refresh)
   const selectModel = useSessionContext((state) => state.selectModel)
   const selectEffort = useSessionContext((state) => state.selectEffort)
+  const permissionMode = usePermissionMode((state) => state.state)
+  const refreshPermissionMode = usePermissionMode((state) => state.refresh)
+  const selectPermissionMode = usePermissionMode((state) => state.select)
   // The stat pills' locale seat (upstream ui-chat's own 'chat' namespace).
   const statsT = useTranslate(STATS_NS, statsDicts)
   const editorRef = useRef<LexicalEditor | null>(null)
@@ -155,6 +160,13 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
   useEffect(() => {
     void refreshSessionContext(sessionId)
   }, [refreshSessionContext, busy, sessionId])
+
+  // Permission-mode chip: same refresh cadence as the model seat above —
+  // mount, conversation switch, and every settled turn (a hook or /permission
+  // command mid-turn can move the mode without a chip-driven refresh).
+  useEffect(() => {
+    void refreshPermissionMode(sessionId)
+  }, [refreshPermissionMode, busy, sessionId])
 
   const addFiles = (files: readonly File[]): void => {
     if (files.length === 0) return
@@ -409,6 +421,11 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
             </button>
           </div>
           <div className={css.modes}>
+            <PermissionModeSelect
+              state={permissionMode}
+              busy={busy}
+              select={selectPermissionMode}
+            />
             <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }}>
               {queuedContent != null ? '已排队，将在当前回复结束后发送' : 'Enter 发送 · Shift+Enter 换行'}
             </span>

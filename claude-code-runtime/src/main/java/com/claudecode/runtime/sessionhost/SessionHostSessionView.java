@@ -20,6 +20,8 @@ public interface SessionHostSessionView {
 
     SessionHostCompactController compacts();
 
+    SessionHostPermissionController permissions();
+
     static SessionHostSessionView of(SessionHostSession session) {
         Objects.requireNonNull(session, "session");
         return new SessionHostSessionView() {
@@ -30,6 +32,9 @@ public interface SessionHostSessionView {
             @Override public SessionHostModelController models() { return session.models(); }
             @Override public SessionHostEffortController efforts() { return session.efforts(); }
             @Override public SessionHostCompactController compacts() { return session.compacts(); }
+            @Override public SessionHostPermissionController permissions() {
+                return session.permissions();
+            }
         };
     }
 }

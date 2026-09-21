@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SettingsSnapshot, type SettingsTier, type UserContentBlock } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SettingsSnapshot, type SettingsTier, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -287,6 +287,32 @@ export function selectSessionContext(input: {
     ? { model: input.model, effort: input.effort }
     : input
   return requestJson('POST', '/api/session/context', body)
+}
+
+/**
+ * GET /api/session/permission-mode: the addressed session's current
+ * permission mode plus the selectable modes, for the composer's
+ * permission-mode chip. A null session id addresses the active TUI session.
+ */
+export function fetchPermissionMode(sessionId?: string | null): Promise<SessionPermissionModeResponse> {
+  const query = sessionId == null || sessionId === ''
+    ? ''
+    : `?session_id=${encodeURIComponent(sessionId)}`
+  return requestJson('GET', `/api/session/permission-mode${query}`)
+}
+
+/**
+ * POST /api/session/permission-mode: applies a new permission mode to the
+ * addressed session and answers with the refreshed state.
+ */
+export function selectPermissionMode(input: {
+  readonly session_id?: string | null
+  readonly mode: string
+}): Promise<SessionPermissionModeResponse> {
+  const body = input.session_id == null || input.session_id === ''
+    ? { mode: input.mode }
+    : input
+  return requestJson('POST', '/api/session/permission-mode', body)
 }
 
 export type { ComposerCommandEntry } from './types'

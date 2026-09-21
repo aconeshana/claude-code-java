@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
+import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
@@ -55,6 +56,7 @@ import com.claudecode.runtime.doctor.DoctorPort;
 import com.claudecode.runtime.session.SessionLifecycle;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.tasks.TaskBoardPort;
@@ -396,7 +398,8 @@ final class CliInteractiveSessionRunner {
                 gatewaySessionContext(sessionHostRuntime.registry(), engine,
                     headlessSessions, interactiveCwd, contextDataCollector,
                     toolRegistry::getContextAnalysisToolDefinitions),
-                gatewaySessionActions());
+                gatewaySessionActions(),
+                gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions));
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -1146,6 +1149,58 @@ final class CliInteractiveSessionRunner {
                     efforts == null ? "" : efforts.current(),
                     efforts == null ? "" : efforts.effective(),
                     efforts == null ? List.of() : efforts.efforts());
+            }
+        };
+    }
+
+    /**
+     * Bridges the gateway permission-mode port onto the same live-session
+     * addressing {@link #gatewaySessionContext} uses (open headless id, or
+     * blank/matching id for the active TUI session) — a closed session has
+     * no live {@code PermissionGate} left to report, so any other id is
+     * rejected rather than falling back to a transcript projection.
+     */
+    static GatewayPermissionModePort gatewayPermissionMode(
+            SessionHostRegistry registry, GatewayHeadlessSessions headless) {
+        return new GatewayPermissionModePort() {
+            private Optional<SessionHostSession> active() {
+                return registry.currentActivation()
+                    .map(SessionHostRegistry.ActivationResult::session);
+            }
+
+            private Optional<SessionHostSession> headlessSession(String sessionId) {
+                if (StringUtils.isBlank(sessionId)) return Optional.empty();
+                return headless != null ? headless.find(sessionId) : Optional.empty();
+            }
+
+            private Optional<SessionHostSession> liveSession(String sessionId) {
+                Optional<SessionHostSession> found = headlessSession(sessionId);
+                if (found.isPresent()) return found;
+                Optional<SessionHostSession> activeSession = active();
+                if (activeSession.isEmpty()) return Optional.empty();
+                if (StringUtils.isBlank(sessionId)) return activeSession;
+                return activeSession.filter(
+                    session -> Strings.CS.equals(session.info().id(), sessionId));
+            }
+
+            @Override public Optional<SessionHostPermissionState> state(String sessionId) {
+                return liveSession(sessionId).map(found -> found.permissions().get());
+            }
+
+            @Override public SelectionResult selectMode(String sessionId, String mode) {
+                Optional<SessionHostSession> session = liveSession(sessionId);
+                if (session.isEmpty()) {
+                    return SelectionResult.rejected(
+                        StringUtils.isBlank(sessionId)
+                            ? "no active session"
+                            : "session is not open: " + sessionId);
+                }
+                try {
+                    return SelectionResult.accepted(session.get().permissions().set(mode));
+                } catch (IllegalArgumentException | UnsupportedOperationException failure) {
+                    return SelectionResult.rejected(StringUtils.defaultIfBlank(
+                        failure.getMessage(), "permission mode is not available for this session"));
+                }
             }
         };
     }

@@ -6,6 +6,8 @@ import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.permissions.PermissionGate;
+import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
@@ -18,6 +20,9 @@ import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostModelController;
 import com.claudecode.runtime.sessionhost.SessionHostModelOptions;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionController;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionOptions;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
@@ -86,6 +91,7 @@ final class SessionHostPublisher {
     private final String initialSessionName;
     private final Consumer<Runnable> guiInvoker;
     private final Feedback feedback;
+    private final PermissionGate permissionGate;
 
     private volatile Bindings bindings;
     private volatile String publishedTitle;
@@ -103,7 +109,8 @@ final class SessionHostPublisher {
                          SessionCollaborationController collaboration,
                          String initialSessionName,
                          Consumer<Runnable> guiInvoker,
-                         Feedback feedback) {
+                         Feedback feedback,
+                         PermissionGate permissionGate) {
         this.registry = registry;
         this.queryEngine = Objects.requireNonNull(queryEngine, "queryEngine");
         this.commandContext = Objects.requireNonNull(commandContext, "commandContext");
@@ -114,6 +121,7 @@ final class SessionHostPublisher {
         this.initialSessionName = initialSessionName;
         this.guiInvoker = Objects.requireNonNull(guiInvoker, "guiInvoker");
         this.feedback = Objects.requireNonNull(feedback, "feedback");
+        this.permissionGate = permissionGate;
         this.publishedTitle = StringUtils.defaultString(initialSessionName);
     }
 
@@ -263,6 +271,15 @@ final class SessionHostPublisher {
                 requireActiveHostSession(sessionId);
                 return bindings.slash().dispatchSessionHostCompact(instructions)
                     .thenApply(result -> new SessionHostCompactResult(result.output()));
+            },
+            new SessionHostPermissionController() {
+                @Override public SessionHostPermissionState get() {
+                    return currentSessionPermissionState(sessionId);
+                }
+
+                @Override public SessionHostPermissionState set(String selected) {
+                    return setSessionPermissionMode(sessionId, selected);
+                }
             });
     }
 
@@ -344,6 +361,46 @@ final class SessionHostPublisher {
         String channel = collaboration == null
             ? "" : collaboration.selection(sessionId).channel();
         feedback.system(RemoteSessionControlFeedback.effortChanged(state, channel));
+        feedback.statusLineChanged();
+    }
+
+    private SessionHostPermissionState currentSessionPermissionState(String expectedSessionId) {
+        requireActiveHostSession(expectedSessionId);
+        if (permissionGate == null) {
+            throw new IllegalStateException("session does not expose permission-mode control");
+        }
+        return SessionHostPermissionOptions.build(permissionGate);
+    }
+
+    private SessionHostPermissionState setSessionPermissionMode(
+            String expectedSessionId, String selected) {
+        requireActiveHostSession(expectedSessionId);
+        if (permissionGate == null) {
+            throw new IllegalStateException("session does not expose permission-mode control");
+        }
+        if (!SessionHostPermissionOptions.isSelectable(selected)) {
+            throw new IllegalArgumentException("permission mode is not available for this session");
+        }
+        PermissionMode parsed = PermissionGate.parseMode(selected);
+        if (!permissionGate.trySetMode(parsed)) {
+            // Same two rejection reasons SdkInboundControlHandler#setPermissionMode
+            // reports for the SDK control-request path — bypassPermissions is the
+            // only mode trySetMode can refuse.
+            String reason = permissionGate.isBypassPermissionsModeDisabledByPolicy()
+                ? "because it is disabled by settings or configuration"
+                : "because the session was not launched with --dangerously-skip-permissions";
+            throw new IllegalArgumentException(
+                "Cannot set permission mode to bypassPermissions " + reason);
+        }
+        showRemotePermissionModeNotification(expectedSessionId, parsed);
+        return SessionHostPermissionOptions.build(permissionGate);
+    }
+
+    private void showRemotePermissionModeNotification(String sessionId, PermissionMode mode) {
+        feedback.transientHint(mode.symbol() + " " + mode.title(), 3_000);
+        String channel = collaboration == null
+            ? "" : collaboration.selection(sessionId).channel();
+        feedback.system(RemoteSessionControlFeedback.permissionModeChanged(mode, channel));
         feedback.statusLineChanged();
     }
 
