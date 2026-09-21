@@ -111,6 +111,88 @@ class FormatUtilsTest {
         assertEquals(List.of("中文", "ABC"), FormatUtils.wrapText("中文ABC", 4));
     }
 
+    // Golden fixtures captured from released 2.1.236's bundled Bun.wrapAnsi(text, width,
+    // {trim:false, hard:true}) — the resolution of Ink's default <Text wrap="wrap"> that the
+    // AskUserQuestion option description uses. Byte-for-byte parity is the contract.
+
+    @Test
+    void wrapAnsiFillsAnOverlongCjkRunBeforeBreakingIt() {
+        // The whole "word" is one unbroken CJK run wider than the line: it fills the remaining
+        // columns of the current line first, then hard-breaks — it does not jump to its own line.
+        assertEquals(List.of("ab 中文中", "文中文中文", " cd"),
+            FormatUtils.wrapAnsi("ab 中文中文中文中文 cd", 10));
+    }
+
+    @Test
+    void wrapAnsiKeepsBoundarySpacesInsteadOfTrimmingThem() {
+        // trim:false keeps the trailing joining space, and emits a standalone space row when a
+        // space lands exactly on the boundary between two full words.
+        assertEquals(List.of("alpha beta ", "gamma delta"),
+            FormatUtils.wrapAnsi("alpha beta gamma delta", 11));
+        assertEquals(List.of("one", " ", "two"), FormatUtils.wrapAnsi("one two", 3));
+        assertEquals(List.of("hello", " ", "world", " foo"), FormatUtils.wrapAnsi("hello world foo", 5));
+    }
+
+    @Test
+    void wrapAnsiTreatsExplicitNewlineAsAHardBreak() {
+        assertEquals(List.of("a", "b c"), FormatUtils.wrapAnsi("a\nb c", 3));
+    }
+
+    @Test
+    void wrapAnsiHardBreaksAWordLongerThanTheLine() {
+        assertEquals(List.of("aaaaaaa", "aaaaaaa", "aaaaaa"),
+            FormatUtils.wrapAnsi("aaaaaaaaaaaaaaaaaaaa", 7));
+    }
+
+    @Test
+    void wrapAnsiOnTheReportedScreenshotDescriptionKeepsEveryWord() {
+        // The list card at 36 columns: released 2.1.236 produces exactly these three rows, with the
+        // trailing "Claude Code。" intact rather than clipped to an ellipsis.
+        assertEquals(
+            List.of("只动 Sidebar.tsx:392 的 ", "<Pill>。浏览器标签标题和缺 token ", "的错误页仍显示 Claude Code。"),
+            FormatUtils.wrapAnsi("只动 Sidebar.tsx:392 的 <Pill>。浏览器标签标题和缺 token 的错误页仍显示 Claude Code。", 36));
+    }
+
+    @Test
+    void wrapAnsiReturnsASingleEmptyLineForEmptyInput() {
+        assertEquals(List.of(""), FormatUtils.wrapAnsi("", 5));
+        assertEquals(List.of(""), FormatUtils.wrapAnsi(null, 5));
+    }
+
+    @Test
+    void wrapAnsiMovesAZeroWidthCellOffAnExactlyFullRow() {
+        // Bun opens a fresh row the moment one is exactly full, before the next cell is measured —
+        // npm wrap-ansi only asks whether the cell fits, so the two part ways on a zero-width cell.
+        assertEquals(List.of("tabs", "\tbetw", "een"), FormatUtils.wrapAnsi("tabs\tbetween", 4));
+        assertEquals(List.of("x\ty", "\tz"), FormatUtils.wrapAnsi("x\ty\tz", 2));
+        assertEquals(List.of("abcd", "\t\t\tef"), FormatUtils.wrapAnsi("abcd\t\t\tef", 4));
+        assertEquals(List.of("中", "文", "‍中"), FormatUtils.wrapAnsi("中文‍中", 2));
+    }
+
+    @Test
+    void wrapAnsiFoldsBackATrailingRowOfOnlyZeroWidthCells() {
+        assertEquals(List.of("trail\t"), FormatUtils.wrapAnsi("trail\t", 5));
+        assertEquals(List.of("abc‍"), FormatUtils.wrapAnsi("abc‍", 3));
+        assertEquals(List.of("abc", "‍b"), FormatUtils.wrapAnsi("abc‍b", 3));
+    }
+
+    @Test
+    void wrapAnsiPrecedesACellWiderThanTheLineWithABlankRow() {
+        // The row opened by the exactly-full rule is left behind empty when the cell cannot fit in a
+        // whole line either. Overshoot past a wide cell does not re-trigger it, so "。。" gets one.
+        assertEquals(List.of("a", "", "。"), FormatUtils.wrapAnsi("a。", 1));
+        assertEquals(List.of("", "。", "。"), FormatUtils.wrapAnsi("。。", 1));
+        assertEquals(List.of("l", ">", "", "。", "浏"), FormatUtils.wrapAnsi("l>。浏", 1));
+        assertEquals(List.of("a", "", "。", " ", "b"), FormatUtils.wrapAnsi("a。 b", 1));
+    }
+
+    @Test
+    void wrapAnsiKeepsWideCellsWholeAcrossTheJoiningSpace() {
+        assertEquals(List.of("a", "中", " b"), FormatUtils.wrapAnsi("a中 b", 2));
+        assertEquals(List.of("ab ", "中", "中 ", "cd"), FormatUtils.wrapAnsi("ab 中中 cd", 3));
+        assertEquals(List.of("中", "中", "中", " a"), FormatUtils.wrapAnsi("中中中 a", 2));
+    }
+
     @Test
     void displayWidthMatchesBunStringWidthWithNarrowAmbiguousCharacters() {
         assertEquals(1, FormatUtils.displayWidth("a"));
@@ -260,6 +342,10 @@ class FormatUtilsTest {
         assertEquals(1, FormatUtils.charDisplayWidth('a'));
         assertEquals(2, FormatUtils.charDisplayWidth('你'));
         assertEquals(0, FormatUtils.charDisplayWidth('\u001B'));
+        // Format characters occupy no cell, matching graphemeWidth and Bun.stringWidth.
+        assertEquals(0, FormatUtils.charDisplayWidth('\u200D'));
+        assertEquals(0, FormatUtils.charDisplayWidth('\u200B'));
+        assertEquals(0, FormatUtils.charDisplayWidth('\u00AD'));
     }
 
     // ── flattenToSingleLine (2.1.236 `pm(us(x))`) ────────────────────────

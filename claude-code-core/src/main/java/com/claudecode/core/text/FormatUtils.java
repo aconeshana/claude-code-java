@@ -398,6 +398,106 @@ public final class FormatUtils {
         return List.copyOf(lines);
     }
 
+    /**
+     * Column-aware word wrap that mirrors Ink's default {@code <Text wrap="wrap">}, which released
+     * 2.1.236 resolves to {@code wrapAnsi(text, width, {trim:false, hard:true, wordWrap:true})}. The
+     * behavior verified byte-for-byte against that build's bundled {@code Bun.wrapAnsi}:
+     * <ul>
+     *   <li>breaks at spaces, but an over-long "word" (e.g. an unbroken CJK run) first fills the
+     *       remaining columns of the current line, then hard-breaks by display column;</li>
+     *   <li>{@code trim:false} keeps leading and trailing spaces produced by wrapping, including the
+     *       standalone single-space rows Ink emits when a space lands exactly at the boundary;</li>
+     *   <li>ambiguous-width characters count as narrow (matching {@link #displayWidth}); wide cells
+     *       count as two columns;</li>
+     *   <li>a zero-width cell (tab, control, combining mark, ZWJ) that lands on a full row moves to
+     *       the next row, except when nothing visible follows it;</li>
+     *   <li>a cell wider than the whole line gets a row of its own, preceded by a blank row whenever
+     *       the previous row was exactly full.</li>
+     * </ul>
+     * Explicit {@code \n} is treated as a hard line break: each paragraph is wrapped independently.
+     * An empty input yields a single empty line, matching Ink rendering an empty {@code <Text>}.
+     *
+     * <p>Plain text only. {@code Bun.wrapAnsi} additionally discounts ANSI escape sequences from the
+     * visible width and re-opens the active styles on every wrapped row; this port does neither, so
+     * styled input would be mismeasured. Ink styles a {@code <Text>} from its props rather than from
+     * inline escapes, which is why no caller needs that bookkeeping.
+     */
+    public static List<String> wrapAnsi(String text, int width) {
+        if (StringUtils.isEmpty(text)) return List.of("");
+        if (width <= 0) throw new IllegalArgumentException("width must be positive");
+        List<String> result = new ArrayList<>();
+        for (String paragraph : text.split("\n", -1)) {
+            wrapAnsiParagraph(paragraph, width, result);
+        }
+        return List.copyOf(result);
+    }
+
+    private static void wrapAnsiParagraph(String paragraph, int columns, List<String> out) {
+        List<StringBuilder> rows = new ArrayList<>();
+        rows.add(new StringBuilder());
+        String[] words = paragraph.split(" ", -1);
+        for (int index = 0; index < words.length; index++) {
+            String word = words[index];
+            int wordWidth = displayWidth(word);
+            int rowLength = displayWidth(rows.getLast().toString());
+            if (index != 0) {
+                // hard:true ⇒ a full row before a new word pushes the joining space onto a fresh row.
+                if (rowLength >= columns) {
+                    rows.add(new StringBuilder());
+                    rowLength = 0;
+                }
+                // trim:false ⇒ the joining space is always kept, even at the start of a row.
+                rows.getLast().append(' ');
+                rowLength++;
+            }
+            if (wordWidth > columns) {
+                // hard-break a word wider than a whole line, matching wrap-ansi's break bookkeeping.
+                int remaining = columns - rowLength;
+                int breaksThisLine = 1 + Math.floorDiv(wordWidth - remaining - 1, columns);
+                int breaksNextLine = Math.floorDiv(wordWidth - 1, columns);
+                if (breaksNextLine < breaksThisLine) rows.add(new StringBuilder());
+                wrapAnsiWord(rows, word, columns);
+                continue;
+            }
+            if (rowLength + wordWidth > columns && rowLength > 0 && wordWidth > 0) {
+                rows.add(new StringBuilder());
+            }
+            rows.getLast().append(word);
+        }
+        for (StringBuilder row : rows) out.add(row.toString());
+    }
+
+    /** Fills the current row, then breaks the remaining code points by display column. */
+    private static void wrapAnsiWord(List<StringBuilder> rows, String word, int columns) {
+        int visible = displayWidth(rows.getLast().toString());
+        for (int offset = 0; offset < word.length();) {
+            int codePoint = word.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            int cellWidth = charDisplayWidth(codePoint);
+            // An exactly-full row opens a fresh one before the cell is even measured, which npm
+            // wrap-ansi does not do. Two consequences: a zero-width cell (tab, control, combining
+            // mark, ZWJ) on the boundary moves down, and a cell wider than the whole line leaves the
+            // freshly opened row behind as a blank one. Overshoot (visible > columns, reachable only
+            // past a wide cell on an odd boundary) deliberately does not trigger it.
+            if (visible == columns) {
+                rows.add(new StringBuilder());
+                visible = 0;
+            }
+            if (visible + cellWidth <= columns) {
+                rows.getLast().appendCodePoint(codePoint);
+            } else {
+                rows.add(new StringBuilder().appendCodePoint(codePoint));
+                visible = 0;
+            }
+            visible += cellWidth;
+        }
+        // A trailing row of nothing but zero-width cells is folded back into its predecessor.
+        if (visible == 0 && rows.size() > 1 && !rows.getLast().isEmpty()) {
+            StringBuilder trailing = rows.removeLast();
+            rows.getLast().append(trailing);
+        }
+    }
+
     /** Terminal display width with ambiguous-width characters treated as narrow. */
     public static int displayWidth(String value) {
         if (StringUtils.isEmpty(value)) return 0;
@@ -590,12 +690,16 @@ public final class FormatUtils {
     }
 
     /**
-     * Terminal display width of a single code point: 0 for controls / zero-width combining marks, 2 for
-     * East-Asian wide / fullwidth, else 1.
+     * Terminal display width of a single code point: 0 for controls / format characters / zero-width
+     * combining marks, 2 for East-Asian wide / fullwidth, else 1.
      */
     static int charDisplayWidth(int codePoint) {
         int type = Character.getType(codePoint);
         if (type == Character.CONTROL) return 0;
+        // Format characters (ZWJ, ZWSP, soft hyphen, the bidi marks) occupy no cell. Treating them
+        // as one column here disagreed with the grapheme-aware path in graphemeWidth, which skips
+        // them, and with Bun.stringWidth, which reports 0.
+        if (type == Character.FORMAT) return 0;
         if (type == Character.NON_SPACING_MARK
                 || type == Character.COMBINING_SPACING_MARK
                 || type == Character.ENCLOSING_MARK) return 0;

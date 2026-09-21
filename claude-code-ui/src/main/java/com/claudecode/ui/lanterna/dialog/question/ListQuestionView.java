@@ -4,7 +4,6 @@ import com.claudecode.core.constants.Figures;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.tools.questions.QuestionPresenter;
 import com.claudecode.ui.lanterna.components.TableBorders;
-import com.claudecode.ui.lanterna.dialog.DialogText;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.SGR;
@@ -71,6 +70,12 @@ public final class ListQuestionView {
     private static final int RESERVED_ROWS = 8;
     /** {@code qr}'s separator between {@code it} chords. */
     private static final String CHORD_SEPARATOR = " · ";
+    /**
+     * Columns a description line cannot use: the card's one-column left inset, the two-space
+     * indent {@link #drawOptionRow} prepends, and the one-column right inset {@code width - 2}
+     * keeps. Wrapping any wider only hands {@link InlineOverlay#clip} something to cut back off.
+     */
+    private static final int DESCRIPTION_MARGIN = 4;
 
     private ListQuestionView() {}
 
@@ -402,27 +407,21 @@ public final class ListQuestionView {
             QuestionPresenter.Question question, int columns) {
         List<List<String>> lines = new ArrayList<>(question.options().size());
         for (QuestionPresenter.Option option : question.options()) {
-            lines.add(descriptionLines(option.description(), columns - 3));
+            lines.add(descriptionLines(option.description(), columns - DESCRIPTION_MARGIN));
         }
         return lines;
     }
 
     /**
-     * Word-wraps an option description to {@code width} columns: soft wrap at word boundaries
-     * first, then a hard wrap as the fallback for overlong words — the same two-level scheme as
-     * {@code MessageSelectorDialog}. Released 2.1.197 relies on Ink's default {@code wrap="wrap"}
-     * for these descriptions instead of clipping them.
+     * Word-wraps an option description to {@code width} columns exactly the way released 2.1.236
+     * does: its Ink {@code <Text>} description block uses the default {@code wrap="wrap"}, which the
+     * bundle resolves to {@code Bun.wrapAnsi(text, width, {trim:false, hard:true})}. That single
+     * column-aware pass — not a char-count soft wrap plus a hard-wrap fallback — is what
+     * {@link FormatUtils#wrapAnsi} reproduces, so a CJK run fills the line before breaking and no
+     * trailing word is clipped.
      */
     static List<String> descriptionLines(String description, int width) {
-        int safeWidth = Math.max(1, width);
-        List<String> out = new ArrayList<>();
-        for (String soft : DialogText.wrapWords(description, safeWidth)) {
-            List<String> hard = FormatUtils.wrapText(soft, safeWidth);
-            if (hard.isEmpty()) out.add("");
-            else out.addAll(hard);
-        }
-        if (out.isEmpty()) out.add("");
-        return List.copyOf(out);
+        return FormatUtils.wrapAnsi(description, Math.max(1, width));
     }
 
     static String multiSelectMarker(boolean selected) {

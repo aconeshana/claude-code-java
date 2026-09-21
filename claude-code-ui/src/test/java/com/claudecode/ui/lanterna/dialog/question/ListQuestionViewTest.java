@@ -107,12 +107,13 @@ class ListQuestionViewTest {
     }
 
     @Test
-    void descriptionWrapsAtWordBoundariesLikeReleased197() {
-        // Ink's default wrap="wrap" keeps long descriptions visible by wrapping
-        // instead of clipping (released 2.1.197 behavior in narrow terminals).
+    void descriptionWrapsAtWordBoundariesLikeReleased236() {
+        // Ink's default wrap="wrap" keeps long descriptions visible by wrapping instead of
+        // clipping. Released 2.1.236 resolves it to Bun.wrapAnsi(..., {trim:false, hard:true}),
+        // which keeps the trailing joining space on each wrapped line.
         List<String> lines = ListQuestionView.descriptionLines(
             "alpha beta gamma delta epsilon zeta", 12);
-        assertEquals(List.of("alpha beta", "gamma delta", "epsilon zeta"), lines);
+        assertEquals(List.of("alpha beta ", "gamma delta ", "epsilon zeta"), lines);
     }
 
     @Test
