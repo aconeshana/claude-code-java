@@ -634,6 +634,46 @@ class AskUserQuestionDialogTest {
     }
 
     @Test
+    void theListCardMeasuresItselfAtTheWidthItPaintsAt() throws Exception {
+        // The card measured its rows at the terminal width but asked to be laid out 80 columns
+        // wide, so on a wider terminal the descriptions wrapped into more rows than it had
+        // reserved and tailOffset pushed the header, the question and option 1 off the top.
+        Rendered r = new Rendered(120, 40, List.of(
+            q("Which one?", false,
+                new QuestionPresenter.Option("First option",
+                    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+                        + "omicron pi rho sigma tau", null),
+                new QuestionPresenter.Option("Second option",
+                    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+                        + "omicron pi rho sigma tau", null))));
+        String screen = r.render();
+        assertTrue(Strings.CS.contains(screen, "[Hdr]"),
+            "the header must stay on screen; got:\n" + screen);
+        assertTrue(Strings.CS.contains(screen, "Which one?"),
+            "the question must stay on screen; got:\n" + screen);
+        assertTrue(Strings.CS.contains(screen, "1. First option"),
+            "option 1 must stay on screen; got:\n" + screen);
+        r.close();
+    }
+
+    @Test
+    void theListCardDescriptionKeepsItsLastWordInsteadOfClippingIt() throws Exception {
+        // The description wrapped to columns - 3 but painted through clip(width - 2) behind a
+        // two-space indent, so a line that filled its wrap width lost its tail to an ellipsis.
+        String description = "z".repeat(37) + "qqq";
+        Rendered r = new Rendered(40, 40, List.of(
+            q("Which one?", false,
+                new QuestionPresenter.Option("First", description, null),
+                new QuestionPresenter.Option("Second", "short", null))));
+        String screen = r.render();
+        assertEquals(37, screen.chars().filter(c -> c == 'z').count(),
+            "wrapping must not hand clip() anything to cut back off; got:\n" + screen);
+        assertEquals(3, screen.chars().filter(c -> c == 'q').count(),
+            "the wrapped tail must survive too; got:\n" + screen);
+        r.close();
+    }
+
+    @Test
     void aDesignCardPromotesItsNotesBufferIntoTheAnswer() throws Exception {
         // The mirror image of the plain list card: the design predicate holds, so the notes
         // editor's buffer rides along with the chosen option.

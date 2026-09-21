@@ -615,7 +615,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
                             DesignQuestionView.preferredRows(
                                 designContext(), states.get(current)));
                     }
-                    return new TerminalSize(DEFAULT_TERMINAL_COLUMNS,
+                    return new TerminalSize(terminalColumns(),
                         ListQuestionView.preferredRows(listContext(), states.get(current)));
                 }
 
