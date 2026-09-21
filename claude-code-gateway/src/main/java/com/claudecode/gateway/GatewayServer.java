@@ -759,12 +759,17 @@ public final class GatewayServer implements AutoCloseable {
      * flat fallback over the registry's own listing. {@code perProjectLimit}
      * truncates each project's rows to its most recent sessions (the total
      * stays in {@code session_count}); {@code <= 0} serves every row.
+     *
+     * <p>The catalog only sees sessions that already have a transcript, so the
+     * live sessions are folded in first ({@link LiveSessionMerge}); without
+     * that a session created moments ago carries no row for {@code active} or
+     * {@code headless_open} to land on.
      */
     private ObjectNode sessionsBody(int perProjectLimit) {
         ObjectNode body =
             JsonUtils.getMapper().createObjectNode();
-        List<GatewaySessionCatalogPort.ProjectEntry> projects =
-            catalog.listProjects(perProjectLimit);
+        List<GatewaySessionCatalogPort.ProjectEntry> projects = LiveSessionMerge.merge(
+            catalog.listProjects(perProjectLimit), liveSessions(), catalog::canonicalizeProjectPath);
         if (!projects.isEmpty()) {
             ArrayNode projectArray = body.putArray("projects");
             for (GatewaySessionCatalogPort.ProjectEntry project : projects) {
@@ -817,6 +822,29 @@ public final class GatewayServer implements AutoCloseable {
             array.add(node);
         }
         return body;
+    }
+
+    /**
+     * The sessions that exist right now regardless of what is on disk: the active TUI session and
+     * every open headless session.
+     *
+     * <p>{@code registry.list()} is deliberately not used here — the CLI implements its activator
+     * listing with the same transcript search the catalog runs, so it is blind to exactly the
+     * sessions this method exists to surface.
+     */
+    private List<SessionHostInfo> liveSessions() {
+        List<SessionHostInfo> live = new ArrayList<>();
+        registry.currentActivation()
+            .map(activation -> activation.session().info())
+            .ifPresent(live::add);
+        for (GatewayHeadlessSessions.SessionListing listing : headless.list()) {
+            // A session that closed between listing and lookup yields nothing rather than a row
+            // built from half-known metadata.
+            headless.find(listing.sessionId())
+                .map(SessionHostSession::info)
+                .ifPresent(live::add);
+        }
+        return live;
     }
 
     private void streamMirror(HttpExchange exchange) throws IOException {

@@ -157,6 +157,42 @@ class GatewayServerInteropTest {
 
     @Test
     @Timeout(20)
+    void sessionsEndpointListsTheActiveSessionEvenWithNoTranscriptYet() throws Exception {
+        // A transcript is only written on the session's first append, so the
+        // catalog cannot see one that was just created. Without folding the
+        // live session in, no row carries `active` and the web client selects
+        // an arbitrary historical session instead of the one on screen.
+        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
+            new GatewaySessionCatalogPort() {
+                @Override public List<ProjectEntry> listProjects() {
+                    return List.of(new ProjectEntry(
+                        "/work/older", "older", 1, 1_700_000_000_000L,
+                        List.of(new SessionEntry("sess-old", "an older session", 10,
+                            1_700_000_000_000L, "main", "/work/older", "", "hello"))));
+                }
+            });
+        server.start();
+        registry.activateLocal(new SessionHostSession(
+            new SessionHostInfo(activeSessionId, "/work/fresh", "a session", 0,
+                Instant.now(), "main"),
+            hub, _ -> CompletableFuture.completedFuture(null)));
+
+        try (Response authed = client.newCall(new Request.Builder()
+                .url(url("/api/sessions?token=" + TOKEN)).build()).execute()) {
+            assertThat(authed.code()).isEqualTo(200);
+            String body = authed.body().string();
+            assertThat(body).contains("\"project_path\":\"/work/fresh\"");
+            assertThat(body).contains("\"project_name\":\"fresh\"");
+            assertThat(body).contains(activeSessionId);
+            // Exactly one row may claim it, or the client has nothing to follow.
+            assertThat(StringUtils.countMatches(body, "\"active\":true")).isEqualTo(1);
+            // The catalog's own listing survives alongside it.
+            assertThat(body).contains("\"project_path\":\"/work/older\"");
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void sessionsEndpointPagesEachProjectToTheRequestedRows() throws Exception {
         // Records the page size each listing call saw; the port's paging is
         // what bounds one request's row count.

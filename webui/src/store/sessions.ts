@@ -3,7 +3,7 @@ import {
   archiveSession as archiveSessionApi, closeHeadlessSession, deleteSession as deleteSessionApi,
   fetchCatalog, forkSession as forkSessionApi, openHeadlessSession, renameSession as renameSessionApi,
 } from '../api/client'
-import type { CatalogProject, CatalogSession } from '../api/types'
+import type { CatalogProject, CatalogSession, MirrorFrame } from '../api/types'
 import { useConversations } from './conversations'
 
 /**
@@ -14,6 +14,11 @@ import { useConversations } from './conversations'
  * gateway's parallel headless sessions. Selecting a TUI-history session that
  * is not open re-opens it as a headless session (snapshot-restored), which
  * is the web flow's equivalent of /resume.
+ *
+ * Until the user picks a session here, the view follows the TUI: a
+ * `session.activated` frame with LOCAL origin (a /resume or /clear on the
+ * terminal side) moves the selection along with it. The first deliberate
+ * choice in this client ends that — see `followActive`.
  */
 
 export interface SessionsStore {
@@ -24,11 +29,19 @@ export interface SessionsStore {
   readonly selectedSessionId: string | null
   /** Sessions fetched per project so far (null = the gateway's default page). */
   readonly perPage: number | null
+  /**
+   * Whether TUI-side session switches still move this client's selection.
+   * True until the user selects a session here; see `selectByUser`.
+   */
+  readonly followActive: boolean
   refresh(): Promise<void>
   /** Refetches with a larger per-project page (the "load more" affordance). */
   growPerPage(next: number): Promise<void>
   select(sessionId: string): Promise<void>
+  /** `select` for a deliberate choice in this client; stops following the TUI. */
+  selectByUser(sessionId: string): Promise<void>
   selectActiveOrFirst(): Promise<void>
+  applyFrame(frame: MirrorFrame): void
   openSession(sessionId: string, projectPath: string | null): Promise<void>
   createSession(projectPath: string | null): Promise<void>
   closeSession(sessionId: string): Promise<void>
@@ -44,6 +57,7 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   error: null,
   selectedSessionId: null,
   perPage: null,
+  followActive: true,
 
   async refresh() {
     set({ loading: true })
@@ -85,6 +99,11 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     })
   },
 
+  async selectByUser(sessionId: string) {
+    set({ followActive: false })
+    await get().select(sessionId)
+  },
+
   async selectActiveOrFirst() {
     const { projects } = get()
     const all = projects.flatMap((project) => project.sessions)
@@ -93,8 +112,26 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     await get().select(target.id)
   },
 
+  applyFrame(frame: MirrorFrame) {
+    if (frame.event !== 'session.activated') return
+    // REMOTE is this client's own open/create echoing back; those paths have
+    // already selected, and re-selecting would race their in-flight `select`
+    // and undo the user's choice right after they made it.
+    if (frame.data.origin !== 'LOCAL') return
+    if (!get().followActive) return
+    const target = frame.data.session_id
+    if (target === '' || target === get().selectedSessionId) return
+    // A session the TUI just switched to may be brand new, so refresh first to
+    // pull in its row; selecting regardless keeps the chat pane correct even
+    // if the catalog has not caught up, since it reads the snapshot endpoint.
+    void get().refresh().finally(() => { void get().select(target) })
+  },
+
   async openSession(sessionId: string, projectPath: string | null) {
     try {
+      // Opening and creating are deliberate choices too, so they take the view
+      // off the TUI just as a sidebar click does.
+      set({ followActive: false })
       await openHeadlessSession(sessionId, projectPath)
       await get().refresh()
       await get().select(sessionId)
@@ -105,6 +142,7 @@ export const useSessions = create<SessionsStore>((set, get) => ({
 
   async createSession(projectPath: string | null) {
     try {
+      set({ followActive: false })
       const opened = await openHeadlessSession(null, projectPath)
       await get().refresh()
       await get().select(opened.session_id)

@@ -8,6 +8,7 @@ import sectionCss from '@chat-styles/GeneralSection.module.css'
 import listCss from '@chat-styles/ScheduleCatalogAction.module.css'
 import { useSchedule } from '../store/schedule'
 import { useSessionContext } from '../store/sessionContext'
+import { useSessions } from '../store/sessions'
 import type { ScheduleTask } from '../api/types'
 import { MenuSelect, SettingsRow } from './SettingsPanel'
 import localCss from './SchedulePanel.module.css'
@@ -57,6 +58,7 @@ export function ScheduleSection() {
   const removeTask = useSchedule((state) => state.removeTask)
   const modelSelection = useSessionContext((state) => state.selection)
   const refreshSelection = useSessionContext((state) => state.refresh)
+  const selectedSessionId = useSessions((state) => state.selectedSessionId)
 
   const [cron, setCron] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -72,8 +74,11 @@ export function ScheduleSection() {
 
   useEffect(() => {
     void refresh()
-    void refreshSelection()
-  }, [refresh, refreshSelection])
+    // Bound to the session on screen: refreshing with no target rebinds the
+    // shared context store to the TUI's active session, which blanks the
+    // selected session's context meter until the composer re-fires.
+    void refreshSelection(selectedSessionId)
+  }, [refresh, refreshSelection, selectedSessionId])
 
   const modelOptions = [
     { id: NO_MODEL, label: `跟随会话（${modelSelection?.current ?? '当前模型'}）` },

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MirrorFrame } from '../api/types'
 import type { ConversationState } from './conversations'
 import { useConversations } from './conversations'
-import { deriveTurnProcessView, isSubagentDelegationTool, useTurnProcess } from './turnProcess'
+import {
+  deriveTurnProcessView, isSubagentDelegationTool, openTurnsOf, useTurnProcess,
+} from './turnProcess'
 import { useTranscriptView } from './transcriptView'
 
 vi.mock('../api/client', () => ({ fetchSnapshot: vi.fn() }))
@@ -47,7 +49,7 @@ function toolStep(messageId: string, name: string, useId: string): void {
 beforeEach(() => {
   nextFrameId = 0
   useConversations.setState({ conversations: {} })
-  useTurnProcess.setState({ openTurns: new Set() })
+  useTurnProcess.setState({ openTurns: {} })
   useTranscriptView.getState().setMode('compact')
 })
 
@@ -308,9 +310,27 @@ describe('isSubagentDelegationTool', () => {  it('recognizes this product delega
 
 describe('useTurnProcess store', () => {
   it('toggles per-turn expansion immutably', () => {
-    useTurnProcess.getState().setOpen(3, true)
-    expect(useTurnProcess.getState().openTurns.has(3)).toBe(true)
-    useTurnProcess.getState().setOpen(3, false)
-    expect(useTurnProcess.getState().openTurns.has(3)).toBe(false)
+    useTurnProcess.getState().setOpen(SESSION, 3, true)
+    expect(openTurnsOf(useTurnProcess.getState(), SESSION).has(3)).toBe(true)
+    useTurnProcess.getState().setOpen(SESSION, 3, false)
+    expect(openTurnsOf(useTurnProcess.getState(), SESSION).has(3)).toBe(false)
+  })
+
+  it('keeps one session expansion out of another with the same turn number', () => {
+    useTurnProcess.getState().setOpen(SESSION, 3, true)
+
+    expect(openTurnsOf(useTurnProcess.getState(), 'other').has(3)).toBe(false)
+    // Switching away and back must not lose it either — the state is keyed,
+    // not reset on switch.
+    expect(openTurnsOf(useTurnProcess.getState(), SESSION).has(3)).toBe(true)
+  })
+
+  it('gives an untouched session a stable empty set', () => {
+    const first = openTurnsOf(useTurnProcess.getState(), 'never-touched')
+    useTurnProcess.getState().setOpen(SESSION, 1, true)
+
+    // A fresh Set each read would retrigger every memo keyed on it.
+    expect(openTurnsOf(useTurnProcess.getState(), 'never-touched')).toBe(first)
+    expect(first.size).toBe(0)
   })
 })

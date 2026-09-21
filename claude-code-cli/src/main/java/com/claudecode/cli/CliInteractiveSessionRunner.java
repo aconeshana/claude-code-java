@@ -696,6 +696,9 @@ final class CliInteractiveSessionRunner {
                             : sessionEntries(project.sessions().subList(0, limit))))
                     .toList();
             }
+            @Override public String canonicalizeProjectPath(String workDir) {
+                return SessionManager.canonicalizePath(workDir);
+            }
             private static List<SessionEntry> sessionEntries(
                     List<ProjectCatalogPort.ProjectSessionEntry> sessions) {
                 return sessions.stream()

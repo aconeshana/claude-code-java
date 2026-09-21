@@ -50,10 +50,11 @@ export function App() {
       useConversations.getState().applyFrame(frame)
       useApprovals.getState().applyFrame(frame)
       useContextTimeline.getState().applyFrame(frame)
+      useSessions.getState().applyFrame(frame)
     }, setConnected)
 
-    // Session switches from the TUI side surface as activated frames; keep
-    // the catalog fresh so the sidebar follows along.
+    // Session switches from the TUI arrive as `session.activated` frames and
+    // are handled above; this only keeps counts and titles from drifting.
     const catalogTimer = window.setInterval(() => {
       void useSessions.getState().refresh()
     }, 10_000)
@@ -96,13 +97,15 @@ export function App() {
   return (
     <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed}>
       <ConversationRoot
-        title={selectedId == null ? 'Claude Code' : selectedId.slice(0, 8)}
+        title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
         view={view}
         onView={(next) => { setView(selectedId, next) }}
         tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
         context={<ContextView sessionId={selectedId} />}
-        transcript={<ChatView conversation={conversation} />}
+        transcript={
+          <ChatView key={selectedId ?? 'none'} conversation={conversation} sessionId={selectedId} />
+        }
         composer={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {visibleAsk != null && (visibleAsk.questions?.length ?? 0) > 0 && (
@@ -177,7 +180,7 @@ function MissingToken() {
       textAlign: 'center',
       padding: 24,
     }}>
-      <h1 style={{ fontSize: 20, fontWeight: 510, margin: 0 }}>Claude Code</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 510, margin: 0 }}>Pokemon Code</h1>
       <p style={{ color: 'var(--dsw-alias-label-secondary)', margin: 0, lineHeight: 1.6 }}>
         缺少启动 token。<br />
         请在 TUI 中运行 <code>/web</code>，用输出的完整 URL 打开本页面。

@@ -92,7 +92,7 @@ const SCROLLBAR_LINGER_MS = 2000
 export function Sidebar() {
   const projects = useSessions((state) => state.projects)
   const selectedId = useSessions((state) => state.selectedSessionId)
-  const select = useSessions((state) => state.select)
+  const selectByUser = useSessions((state) => state.selectByUser)
   const openSession = useSessions((state) => state.openSession)
   const createSession = useSessions((state) => state.createSession)
   const closeSession = useSessions((state) => state.closeSession)
@@ -334,7 +334,7 @@ export function Sidebar() {
                       // frames exist; active or already-open sessions just
                       // switch straight to their snapshot.
                       void (session.active || session.headless_open
-                        ? select(session.id)
+                        ? selectByUser(session.id)
                         : openSession(session.id, project.project_path))
                     }}
                     onClose={(session) => { void closeSession(session.id) }}
@@ -389,7 +389,7 @@ export function Sidebar() {
             </button>
           </div>
         </div>
-        {wide && <Pill>Claude Code</Pill>}
+        {wide && <Pill>Pokemon Code</Pill>}
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
       <Modal

@@ -272,7 +272,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
     }
     default:
       // permission.asked/resolved feed the approvals store; session.activated
-      // feeds the sessions store; tool.progress is not rendered in v1.
+      // feeds `useSessions.applyFrame`; tool.progress is not rendered in v1.
       return state
   }
 }

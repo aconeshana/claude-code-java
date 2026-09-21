@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@primitives'
 import type { ConversationState } from '../store/conversations'
-import { deriveTurnProcessView, useTurnProcess } from '../store/turnProcess'
+import { deriveTurnProcessView, openTurnsOf, useTurnProcess } from '../store/turnProcess'
 import { useTranscriptView } from '../store/transcriptView'
 import css from '@chat-styles/ChatView.module.css'
 import { MessageItem } from './MessageItem'
@@ -23,12 +23,17 @@ import { TurnProcessControl } from './TurnProcessControl'
  * follow-gap. Both the control and every row stay direct children of
  * `.column` — the vendored sibling-gap rules key on that.
  */
-export function ChatView({ conversation }: { conversation: ConversationState | undefined }) {
+export function ChatView(
+  { conversation, sessionId }: {
+    conversation: ConversationState | undefined
+    sessionId: string | null
+  },
+) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const followingRef = useRef(true)
   const [following, setFollowing] = useState(true)
   const setOpen = useTurnProcess((state) => state.setOpen)
-  const openTurns = useTurnProcess((state) => state.openTurns)
+  const openTurns = useTurnProcess((state) => openTurnsOf(state, sessionId))
   // The derivation reads the transcript mode too (it disables folding
   // outright outside compact), so the view must re-derive when it flips —
   // and the memo must depend on it, or a settings toggle would not repaint.
@@ -79,11 +84,11 @@ export function ChatView({ conversation }: { conversation: ConversationState | u
       const member = target?.closest('[data-turn-process-member]') ?? null
       if (member == null) return
       const turn = Number(member.getAttribute('data-turn-process-member'))
-      if (Number.isFinite(turn)) setOpen(turn, true)
+      if (Number.isFinite(turn)) setOpen(sessionId, turn, true)
     }
     scroller.addEventListener('beforematch', onBeforeMatch)
     return () => { scroller.removeEventListener('beforematch', onBeforeMatch) }
-  }, [setOpen])
+  }, [setOpen, sessionId])
 
   const messages = conversation?.messages ?? []
 
@@ -105,7 +110,7 @@ export function ChatView({ conversation }: { conversation: ConversationState | u
                   turn={controlTurn}
                   counts={foldView.counts[message.id]}
                   open={foldView.expandedTurns.has(controlTurn)}
-                  onToggle={(open) => { setOpen(controlTurn, open) }}
+                  onToggle={(open) => { setOpen(sessionId, controlTurn, open) }}
                 />
               </div>,
             )

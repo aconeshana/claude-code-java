@@ -203,7 +203,15 @@ public class SessionManager {
         return List.copyOf(result);
     }
 
-    static String canonicalizePath(String value) {
+    /**
+     * The canonical form this manager keys a project by: absolute, normalized, resolved through
+     * symlinks when it exists, and NFC-normalized.
+     *
+     * <p>Public because the CLI composition root has to reproduce the same key when it projects
+     * this catalog onto the gateway's session listing; grouping there would otherwise have to
+     * guess at the form and could split one project into two rows.
+     */
+    public static String canonicalizePath(String value) {
         Path path = Path.of(value).toAbsolutePath().normalize();
         try { path = path.toRealPath(); } catch (IOException _) { }
         return Normalizer.normalize(path.toString(), Normalizer.Form.NFC);

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MirrorFrame } from '../api/types'
 import { useConversations } from './conversations'
 import { useSessions } from './sessions'
 
@@ -27,7 +28,7 @@ const EMPTY_SNAPSHOT = { session_id: 'x', messages: [] }
 describe('sessions store', () => {
   beforeEach(() => {
     sessionStorage.setItem('gateway-token', 'fake-token')
-    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null, perPage: null })
+    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null, perPage: null, followActive: true })
     useConversations.setState({ conversations: {} })
   })
 
@@ -325,5 +326,97 @@ describe('sessions store', () => {
 
     expect(useSessions.getState().error).toBe('session already closed')
     expect(useSessions.getState().selectedSessionId).toBe('closed-1')
+  })
+})
+
+/**
+ * Following the TUI's active session. Until the user picks a session here, a
+ * LOCAL `session.activated` frame (a /resume or /clear on the terminal side)
+ * moves the selection; the first deliberate choice in this client ends that.
+ */
+describe('sessions store following the TUI', () => {
+  beforeEach(() => {
+    sessionStorage.setItem('gateway-token', 'fake-token')
+    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null, perPage: null, followActive: true })
+    useConversations.setState({ conversations: {} })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => (
+      urlOf(input).includes('/messages')
+        ? Promise.resolve(jsonResponse(EMPTY_SNAPSHOT))
+        : Promise.resolve(jsonResponse(CATALOG))
+    )))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.clear()
+  })
+
+  function activated(sessionId: string, origin: string): MirrorFrame {
+    return {
+      event: 'session.activated',
+      id: 1,
+      data: { session_id: sessionId, summary: '', origin },
+    } as MirrorFrame
+  }
+
+  it('follows a LOCAL activation while the user has not chosen', async () => {
+    useSessions.setState({ selectedSessionId: 'closed-1' })
+
+    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+
+    await vi.waitFor(() => {
+      expect(useSessions.getState().selectedSessionId).toBe('active-1')
+    })
+  })
+
+  it('ignores a REMOTE activation, which is this client\'s own echo', async () => {
+    useSessions.setState({ selectedSessionId: 'closed-1' })
+
+    useSessions.getState().applyFrame(activated('active-1', 'REMOTE'))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(useSessions.getState().selectedSessionId).toBe('closed-1')
+  })
+
+  it('stops following once the user picks a session here', async () => {
+    await useSessions.getState().selectByUser('closed-1')
+    expect(useSessions.getState().followActive).toBe(false)
+
+    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(useSessions.getState().selectedSessionId).toBe('closed-1')
+  })
+
+  it('keeps following through the boot selection and a post-delete reselect', async () => {
+    await useSessions.getState().refresh()
+    await useSessions.getState().selectActiveOrFirst()
+
+    // Neither the boot path nor the programmatic reselect below is a user
+    // choice, so the TUI stays authoritative.
+    expect(useSessions.getState().followActive).toBe(true)
+
+    useSessions.setState({ selectedSessionId: null })
+    await useSessions.getState().selectActiveOrFirst()
+
+    expect(useSessions.getState().followActive).toBe(true)
+  })
+
+  it('refreshes before selecting, so a just-created session has a row', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      urls.push(url)
+      return url.includes('/messages')
+        ? Promise.resolve(jsonResponse(EMPTY_SNAPSHOT))
+        : Promise.resolve(jsonResponse(CATALOG))
+    }))
+
+    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+
+    await vi.waitFor(() => {
+      expect(useSessions.getState().selectedSessionId).toBe('active-1')
+    })
+    expect(urls[0]).toContain('/api/sessions')
   })
 })

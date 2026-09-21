@@ -3,10 +3,11 @@
  * (`vendor/dsh-turn-process/turnProcessRules.ts`).
  *
  * This module owns two things only: the non-persisted manual-expansion store
- * (upstream keeps it in the session-scoped Chat store; absence means
- * collapsed) and the adapter that maps this app's reduced message list onto
- * the rules' `TurnInput` shape. Every eligibility, counting and layout
- * decision lives in the vendored rules — do not re-derive them here.
+ * (upstream keeps it in the session-scoped Chat store, so this one is keyed by
+ * session id too; absence means collapsed) and the adapter that maps this
+ * app's reduced message list onto the rules' `TurnInput` shape. Every
+ * eligibility, counting and layout decision lives in the vendored rules — do
+ * not re-derive them here.
  *
  * Adapter contract:
  * - a turn is the user row plus the assistant rows that follow it;
@@ -31,19 +32,35 @@ export { isSubagentDelegationTool } from '../../vendor/dsh-turn-process/turnProc
 
 /** Per-turn manual expansion: absent = collapsed (the compact default). */
 export interface TurnProcessStore {
-  readonly openTurns: ReadonlySet<number>
-  setOpen(turn: number, open: boolean): void
+  /**
+   * Expanded turn numbers per session. Turn numbers restart in every
+   * conversation, so a single flat set would leak one session's disclosure
+   * onto the same-numbered turn of the next one.
+   */
+  readonly openTurns: Readonly<Record<string, ReadonlySet<number>>>
+  setOpen(sessionId: string | null, turn: number, open: boolean): void
+}
+
+/** Shared empty set, so a session with nothing expanded keeps a stable identity. */
+const NO_TURNS: ReadonlySet<number> = new Set()
+
+/** The expanded turns of one session; stable across renders while unchanged. */
+export function openTurnsOf(
+  state: TurnProcessStore, sessionId: string | null,
+): ReadonlySet<number> {
+  return state.openTurns[sessionId ?? ''] ?? NO_TURNS
 }
 
 export const useTurnProcess = create<TurnProcessStore>(set => ({
-  openTurns: new Set(),
+  openTurns: {},
 
-  setOpen(turn, open) {
+  setOpen(sessionId, turn, open) {
+    const key = sessionId ?? ''
     set((state) => {
-      const next = new Set(state.openTurns)
+      const next = new Set(state.openTurns[key] ?? NO_TURNS)
       if (open) next.add(turn)
       else next.delete(turn)
-      return { openTurns: next }
+      return { openTurns: { ...state.openTurns, [key]: next } }
     })
   },
 }))

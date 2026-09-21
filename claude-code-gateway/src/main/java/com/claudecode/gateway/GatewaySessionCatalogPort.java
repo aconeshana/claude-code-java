@@ -50,4 +50,16 @@ public interface GatewaySessionCatalogPort {
     default List<ProjectEntry> listProjects(int perProjectLimit) {
         return listProjects();
     }
+
+    /**
+     * Maps a session's working directory onto the {@code projectPath} form this catalog groups by.
+     *
+     * <p>The gateway needs it to decide whether a live session belongs to a project already in the
+     * listing, and it cannot compute it itself: the canonical form is owned by the session module,
+     * which the gateway must not depend on. The identity default is correct for any implementation
+     * that reports raw directories.
+     */
+    default String canonicalizeProjectPath(String workDir) {
+        return workDir;
+    }
 }
