@@ -7,6 +7,7 @@ import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.SummarizeMetadata;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
 
 /**
@@ -186,8 +188,23 @@ final class GatewayMessagesSnapshotHandler {
         return node;
     }
 
-    /** One user message's textual and image content, when it carries any. */
+    /**
+     * One user message's textual and image content, when it carries any.
+     *
+     * <p>Mirrors the TUI's default (non-transcript) visibility rule
+     * ({@code MessageConstants.shouldShowUserMessage}): {@code isMeta} rows
+     * and transcript-only rows never reach the ordinary view, so they never
+     * reach this snapshot either. A compact-summary row IS shown, but never
+     * with its raw injected continuation prompt — the TUI collapses it to a
+     * title line by default (full text is a Ctrl+O-only reveal, a control
+     * webui has no counterpart for), so this projects the same collapsed
+     * title instead of the multi-thousand-token summary body.
+     */
     private static ObjectNode userEntry(UserMessage message) {
+        if (message.isMeta() || Boolean.TRUE.equals(message.isVisibleInTranscriptOnly())) {
+            return null;
+        }
+        if (message.isCompactSummary()) return compactSummaryEntry(message);
         MessageContent content = message.message();
         if (content == null) return null;
         String text = content.text();
@@ -215,6 +232,36 @@ final class GatewayMessagesSnapshotHandler {
             .ifPresent(time -> entry.put("time", time));
         if (StringUtils.isNotBlank(text)) entry.put("text", text);
         if (!images.isEmpty()) entry.set("images", images);
+        return entry;
+    }
+
+    /**
+     * The collapsed placeholder for a compact-summary row — the wire
+     * counterpart of {@code UserMessageRenderer.renderCompactSummary}'s
+     * default-view title (+ the partial-summary detail lines when
+     * {@code summarizeMetadata} is present). Never carries the raw
+     * continuation-prompt body.
+     */
+    private static ObjectNode compactSummaryEntry(UserMessage message) {
+        SummarizeMetadata metadata = message.summarizeMetadata();
+        StringBuilder text = new StringBuilder(
+            metadata == null ? "Compact summary" : "Summarized conversation");
+        if (metadata != null) {
+            String position = Strings.CS.equals("up_to", metadata.direction())
+                ? "up to this point" : "from this point";
+            text.append("\nSummarized ").append(metadata.messagesSummarized())
+                .append(" messages ").append(position);
+            if (StringUtils.isNotBlank(metadata.userContext())) {
+                text.append("\nContext: \u201c").append(metadata.userContext()).append('\u201d');
+            }
+        }
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        if (message.uuid() != null) entry.put("id", message.uuid());
+        entry.put("role", "user");
+        entry.put("complete", true);
+        message.timestamp().map(Instant::toEpochMilli)
+            .ifPresent(time -> entry.put("time", time));
+        entry.put("text", text.toString());
         return entry;
     }
 

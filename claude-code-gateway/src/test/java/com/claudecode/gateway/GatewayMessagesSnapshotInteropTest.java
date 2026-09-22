@@ -268,6 +268,79 @@ class GatewayMessagesSnapshotInteropTest {
         }
     }
 
+    @Test
+    @Timeout(20)
+    void snapshotHidesMetaRowsAndCollapsesCompactSummaryRows() throws Exception {
+        // Regression: a -c/--continue resume replays a compact-summary user
+        // row whose text is the multi-thousand-token synthetic continuation
+        // prompt CompactService injects. The TUI never shows that raw body
+        // by default (UserMessageRenderer.renderCompactSummary collapses it
+        // to a title line, full text is a Ctrl+O-only reveal) — the snapshot
+        // must match, not leak the injected prompt onto the page. isMeta
+        // rows are hidden outright, mirroring MessageConstants.shouldShowUserMessage.
+        String injectedPrompt = "This session is being continued from a previous "
+            + "conversation that ran out of context. " + "filler ".repeat(500);
+        UserMessage compactSummary = new UserMessage(UUID.randomUUID().toString(),
+            MessageContent.ofText(injectedPrompt),
+            false, true, null, MessageOrigin.USER, null, Instant.now(),
+            null, null, null, null, null, null, null, null, null, null);
+        UserMessage metaRow = new UserMessage(UUID.randomUUID().toString(),
+            MessageContent.ofText("<system-reminder>internal bookkeeping</system-reminder>"),
+            true, false, null, MessageOrigin.USER, null, Instant.now(), null, null);
+        List<Message> conversation = List.of(
+            compactSummary,
+            metaRow,
+            userText("what changed while I was away?"));
+        startServer(fixedMessages(conversation));
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            assertThat(body).doesNotContain(injectedPrompt)
+                .doesNotContain("filler")
+                .contains("Compact summary");
+            assertThat(body).doesNotContain("system-reminder")
+                .doesNotContain("internal bookkeeping");
+            assertThat(body).contains("what changed while I was away?");
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void snapshotHidesAutoCompactContinuationEntirelyLikeTheTuiDoes() throws Exception {
+        // The exact row a -c/--continue resume replays after an automatic
+        // (context-limit) compaction: isCompactSummary=true AND
+        // isVisibleInTranscriptOnly=true (confirmed against a real captured
+        // transcript row). MessageConstants.shouldShowUserMessage runs BEFORE
+        // the isCompactSummary branch in UserMessageRenderer, so the TUI's
+        // normal view shows nothing at all for this row — not even a
+        // collapsed title, unlike a manual /compact summary. The snapshot
+        // must match: this row must not appear in the output at all.
+        String injectedPrompt = "This session is being continued from a previous "
+            + "conversation that ran out of context. " + "filler ".repeat(500);
+        UserMessage autoCompactContinuation = new UserMessage(UUID.randomUUID().toString(),
+            MessageContent.ofText(injectedPrompt),
+            false, true, null, MessageOrigin.USER, null, Instant.now(),
+            null, null, null, null, null, null, null, true);
+        List<Message> conversation = List.of(
+            autoCompactContinuation,
+            userText("what changed while I was away?"));
+        startServer(fixedMessages(conversation));
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            assertThat(body).doesNotContain(injectedPrompt)
+                .doesNotContain("filler")
+                .doesNotContain("Compact summary");
+            assertThat(body).contains("what changed while I was away?");
+        }
+    }
+
     private record NoopSink() implements SessionSink {
         @Override public void onTurnStart(UserInput input) {}
         @Override public void onMessage(SDKMessage msg) {}
