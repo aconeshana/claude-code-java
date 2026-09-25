@@ -182,6 +182,25 @@ class InputPanelTasksPillTest {
     }
 
     @Test
+    void collaborationLeftAndUpReturnToProjectsButtonWhenNothingElsePrecedesIt() {
+        Fixture f = fixture();
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // Collaboration — the sole stop
+        assertTrue(f.panel().isCollaborationPillSelected());
+
+        f.panel().handleKeyForTest(new KeyStroke(KeyType.ARROW_LEFT));
+        assertTrue(f.panel().isProjectsButtonSelectedForTest(),
+            "← from Collaboration must retreat to ≡ when no pill/coordinator precedes it");
+        assertFalse(f.panel().isCollaborationPillSelected());
+
+        f.panel().handleKeyForTest(DOWN); // Collaboration again
+        f.panel().handleKeyForTest(UP);
+        assertTrue(f.panel().isProjectsButtonSelectedForTest(),
+            "↑ from Collaboration must retreat to ≡ when no pill/coordinator precedes it");
+        assertFalse(f.panel().isCollaborationPillSelected());
+    }
+
+    @Test
     void remoteCollaborationSelectionRefreshesFooterWithoutLocalInteraction() {
         CollaborationFixture collaboration = collaborationFixture();
         InputPanel panel = new InputPanel();
@@ -574,7 +593,7 @@ class InputPanelTasksPillTest {
     }
 
     @Test
-    void coordinatorThenCollaborationShareVisualAndKeyboardOrder() {
+    void coordinatorRetreatsToCollaborationAtItsBoundary() {
         Fixture f = fixture();
         CoordinatorTaskPanel coordinatorPanel = new CoordinatorTaskPanel();
         CoordinatorNavigationController navigation =
@@ -589,31 +608,55 @@ class InputPanelTasksPillTest {
         assertEquals(0, f.panel().coordinatorIndexForTest());
         f.panel().handleKeyForTest(DOWN); // agent
         assertEquals(1, f.panel().coordinatorIndexForTest());
-        f.panel().handleKeyForTest(DOWN); // Collaboration
+        f.panel().handleKeyForTest(DOWN); // boundary no-op — the coordinator/workflow block
+                                           // is now the chain's terminal stop
+        assertEquals(1, f.panel().coordinatorIndexForTest());
+        assertTrue(f.panel().isCoordinatorPanelSelected());
+        assertFalse(f.panel().isCollaborationPillSelected());
 
-        assertTrue(f.panel().isCollaborationPillSelected());
-        assertFalse(f.panel().isCoordinatorPanelSelected());
         int coordinatorVisualIndex = f.panel().getChildrenList().indexOf(coordinatorPanel);
         assertTrue(coordinatorVisualIndex >= 0,
             "the coordinator must render inside the prompt footer");
         assertTrue(f.panel().hintRowVisualIndexForTest() < coordinatorVisualIndex,
-            "the released mode/tasks footer row must render before main/subagents");
-        assertTrue(coordinatorVisualIndex < f.panel().collaborationRowVisualIndexForTest(),
-            "the coordinator must render before the final Collaboration row");
-        assertEquals(f.panel().getChildrenList().size() - 1,
-            f.panel().collaborationRowVisualIndexForTest());
+            "the hint row — which now carries Collaboration inline — must render before "
+                + "main/subagents");
+        assertEquals(f.panel().lastVisualIndexForTest(), coordinatorVisualIndex,
+            "the coordinator/workflow block is now the last visual row");
 
-        f.panel().handleKeyForTest(UP);
-        assertTrue(f.panel().isCoordinatorPanelSelected());
+        f.panel().handleKeyForTest(UP); // main
         assertEquals(0, f.panel().coordinatorIndexForTest());
-        assertFalse(f.panel().isCollaborationPillSelected());
+        f.panel().handleKeyForTest(UP); // Collaboration — retreats out of the coordinator block
+        assertTrue(f.panel().isCollaborationPillSelected());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
         f.panel().handleKeyForTest(UP); // input
         assertFalse(f.panel().isCoordinatorPanelSelected());
         assertFalse(f.panel().isCollaborationPillSelected());
     }
 
     @Test
-    void renderedFooterPlacesCollaborationAfterMainAndAgentRows() {
+    void collaborationDownEntersCoordinatorWhenOneIsBound() {
+        Fixture f = fixture();
+        CoordinatorTaskPanel coordinatorPanel = new CoordinatorTaskPanel();
+        CoordinatorNavigationController navigation =
+            new CoordinatorNavigationController(f.registry());
+        f.panel().setCoordinatorNavigation(
+            navigation, coordinatorPanel, f.registry()::resolveAgentName);
+        TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
+        f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
+
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // main (coordinator absorbs the first hop directly)
+        f.panel().handleKeyForTest(UP);   // Collaboration
+        assertTrue(f.panel().isCollaborationPillSelected());
+
+        f.panel().handleKeyForTest(DOWN); // back into the coordinator — no longer a boundary no-op
+        assertTrue(f.panel().isCoordinatorPanelSelected());
+        assertEquals(0, f.panel().coordinatorIndexForTest());
+        assertFalse(f.panel().isCollaborationPillSelected());
+    }
+
+    @Test
+    void renderedFooterPlacesCollaborationBeforeMainAndAgentRows() {
         Fixture f = fixture();
         TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "visual-agent");
         f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
@@ -627,13 +670,16 @@ class InputPanelTasksPillTest {
         f.panel().draw(TextGUIGraphicsBridge.wrap(null, image.newTextGraphics()));
 
         List<String> lines = renderedLines(image);
+        int collaborationRow = lineContaining(lines, "Collaboration: Off");
         int mainRow = lineContaining(lines, "main");
         int agentRow = lineContaining(lines, "visual-agent");
-        int collaborationRow = lineContaining(lines, "Collaboration: Off");
-        assertTrue(mainRow < agentRow && agentRow < collaborationRow,
-            "the final Lanterna frame must follow main → agent → Collaboration");
-        assertTrue(Strings.CS.startsWith(lines.get(collaborationRow), "  Collaboration: Off"),
-            "Collaboration must align with the coordinator's two-column idle prefix");
+        assertTrue(collaborationRow < mainRow && mainRow < agentRow,
+            "Collaboration now shares the hint row, which renders above the coordinator's "
+                + "main → agent rows");
+        int separatorColumn = lines.get(collaborationRow).indexOf('·');
+        int labelColumn = lines.get(collaborationRow).indexOf("Collaboration: Off");
+        assertTrue(separatorColumn >= 0 && separatorColumn < labelColumn,
+            "Collaboration must join the hint row inline via its \" · \" separator");
     }
 
     @Test
@@ -649,11 +695,15 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(DOWN);  // main
         f.panel().handleKeyForTest(ctrlN); // agent
         assertEquals(1, f.panel().coordinatorIndexForTest());
-        f.panel().handleKeyForTest(ctrlN); // Collaboration
-        assertTrue(f.panel().isCollaborationPillSelected());
-        f.panel().handleKeyForTest(ctrlP); // tasks group resets to main
+        f.panel().handleKeyForTest(ctrlN); // boundary no-op — terminal stop
+        assertEquals(1, f.panel().coordinatorIndexForTest());
         assertTrue(f.panel().isCoordinatorPanelSelected());
+
+        f.panel().handleKeyForTest(ctrlP); // main
         assertEquals(0, f.panel().coordinatorIndexForTest());
+        f.panel().handleKeyForTest(ctrlP); // Collaboration — retreats out of the coordinator block
+        assertTrue(f.panel().isCollaborationPillSelected());
+        assertFalse(f.panel().isCoordinatorPanelSelected());
     }
 
     @Test
@@ -666,8 +716,7 @@ class InputPanelTasksPillTest {
 
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
-        f.panel().handleKeyForTest(DOWN); // agent
-        f.panel().handleKeyForTest(DOWN); // Collaboration
+        f.panel().handleKeyForTest(UP);   // Collaboration — retreats out of the coordinator block
         assertTrue(f.panel().isCollaborationPillSelected());
         f.panel().handleKeyForTest(ESC);
         assertFalse(f.panel().isCollaborationPillSelected());
@@ -676,8 +725,7 @@ class InputPanelTasksPillTest {
 
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // main
-        f.panel().handleKeyForTest(DOWN); // agent
-        f.panel().handleKeyForTest(DOWN); // Collaboration
+        f.panel().handleKeyForTest(UP);   // Collaboration
         f.panel().handleKeyForTest(ENTER);
         assertEquals(1, f.actions().openCollaborationPickerCalls.get());
         assertEquals(0, f.actions().cancelCalls.get());
@@ -899,16 +947,16 @@ class InputPanelTasksPillTest {
     }
 
     @Test
-    void workflowGroupThenCollaborationPreserveBidirectionalFooterOrder() {
+    void collaborationThenWorkflowGroupPreserveBidirectionalFooterOrder() {
         Fixture f = fixture();
         WorkflowRunStore runs = new WorkflowRunStore();
         TaskState workflowTask = f.registry().store().create(
             TaskType.LOCAL_WORKFLOW, "workflow");
         f.registry().store().updateStatus(workflowTask.id(), TaskStatus.RUNNING);
         runs.put(WorkflowRun.builder(
-                "wf_before_collaboration", workflowTask.id(), TaskStatus.RUNNING)
-            .workflowName("before-collaboration")
-            .summary("Before collaboration")
+                "wf_after_collaboration", workflowTask.id(), TaskStatus.RUNNING)
+            .workflowName("after-collaboration")
+            .summary("After collaboration")
             .script("")
             .scriptPath(Path.of("/tmp/workflow.js"))
             .transcriptDir(Path.of("/tmp"))
@@ -918,13 +966,14 @@ class InputPanelTasksPillTest {
         wireCoordinator(f.panel(), f.registry());
 
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
-        f.panel().handleKeyForTest(DOWN); // workflow
+        f.panel().handleKeyForTest(DOWN); // workflow — the sole stop, entered directly
         assertTrue(f.panel().isWorkflowFooterSelectedForTest());
-        f.panel().handleKeyForTest(DOWN); // Collaboration
+
+        f.panel().handleKeyForTest(UP); // Collaboration — retreat out of the terminal block
         assertTrue(f.panel().isCollaborationPillSelected());
         assertFalse(f.panel().isWorkflowFooterSelectedForTest());
 
-        f.panel().handleKeyForTest(UP); // workflow
+        f.panel().handleKeyForTest(DOWN); // workflow — Collaboration's forward neighbor
         assertTrue(f.panel().isWorkflowFooterSelectedForTest());
         assertFalse(f.panel().isCollaborationPillSelected());
     }
@@ -949,20 +998,11 @@ class InputPanelTasksPillTest {
         wireCoordinator(f.panel(), f.registry());
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
         f.panel().handleKeyForTest(DOWN); // workflow 0
-
-        f.panel().handleKeyForTest(new KeyStroke(KeyType.ARROW_RIGHT)); // Collaboration
-        f.panel().handleKeyForTest(UP); // restore workflows group
-        assertEquals(0, f.panel().workflowFooterIndexForTest(),
-            "navigateFooter must preserve the current workflow index, not choose the last row");
+        assertEquals(0, f.panel().workflowFooterIndexForTest());
 
         f.panel().handleKeyForTest(DOWN); // workflow 1
         String retained = f.panel().selectedWorkflowTaskIdForTest();
-
-        f.panel().handleKeyForTest(DOWN); // Collaboration
-        f.panel().handleKeyForTest(UP);   // restore workflows group
         assertEquals(1, f.panel().workflowFooterIndexForTest());
-        assertEquals(retained, f.panel().selectedWorkflowTaskIdForTest(),
-            "197 navigateFooter preserves workflowFooterIndex across footer groups");
 
         f.panel().handleKeyForTest(ESC);  // input
         f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
@@ -1040,6 +1080,26 @@ class InputPanelTasksPillTest {
         f.panel().handleKeyForTest(DOWN);
         assertTrue(f.panel().isCollaborationPillSelected(),
             "one footer:down must advance after the coordinator rows disappear");
+    }
+
+    @Test
+    void coordinatorContentVanishingEntirelyFallsBackToCollaboration() {
+        Fixture f = fixture();
+        wireCoordinator(f.panel(), f.registry());
+        TaskState agent = f.registry().store().create(TaskType.LOCAL_AGENT, "agent");
+        f.registry().store().updateStatus(agent.id(), TaskStatus.RUNNING);
+
+        f.panel().handleKeyForTest(DOWN); // ≡ projects button (extension stop)
+        f.panel().handleKeyForTest(DOWN); // main (coordinator index 0)
+        assertTrue(f.panel().isCoordinatorPanelSelected());
+
+        f.registry().store().remove(agent.id());
+        f.panel().refreshTasksPill();
+
+        assertFalse(f.panel().isCoordinatorPanelSelected());
+        assertTrue(f.panel().isCollaborationPillSelected(),
+            "with no background pill and no workflow rows either, the selection must "
+                + "retreat to Collaboration rather than dangle on a collapsed panel");
     }
 
     @Test

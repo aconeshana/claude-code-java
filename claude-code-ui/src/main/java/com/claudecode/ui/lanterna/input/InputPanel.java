@@ -425,6 +425,10 @@ public class InputPanel extends Panel {
         hintRow.addComponent(footer.tasksPillsPanel());
         hintRow.addComponent(footer.tasksHintLabel());
         hintRow.addComponent(vim.label());
+        // Collaboration is the hint row's final, permanent entry — always
+        // rendered, joined by a literal " · " to whatever precedes it.
+        hintRow.addComponent(footer.collaborationSeparatorLabel());
+        hintRow.addComponent(footer.collaborationLabel());
         // Construct before updateHint(): a surviving teammate-view selection
         // may ask the navigation host to clear this component during initial
         // projection (full-suite tests expose the same process-lifetime state
@@ -449,7 +453,9 @@ public class InputPanel extends Panel {
         addComponent(hintBar.statusLine(),
             LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
         addComponent(hintRow);
-        addComponent(footer.collaborationRow());
+        // The subagent coordinator panel (when bound) mounts itself after
+        // hintRow via setCoordinatorNavigation() — it is now the terminal
+        // visual row, below Collaboration rather than above it.
     }
 
     /** The footer's view of this panel: action port, hint/status refresh, GUI marshalling. */
@@ -1252,9 +1258,7 @@ public class InputPanel extends Panel {
     String selectedWorkflowTaskIdForTest() { return footer.selectedWorkflowTaskId(); }
     boolean isCollaborationPillSelected() { return footer.isCollaborationPillSelected(); }
     int hintRowVisualIndexForTest() { return getChildrenList().indexOf(hintRow); }
-    int collaborationRowVisualIndexForTest() {
-        return getChildrenList().indexOf(footer.collaborationRow());
-    }
+    int lastVisualIndexForTest() { return getChildrenList().size() - 1; }
     int coordinatorIndexForTest() { return footer.coordinatorIndex(); }
     String collaborationPillTextForTest() { return footer.collaborationPillText(); }
     String tasksPillTextForTest() { return footer.tasksPillText(); }
@@ -1296,8 +1300,8 @@ public class InputPanel extends Panel {
 
     /**
      * Binds the subagent coordinator panel — its navigation state machine plus
-     * the view it renders into — and mounts the view between the hint row and
-     * the Collaboration row.
+     * the view it renders into — and mounts the view as the terminal visual
+     * row, below the hint row (which now carries Collaboration inline).
      */
     public void setCoordinatorNavigation(CoordinatorNavigationController navigation,
                                          CoordinatorPanelView panel,
@@ -1307,11 +1311,7 @@ public class InputPanel extends Panel {
         footer.bindCoordinator(navigation, panel, agentNameResolver);
         Component component = footer.coordinatorComponent();
         if (component != null) {
-            Panel collaborationRow = footer.collaborationRow();
-            removeComponent(collaborationRow);
-            addComponent(component,
-                LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
-            addComponent(collaborationRow);
+            addComponent(component, LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
         }
     }
 

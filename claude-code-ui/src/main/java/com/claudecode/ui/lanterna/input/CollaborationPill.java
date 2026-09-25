@@ -4,17 +4,15 @@ import com.claudecode.core.annotation.Explanation;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.SGR;
-import com.googlecode.lanterna.gui2.Direction;
 import com.googlecode.lanterna.gui2.Label;
-import com.googlecode.lanterna.gui2.LinearLayout;
-import com.googlecode.lanterna.gui2.Panel;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Permanent keyboard-focusable footer entry for the optional IM collaboration
- * channel ({@code Collaboration: Off | <channel>}), always the final footer row.
+ * channel ({@code Collaboration: Off | <channel>}), always rendered inline at
+ * the end of the hint row.
  *
  * <p>Session Link can change the collaboration state from a virtual thread, so
  * the subscription projects the new value through the GUI scheduler supplied
@@ -30,20 +28,22 @@ final class CollaborationPill {
 
     private static final Logger log = LoggerFactory.getLogger(CollaborationPill.class);
 
+    private final Label separator = new Label(" · ");
     private final Label label = new Label("Collaboration: Off");
-    private final Panel row = new Panel(new LinearLayout(Direction.HORIZONTAL).setSpacing(0));
     private volatile SessionCollaborationController controller;
     private AutoCloseable subscription;
     private boolean selected;
 
     CollaborationPill() {
+        separator.setForegroundColor(LanternaTheme.welcomeDim());
         label.setForegroundColor(LanternaTheme.welcomeDim());
-        row.addComponent(new Label("  "));
-        row.addComponent(label);
     }
 
-    /** The two-column-indented footer row hosting the pill. */
-    Panel row() { return row; }
+    /** Always-visible " · " joining the pill to whatever precedes it in the hint row. */
+    Label separatorLabel() { return separator; }
+
+    /** The "Collaboration: ..." text, mounted inline as the hint row's final child. */
+    Label textLabel() { return label; }
 
     String text() { return label.getText(); }
 

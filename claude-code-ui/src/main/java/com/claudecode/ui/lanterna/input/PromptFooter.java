@@ -29,12 +29,15 @@ import java.util.function.Function;
  * box and the single selection that walks between them.
  *
  * <p>The footer chain, left to right and top to bottom, is
- * {@code ≡} project button → subagent coordinator panel → workflow rows →
- * background tasks pill → Collaboration. Exactly one stop may be selected;
- * every transition here deselects the others, so the widgets never disagree
- * about who owns footer focus. Keys reach this class only while a stop is
- * selected (or while teammate navigation is active); mouse events are
- * hit-tested per widget by {@link InputPanel}'s window listener.
+ * {@code ≡} project button → background tasks pill → Collaboration →
+ * subagent coordinator panel (with workflow rows nested inside it). The first
+ * three stops share the hint row's visual line; the coordinator panel is its
+ * own row beneath it, mounted only while bound and non-empty. Exactly one
+ * stop may be selected; every transition here deselects the others, so the
+ * widgets never disagree about who owns footer focus. Keys reach this class
+ * only while a stop is selected (or while teammate navigation is active);
+ * mouse events are hit-tested per widget by {@link InputPanel}'s window
+ * listener.
  *
  * <p>The 1 s refresh tick runs off the GUI thread and must only descend into
  * this footer's own components (labels, panels) — never up into the panel
@@ -143,8 +146,11 @@ final class PromptFooter {
 
     Label tasksHintLabel() { return tasksPill.hintLabel(); }
 
-    /** Collaboration footer group, always the final visual row. */
-    Panel collaborationRow() { return collaboration.row(); }
+    /** The " · " joining Collaboration to whatever precedes it in the hint row. */
+    Label collaborationSeparatorLabel() { return collaboration.separatorLabel(); }
+
+    /** Collaboration text, mounted inline as the hint row's final child. */
+    Label collaborationLabel() { return collaboration.textLabel(); }
 
     Component coordinatorComponent() { return coordinator.component(); }
 
@@ -322,15 +328,28 @@ final class PromptFooter {
         collaboration.render();
     }
 
-    /** Recomputes the pill + its trailing hint from the live registry. */
+    /**
+     * Recomputes the pill + its trailing hint from the live registry.
+     *
+     * <p>The coordinator is now the terminal footer stop, so if its content
+     * vanishes (agents dismissed) while it owns selection, the selection must
+     * retreat rather than dangle on a now-collapsed component: to the
+     * background pill when one exists, else to Collaboration when even the
+     * workflow rows are gone too.
+     */
     synchronized void refreshTasksPill() {
         taskNavigation.synchronizeTeammateCount();
         if (coordinator.isBound()) {
             CoordinatorNavigationController nav = coordinator.navigation();
             boolean coordinatorWasSelected = nav.isPanelSelected();
             nav.synchronizeBackgroundPill(taskNavigation.pillAvailable());
-            if (coordinatorWasSelected && !nav.isPanelSelected() && taskNavigation.pillAvailable()) {
-                taskNavigation.selectPill();
+            if (coordinatorWasSelected && !nav.isPanelSelected()) {
+                if (taskNavigation.pillAvailable()) {
+                    taskNavigation.selectPill();
+                } else if (!workflows.hasRows()) {
+                    workflows.blur();
+                    collaboration.setSelected(true);
+                }
             }
         }
         tasksPill.render(taskNavigation, host.footerWidth());
@@ -378,11 +397,18 @@ final class PromptFooter {
     }
 
     /**
-     * The released 197 footer entry chain, reached when advancing past the ≡
-     * button: coordinator panel → workflow footer → tasks pill → Collaboration.
+     * ≡'s forward chain: tasks pill (free-standing only — a pill folded into
+     * the coordinator's unified row is reached only once the coordinator
+     * itself is selected) → Collaboration → coordinator panel (+ workflow rows).
      */
     private void selectFirstStopAfterProjectsButton() {
         projectsButton.setSelected(false);
+        if (taskNavigation.pillAvailable() && !coordinator.panelAvailable()) {
+            collaboration.setSelected(false);
+            taskNavigation.selectPill();
+            refreshPills();
+            return;
+        }
         if (coordinator.panelAvailable()) {
             workflows.blur();
             collaboration.setSelected(false);
@@ -391,13 +417,12 @@ final class PromptFooter {
             refreshPills();
             return;
         }
-        if (workflows.hasRows() && !taskNavigation.pillAvailable()) {
+        if (workflows.hasRows()) {
             collaboration.setSelected(false);
             selectCurrentWorkflow();
             return;
         }
-        collaboration.setSelected(!taskNavigation.pillAvailable());
-        if (!collaboration.isSelected()) taskNavigation.selectPill();
+        collaboration.setSelected(true);
         refreshPills();
     }
 
@@ -423,7 +448,7 @@ final class PromptFooter {
         selectWorkflow(workflows.index());
     }
 
-    /** Selects the permanent footer item after tasks/coordinator/workflows. */
+    /** Selects the permanent footer item, entered from the tasks pill or as the sole stop. */
     private void selectCollaboration() {
         workflows.blur();
         taskNavigation.deselectPill();
@@ -434,12 +459,28 @@ final class PromptFooter {
         host.refreshHint();
     }
 
-    /** Moves from Collaboration to the preceding stop; false when there is none. */
-    private boolean selectBeforeCollaboration() {
-        if (workflows.hasRows()) {
-            selectWorkflow(workflows.index());
-            return true;
+    /**
+     * Moves from Collaboration to the preceding stop — the free-standing tasks
+     * pill when one exists, otherwise ≡ itself. ≡ is always present, so this
+     * always succeeds; Collaboration is never the leftmost reachable stop.
+     */
+    private void selectBeforeCollaboration() {
+        if (taskNavigation.pillAvailable() && !coordinator.panelAvailable()) {
+            collaboration.setSelected(false);
+            taskNavigation.selectPill();
+            refreshPills();
+            host.refreshHint();
+            return;
         }
+        collaboration.setSelected(false);
+        selectProjectsButton();
+    }
+
+    /**
+     * Moves from Collaboration forward into the coordinator/workflow block;
+     * false when nothing follows (Collaboration stays the terminal stop).
+     */
+    private boolean selectAfterCollaboration() {
         if (coordinator.panelAvailable()) {
             collaboration.setSelected(false);
             selectCoordinatorPanel();
@@ -448,11 +489,9 @@ final class PromptFooter {
             host.refreshHint();
             return true;
         }
-        if (taskNavigation.pillAvailable()) {
+        if (workflows.hasRows()) {
             collaboration.setSelected(false);
-            taskNavigation.selectPill();
-            refreshPills();
-            host.refreshHint();
+            selectCurrentWorkflow();
             return true;
         }
         return false;
@@ -467,7 +506,11 @@ final class PromptFooter {
             workflows.deselect();
             taskNavigation.selectPill();
         } else if (exitAtStart) {
+            // Nothing precedes the workflow block itself — retreat further,
+            // to Collaboration, rather than dropping the footer selection.
             workflows.deselect();
+            selectCollaboration();
+            return true;
         } else {
             return false;
         }
@@ -477,9 +520,18 @@ final class PromptFooter {
         return true;
     }
 
-    private void advanceAfterTasksGroup() {
+    /** Leaving the free-standing tasks pill forward — Collaboration is its only forward neighbor. */
+    private void advanceFromTasksPill() {
+        selectCollaboration();
+    }
+
+    /**
+     * Coordinator's forward jump/boundary target: the workflow rows nested in
+     * the same terminal block when any exist, otherwise a no-op — nothing
+     * follows the coordinator/workflow block any more.
+     */
+    private void advanceFromCoordinator() {
         if (workflows.hasRows()) selectCurrentWorkflow();
-        else selectCollaboration();
     }
 
     // ── Keyboard protocol ───────────────────────────────────────────────────
@@ -525,11 +577,35 @@ final class PromptFooter {
     /**
      * Native key protocol for whichever stop is selected. Null means the key is
      * not a footer key and must continue to global Ctrl/Alt handling.
+     *
+     * <p>Order matters: {@code collaboration} and the free-standing tasks pill
+     * are dispatched before {@code workflows}/{@code coordinator} because they
+     * now precede the coordinator/workflow block in the chain. The
+     * free-standing-pill branch is guarded by
+     * {@code !coordinator.isPanelSelected()} so it never intercepts keys meant
+     * for the coordinator's own unified pill row (index {@code -1}), which
+     * also reports {@code taskNavigation.isPillSelected() == true}.
      */
     Result handleSelectedKey(KeyStroke key) {
         KeyStroke normalized = normalizeNativeFooterKey(key);
         if (projectsButton.isSelected()) {
             return handleProjectsButtonKey(normalized);
+        }
+        if (collaboration.isSelected()) {
+            return handleCollaborationKey(normalized);
+        }
+        if (taskNavigation.isPillSelected() && !coordinator.isPanelSelected()) {
+            KeyType type = normalized.getKeyType();
+            if (type == KeyType.ARROW_DOWN || type == KeyType.ARROW_RIGHT) {
+                advanceFromTasksPill();
+                return Result.HANDLED;
+            }
+            if (type == KeyType.ARROW_LEFT) {
+                // ← walks back left — from the tasks pill that is the ≡ button.
+                selectProjectsButton();
+                return Result.HANDLED;
+            }
+            return taskNavigation.handlePillKey(normalized, taskNavigationHost);
         }
         if (workflows.isSelected()) {
             Result r = handleWorkflowKey(normalized);
@@ -537,24 +613,9 @@ final class PromptFooter {
         }
         // The coordinator panel owns footer focus independently of the teammate/bash pill.
         if (coordinator.isPanelSelected()) {
-            Result r = handleCoordinatorKey(normalized);
-            if (r != null) return r;
+            return handleCoordinatorKey(normalized);
         }
-        if (!taskNavigation.isPillSelected() && !collaboration.isSelected()) return null;
-        if (collaboration.isSelected()) {
-            return handleCollaborationKey(normalized);
-        }
-        KeyType type = normalized.getKeyType();
-        if (type == KeyType.ARROW_DOWN || type == KeyType.ARROW_RIGHT) {
-            advanceAfterTasksGroup();
-            return Result.HANDLED;
-        }
-        if (type == KeyType.ARROW_LEFT) {
-            // ← walks back left — from the tasks pill that is the ≡ button.
-            selectProjectsButton();
-            return Result.HANDLED;
-        }
-        return taskNavigation.handlePillKey(normalized, taskNavigationHost);
+        return null;
     }
 
     private static KeyStroke normalizeNativeFooterKey(KeyStroke key) {
@@ -620,13 +681,12 @@ final class PromptFooter {
             if (workflows.step(1, visible)) {
                 refreshCoordinatorPanel();
                 host.refreshHint();
-            } else {
-                selectCollaboration();
             }
+            // else: boundary no-op — workflow rows are the tail of the now-terminal
+            // coordinator/workflow block; nothing follows them any more.
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_RIGHT && plain) {
-            selectCollaboration();
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_LEFT && plain) {
@@ -673,18 +733,20 @@ final class PromptFooter {
                 nav.step(-1, coordinatorNavigationHost);
                 if (nav.coordinatorIndex() < 0) taskNavigation.selectPill();
                 else taskNavigation.deselectPill();
-            } else {
-                nav.deselectPanel();
-                taskNavigation.deselectPill();
-                host.refreshHint();
+                refreshCoordinatorPanel();
+                refreshPills();
+                return Result.HANDLED;
             }
-            refreshCoordinatorPanel();
-            refreshPills();
+            // At the panel's first stop: retreat to Collaboration instead of
+            // dropping the footer selection entirely.
+            nav.deselectPanel();
+            taskNavigation.deselectPill();
+            selectCollaboration();
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_DOWN && plain) {
             if (nav.coordinatorIndex() >= nav.panelAgents().size()) {
-                advanceAfterTasksGroup();
+                advanceFromCoordinator();
                 return Result.HANDLED;
             }
             nav.step(1, coordinatorNavigationHost);
@@ -694,7 +756,7 @@ final class PromptFooter {
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_RIGHT && plain) {
-            advanceAfterTasksGroup();
+            advanceFromCoordinator();
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_LEFT && plain) {
@@ -749,7 +811,7 @@ final class PromptFooter {
     private Result handleCollaborationKey(KeyStroke key) {
         KeyType type = key.getKeyType();
         if (type == KeyType.ARROW_UP) {
-            retreatFromCollaboration();
+            selectBeforeCollaboration();
             return Result.HANDLED;
         }
         if (type == KeyType.ESCAPE) {
@@ -769,28 +831,23 @@ final class PromptFooter {
             return Result.HANDLED;
         }
         if (type == KeyType.ARROW_DOWN || type == KeyType.ARROW_RIGHT) {
+            selectAfterCollaboration();
             return Result.HANDLED;
         }
         if (type == KeyType.CHARACTER && key.isCtrlDown() && key.getCharacter() != null) {
             char ch = Character.toLowerCase(key.getCharacter());
             if (ch == 'p') {
-                retreatFromCollaboration();
+                selectBeforeCollaboration();
                 return Result.HANDLED;
             }
             if (ch == 'n') {
+                selectAfterCollaboration();
                 return Result.HANDLED;
             }
             return null;
         }
         if (key.isCtrlDown() || key.isAltDown()) return null;
         return Result.HANDLED;
-    }
-
-    private void retreatFromCollaboration() {
-        if (!selectBeforeCollaboration()) {
-            collaboration.setSelected(false);
-            refreshPills();
-        }
     }
 
     // ── Mouse protocol ──────────────────────────────────────────────────────
