@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.claudecode.core.diff.FileChangeResult;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageOrigin;
@@ -124,6 +125,37 @@ class GatewayMessagesSnapshotInteropTest {
                 .contains("\"status\":\"pending\"")
                 .contains("\"ready\":false");
             assertThat(body).contains("there are two files");
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void snapshotStripsTheImageChipTokenNowCarriedAsARealThumbnail() throws Exception {
+        // The prompt-assembly layer appends a "[Image #N]" chip token to the
+        // TextBlock alongside the ImageBlock it describes — the TUI's
+        // stand-in for an image a terminal can't render inline. webui
+        // renders the actual thumbnail from the projected images[], so the
+        // leftover token would otherwise sit redundantly inside the bubble
+        // text (and a second time via the thumbnail) — strip it once its
+        // image is on the wire.
+        var source = JsonUtils.getMapper().createObjectNode()
+            .put("type", "base64").put("data", "aGVsbG8=").put("media_type", "image/png");
+        UserMessage withImage = new UserMessage(UUID.randomUUID().toString(),
+            MessageContent.ofBlocks(List.of(
+                new TextBlock("what is in this screenshot? [Image #1]"),
+                new ImageBlock(source))),
+            false, false, null, MessageOrigin.USER, null, Instant.now(), null, null);
+        List<Message> conversation = List.of(withImage);
+        startServer(fixedMessages(conversation));
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            assertThat(body).contains("\"text\":\"what is in this screenshot?\"")
+                .doesNotContain("[Image #1]")
+                .contains("\"data\":\"aGVsbG8=\"");
         }
     }
 

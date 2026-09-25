@@ -14,6 +14,7 @@ import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
+import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -284,13 +285,18 @@ public final class MirrorHub {
         turnFirstOutputClocks.remove(sessionId);
         turnModels.remove(sessionId);
         ObjectNode payload = object();
-        payload.put("display_text", input.displayText());
+        ArrayNode images = pastedImages(input);
+        // The chip token traveling in displayText is the TUI's stand-in for
+        // an image a terminal can't render inline; webui gets the real
+        // thumbnail from `images` below, so the token is redundant here.
+        String displayText = images.isEmpty()
+            ? input.displayText() : stripImageChipTokens(input.displayText());
+        payload.put("display_text", displayText);
         payload.put("permission_mode", input.permissionMode());
         payload.put("origin", input.inputOrigin());
         // Epoch ms for the live user row's leading clock label — the same
         // fact the snapshot path stamps on its user entries.
         payload.put("time", System.currentTimeMillis());
-        ArrayNode images = pastedImages(input);
         if (!images.isEmpty()) payload.set("images", images);
         publish(sessionId, "turn.started", payload);
     }
@@ -312,6 +318,30 @@ public final class MirrorHub {
                 node.put("data", pasted.content());
             });
         return images;
+    }
+
+    /**
+     * Removes {@code [Image #N]} chip tokens from text, leaving
+     * {@code [Pasted text #N]} and other references untouched — only the
+     * image chip is redundant once the same turn carries a real thumbnail.
+     * Mirrors {@code GatewayMessagesSnapshotHandler}'s helper of the same
+     * name; both files independently strip the same textual artifact and
+     * neither shares a common projection module.
+     */
+    private static String stripImageChipTokens(String text) {
+        if (text == null) return null;
+        List<PastedRefParser.Ref> refs = PastedRefParser.parseReferences(text);
+        if (refs.isEmpty()) return text;
+        StringBuilder body = new StringBuilder(text);
+        for (int i = refs.size() - 1; i >= 0; i--) {
+            PastedRefParser.Ref ref = refs.get(i);
+            if (!ref.match().startsWith("[Image")) continue;
+            int start = ref.index();
+            int end = start + ref.match().length();
+            if (start > 0 && body.charAt(start - 1) == ' ') start--;
+            body.delete(start, end);
+        }
+        return body.toString().strip();
     }
 
     private void onMessage(String sessionId, SDKMessage msg) {

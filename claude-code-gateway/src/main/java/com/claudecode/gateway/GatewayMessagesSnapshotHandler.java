@@ -14,6 +14,7 @@ import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -221,6 +222,12 @@ final class GatewayMessagesSnapshotHandler {
                 if (block instanceof ImageBlock image) addImage(images, image);
             }
         }
+        // The prompt-assembly layer appends a "[Image #N]" chip token to the
+        // text alongside the ImageBlock it describes — the TUI's stand-in for
+        // an image a terminal can't render inline. webui renders the actual
+        // thumbnail from `images` below, so the token is redundant clutter
+        // in the bubble text here; strip it once its image is on the wire.
+        if (!images.isEmpty()) text = stripImageChipTokens(text);
         if (StringUtils.isBlank(text) && images.isEmpty()) return null;
         ObjectNode entry = JsonUtils.getMapper().createObjectNode();
         if (message.uuid() != null) entry.put("id", message.uuid());
@@ -263,6 +270,30 @@ final class GatewayMessagesSnapshotHandler {
             .ifPresent(time -> entry.put("time", time));
         entry.put("text", text.toString());
         return entry;
+    }
+
+    /**
+     * Removes {@code [Image #N]} chip tokens from text, leaving
+     * {@code [Pasted text #N]} and other references untouched — only the
+     * image chip is redundant once the same message carries a real
+     * thumbnail. Mirrors {@code MirrorHub}'s helper of the same name; both
+     * files independently strip the same textual artifact and neither
+     * shares a common projection module.
+     */
+    private static String stripImageChipTokens(String text) {
+        if (text == null) return null;
+        List<PastedRefParser.Ref> refs = PastedRefParser.parseReferences(text);
+        if (refs.isEmpty()) return text;
+        StringBuilder body = new StringBuilder(text);
+        for (int i = refs.size() - 1; i >= 0; i--) {
+            PastedRefParser.Ref ref = refs.get(i);
+            if (!ref.match().startsWith("[Image")) continue;
+            int start = ref.index();
+            int end = start + ref.match().length();
+            if (start > 0 && body.charAt(start - 1) == ' ') start--;
+            body.delete(start, end);
+        }
+        return body.toString().strip();
     }
 
     /**

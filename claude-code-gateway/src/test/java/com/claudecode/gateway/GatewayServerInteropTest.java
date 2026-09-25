@@ -9,6 +9,7 @@ import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageOrigin;
+import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
@@ -259,6 +260,34 @@ class GatewayServerInteropTest {
         assertThat(events.poll(5, TimeUnit.SECONDS)).contains("turn.started");
         assertThat(events.poll(5, TimeUnit.SECONDS)).contains("Hello from the turn");
         assertThat(events.poll(5, TimeUnit.SECONDS)).contains("turn.completed");
+        source.cancel();
+    }
+
+    @Test
+    @Timeout(20)
+    void turnStartedFrameStripsTheImageChipTokenNowCarriedAsARealThumbnail()
+            throws Exception {
+        // The prompt-assembly layer appends a "[Image #N]" chip token to the
+        // display text alongside the real image — the TUI's stand-in for an
+        // image a terminal can't render inline. webui renders the actual
+        // thumbnail from the frame's images[], so the leftover token would
+        // otherwise sit redundantly inside the same bubble's text.
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+        awaitReady(events);
+
+        Map<Integer, PastedContent> pasted = Map.of(1,
+            PastedContent.image(1, "aGVsbG8=", "image/png", null, null));
+        hub.onTurnStart(UserInput.of(
+            "what is in this screenshot? [Image #1]", "what is in this screenshot?",
+            pasted, "default"));
+
+        String started = events.poll(5, TimeUnit.SECONDS);
+        assertThat(started).contains("turn.started")
+            .contains("\"display_text\":\"what is in this screenshot?\"")
+            .doesNotContain("[Image #1]")
+            .contains("\"data\":\"aGVsbG8=\"");
         source.cancel();
     }
 
