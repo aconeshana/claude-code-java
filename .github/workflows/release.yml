@@ -88,7 +88,7 @@ jobs:
           # runner（你的 Mac）构建：
           #   · 先在仓库 Settings → Actions → Runners 注册一个 self-hosted runner
           #   · 用仓库变量 ARM_MACOS_RUNNER 指定其 label（默认 self-hosted）
-          - os: macos-13
+          - os: macos-15-intel
             platform: darwin-amd64
             gradleTarget: darwin-amd64
             asset: claude-code-app-darwin-amd64
