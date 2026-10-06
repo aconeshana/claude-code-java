@@ -52,6 +52,14 @@ graalvmNative {
             sharedLibrary = false
             classpath.setFrom(sourceSets.main.get().output, configurations.runtimeClasspath)
             buildArgs.add("-Os")
+            // native-image defaults -march to x86-64-v3 on AMD64, and the binary
+            // refuses to start (not just runs slowly) on any CPU missing AVX2/
+            // FMA/BMI2 — e.g. the Celeron J-series in most Synology NAS boxes,
+            // which top out at the SSE4.2 baseline. Published binaries cannot
+            // assume the build machine's CPU, so target the compatibility
+            // baseline and trade a little peak throughput for the ability to
+            // run where they are actually deployed.
+            buildArgs.add("-march=compatibility")
         }
     }
 }
