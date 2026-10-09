@@ -287,7 +287,7 @@ final class GatewayMessagesSnapshotHandler {
         StringBuilder body = new StringBuilder(text);
         for (int i = refs.size() - 1; i >= 0; i--) {
             PastedRefParser.Ref ref = refs.get(i);
-            if (!ref.match().startsWith("[Image")) continue;
+            if (!Strings.CS.startsWith(ref.match(), "[Image")) continue;
             int start = ref.index();
             int end = start + ref.match().length();
             if (start > 0 && body.charAt(start - 1) == ' ') start--;
