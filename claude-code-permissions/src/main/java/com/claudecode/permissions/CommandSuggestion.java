@@ -13,34 +13,20 @@ public record CommandSuggestion(
 ) {
 
     /**
-     * Generate a suggestion for a Bash command.
-     * Extracts the first word as a prefix pattern: "git add ." → ruleContent="git:*".
+     * Generates a suggestion for a Bash command: {@code "git add ."} → {@code "git:*"}.
+     *
+     * <p>Empty when {@link BashCommandPrefix} cannot read a command word off the command.
+     * The caller is expected to drop the persistent-rule option entirely in that case
+     * rather than offer a rule derived from a guess.
      */
     public static Optional<CommandSuggestion> forBash(String command, String cwd) {
-        if (StringUtils.isBlank(command)) return Optional.empty();
-        String stripped = stripRedirections(command).strip();
-        if (stripped.isEmpty()) return Optional.empty();
-        String[] tokens = stripped.split("\\s+", 2);
-        String firstWord = tokens[0];
-        if (firstWord.isEmpty()) return Optional.empty();
-
-        String cwdBase = baseName(cwd);
-        if (tokens.length == 1) {
-            // Single-word command → exact match
-            return Optional.of(new CommandSuggestion(
-                "Bash", firstWord,
-                "\"" + firstWord + "\" in " + cwdBase));
-        }
-        // Multi-word → prefix pattern
-        return Optional.of(new CommandSuggestion(
-            "Bash", firstWord + ":*",
-            firstWord + " commands in " + cwdBase));
-    }
-
-    private static String stripRedirections(String cmd) {
-        return cmd.replaceAll("\\s+[>]{1,2}\\s*\\S+", "")
-                  .replaceAll("\\s+[<]{1,2}\\s*\\S+", "")
-                  .trim();
+        return BashCommandPrefix.resolve(command).map(resolved -> {
+            String word = resolved.word();
+            String cwdBase = baseName(cwd);
+            return resolved.wholeCommand()
+                ? new CommandSuggestion("Bash", word, "\"" + word + "\" in " + cwdBase)
+                : new CommandSuggestion("Bash", word + ":*", word + " commands in " + cwdBase);
+        });
     }
 
     private static String baseName(String path) {

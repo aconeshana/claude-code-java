@@ -601,7 +601,12 @@ public final class PermissionGate {
             || Strings.CI.equals("Task", toolName);
     }
 
-    private static boolean isDangerousBashRule(String toolName, String content) {
+    /**
+     * Package-private rather than private: {@link BashCommandPrefix} needs the same
+     * judgement before it proposes a rule, and a second copy of the interpreter list would
+     * be a copy that drifts.
+     */
+    static boolean isDangerousBashRule(String toolName, String content) {
         if (!Strings.CS.equals("Bash", toolName)) return false;
         return isDangerousShellPattern(content, DANGEROUS_BASH_PREFIXES, false);
     }
