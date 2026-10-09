@@ -9,6 +9,7 @@ import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.MouseCaptureMode;
+import com.googlecode.lanterna.terminal.PrivateModeTerminal;
 import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import java.io.ByteArrayInputStream;
 import java.io.OutputStream;
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CompactAnsiTerminalTest {
 
@@ -200,6 +202,47 @@ class CompactAnsiTerminalTest {
     }
 
     @Test
+    void reenteringTheAlternateScreenIsForwardedSoTheScreenCanSeeTheCapability()
+            throws Exception {
+        // A decorator that swallowed this would make the capability invisible to
+        // TerminalScreen, which owns the decision to repair.
+        List<String> calls = new ArrayList<>();
+        RecordingPrivateModeTerminal tty = new RecordingPrivateModeTerminal(calls);
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(tty);
+
+        terminal.reassertPrivateMode();
+
+        assertEquals(List.of("reassertPrivateMode"), calls);
+    }
+
+    @Test
+    void reenteringTheAlternateScreenDropsTheDeferredCursorRestore() throws Exception {
+        List<String> calls = new ArrayList<>();
+        RecordingPrivateModeTerminal tty = new RecordingPrivateModeTerminal(calls);
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(tty);
+
+        terminal.setCursorPosition(7, 4);
+        terminal.putString(" ".repeat(80));
+        calls.clear();
+
+        terminal.reassertPrivateMode();
+        terminal.putString("next");
+
+        assertEquals(List.of("reassertPrivateMode", "text:next"), calls,
+            "the pending position belonged to the buffer we just switched away from");
+    }
+
+    @Test
+    void privateModeCapabilityIsAbsentForADelegateThatCannotReportIt() throws Exception {
+        CompactAnsiTerminal terminal = new CompactAnsiTerminal(fakeTerminal(new ArrayList<>()));
+
+        terminal.reassertPrivateMode();
+
+        assertFalse(terminal.isInPrivateMode(),
+            "a delegate with no notion of private mode must not be claimed to hold it");
+    }
+
+    @Test
     void resumingAfterJobControlPutsTheTtyBackIntoRawMode() throws Exception {
         RecordingUnixTerminal tty = new RecordingUnixTerminal();
         tty.settings.clear();
@@ -217,6 +260,43 @@ class CompactAnsiTerminalTest {
         new CompactAnsiTerminal(fakeTerminal(calls)).reapplyRawMode();
 
         assertEquals(List.of(), calls, "nothing to restore, and nothing to fail on");
+    }
+
+    /** A {@link PrivateModeTerminal} delegate that books the calls reaching it. */
+    private static final class RecordingPrivateModeTerminal extends UnixLikeTerminal
+            implements PrivateModeTerminal {
+        private final List<String> calls;
+        private boolean inPrivateMode;
+
+        RecordingPrivateModeTerminal(List<String> calls) throws Exception {
+            super(new ByteArrayInputStream(new byte[0]), OutputStream.nullOutputStream(),
+                StandardCharsets.UTF_8, CtrlCBehaviour.TRAP);
+            this.calls = calls;
+            calls.clear();
+        }
+
+        @Override public void reassertPrivateMode() {
+            calls.add("reassertPrivateMode");
+            inPrivateMode = true;
+        }
+
+        @Override public boolean isInPrivateMode() { return inPrivateMode; }
+
+        @Override public void putString(String string) {
+            calls.add("text:" + string.replace("\033", "\\033"));
+        }
+
+        @Override public void setCursorPosition(int column, int row) {
+            calls.add("cursor:" + column + "," + row);
+        }
+
+        @Override protected void registerTerminalResizeListener(Runnable onResize) { }
+        @Override protected void saveTerminalSettings() { }
+        @Override protected void restoreTerminalSettings() { }
+        @Override protected void keyEchoEnabled(boolean enabled) { }
+        @Override protected void canonicalMode(boolean enabled) { }
+        @Override protected void keyStrokeSignalsEnabled(boolean enabled) { }
+        @Override protected TerminalSize findTerminalSize() { return new TerminalSize(120, 40); }
     }
 
     /** A {@link UnixLikeTerminal} that books the tty settings instead of running stty. */

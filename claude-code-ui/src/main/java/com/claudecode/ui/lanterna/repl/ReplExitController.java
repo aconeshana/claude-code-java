@@ -225,8 +225,16 @@ final class ReplExitController implements ReplFeature {
         }
     }
 
+    /**
+     * Rebuilds the terminal on every SIGCONT, not only on the ones that answer a suspend we
+     * drove ourselves. A stop we never observed — SIGSTOP, a SIGTSTP that landed before the
+     * handlers were registered, an orphaned process group that had the signal discarded —
+     * still hands the terminal to the shell, and gating the repair on our own bookkeeping
+     * leaves the session painting into a main buffer that scrolls. The released client
+     * registers SIGCONT unconditionally and repairs from its own desired terminal state for
+     * the same reason, so the restore has to be idempotent rather than guarded.
+     */
     void handleContinueSignal() {
-        if (!jobControlSuspended) return;
         jobControlSuspended = false;
         jobControlActions.afterResume();
     }

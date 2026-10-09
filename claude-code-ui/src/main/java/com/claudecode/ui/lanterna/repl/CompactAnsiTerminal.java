@@ -13,6 +13,7 @@ import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.MouseCaptureMode;
+import com.googlecode.lanterna.terminal.PrivateModeTerminal;
 import com.googlecode.lanterna.terminal.TerminalResizeListener;
 import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import java.io.IOException;
@@ -23,7 +24,7 @@ import java.util.function.LongSupplier;
 /**
  * ANSI output compactor for Lanterna's delta renderer.
  */
-final class CompactAnsiTerminal implements ExtendedTerminal {
+final class CompactAnsiTerminal implements ExtendedTerminal, PrivateModeTerminal {
 
     private static final int MIN_COMPACT_RUN = 8;
     private static final String ERASE_TO_LINE_END = "\033[K";
@@ -196,6 +197,27 @@ final class CompactAnsiTerminal implements ExtendedTerminal {
      */
     void reapplyRawMode() throws IOException {
         if (delegate instanceof UnixLikeTerminal unix) unix.reapplyTerminalSettings();
+    }
+
+    /**
+     * Re-asserts the alternate screen after another program may have had the terminal.
+     *
+     * <p>Forwarded rather than reimplemented: a decorator that swallows this capability makes
+     * it invisible to {@code TerminalScreen}, which is what owns the decision to repair. The
+     * deferred cursor restore is dropped because the position it describes belonged to the
+     * buffer being switched away from.
+     */
+    @Override
+    public void reassertPrivateMode() throws IOException {
+        if (delegate instanceof PrivateModeTerminal privateMode) {
+            privateMode.reassertPrivateMode();
+            cursorSyncPending = false;
+        }
+    }
+
+    @Override
+    public boolean isInPrivateMode() {
+        return delegate instanceof PrivateModeTerminal privateMode && privateMode.isInPrivateMode();
     }
 
     private void syncCursorIfNeeded() throws IOException {

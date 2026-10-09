@@ -192,6 +192,39 @@ class ReplExitControllerTest {
     }
 
     @Test
+    void continueSignalRebuildsTheTerminalEvenWhenTheSuspendWasNeverObserved() {
+        // SIGSTOP cannot be caught, a SIGTSTP can land before the handlers exist, and an
+        // orphaned process group has the stop discarded outright. The shell still had the
+        // terminal, so gating the repair on our own suspend bookkeeping would leave the
+        // session painting absolute rows into a main buffer that scrolls.
+        List<String> events = new ArrayList<>();
+        FakeActions actions = new FakeActions();
+        ReplExitController controller = new ReplExitController(
+            ShutdownPort.noop(),
+            actions,
+            () -> null,
+            null,
+            _ -> {},
+            _ -> {},
+            () -> {},
+            new ReplExitController.JobControlActions() {
+                @Override public void beforeSuspend() { events.add("terminal:suspend"); }
+                @Override public void afterResume() { events.add("terminal:resume"); }
+            },
+            () -> events.add("process:stop"),
+            _ -> {},
+            System::currentTimeMillis);
+
+        controller.handleContinueSignal();
+
+        assertEquals(List.of("terminal:resume"), events);
+
+        // And it stays idempotent: a second continue must not be swallowed either.
+        controller.handleContinueSignal();
+        assertEquals(List.of("terminal:resume", "terminal:resume"), events);
+    }
+
+    @Test
     void registersOnlyUserRequestedSuspendSignal() {
         assertEquals(List.of("TSTP"), ReplExitController.jobControlSignals());
     }

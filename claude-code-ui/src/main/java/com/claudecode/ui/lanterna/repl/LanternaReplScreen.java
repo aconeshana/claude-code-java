@@ -127,7 +127,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code components/PromptInput/} — the parts of prompt submission not yet moved into
  *       {@link ReplSubmissionCoordinator} (bash-mode routing, interrupt gestures).</li>
  *   <li>{@code utils/terminal.ts} / {@code utils/Cursor.ts} — terminal setup, cursor style,
- *       job-control suspend/resume, resize handling.</li>
+ *       job-control suspend/resume, resize handling, and the renderer's post-handoff repair
+ *       (the released client's {@code reenterAltScreen} / alternate-screen re-assert).</li>
  * </ul>
  */
 public class LanternaReplScreen implements SlashHost {
@@ -1045,6 +1046,37 @@ public class LanternaReplScreen implements SlashHost {
         }
     }
 
+    /**
+     * Re-asserts the alternate screen before the post-handoff redraw. {@code startScreen} is a
+     * no-op on an already-started screen, so it cannot be relied on to put the terminal back
+     * into private mode after something else dropped it; the screen owns this because it is the
+     * holder of the "started" flag the repair has to reconcile with.
+     */
+    private void reenterAlternateScreenAfterHandoff() {
+        try {
+            screen.reassertPrivateMode();
+        } catch (Exception e) {
+            log.debug("[LANTERNA] alternate-screen re-entry failed (non-fatal)", e);
+        }
+    }
+
+    /**
+     * Rebuilds everything another program could have taken from us, for handoffs where the
+     * caller has already restarted the screen.
+     *
+     * <p>{@code startScreen} is not enough on its own. It latches {@code isStarted} before it
+     * enters private mode, so a single failed entry leaves the screen permanently "started"
+     * on a terminal that is not in the alternate buffer, and every later restart returns
+     * early without noticing. From then on the renderer paints absolute rows into a main
+     * buffer that scrolls, which is how transient frames end up frozen in the scrollback.
+     * Re-asserting unconditionally is the only way back, and it is idempotent.
+     */
+    private void restoreTerminalAfterHandoff() {
+        reapplyRawModeAfterHandoff();
+        reenterAlternateScreenAfterHandoff();
+        restoreMouseAfterHandoff();
+    }
+
     private void suspendForJobControl() {
         disableMouseBeforeHandoff();
         try {
@@ -1079,6 +1111,7 @@ public class LanternaReplScreen implements SlashHost {
         try {
             reapplyRawModeAfterHandoff();
             screen.startScreen();
+            reenterAlternateScreenAfterHandoff();
             restoreMouseAfterHandoff();
             screen.refresh(RefreshType.COMPLETE);
         } catch (Exception e) {
@@ -1106,7 +1139,7 @@ public class LanternaReplScreen implements SlashHost {
         externalEditor = new PromptExternalEditor(screen, ctx.guiInvoker(), inputPanel,
             new PromptExternalEditor.TerminalHandoff() {
                 @Override public void beforeHandoff() { disableMouseBeforeHandoff(); }
-                @Override public void afterHandoff() { restoreMouseAfterHandoff(); }
+                @Override public void afterHandoff() { restoreTerminalAfterHandoff(); }
             });
         // Post-composition observers that need the finished graph: the prompt's outward action
         // port (reads suggestionController / sessionController) and the plugin-hint listener.
