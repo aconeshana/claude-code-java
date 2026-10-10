@@ -11,6 +11,7 @@ import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.process.ExternalEditorDefaults;
+import com.claudecode.core.process.ControllingTerminal;
 import com.claudecode.core.config.ClaudePaths;
 
 import java.io.IOException;
@@ -138,8 +139,8 @@ public class MemoryCommand implements AnnotatedCommand {
         }
 
         try {
-            Process p = new ProcessBuilder(editor, file.toString())
-                .inheritIO()
+            Process p = ControllingTerminal
+                .connect(new ProcessBuilder(editor, file.toString()))
                 .start();
             p.waitFor();
         } catch (Exception e) {

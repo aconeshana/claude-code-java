@@ -26,11 +26,14 @@ class StandardStreamBoundaryTest {
         "claude-code-cli/src/main/java/com/claudecode/cli/CliOutput.java",
         "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/repl/TuiOutputGuard.java"
     );
+    /**
+     * One seam, not a roster of callers. Inherited stdio reaches whatever the host pointed its own
+     * descriptors at, which for a guarded TUI is a log file rather than the screen, so every
+     * interactive handoff goes through {@code ControllingTerminal} and that class alone may fall
+     * back to inheritance.
+     */
     private static final Set<String> ALLOWED_INTERACTIVE_CHILDREN = Set.of(
-        "claude-code-commands/src/main/java/com/claudecode/commands/impl/context/MemoryCommand.java",
-        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/input/ExternalEditorLauncher.java",
-        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/input/PromptExternalEditor.java",
-        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/repl/LanternaReplScreen.java"
+        "claude-code-core/src/main/java/com/claudecode/core/process/ControllingTerminal.java"
     );
     private static final Set<String> ALLOWED_CLI_COMPOSITION_ROOTS = Set.of(
         "claude-code-cli/src/main/java/com/claudecode/cli/CliOutput.java",
@@ -53,7 +56,7 @@ class StandardStreamBoundaryTest {
     }
 
     @Test
-    void childProcessesInheritTerminalOnlyDuringExplicitEditorHandoffs() throws IOException {
+    void childProcessesReachTheTerminalOnlyThroughTheHandoffSeam() throws IOException {
         Path root = repositoryRoot();
         List<String> offenders = new ArrayList<>();
 
@@ -62,8 +65,9 @@ class StandardStreamBoundaryTest {
                 .forEach(path -> inspectInheritedIo(root, path, offenders));
         }
 
-        assertTrue(offenders.isEmpty(), () -> "inheritIO bypasses the TUI output guard; only"
-            + " explicit editor handoffs may use it:\n" + String.join("\n", offenders));
+        assertTrue(offenders.isEmpty(), () -> "inheritIO hands a child the host's redirected"
+            + " descriptors, not the terminal; route interactive handoffs through"
+            + " ControllingTerminal:\n" + String.join("\n", offenders));
     }
 
     @Test

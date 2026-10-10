@@ -4,8 +4,10 @@ import com.claudecode.core.platform.Platform;
 import org.apache.commons.lang3.Strings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -84,5 +86,60 @@ class TuiOutputGuardTest {
         assertTrue(Strings.CS.contains(captured, "fatal thread failure"));
         assertTrue(Strings.CS.contains(captured, "ctrl-o-render-failure"));
         assertTrue(Strings.CS.contains(captured, Thread.currentThread().getName()));
+    }
+
+    /**
+     * The ghost-text regression. While the renderer holds a private channel, fd 1 belongs to the
+     * diagnostic file, so no other writer in the process can land bytes between the {@code ESC}
+     * and the remainder of a sequence the renderer is flushing.
+     */
+    @Test
+    void divertsNativeStdoutWhileTheRendererKeepsItsPrivateChannel() throws Exception {
+        assumeTrue(Platform.IS_DARWIN || Platform.IS_LINUX);
+        var diagnosticPath = TuiOutputGuard.diagnosticPath();
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        var channelBytes = new ByteArrayOutputStream();
+        PrintStream channel = new PrintStream(channelBytes, true, StandardCharsets.UTF_8);
+        System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        try {
+            Files.deleteIfExists(diagnosticPath);
+            try (TuiOutputGuard ignored = TuiOutputGuard.install(channel)) {
+                Process nativeWriter = new ProcessBuilder("/bin/sh", "-c",
+                    "printf 'native fd stdout'")
+                    .inheritIO()
+                    .start();
+                assertTrue(nativeWriter.waitFor(5, TimeUnit.SECONDS));
+                assertEquals(0, nativeWriter.exitValue());
+                TuiOutputGuard.writeToTerminal("\u001B[49;4H");
+            }
+
+            String captured = Files.readString(diagnosticPath);
+            assertTrue(Strings.CS.contains(captured, "native fd stdout"));
+            // The renderer's sequence reached the channel whole, and nothing else did.
+            assertEquals("\u001B[49;4H", channelBytes.toString(StandardCharsets.UTF_8));
+        } finally {
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+    }
+
+    /**
+     * A piped or redirected run has no terminal to protect and must keep writing where the caller
+     * pointed it, so no private channel is claimed and fd 1 is left alone.
+     */
+    @Test
+    void claimsNoPrivateChannelWhenStdoutIsNotATerminal() throws Exception {
+        assumeTrue(!stdoutIsTerminal());
+
+        assertNull(TuiOutputGuard.openTerminalChannel());
+    }
+
+    private static boolean stdoutIsTerminal() throws Exception {
+        if (!Platform.IS_DARWIN && !Platform.IS_LINUX) return false;
+        Process probe = new ProcessBuilder("/bin/sh", "-c", "test -t 1").inheritIO().start();
+        assertTrue(probe.waitFor(5, TimeUnit.SECONDS));
+        return probe.exitValue() == 0;
     }
 }

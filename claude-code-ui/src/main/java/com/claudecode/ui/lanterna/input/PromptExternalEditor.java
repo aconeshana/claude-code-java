@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.input;
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.process.ExternalEditorDefaults;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.process.ControllingTerminal;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.screen.Screen.RefreshType;
 import java.io.IOException;
@@ -79,7 +80,9 @@ public final class PromptExternalEditor {
             screen.stopScreen();
             screenStopped = true;
 
-            Process p = new ProcessBuilder(command.argvFor(tmpFile)).inheritIO().start();
+            Process p = ControllingTerminal
+                .connect(new ProcessBuilder(command.argvFor(tmpFile)))
+                .start();
             int exitCode = p.waitFor();
             if (exitCode != 0) {
                 log.info("[LANTERNA] External editor '{}' exited with code {}", editor, exitCode);

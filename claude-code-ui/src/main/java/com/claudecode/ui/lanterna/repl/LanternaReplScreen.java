@@ -83,6 +83,7 @@ import com.googlecode.lanterna.terminal.Terminal;
 import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.List;
@@ -868,8 +869,14 @@ public class LanternaReplScreen implements SlashHost {
     private TuiOutputGuard initTerminal() throws IOException {
         log.info("[LANTERNA] initTerminal step 1: creating factory");
         terminalInput = new EscapeSequenceInputStream(TuiOutputGuard.terminalInput());
+        // Claim the renderer's own handle on the terminal before the guard redirects fd 1, so
+        // nothing else in the process — native code, inherited-stdio children — shares the
+        // descriptor our escape sequences travel on. Null outside a terminal, where fd 1 is
+        // whatever the caller pointed it at and must stay that way.
+        PrintStream terminalChannel = TuiOutputGuard.openTerminalChannel();
         DefaultTerminalFactory factory = new DefaultTerminalFactory(
-            TuiOutputGuard.terminalOutput(), terminalInput, Charset.defaultCharset())
+            terminalChannel != null ? terminalChannel : TuiOutputGuard.terminalOutput(),
+            terminalInput, Charset.defaultCharset())
             .setForceTextTerminal(true)
             .setInitialTerminalSize(null)
             // Trap Ctrl+C as a keystroke instead of Lanterna's default
@@ -884,6 +891,7 @@ public class LanternaReplScreen implements SlashHost {
             terminal = factory.createTerminal();
         } catch (IOException | RuntimeException exception) {
             closeTerminalInput();
+            TuiOutputGuard.closeTerminalChannel(terminalChannel);
             throw exception;
         }
         if (terminal instanceof DefaultVirtualTerminal) closeTerminalInput();
@@ -894,11 +902,13 @@ public class LanternaReplScreen implements SlashHost {
         }
         log.info("[LANTERNA] initTerminal step 3: terminal created = {}", terminal.getClass().getName());
 
-        // The terminal has captured the real process streams. Guard Java/JUL
-        // output before entering private mode so startup warnings cannot paint
-        // into the alternate-screen buffer.
-        TuiOutputGuard outputGuard = terminal instanceof DefaultVirtualTerminal
-            ? null : TuiOutputGuard.install();
+        // The terminal now owns its output channel. Guard Java/JUL output and redirect the
+        // process descriptors before entering private mode, so neither startup warnings nor
+        // native writes can paint into the alternate-screen buffer.
+        boolean virtualTerminal = terminal instanceof DefaultVirtualTerminal;
+        if (virtualTerminal) TuiOutputGuard.closeTerminalChannel(terminalChannel);
+        TuiOutputGuard outputGuard = virtualTerminal
+            ? null : TuiOutputGuard.install(terminalChannel);
 
         try {
 

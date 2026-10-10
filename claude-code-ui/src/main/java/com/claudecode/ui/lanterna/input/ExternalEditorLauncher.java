@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.process.ExternalEditorDefaults;
+import com.claudecode.core.process.ControllingTerminal;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.screen.Screen;
 
@@ -19,8 +20,8 @@ import java.nio.file.StandardOpenOption;
 
 /**
  * Suspends the Lanterna alt-screen, launches an interactive terminal editor ({@code $VISUAL} /
- * {@code $EDITOR} / {@code vi}) via a parsed argv command with {@code inheritIO}, then restores
- * Lanterna and forces one full redraw.
+ * {@code $EDITOR} / {@code vi}) on the controlling terminal, then restores Lanterna and forces one
+ * full redraw.
  */
 public final class ExternalEditorLauncher {
 
@@ -67,10 +68,10 @@ public final class ExternalEditorLauncher {
             // 1. Let go of the alt buffer so the editor takes over the terminal.
             screen.stopScreen();
             screenStopped = true;
-            // 2. Run the editor in-place (blocking; child inherits our stdin/stdout/stderr).
+            // 2. Run the editor in-place (blocking; the child drives the terminal directly).
 // The resolver supplies the GUI editor wait flag before waitFor.
-            int rc = new ProcessBuilder(command.argvFor(file))
-                .inheritIO()
+            int rc = ControllingTerminal
+                .connect(new ProcessBuilder(command.argvFor(file)))
                 .start()
                 .waitFor();
             if (rc != 0) {
