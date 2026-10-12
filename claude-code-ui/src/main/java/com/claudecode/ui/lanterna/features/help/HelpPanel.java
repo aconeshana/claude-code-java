@@ -190,7 +190,10 @@ public final class HelpPanel extends Panel implements InlineOverlay {
     /**
      * Activates the panel. Must run on the GUI thread.
      *
-     * @param version         app version for the "Claude Code v&lt;version&gt;" title
+     * @param version         accepted for caller symmetry and retained on the panel, but not
+     *                        rendered: the original's Help dialog title is a bare {@code "Help"}
+     *                        coloured {@code professionalBlue}, with no version suffix
+     *                        (2.1.197 bundle: {@code jsx(_I,{title:"Help",color:"professionalBlue"…})})
      * @param builtinCommands commands tab content — pre-filtered (no hidden)
      *                        and pre-sorted by the caller
      * @param customCommands  custom-commands tab content, same contract
