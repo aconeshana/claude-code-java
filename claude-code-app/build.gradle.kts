@@ -26,7 +26,7 @@ application {
 graalvmNative {
     binaries {
         named("main") {
-            imageName = "claude-code-app"
+            imageName = "poco"
             mainClass = "com.claudecode.cli.ClaudeCodeCli"
             // Without this the plugin defaults to a shared library, likely because this module
             // also applies `java-library` alongside `application`.
@@ -40,14 +40,14 @@ graalvmNative {
             classpath.setFrom(sourceSets.main.get().output, configurations.runtimeClasspath)
         }
         create("quick") {
-            imageName = "claude-code-app"
+            imageName = "poco"
             mainClass = "com.claudecode.cli.ClaudeCodeCli"
             sharedLibrary = false
             classpath.setFrom(sourceSets.main.get().output, configurations.runtimeClasspath)
             buildArgs.add("-Ob")
         }
         create("release") {
-            imageName = "claude-code-app"
+            imageName = "poco"
             mainClass = "com.claudecode.cli.ClaudeCodeCli"
             sharedLibrary = false
             classpath.setFrom(sourceSets.main.get().output, configurations.runtimeClasspath)
@@ -215,7 +215,7 @@ tasks.shadowJar {
             duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         }
     }
-    archiveBaseName = "claude-code-app"
+    archiveBaseName = "poco"
     archiveClassifier = ""
     archiveVersion = project.version.toString()
     mergeServiceFiles()

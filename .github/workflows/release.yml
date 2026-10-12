@@ -91,27 +91,27 @@ jobs:
           - os: macos-15-intel
             platform: darwin-amd64
             gradleTarget: darwin-amd64
-            asset: claude-code-app-darwin-amd64
+            asset: poco-darwin-amd64
           - os: ${{ vars.ARM_MACOS_RUNNER || 'self-hosted' }}
             platform: darwin-arm64
             gradleTarget: darwin-arm64
-            asset: claude-code-app-darwin-arm64
+            asset: poco-darwin-arm64
           # ── Linux ──────────────────────────────────────────────
           - os: ubuntu-latest
             platform: linux-amd64
             gradleTarget: linux-amd64
-            asset: claude-code-app-linux-amd64
+            asset: poco-linux-amd64
           - os: ubuntu-24.04-arm
             platform: linux-arm64
             gradleTarget: linux-arm64
-            asset: claude-code-app-linux-arm64
+            asset: poco-linux-arm64
           # ── Windows ────────────────────────────────────────────
           # windows-arm64 同样需 ARM self-hosted runner；免费公共 windows-latest 为 x64。
           - os: windows-latest
             platform: windows-amd64
             gradleTarget: windows-amd64
-            asset: claude-code-app-windows-amd64.exe
-            nativeBin: claude-code-app.exe
+            asset: poco-windows-amd64.exe
+            nativeBin: poco.exe
 
     steps:
       - name: Checkout
@@ -173,8 +173,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          # 产物路径：Linux/macOS 为 claude-code-app，Windows 为 claude-code-app.exe
-          cp "claude-code-app/build/native/nativeReleaseCompile/${{ matrix.nativeBin || 'claude-code-app' }}" \
+          # 产物路径：Linux/macOS 为 poco，Windows 为 poco.exe
+          cp "claude-code-app/build/native/nativeReleaseCompile/${{ matrix.nativeBin || 'poco' }}" \
              "release/${{ matrix.asset }}"
           # 仅有可执行位的场景（macOS/Linux 浏览器下载裸文件）才需要 chmod；Windows .exe 无害
           chmod +x "release/${{ matrix.asset }}" || true
@@ -242,7 +242,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp claude-code-app/build/libs/claude-code-app-*.jar release/claude-code-app.jar
+          cp claude-code-app/build/libs/poco-*.jar release/poco.jar
 
       - name: Upload release asset
         shell: bash
@@ -253,4 +253,4 @@ jobs:
           TAG="${{ env.RELEASE_TAG }}"
           # 同 build-native：release 及其 notes 由 release-notes job 建好。
           gh release view "$TAG" >/dev/null
-          gh release upload "$TAG" "release/claude-code-app.jar" --clobber
+          gh release upload "$TAG" "release/poco.jar" --clobber

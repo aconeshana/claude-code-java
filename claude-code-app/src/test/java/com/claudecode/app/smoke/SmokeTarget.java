@@ -35,7 +35,7 @@ record SmokeTarget(String name, List<String> launch) {
                 "-jar", jar.toString())));
         }
         for (String flavour : NATIVE_FLAVOURS) {
-            Path binary = buildDirectory.resolve("native/" + flavour + "/claude-code-app");
+            Path binary = buildDirectory.resolve("native/" + flavour + "/poco");
             if (Files.isExecutable(binary)) {
                 targets.add(new SmokeTarget(flavour, List.of(binary.toString())));
             }
