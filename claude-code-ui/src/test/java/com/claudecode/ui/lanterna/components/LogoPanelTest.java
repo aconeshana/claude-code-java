@@ -5,6 +5,7 @@ import com.claudecode.core.pokemon.PokemonEvolution;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.pokemon.PokemonRoller;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.ui.ProductName;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.googlecode.lanterna.TextColor;
@@ -93,7 +94,7 @@ class LogoPanelTest {
         new LogoPanel(null).show(panel, 120, "claude-sonnet-4-6");
 
         assertEquals(4, panel.snapshotLineCount(), "3 compact rows plus trailing spacer");
-        assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "Claude Code")));
+        assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, ProductName.DISPLAY)));
         assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "███")));
         assertTrue(panel.lines.stream().noneMatch(line -> Strings.CS.contains(line, "Lv ")));
     }
@@ -107,7 +108,7 @@ class LogoPanelTest {
 
         assertTrue(panel.snapshotLineCount() >= 5,
             "dynamic Pokémon height plus the four metadata rows and trailing spacer");
-        assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "Claude Code")));
+        assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, ProductName.DISPLAY)));
         assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "Lv ")));
         assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "%")));
         assertTrue(panel.lines.stream().noneMatch(line -> line.matches(".*[╭╮╰╯│▕].*")));

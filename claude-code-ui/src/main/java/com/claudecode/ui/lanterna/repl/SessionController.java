@@ -47,6 +47,7 @@ import com.claudecode.tools.skills.InvokedSkillRegistry;
 import com.claudecode.core.state.CwdState;
 import com.claudecode.core.text.DisplayTagUtils;
 import com.claudecode.core.text.XmlTagUtils;
+import com.claudecode.ui.ProductName;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.screen.Screen;
@@ -296,7 +297,7 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         releaseTranscriptState(oldSessionId);
         String newSessionId = queryEngine.conversation().startNewSession();
         resetTopicTitle.run();
-        terminalTitle.accept("Claude Code");
+        terminalTitle.accept(ProductName.DISPLAY);
 
         try {
             if (sessions != null) {

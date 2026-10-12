@@ -32,6 +32,7 @@ import com.claudecode.core.prompt.SystemPromptSection;
 import com.claudecode.core.prompt.SystemPromptSectionResolver;
 import com.claudecode.runtime.query.DefaultQuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
+import com.claudecode.ui.ProductName;
 import com.claudecode.ui.lanterna.components.LogoPanel;
 import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
@@ -119,7 +120,7 @@ class SessionControllerTest {
             panel, () -> logo.show(panel, 120, "claude-sonnet-4-6"));
 
         assertTrue(panel.searchLines("old conversation").isEmpty());
-        assertFalse(panel.searchLines("Claude Code").isEmpty(),
+        assertFalse(panel.searchLines(ProductName.DISPLAY).isEmpty(),
             "a new local or cc-connect session must remount the welcome block");
     }
 

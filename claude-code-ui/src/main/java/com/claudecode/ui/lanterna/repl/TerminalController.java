@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.repl;
 
+import com.claudecode.ui.ProductName;
 import com.claudecode.ui.TerminalDetector;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.screen.Screen;
@@ -39,7 +40,7 @@ final class TerminalController {
     private static final String TITLE_STATIC_PREFIX = "✳";
     private final AtomicInteger titleAnimationFrame = new AtomicInteger(0);
     private volatile boolean titleAnimating = false;
-    private volatile String title = "Claude Code";
+    private volatile String title = ProductName.DISPLAY;
     private ScheduledExecutorService titleAnimScheduler;
     private ScheduledFuture<?> titleAnimFuture;
 
@@ -50,7 +51,7 @@ final class TerminalController {
 
     /** Applies a generated, renamed, or restored session title immediately. */
     void setTitle(String title) {
-        this.title = StringUtils.isBlank(title) ? "Claude Code" : title.trim();
+        this.title = StringUtils.isBlank(title) ? ProductName.DISPLAY : title.trim();
         updateAnimatedTitle();
     }
 

@@ -6,6 +6,7 @@ import com.claudecode.core.pokemon.PokemonRoller;
 import com.claudecode.core.pokemon.PokemonRoster;
 import com.claudecode.core.pokemon.PokemonEvolution;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.ui.ProductName;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
@@ -433,7 +434,7 @@ public final class LogoPanel {
     }
 
     private static List<MessagePanel.Segment> titleSegments(int available) {
-        String name = "Claude Code";
+        String name = ProductName.DISPLAY;
         String version = " v" + appVersion();
         if (FormatUtils.displayWidth(name + version) <= available) {
             return List.of(
