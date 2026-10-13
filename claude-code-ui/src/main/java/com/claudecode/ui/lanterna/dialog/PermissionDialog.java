@@ -98,7 +98,6 @@ public class PermissionDialog extends Panel {
     /** True when amending Yes; false when amending No. */
     private boolean amendingYes;
 
-
     private Label amendPrefixLabel;
 
     /** Risk label with color (e.g., "   Low risk: read-only"). */
@@ -217,7 +216,7 @@ public class PermissionDialog extends Panel {
             ? LanternaTheme.modePlan() : LanternaTheme.permission();
         this.currentAccent = accent;
 
-// marginTop=1 — blank line above.
+        // marginTop=1 — blank line above.
         addComponent(new EmptySpace(new TerminalSize(0, 1)));
 
 
@@ -1097,7 +1096,7 @@ public class PermissionDialog extends Panel {
 
                 // `if (key.downArrow || key.upArrow) state.focusNextOption/PreviousOption`,
                 // which fires handleFocus(value) → useShellPermissionFeedback.handleFocus:
-// `if (value !== 'yes' && yesInputMode && !acceptFeedback.trim) setYesInputMode(false)`.
+                // `if (value !== 'yes' && yesInputMode && !acceptFeedback.trim) setYesInputMode(false)`.
                 // i.e. arrow navigates AND only exits amend mode when the TextBox is empty.
                 if (ks.getKeyType() == KeyType.ARROW_UP || ks.getKeyType() == KeyType.ARROW_DOWN) {
                     final boolean isUp = ks.getKeyType() == KeyType.ARROW_UP;
@@ -1109,7 +1108,7 @@ public class PermissionDialog extends Panel {
                                 // Exit amend mode AND navigate to prev/next option.
                                 cancelAmendAndNavigate(isUp);
                             } else {
-// Keep amend mode active; move focus to neighbor option.
+                                // Keep amend mode active; move focus to neighbor option.
                                 Interactable target = isUp ? previousOption() : nextOption();
                                 if (target != null) target.takeFocus();
                             }
@@ -1117,11 +1116,19 @@ public class PermissionDialog extends Panel {
                     }
                     return Result.HANDLED;
                 }
-                return super.handleKeyStroke(ks);
+                // Lanterna's TextBox.handleKeyStroke mutates `lines`/`caretPosition` but only
+                // fires onTextChanged — it never invalidates. The main prompt still repaints
+                // because PromptTextBox notifies InputPanel on every key; this inline box has
+                // no such host, and the spinner is paused while a permission prompt is up, so
+                // nothing else marks the tree dirty. Without this the screen stays frozen on
+                // the frame that first drew the placeholder and typed text never appears.
+                Result result = super.handleKeyStroke(ks);
+                invalidate();
+                return result;
             }
 
-// Swap "❯ " → " " when focus leaves the amendBox so that the neighboring option's own ❯
-// (drawn by PermissionOptionRenderer) is the only pointer on screen.
+            // Swap "❯ " → " " when focus leaves the amendBox so that the neighboring option's own ❯
+            // (drawn by PermissionOptionRenderer) is the only pointer on screen.
             @Override
             protected void afterLeaveFocus(Interactable.FocusChangeDirection direction,
                                            Interactable nextInFocus) {
@@ -1228,7 +1235,7 @@ public class PermissionDialog extends Panel {
             && key.getCharacter() != null && Character.toLowerCase(key.getCharacter()) == 'v';
     }
 
-/** Restore optionsPanel to icompatibility baseline button layout. */
+    /** Restore optionsPanel to icompatibility baseline button layout. */
     private void cancelAmend() {
         if (optionsPanel == null || yesBtn == null || noBtn == null || amendBox == null) return;
         boolean wasYes = amendingYes;
@@ -1243,7 +1250,7 @@ public class PermissionDialog extends Panel {
         (wasYes ? yesBtn : noBtn).takeFocus();
     }
 
-/**
+    /**
      * Exit amend mode AND move focus to the previous/next button (cycling).
      */
     private void cancelAmendAndNavigate(boolean up) {
@@ -1267,7 +1274,7 @@ public class PermissionDialog extends Panel {
         target.takeFocus();
     }
 
-/**
+    /**
      * Updates the footer hint when focus moves between option buttons.
      */
     private void updateHintForButton(boolean canAmend) {
@@ -1280,7 +1287,7 @@ public class PermissionDialog extends Panel {
         invalidate();
     }
 
-/**
+    /**
      * Ordered list of focusable interactables matching the on-screen option rows.
      */
     private List<Interactable> focusOrder() {
@@ -1471,7 +1478,7 @@ public class PermissionDialog extends Panel {
         return sb.toString();
     }
 
-/**
+    /**
      * Risk line text: " [High|Medium|Low] risk: [description]" — colored separately.
      */
     private static String buildExplainerRiskText(PermissionExplanation e) {
@@ -1513,7 +1520,7 @@ public class PermissionDialog extends Panel {
             return new TerminalSize(w, 1);
         }
 
-/** Source-of-truth focus check.  Lanterna's {@code button.isFocused} reads
+        /** Source-of-truth focus check.  Lanterna's {@code button.isFocused} reads
          *  a cached {@code inFocus} field maintained by onEnter/onLeaveFocus.  After
          *  removeAllComponents + re-add reflows during {@link #toggleAmend}, that
          *  field can lag the actual window focus pointer (causes stray "❯" on
@@ -1581,7 +1588,7 @@ public class PermissionDialog extends Panel {
                     && dispatchKeybindingAction(value)) {
                 return Result.HANDLED;
             }
-// Arrow Up/Down cycle within option list.
+            // Arrow Up/Down cycle within option list.
             if (ks.getKeyType() == KeyType.ARROW_UP) {
                 Interactable prev = previousOption();
                 if (prev != null) prev.takeFocus();
@@ -1838,7 +1845,7 @@ public class PermissionDialog extends Panel {
             return "";
         }
 
-// flatten the top-level
+        // flatten the top-level
         // object into "k: v, k: v", truncating each rendered value at 80 chars.
         if (parseMcpToolName(toolName) != null) {
             return renderMcpInputSummary(input);
