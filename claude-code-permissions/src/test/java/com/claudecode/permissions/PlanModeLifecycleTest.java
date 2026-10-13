@@ -50,18 +50,127 @@ class PlanModeLifecycleTest {
         assertFalse(gate.isPlanAutoModeActive());
     }
 
+    /**
+     * Plan mode suspends the edit-oriented modes but not bypass: a session launched with
+     * {@code --dangerously-skip-permissions} keeps auto-allowing inside the plan, so no prompt
+     * appears. Authority: 2.1.197 and 2.1.236 both compute the effective mode as
+     * {@code mode==="bypassPermissions" || mode==="auto" || mode==="plan" && isBypassPermissionsModeAvailable===!0}
+     * (236 names it {@code pZa}); the flag is still restored as the exit mode.
+     */
     @Test
-    void enteringPlanFromBypassRestoresBypassOnlyAfterPlanEnds() {
+    void enteringPlanFromBypassKeepsAutoAllowingUntilPlanEnds() {
         PermissionGate gate = new PermissionGate();
+        gate.configureBypassPermissionsMode(true, false);
         gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+        gate.setMode(PermissionMode.PLAN);
+
+        assertInstanceOf(PermissionDecision.Allow.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "touch changed"))
+                .decision());
+
+        assertEquals(PermissionMode.BYPASS_PERMISSIONS, gate.finishPlanMode());
+    }
+
+    /**
+     * The carry-over into plan mode is gated on the launch capability, not assumed: a session
+     * that may not enter bypass must still be prompted from inside the plan.
+     */
+    @Test
+    void planModeStillAsksWhenBypassWasNotAvailableAtLaunch() {
+        PermissionGate gate = new PermissionGate();
+        gate.setBypassPermissionsModeAvailable(false);
         gate.setMode(PermissionMode.PLAN);
 
         assertInstanceOf(PermissionDecision.Ask.class,
             gate.checkDetailed("Bash",
                 JsonUtils.getMapper().createObjectNode().put("command", "touch changed"))
                 .decision());
+    }
 
-        assertEquals(PermissionMode.BYPASS_PERMISSIONS, gate.finishPlanMode());
+    @Test
+    void bypassModeSwallowsAToolLevelAskThatIsNotBypassImmune() {
+        PermissionGate gate = new PermissionGate();
+        gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+
+        PermissionDecision toolAsk = new PermissionDecision.Ask(
+            null, null, "Comment contains syntax that can desynchronise permission parsing",
+            null, null);
+
+        assertInstanceOf(PermissionDecision.Allow.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "true"), toolAsk)
+                .decision());
+    }
+
+    @Test
+    void planCarriedBypassAlsoSwallowsAToolLevelAsk() {
+        PermissionGate gate = new PermissionGate();
+        gate.configureBypassPermissionsMode(true, false);
+        gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+        gate.setMode(PermissionMode.PLAN);
+
+        PermissionDecision toolAsk = PermissionDecision.ask();
+
+        assertInstanceOf(PermissionDecision.Allow.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "true"), toolAsk)
+                .decision());
+    }
+
+    /**
+     * Dangerous removal is the deliberate exception: it stays bypass-immune so {@code rm -rf /}
+     * still reaches the user even under {@code --dangerously-skip-permissions}. 2.1.197 matches
+     * the {@code "Dangerous rm operation"} reason prefix; 2.1.236 models it as the
+     * {@code dangerousRemoval} circuit breaker with {@code bypassImmune:true}.
+     */
+    @Test
+    void bypassModeDoesNotSwallowTheDangerousRemovalAsk() {
+        PermissionGate gate = new PermissionGate();
+        gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+
+        PermissionDecision dangerous = new PermissionDecision.Ask(
+            "/", null, null, null, null, List.of(),
+            PermissionDecision.Ask.AskBreaker.DANGEROUS_REMOVAL);
+
+        assertInstanceOf(PermissionDecision.Ask.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "rm -rf /"), dangerous)
+                .decision());
+    }
+
+    @Test
+    void defaultModeStillSurfacesAToolLevelAsk() {
+        PermissionGate gate = new PermissionGate();
+
+        PermissionDecision toolAsk = PermissionDecision.ask();
+
+        assertInstanceOf(PermissionDecision.Ask.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "true"), toolAsk)
+                .decision());
+    }
+
+    /**
+     * Guards the wiring, not the rule: the flag has to survive every context wither, or the
+     * engine silently loses it again and plan mode reverts to prompting.
+     */
+    @Test
+    void bypassAvailabilitySurvivesContextWithers() {
+        PermissionGate gate = new PermissionGate();
+        gate.configureBypassPermissionsMode(true, false);
+        gate.setMode(PermissionMode.PLAN);
+
+        gate.addRules(List.of(PermissionRule.of(
+            "Bash", PermissionBehavior.ALLOW, RuleSource.SESSION)));
+
+        assertTrue(gate.currentContext().bypassPermissionsModeAvailable(),
+            "rule mutation dropped the launch capability");
+
+        assertInstanceOf(PermissionDecision.Allow.class,
+            gate.checkDetailed("Bash",
+                JsonUtils.getMapper().createObjectNode().put("command", "touch changed"))
+                .decision());
     }
 
     @Test

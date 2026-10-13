@@ -615,7 +615,12 @@ public final class BashPermissions {
             String clean = PathValidation.expandTilde(stripQuotes(path));
             String absolute = isAbsolute(clean) ? clean : resolve(clean, cwdStr);
             if (PathValidation.isDangerousRemovalPath(absolute)) {
-                return new PermissionDecision.Ask(absolute);
+                // Tagged bypass-immune so `rm -rf /` still reaches the user under
+                // --dangerously-skip-permissions (2.1.197 "Dangerous rm operation" prefix match,
+                // 2.1.236 dangerousRemoval circuit breaker).
+                return new PermissionDecision.Ask(
+                    absolute, null, null, null, null, java.util.List.of(),
+                    PermissionDecision.Ask.AskBreaker.DANGEROUS_REMOVAL);
             }
         }
         return null;

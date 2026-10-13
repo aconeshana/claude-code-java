@@ -1,8 +1,10 @@
 package com.claudecode.tools.bash;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.model.PermissionModeKind;
@@ -85,6 +87,22 @@ class BashPermissionsTest {
     void dangerousRemovalPathBlocked() {
         PermissionDecision.Ask a = ask("rm -rf /");
         assertEquals("/", a.blockedPath());
+    }
+
+    /**
+     * The dangerous-removal ask has to announce itself as bypass-immune, or
+     * {@code --dangerously-skip-permissions} would silently auto-approve {@code rm -rf /}.
+     * The engine reads this tag, so tagging it here is the load-bearing end of the wiring.
+     */
+    @Test
+    void dangerousRemovalAskIsTaggedBypassImmune() {
+        assertTrue(ask("rm -rf /").isBypassImmune());
+        assertTrue(ask("rmdir /usr").isBypassImmune());
+        assertTrue(ask("timeout 10 rm -rf /").isBypassImmune());
+
+        // Ordinary asks must NOT claim the exemption, or bypass would stop working.
+        assertFalse(ask("cp -r a b").isBypassImmune());
+        assertFalse(ask("rm -rf ./build").isBypassImmune());
     }
 
     @Test

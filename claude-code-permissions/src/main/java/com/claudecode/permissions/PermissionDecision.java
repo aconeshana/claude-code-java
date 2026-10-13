@@ -32,30 +32,61 @@ public sealed interface PermissionDecision permits
 
     /**
      * User should be asked for permission.
+     *
+     * <p>{@code breaker} classifies the safety concern behind the ask. It exists because bypass
+     * mode must swallow the tool's ordinary asks while still surfacing the few deliberately
+     * bypass-immune ones — and the blocking path or message text is not a reliable signal (any
+     * ask may carry either). {@code null} means "ordinary ask, not bypass-immune".
+     *
+     * <p>The original models the same idea structurally: 2.1.197 prefix-matches the reason
+     * ({@code "Dangerous rm operation"} / {@code "Dangerous rmdir operation"}); 2.1.236 replaces
+     * that with a {@code circuitBreaker} enum plus a table whose {@code bypassImmune} flags mark
+     * {@code dangerousRemoval} and {@code isolatePeerMachines}.
      */
     record Ask(String blockedPath, JsonNode updatedInput, String message,
                String suggestionRuleContent, String suggestionLabel,
-               List<PermissionUpdate> suggestions)
+               List<PermissionUpdate> suggestions,
+               AskBreaker breaker)
             implements PermissionDecision {
+
+        /** Safety concerns that can exempt an ask from bypass mode. */
+        public enum AskBreaker {
+            /** {@code rm}/{@code rmdir} against a filesystem root or the home directory. */
+            DANGEROUS_REMOVAL
+        }
+
         public Ask {
             suggestions = List.copyOf(suggestions == null ? List.of() : suggestions);
+        }
+
+        /** Ordinary ask: not bypass-immune. */
+        public Ask(String blockedPath, JsonNode updatedInput, String message,
+                   String suggestionRuleContent, String suggestionLabel,
+                   List<PermissionUpdate> suggestions) {
+            this(blockedPath, updatedInput, message, suggestionRuleContent, suggestionLabel,
+                suggestions, null);
+        }
+
+        /** True when bypass mode must still surface this ask. */
+        public boolean isBypassImmune() {
+            return breaker != null;
         }
 
         /** Compatibility shape for callers that do not provide typed suggestions. */
         public Ask(String blockedPath, JsonNode updatedInput, String message,
                    String suggestionRuleContent, String suggestionLabel) {
             this(blockedPath, updatedInput, message, suggestionRuleContent,
-                suggestionLabel, List.of());
+                suggestionLabel, List.of(), null);
         }
 
         /** Legacy no-arg shape: no blocked path. */
         public Ask() {
-            this(null, null, null, null, null, List.of());
+            this(null, null, null, null, null, List.of(), null);
         }
 
         /** Legacy path-safety shape. */
         public Ask(String blockedPath) {
-            this(blockedPath, null, null, null, null, List.of());
+            this(blockedPath, null, null, null, null, List.of(), null);
         }
     }
 

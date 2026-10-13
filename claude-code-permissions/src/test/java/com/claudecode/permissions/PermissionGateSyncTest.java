@@ -12,10 +12,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PermissionGateSyncTest {
 
+    /**
+     * A session that was not launched bypass-capable must still be prompted from inside plan
+     * mode — entering plan from {@code BYPASS_PERMISSIONS} only carries the capability when the
+     * launch flag made it available. (The bypass-capable case is covered by
+     * {@code PlanModeLifecycleTest.enteringPlanFromBypassKeepsAutoAllowingUntilPlanEnds}.)
+     */
     @Test
-    void planModeDoesNotRetainBypassSemanticsFromPrePlanMode() {
+    void planModeFromBypassStillAsksWithoutTheLaunchCapability() {
         PermissionGate gate = new PermissionGate();
-        gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+        gate.setBypassPermissionsModeAvailable(false);
         gate.setMode(PermissionMode.PLAN);
 
         PermissionDecisionResult result = gate.checkDetailed(

@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.text.EscapedCharScanner;
 import com.claudecode.core.tool.LegacyToolNames;
 
 /**
@@ -38,12 +39,12 @@ final class HookMatchResolver {
         }
 
         String condition = ifCond.get().trim();
-        int openParen = findFirstUnescapedChar(condition, '(');
+        int openParen = EscapedCharScanner.findFirstUnescaped(condition, '(');
         if (openParen <= 0) {
             return LegacyToolNames.normalize(condition)
                 .equals(LegacyToolNames.normalize(input.toolName().orElse("")));
         }
-        int closeParen = findLastUnescapedChar(condition, ')');
+        int closeParen = EscapedCharScanner.findLastUnescaped(condition, ')');
         if (closeParen != condition.length() - 1) {
             return LegacyToolNames.normalize(condition)
                 .equals(LegacyToolNames.normalize(input.toolName().orElse("")));
@@ -131,33 +132,6 @@ final class HookMatchResolver {
             regex.replace(optionalTrailingArgumentStart, regex.length(), "( .*)?");
         }
         return Pattern.compile(regex.toString(), Pattern.DOTALL).matcher(command).matches();
-    }
-
-    private static int findFirstUnescapedChar(String value, char target) {
-        for (int index = 0; index < value.length(); index++) {
-            if (value.charAt(index) == '\\') {
-                index++;
-                continue;
-            }
-            if (value.charAt(index) == target) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    private static int findLastUnescapedChar(String value, char target) {
-        int found = -1;
-        for (int index = 0; index < value.length(); index++) {
-            if (value.charAt(index) == '\\') {
-                index++;
-                continue;
-            }
-            if (value.charAt(index) == target) {
-                found = index;
-            }
-        }
-        return found;
     }
 
     private static String unescapeParens(String value) {

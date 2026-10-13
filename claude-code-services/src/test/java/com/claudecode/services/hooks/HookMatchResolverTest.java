@@ -83,4 +83,32 @@ class HookMatchResolverTest {
         assertTrue(HookMatchResolver.matchWildcardPattern("  git *  ", "git status"));
         assertTrue(HookMatchResolver.matchWildcardPattern("  git *  ", "git"));
     }
+
+    /**
+     * Pins the escaped-paren semantics the shared scanner now provides, so the extraction cannot
+     * silently change which parentheses delimit the rule content. The command text itself must
+     * contain real parens, which the rule spells with a leading backslash.
+     */
+    @Test
+    void matchesIfRulesWhoseContentContainsEscapedParens() {
+        HookMatchResolver resolver = new HookMatchResolver();
+        HookInput input = HookInput.forPreToolUse(
+            "Bash", MAPPER.createObjectNode().put("command", "echo (ok)"), "tool-1");
+
+        // Bash(echo \(ok\)) — the escape makes the parens literal content, not delimiters.
+        assertTrue(resolver.matchesIfCondition(new BashCommandHook(
+            "ignored", Optional.of("Bash(echo \\(ok\\))"), Optional.empty(), Optional.empty(),
+            Optional.empty(), false, false, false), input));
+
+        // A stray escape that leaves the closing paren escaped must not match "echo (ok)".
+        assertFalse(resolver.matchesIfCondition(new BashCommandHook(
+            "ignored", Optional.of("Bash(echo \\(ok)"), Optional.empty(), Optional.empty(),
+            Optional.empty(), false, false, false), input));
+
+        // Doubled backslash before a paren is an escaped backslash, so the paren IS a delimiter:
+        // content becomes `echo \(ok)` (literal backslash + parens), which "echo (ok)" lacks.
+        assertFalse(resolver.matchesIfCondition(new BashCommandHook(
+            "ignored", Optional.of("Bash(echo \\\\(ok\\\\))"), Optional.empty(), Optional.empty(),
+            Optional.empty(), false, false, false), input));
+    }
 }

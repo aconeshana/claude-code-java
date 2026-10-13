@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.engine.BashSandboxGate;
 import com.claudecode.core.engine.PermissionUpdate;
+import com.claudecode.core.text.EscapedCharScanner;
 import com.claudecode.core.tool.LegacyToolNames;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -112,7 +113,9 @@ public class PermissionEngine {
 
     public PermissionDecisionResult evaluateDetailed(String toolName, JsonNode input,
                                                      ToolPermissionContext context, PermissionDecision toolDecision) {
-        return mergeToolDecision(evaluateDetailedInternal(toolName, input, context), toolDecision);
+        return mergeToolAsk(
+            evaluateDetailedInternal(toolName, input, context), toolDecision,
+            context.mode(), context.bypassPermissionsModeAvailable());
     }
 
     /** Core rules/mode decision chain, without the tool-level overlay. */
@@ -177,7 +180,9 @@ public class PermissionEngine {
         }
 
         PermissionMode mode = context.mode();
-        return applyDontAskTransform(mode, evaluateByMode(toolName, mode), new DecisionReason.Mode(mode));
+        return applyDontAskTransform(mode,
+            evaluateByMode(toolName, mode, context.bypassPermissionsModeAvailable()),
+            new DecisionReason.Mode(mode));
     }
 
     /**
@@ -220,11 +225,12 @@ public class PermissionEngine {
         // "always allow" option disappear from Java dialogs.
         if (engineResult.decision() instanceof PermissionDecision.Ask(
             String blockedPath, JsonNode updatedInput, String message, String suggestionRuleContent,
-            String suggestionLabel, List<PermissionUpdate> suggestions
+            String suggestionLabel, List<PermissionUpdate> suggestions,
+            PermissionDecision.Ask.AskBreaker breaker
         )
             && toolDecision instanceof PermissionDecision.Ask(
             String path, JsonNode input, String message1, String ruleContent, String label,
-            List<PermissionUpdate> suggestions1
+            List<PermissionUpdate> suggestions1, PermissionDecision.Ask.AskBreaker breaker1
         )) {
             PermissionDecision.Ask merged = new PermissionDecision.Ask(
                 blockedPath != null
@@ -238,10 +244,42 @@ public class PermissionEngine {
                 label != null
                     ? label : suggestionLabel,
                 !suggestions1.isEmpty()
-                    ? suggestions1 : suggestions);
+                    ? suggestions1 : suggestions,
+                breaker != null ? breaker : breaker1);
             return new PermissionDecisionResult(merged, engineResult.reason());
         }
         return engineResult;
+    }
+
+    /**
+     * Folds the tool's ask into the engine result, honouring bypass.
+     *
+     * <p>Under an effective bypass the tool's own ask is swallowed — the user asked not to be
+     * prompted, and the tool's concern is not a reason to overrule that. The exception is a
+     * bypass-immune breaker (dangerous {@code rm}/{@code rmdir}), which must still reach the
+     * user; it overrides the allow that bypass itself produced. Outside bypass the ask passes
+     * through as before.
+     */
+    private PermissionDecisionResult mergeToolAsk(
+            PermissionDecisionResult engineResult, PermissionDecision toolDecision,
+            PermissionMode mode, boolean bypassModeAvailable) {
+        if (!isBypassEffective(mode, bypassModeAvailable)) {
+            return mergeToolDecision(engineResult, toolDecision);
+        }
+        if (toolDecision instanceof PermissionDecision.Ask ask && ask.isBypassImmune()) {
+            // A deny from the rule chain still outranks the exempt breaker.
+            if (engineResult.decision() instanceof PermissionDecision.Deny) {
+                return engineResult;
+            }
+            return new PermissionDecisionResult(ask, new DecisionReason.Mode(mode));
+        }
+        if (toolDecision instanceof PermissionDecision.Deny) {
+            return mergeToolDecision(engineResult, toolDecision);
+        }
+        // Ordinary ask (or no opinion): bypass wins.
+        return new PermissionDecisionResult(
+            PermissionDecision.allow(),
+            new DecisionReason.Mode(mode));
     }
 
     /**
@@ -653,15 +691,30 @@ public class PermissionEngine {
     /**
      * Mode-based fallback decision when no rules match.
      */
-    private PermissionDecision evaluateByMode(String toolName, PermissionMode mode) {
+    private PermissionDecision evaluateByMode(String toolName, PermissionMode mode,
+                                              boolean bypassModeAvailable) {
+        if (isBypassEffective(mode, bypassModeAvailable)) {
+            return PermissionDecision.allow();
+        }
         return switch (mode) {
             case BYPASS_PERMISSIONS -> PermissionDecision.allow();
-            case PLAN -> PermissionDecision.ask();
-            case ACCEPT_EDITS -> PermissionDecision.ask();
+            case PLAN, ACCEPT_EDITS -> PermissionDecision.ask();
             case AUTO -> AUTO_SAFE_TOOLS.contains(toolName)
                 ? PermissionDecision.allow() : PermissionDecision.ask();
             case DEFAULT, DONT_ASK -> PermissionDecision.ask();
         };
+    }
+
+    /**
+     * Whether bypass currently short-circuits ordinary asks: direct bypass, or a plan entered
+     * from a bypass-capable launch. Plan mode swaps the mode but must not cancel the capability,
+     * so the plan keeps auto-allowing. Mirrors the original's effective-mode predicate
+     * ({@code mode==="bypassPermissions" || mode==="plan" && isBypassPermissionsModeAvailable},
+     * named {@code pZa} in 2.1.236).
+     */
+    private static boolean isBypassEffective(PermissionMode mode, boolean bypassModeAvailable) {
+        return mode == PermissionMode.BYPASS_PERMISSIONS
+            || (mode == PermissionMode.PLAN && bypassModeAvailable);
     }
 
 
@@ -685,11 +738,11 @@ public class PermissionEngine {
      */
     public static PermissionRule permissionRuleFromString(
             String ruleString, PermissionBehavior behavior, RuleSource source) {
-        int openIdx = findFirstUnescapedChar(ruleString, '(');
+        int openIdx = EscapedCharScanner.findFirstUnescaped(ruleString, '(');
         if (openIdx == -1) {
             return PermissionRule.of(normalizeLegacyToolName(ruleString), behavior, source);
         }
-        int closeIdx = findLastUnescapedChar(ruleString, ')');
+        int closeIdx = EscapedCharScanner.findLastUnescaped(ruleString, ')');
         if (closeIdx == -1 || closeIdx <= openIdx || closeIdx != ruleString.length() - 1) {
             return PermissionRule.of(normalizeLegacyToolName(ruleString), behavior, source);
         }
@@ -772,35 +825,4 @@ public class PermissionEngine {
         return prefix.isEmpty() ? null : prefix;
     }
 
-    /**
-     * Finds the index of the first unescaped occurrence of {@code ch} in {@code str}.
-     * A char is escaped if preceded by an odd number of backslashes.
-     */
-    static int findFirstUnescapedChar(String str, char ch) {
-        for (int i = 0; i < str.length(); i++) {
-            if (str.charAt(i) == ch) {
-                int backslashes = 0;
-                int j = i - 1;
-                while (j >= 0 && str.charAt(j) == '\\') { backslashes++; j--; }
-                if (backslashes % 2 == 0) return i;
-            }
-        }
-        return -1;
     }
-
-    /**
-     * Finds the index of the last unescaped occurrence of {@code ch} in {@code str}.
-     */
-    static int findLastUnescapedChar(String str, char ch) {
-        for (int i = str.length() - 1; i >= 0; i--) {
-            if (str.charAt(i) == ch) {
-                int backslashes = 0;
-                int j = i - 1;
-                while (j >= 0 && str.charAt(j) == '\\') { backslashes++; j--; }
-                if (backslashes % 2 == 0) return i;
-            }
-        }
-        return -1;
-    }
-
-}

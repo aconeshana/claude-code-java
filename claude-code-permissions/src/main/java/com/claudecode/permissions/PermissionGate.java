@@ -69,6 +69,11 @@ public final class PermissionGate {
     /** Full constructor: explicit initial context and internal-path provider. */
     public PermissionGate(ToolPermissionContext initialContext, PermissionPaths permissionPaths) {
         this.engine = new PermissionEngine(permissionPaths);
+        // Two distinct flags with different defaults: the gate field says "may this session enter
+        // bypass at all" (historically true for a bare gate), while the context flag says "was
+        // this launch bypass-capable" and is false until the CLI's
+        // configureBypassPermissionsMode proves otherwise. They are deliberately not coupled
+        // here — coupling them made every plan mode auto-allow.
         this.contextRef = new AtomicReference<>(initialContext);
     }
 
@@ -137,6 +142,7 @@ public final class PermissionGate {
     public void setBypassPermissionsModeAvailable(boolean available) {
         bypassPermissionsModeDisabledByPolicy = false;
         bypassPermissionsModeAvailable = available;
+        contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(available));
         leaveBypassIfUnavailable();
     }
 
@@ -148,6 +154,8 @@ public final class PermissionGate {
     public void configureBypassPermissionsMode(boolean launchAllowed, boolean disabledByPolicy) {
         bypassPermissionsModeDisabledByPolicy = disabledByPolicy;
         bypassPermissionsModeAvailable = launchAllowed && !disabledByPolicy;
+        boolean available = bypassPermissionsModeAvailable;
+        contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(available));
         leaveBypassIfUnavailable();
     }
 
@@ -158,6 +166,7 @@ public final class PermissionGate {
         bypassPermissionsModeDisabledByPolicy = disabledByPolicy;
         if (disabledByPolicy) {
             bypassPermissionsModeAvailable = false;
+            contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(false));
             leaveBypassIfUnavailable();
         }
     }
