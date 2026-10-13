@@ -46,7 +46,7 @@ import com.claudecode.ui.lanterna.transcript.MessagePanel;
 public final class EffortSliderDialog extends Panel implements InlineOverlay {
 
     /** Cells from the left edge of the body to the first dash of the slider. */
-    private static final int LEFT_PAD = 2;
+    private static final int LEFT_PAD = 3;
 
     /** Screen row of the divider that separates the slider from the message stream. */
     private static final int DIVIDER_ROW = 0;
@@ -265,6 +265,41 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
 
     private final class SliderRenderer implements ComponentRenderer<SliderArea> {
 
+        /**
+         * Geometry of one ripple frame. Upstream widens the strip to
+         * {@code Math.max(layout.width, columns)} and draws every rippled row from the screen's
+         * left edge ({@code col:-ie}), so the wash reaches both margins instead of stopping at
+         * the slider. {@code inset} is the slider's own offset inside that strip.
+         */
+        private record RippleStrip(int leftX, int sliderWidth, int inset, int width) {
+
+            static RippleStrip of(int leftX, int sliderWidth, int columns) {
+                int total = Math.max(sliderWidth, columns);
+                return new RippleStrip(leftX, sliderWidth,
+                    Math.max(0, (total - sliderWidth) / 2), total);
+            }
+
+            /** Fills out to the full strip from its left edge — for rows anchored at the pad. */
+            String fill(String text) {
+                return text + " ".repeat(Math.max(0, width - text.length()));
+            }
+
+            /** Centres slider-width content in the strip, padding both margins. */
+            String lay(String sliderText) {
+                return fill(" ".repeat(inset) + sliderText);
+            }
+
+            /** Ripple-space column of the strip's first cell. */
+            int startCol() {
+                return -inset;
+            }
+
+            /** Width of the right margin that trails the slider. */
+            int trailing() {
+                return Math.max(0, width - inset - sliderWidth);
+            }
+        }
+
         @Override
         public TerminalSize getPreferredSize(SliderArea c) {
             EffortSliderState s = state;
@@ -296,11 +331,12 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
             g.setForegroundColor(LanternaTheme.divider());
             g.putString(0, DIVIDER_ROW, "─".repeat(Math.max(0, size.getColumns())));
 
-            drawTitle(g, leftX, width, ripple);
-            drawFraming(g, leftX, width, ripple);
-            drawTrack(g, s, leftX, marker, ripple);
-            drawLabels(g, s, leftX, width, ripple);
-            int y = drawSublabel(g, layout, leftX, width, ripple);
+            RippleStrip strip = RippleStrip.of(leftX, width, size.getColumns());
+            drawTitle(g, strip, ripple);
+            drawFraming(g, strip, ripple);
+            drawTrack(g, s, strip, marker, ripple);
+            drawLabels(g, s, strip, ripple);
+            int y = drawSublabel(g, layout, strip, ripple);
             y = drawNotes(g, s, leftX, y);
 
             g.setForegroundColor(LanternaTheme.welcomeDim());
@@ -310,9 +346,13 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 1 — the "Effort" heading. */
-        private void drawTitle(TextGUIGraphics g, int leftX, int width, Ripple ripple) {
+        private void drawTitle(TextGUIGraphics g, RippleStrip strip, Ripple ripple) {
             if (ripple != null) {
-                putRippled(g, leftX, 1, pad("Effort", width), ripple, false, null);
+                // The heading stays anchored at the pad while the wash runs the full width
+                // behind it — upstream builds `${Z}Effort${pad}`, not a centred label.
+                putRippled(g, strip.leftX(), 1,
+                    strip.fill(" ".repeat(LEFT_PAD) + "Effort"),
+                    ripple, false, null, strip.startCol());
                 return;
             }
             g.setForegroundColor(LanternaTheme.statusCost());
@@ -322,26 +362,38 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Rows 2-3 — a blank row, then the "Faster … Smarter" framing spanning the track. */
-        private void drawFraming(TextGUIGraphics g, int leftX, int width, Ripple ripple) {
+        private void drawFraming(TextGUIGraphics g, RippleStrip strip, Ripple ripple) {
+            int width = strip.sliderWidth();
             String framing = "Faster"
                 + " ".repeat(Math.max(0, width - "Faster".length() - "Smarter".length()))
                 + "Smarter";
             if (ripple != null) {
-                putRippled(g, leftX, 2, " ".repeat(width), ripple, false, null);
-                putRippled(g, leftX, 3, framing, ripple, false, null);
+                putRippled(g, strip.leftX(), 2, strip.fill(""), ripple, false, null,
+                    strip.startCol());
+                putRippled(g, strip.leftX(), 3, strip.lay(framing), ripple, false, null,
+                    strip.startCol());
                 return;
             }
             // Upstream leaves this text uncoloured, so it follows the terminal foreground.
             g.setForegroundColor(TextColor.ANSI.DEFAULT);
             g.disableModifiers(SGR.BOLD);
-            g.putString(leftX, 3, framing);
+            g.putString(strip.leftX(), 3, framing);
         }
 
         /** Row 4 — the dashed track with the selection marker punched into it. */
-        private void drawTrack(TextGUIGraphics g, EffortSliderState s, int leftX, int marker,
-                Ripple ripple) {
+        private void drawTrack(TextGUIGraphics g, EffortSliderState s, RippleStrip strip,
+                int marker, Ripple ripple) {
+            int leftX = strip.leftX();
             String track = s.layout().trackChars();
             int accentStart = s.layout().accentStart();
+            if (ripple != null) {
+                // The track is drawn per-character for the shimmer, so the margins that upstream
+                // folds into `${se}${I}` / `${L}${ue}` are washed separately here.
+                putRippled(g, leftX, 4, " ".repeat(strip.inset()), ripple, true,
+                    EffortSliderEffects.SHIMMER_PEAK, strip.startCol());
+                putRippled(g, leftX, 4, " ".repeat(strip.trailing()), ripple, true,
+                    EffortSliderEffects.SHIMMER_PEAK, strip.sliderWidth());
+            }
             for (int i = 0; i < track.length(); i++) {
                 if (i == marker) continue;
                 if (ripple != null) {
@@ -367,8 +419,10 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 5 — the level labels, left-anchored at their computed starts. */
-        private void drawLabels(TextGUIGraphics g, EffortSliderState s, int leftX, int width,
+        private void drawLabels(TextGUIGraphics g, EffortSliderState s, RippleStrip strip,
                 Ripple ripple) {
+            int leftX = strip.leftX();
+            int width = strip.sliderWidth();
             EffortSliderLayout layout = s.layout();
             List<Slot> slots = layout.slots();
             if (ripple != null) {
@@ -381,7 +435,8 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
                         row.replace(start, start + label.length(), label);
                     }
                 }
-                putRippled(g, leftX, LABEL_ROW, row.toString(), ripple, true, null);
+                putRippled(g, leftX, LABEL_ROW, strip.lay(row.toString()), ripple, true, null,
+                    strip.startCol());
             }
             for (int i = 0; i < slots.size(); i++) {
                 Slot slot = slots.get(i);
@@ -449,18 +504,19 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
         }
 
         /** Row 6 — the ultracode sublabel, when that slot is present. Returns the next free row. */
-        private int drawSublabel(TextGUIGraphics g, EffortSliderLayout layout, int leftX,
-                int width, Ripple ripple) {
+        private int drawSublabel(TextGUIGraphics g, EffortSliderLayout layout, RippleStrip strip,
+                Ripple ripple) {
             if (layout.sublabelText() == null) return LABEL_ROW + 2;
             int y = LABEL_ROW + 1;
             int start = layout.sublabelStart();
             if (ripple != null) {
-                putRippled(g, leftX, y, pad(" ".repeat(start) + layout.sublabelText(), width),
-                    ripple, true, null);
+                putRippled(g, strip.leftX(), y,
+                    strip.lay(" ".repeat(start) + layout.sublabelText()),
+                    ripple, true, null, strip.startCol());
             } else {
                 g.disableModifiers(SGR.BOLD);
                 g.setForegroundColor(LanternaTheme.welcomeDim());
-                g.putString(leftX + start, y, layout.sublabelText());
+                g.putString(strip.leftX() + start, y, layout.sublabelText());
             }
             return y + 2;
         }
@@ -486,15 +542,6 @@ public final class EffortSliderDialog extends Panel implements InlineOverlay {
                 case RIPPLE -> EffortSliderEffects.VIOLET;
                 default -> LanternaTheme.welcomeDim();
             };
-        }
-
-        private String pad(String text, int width) {
-            return text.length() >= width ? text : text + " ".repeat(width - text.length());
-        }
-
-        private void putRippled(TextGUIGraphics g, int leftX, int y, String text,
-                Ripple ripple, boolean dim, TextColor coveredColor) {
-            putRippled(g, leftX, y, text, ripple, dim, coveredColor, 0);
         }
 
         /**
