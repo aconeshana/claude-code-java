@@ -619,7 +619,7 @@ public final class BashPermissions {
                 // --dangerously-skip-permissions (2.1.197 "Dangerous rm operation" prefix match,
                 // 2.1.236 dangerousRemoval circuit breaker).
                 return new PermissionDecision.Ask(
-                    absolute, null, null, null, null, java.util.List.of(),
+                    absolute, null, null, null, null, List.of(),
                     PermissionDecision.Ask.AskBreaker.DANGEROUS_REMOVAL);
             }
         }
