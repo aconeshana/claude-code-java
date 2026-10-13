@@ -9,11 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.model.PermissionModeKind;
 import com.claudecode.permissions.PermissionDecision;
+import com.claudecode.permissions.PermissionDecisionResult;
+import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
+import com.claudecode.permissions.PermissionPaths;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -103,6 +108,70 @@ class BashPermissionsTest {
         // Ordinary asks must NOT claim the exemption, or bypass would stop working.
         assertFalse(ask("cp -r a b").isBypassImmune());
         assertFalse(ask("rm -rf ./build").isBypassImmune());
+    }
+
+    /**
+     * The security-critical end-to-end branch: under a launch-capable session the
+     * dangerous-removal ask must survive bypass instead of being folded into Allow.
+     *
+     * <p>Drives the real production chain end to end — {@link BashTool#checkPermissions} (which is
+     * what the tool registry calls) into a {@link PermissionGate} configured the way
+     * {@code CliToolchainAssembler} configures it for {@code --dangerously-skip-permissions}.
+     * Unit-testing {@code BashPermissions} and {@code PermissionEngine} separately would not catch a
+     * regression in the merge between them, which is exactly where the exemption can be dropped.
+     */
+    @Test
+    void bypassLaunchStillPromptsForDangerousRemovalThroughRealToolChain() {
+        BashTool tool = new BashTool();
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Mirrors CliToolchainAssembler: launch capability granted...
+        PermissionGate bypassGate = launchCapableGate();
+        // ...and mirrors entering plan mode afterwards, where the mode is no longer
+        // BYPASS_PERMISSIONS but auto-allow must persist.
+        PermissionGate planFromBypassGate = launchCapableGate();
+        planFromBypassGate.setMode(PermissionMode.PLAN);
+
+        for (PermissionGate gate : List.of(bypassGate, planFromBypassGate)) {
+            for (var case_ : List.of(
+                    Map.entry("rm -rf /", "/"),
+                    Map.entry("rmdir /usr", "/usr"),
+                    Map.entry("rm -- -rf /", "/"))) {
+                String command = case_.getKey();
+                PermissionDecision toolDecision =
+                    tool.checkPermissions(mapper.createObjectNode().put("command", command),
+                        gate.currentContext());
+                assertTrue(toolDecision instanceof PermissionDecision.Ask ask
+                        && ask.isBypassImmune(),
+                    "dangerous removal must stay bypass-immune: " + command);
+
+                PermissionDecisionResult result = gate.checkDetailed(
+                    "Bash", mapper.createObjectNode().put("command", command), toolDecision);
+
+                assertEquals(PermissionDecision.Ask.class, result.decision().getClass(),
+                    "bypass must not swallow the dangerous-removal ask for: " + command
+                        + " (mode=" + gate.currentMode() + ")");
+                assertEquals(case_.getValue(),
+                    ((PermissionDecision.Ask) result.decision()).blockedPath(),
+                    "the ask must carry the offending path through for the dialog to render");
+            }
+
+            // Control: an ordinary command in the same gate is still auto-allowed, so the
+            // assertion above proves the exemption, not a gate that simply stopped working.
+            assertInstanceOf(PermissionDecision.Allow.class, gate.checkDetailed(
+                "Bash", mapper.createObjectNode().put("command", "npm install"),
+                tool.checkPermissions(mapper.createObjectNode().put("command", "npm install"),
+                    gate.currentContext())).decision());
+        }
+    }
+
+    /** A gate configured exactly as the CLI configures a {@code --dangerously-skip-permissions} run. */
+    private static PermissionGate launchCapableGate() {
+        PermissionGate gate = new PermissionGate(
+            ToolPermissionContext.of(CWD), PermissionPaths.EMPTY);
+        gate.configureBypassPermissionsMode(true, false);
+        gate.setMode(PermissionMode.BYPASS_PERMISSIONS);
+        return gate;
     }
 
     @Test
