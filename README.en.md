@@ -110,6 +110,31 @@ untouched**.
 > the outgoing project's connections, LSP roots are not restarted, and plugin/skill
 > discovery is not rescanned.
 
+### 8. Built-in Web UI and Context Insights
+
+Type `/web` in the TUI and it spins up an **HTTP + SSE third session endpoint inside the
+same process** (over the same registry / hub / ledger semantics — not a separate
+backend), printing an authenticated loopback URL with a per-launch token. The browser
+gives you the full chat surface — a persistent session list with `New session` on the
+left, session and project switching, `Enter` to send, `Shift+Enter` for a newline,
+in-place model and permission-mode switches, and a live footer showing turns / steps /
+throughput / cache hit — so the TUI's capabilities are available on the Web unchanged,
+sharing the same sessions and context as the TUI.
+
+The **Context** tab is the companion **Context Insights** panel, which lays out what is
+actually *inside* the context window instead of showing you a single percentage:
+
+- **Context Stats**: Turns / Steps / Human Inputs / Tool Calls / Cache Hit / Cost
+- **Token Stats**: the System Prompt, Tool Schemas, and Output shares (donut chart)
+- **Timing Stats**: the real time split across TTFT, LLM Gen, and Tool runs — see at a glance whether the clock is going to the model or the tools
+- **Current Context**: current token usage broken down by section (System / Tools / User / Assistant / Tool Results / Injected / Skill)
+- **Context Browser**: expandable per category — `System Prompt` / `Tool Schemas` / `User Messages` / `Injected Context` / `Skill Injections` / `Assistant Messages` / `Tool Results` — with per-item drill-down to the raw content, plus a "Live (Next Request) / vs previous turn" comparison
+- **Context Trend**: context usage plotted as a trend across Turns / Steps, so you can see which section is driving the growth
+
+![Web UI chat and session list](docs/acceptance-assets/webui-chat-and-sessions.png)
+
+![Context Insights panel](docs/acceptance-assets/context-insights-panel.png)
+
 ## Architecture
 
 ```
@@ -277,6 +302,17 @@ copyright notices, and trademark rules, and are not re-licensed by this project.
   [cc-connect fork](https://github.com/aconeshana/cc-connect).
 - [claude-hud](https://github.com/jarrodwatts/claude-hud) (MIT) — reference for the
   built-in HUD's info layout and metric presentation.
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the
+  **visual baseline** for the built-in Web UI: chat bubbles, the `+` command menu,
+  the turn-process fold rules, and the `AskUserQuestion` answer card, along with the
+  `--dsw-*` design tokens, are vendored from upstream source to keep pixel-level
+  parity. The per-file kept/cut ledger is in
+  [`webui/UPSTREAM.md`](webui/UPSTREAM.md).
+- [dsh-context](https://github.com/bowenliang123/dsh-context) (Apache-2.0) — the
+  source of the **Context Insights panel** (the Context tab, the `/context` modal,
+  the Context Dashboard, and the Chat→Context jump). Note this is a **separate
+  upstream project, not deepseek-harness**; its original `LICENSE` and `NOTICE` are
+  preserved in the vendored directory.
 - [ripgrep](https://github.com/BurntSushi/ripgrep) (MIT / Unlicense) — the bundled
   high-speed text search tool.
 - [Picocli](https://picocli.info/) (Apache-2.0) — CLI framework.

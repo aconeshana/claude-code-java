@@ -18,7 +18,7 @@
 
 ## What can go beyond？
 
-> claude-code-java 在下面几点易用性上希望超越官方的地方.
+> Pokémon Code 在下面几点易用性上希望超越官方 claude-code-java 的地方.
 
 ### 1. 自带模型路由
 
@@ -54,9 +54,9 @@ agent sdk、以非交互式方式启动。
 <!-- 媒体位 3：HUD 监控面板截图 -->
 ![Claude HUD 监控](docs/acceptance-assets/hud.png)
 
-### 4. Pokemon 系统
+### 4. Pokémon 系统
 
-升级buddy为pokemon系统，**38 种宝可梦等你来抽**。
+升级buddy为Pokémon系统，**38 种宝可梦等你来抽**。
 
 <!-- 媒体位 4：宝可梦孵化 / 进化演示（GitHub 只渲染附件通道的 video；仓库相对路径的 <video> 会被 sanitizer 剥掉） -->
 <video src="https://github.com/user-attachments/assets/10bcc7b6-8a26-48af-a406-6b5e87df5a12" controls style="max-width: 100%;"></video>
@@ -94,6 +94,29 @@ footer 最左侧按钮、点击或 `/project` 打开，`↑/↓` 走行、`→/�
 
 > 已知边界（有意后置，不做假装）：项目级 MCP 连接仍保持切换前项目的连接、LSP root 不重启、
 > plugin/skill 不重新扫描。
+
+### 8. 内置 Web UI 与 Context Insights
+
+在 TUI 里敲 `/web`，直接在**同一个进程内**拉起一个 **HTTP + SSE 的第三会话端点**
+（复用同一套 registry / hub / ledger 语义，不是另起一个后端），并回显一个带随机
+token 的本地 URL；浏览器里就是完整的 chat 界面——左侧常驻会话列表与
+`New session`、会话/项目切换、`Enter` 发送、`Shift+Enter` 换行、模型与权限模式
+就地切换，底部实时显示 turns / steps / 吞吐 / cache hit——TUI 那套能力在 Web 上
+原样可用，且和 TUI 共享同一份会话与上下文。
+
+右侧 **Context** 标签页是配套的 **Context Insights** 面板，把"context 里到底
+装了什么"摊开给你看，不再只有一个百分比：
+
+- **Context Stats**：Turns / Steps / Human Inputs / Tool Calls / Cache Hit / Cost
+- **Token Stats**：System Prompt、Tool Schemas、Output 三段占比（环形图）
+- **Timing Stats**：TTFT、LLM Gen、Tool runs 的真实耗时占比——一眼看出时间花在模型还是工具上
+- **Current Context**：当前 token 占用与各分区（System / Tools / User / Assistant / Tool Results / Injected / Skill）的拆分
+- **Context Browser**：按 `System Prompt` / `Tool Schemas` / `User Messages` / `Injected Context` / `Skill Injections` / `Assistant Messages` / `Tool Results` 逐项展开、逐个 item 可点开查看原文，并支持 "Live (Next Request) / vs previous turn" 对比
+- **Context Trend**：把 Turns / Steps 的上下文占用画成趋势图，看清增长是哪个分区贡献的
+
+![Web UI chat 与会话列表](docs/acceptance-assets/webui-chat-and-sessions.png)
+
+![Context Insights 面板](docs/acceptance-assets/context-insights-panel.png)
 
 ## Architecture
 
@@ -253,6 +276,15 @@ java -jar claude-code-app.jar
   [cc-connect fork](https://github.com/aconeshana/cc-connect)。
 - [claude-hud](https://github.com/jarrodwatts/claude-hud)（MIT）— 为内置 HUD
   的信息布局与指标呈现提供参考。
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）—
+  内置 Web UI 的**视觉基准**：聊天气泡、`+` 命令菜单、turn-process 折叠规则、
+  `AskUserQuestion` 答题卡，连同 `--dsw-*` 设计 token 均按上游源码 vendor 进来，
+  以保持像素级一致。逐文件的保留/裁剪清单见
+  [`webui/UPSTREAM.md`](webui/UPSTREAM.md)。
+- [dsh-context](https://github.com/bowenliang123/dsh-context)（Apache-2.0）—
+  **Context Insights 面板**的来源（Context 标签页、`/context` 弹窗、
+  Context Dashboard、Chat→Context 跳转）。注意这是**独立于 deepseek-harness 的
+  另一个上游项目**；vendor 目录内保留了其原始 `LICENSE` 与 `NOTICE`。
 - [ripgrep](https://github.com/BurntSushi/ripgrep)（MIT / Unlicense）— 发行包
   内置的高速文本搜索工具。
 - [Picocli](https://picocli.info/)（Apache-2.0）— CLI 框架。
