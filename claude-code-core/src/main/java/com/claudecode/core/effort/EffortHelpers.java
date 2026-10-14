@@ -68,7 +68,34 @@ public final class EffortHelpers {
         "ultracode is not available for this session (dynamic workflows are off, "
         + "or the model / your organization does not allow xhigh effort)";
 
-    /** Shown by the slider when an organization ceiling hides the stronger levels. */
+    /**
+     * Shown by the slider when an organization ceiling hides the stronger levels.
+     *
+     * <p>Authoritative source: the 2.1.197 bundle's {@code PQm}, consumed by its
+     * slider layout function {@code Arc} as {@code capNote} — rendered beneath the
+     * track when {@code o2i(model)} reports an organization ceiling. The string is
+     * reproduced verbatim.
+     *
+     * <p><b>Currently unreferenced, deliberately.</b> This is a half-ported
+     * capability rather than dead code: the constant was translated, but the two
+     * things that consume it were not wired.
+     * <ul>
+     *   <li>{@code capNote} has no counterpart — {@code EffortSliderLayout} does not
+     *       carry the field, so nothing renders this notice.</li>
+     *   <li>The ceiling itself has no data source — the {@code orgMaxLevel}
+     *       parameters on {@link #projectEffort} and {@link #isUltracodeAvailable}
+     *       mirror the bundle's signature and are exercised by tests, but all five
+     *       production call sites ({@code EffortCommand}, {@code PreferencesFeature},
+     *       {@code ModelPickerDialog}, {@code CliHeadlessSessionFactory},
+     *       {@code SessionHostPublisher}) pass a literal {@code null}.
+     *       {@link #allowsLevel} is reached only through those paths.</li>
+     * </ul>
+     * The 197 build reads the ceiling from a server-side entitlement; this port has
+     * no channel for it. Restoring the feature means adding that channel and a
+     * {@code capNote} slot on {@code EffortSliderLayout} — at which point this
+     * constant becomes live. Kept rather than deleted so the ported string and its
+     * provenance are not lost in the meantime.
+     */
     public static final String ORG_RESTRICTED_NOTICE =
         "Higher effort levels are restricted by your organization.";
 
@@ -470,11 +497,14 @@ public final class EffortHelpers {
     public static String cycleEffortLevel(String current, int direction, String model) {
         List<String> levels = supportedEffortLevels(model);
         if (levels.isEmpty()) return current;
-        int idx = levels.indexOf(current);
-        String defaultLevel = capabilitiesForModel(model).defaultLevel();
-        int defaultIndex = defaultLevel == null ? -1 : levels.indexOf(defaultLevel);
-        int cur = idx >= 0 ? idx : (defaultIndex >= 0 ? defaultIndex : 0);
-        int next = Math.floorMod(cur + Integer.signum(direction), levels.size());
+        // Start from the current level; a level this model no longer offers (or a
+        // blank first entry) falls back to the family default, then to the first slot.
+        int cur = levels.indexOf(current);
+        if (cur < 0) {
+            String defaultLevel = capabilitiesForModel(model).defaultLevel();
+            cur = defaultLevel == null ? -1 : levels.indexOf(defaultLevel);
+        }
+        int next = Math.floorMod(Math.max(cur, 0) + Integer.signum(direction), levels.size());
         return levels.get(next);
     }
 

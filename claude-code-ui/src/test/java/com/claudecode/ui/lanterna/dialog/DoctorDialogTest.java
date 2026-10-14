@@ -93,14 +93,29 @@ class DoctorDialogTest {
 
     @Test
     void dismissDuringScan_isNotUndoneWhenTheScanFinishes() throws InterruptedException {
+        // `collected` fires as the abandoned collector returns — the last moment
+        // before its publish decision. Awaiting it makes "did the stale scan
+        // publish?" a deterministic question instead of a race against a timer.
         CountDownLatch release = new CountDownLatch(1);
-        DoctorDialog d = gatedDialog(release);
+        CountDownLatch collected = new CountDownLatch(1);
+        DoctorDialog d = new DoctorDialog(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            } finally {
+                collected.countDown();
+            }
+            return emptyReport();
+        });
         d.show(() -> {});
 
         d.handleKey(new KeyStroke(KeyType.ESCAPE), new AtomicBoolean(true));
         assertEquals(DoctorDialog.PublicState.HIDDEN_S, d.visibleState());
 
         release.countDown();
+        // The scan finished; give its publish a chance to land before asserting.
+        assertTrue(collected.await(5, TimeUnit.SECONDS), "the scan should finish");
         assertFalse(becomesReport(d), "a scan that finishes after Esc must not reopen the dialog");
     }
 
@@ -108,13 +123,16 @@ class DoctorDialogTest {
     void reopeningDuringScan_ignoresTheAbandonedScan() throws InterruptedException {
         CountDownLatch firstScan = new CountDownLatch(1);
         CountDownLatch secondScan = new CountDownLatch(1);
+        CountDownLatch firstCollected = new CountDownLatch(1);
         AtomicInteger scans = new AtomicInteger();
         DoctorDialog d = new DoctorDialog(() -> {
-            CountDownLatch gate = scans.incrementAndGet() == 1 ? firstScan : secondScan;
+            int scan = scans.incrementAndGet();
             try {
-                gate.await(5, TimeUnit.SECONDS);
+                (scan == 1 ? firstScan : secondScan).await(5, TimeUnit.SECONDS);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
+            } finally {
+                if (scan == 1) firstCollected.countDown();
             }
             return emptyReport();
         });
@@ -124,8 +142,10 @@ class DoctorDialogTest {
         d.show(() -> {});
 
         // The abandoned first scan completes last; the dialog must still be waiting on
-        // the second one rather than showing a report nobody asked for.
+        // the second one rather than showing a report nobody asked for. Await its
+        // actual completion so the assertion cannot race the publish decision.
         firstScan.countDown();
+        assertTrue(firstCollected.await(5, TimeUnit.SECONDS), "the superseded scan should finish");
         assertFalse(becomesReport(d), "the superseded scan must not publish");
 
         secondScan.countDown();
