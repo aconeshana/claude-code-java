@@ -863,7 +863,15 @@ pick up a utility class.
   (`ContextSettingsSection`, "上下文" nav section); `defaultPlacement` is
   kept in storage but not offered.
 - **No models.dev pricing, no DeepSeek peak/off-peak, no PTC `run_code`
-  nested fileOps, no plugin-info / upgrade-gate cards.**
+  nested fileOps, no plugin-info / upgrade-gate cards.** The static
+  `client/modelPrices.ts` book stands in for models.dev; it carries the
+  Claude 3/4/5/5.5 list prices. **Deviation:** Anthropic prices Claude
+  Haiku 5.5 by prompt length ($0.10/$0.50 up to 100k tokens, $0.50/$2.50
+  above), and a `PriceTriple` is a single static rate, so the book can only
+  hold the short-prompt tier. A Haiku 5.5 request over 100k therefore prices
+  low in this panel; the TUI's `CostCalculator` applies the real tiering
+  (see `LengthTieredCostCalculator`). No Haiku 5.5 tiering is reproduced in
+  the web layer.
 - **Dashboard has no workspace group chips** (no `useWorkspaces` seat); a card
   click selects the session through `useSessions.select`.
 

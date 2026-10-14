@@ -31,6 +31,7 @@ import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.SkillListingEntry;
 import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.agent.BuiltInAgentDefinitions;
 import com.claudecode.core.serialization.JsonUtils;
@@ -849,7 +850,7 @@ class DefaultSubAgentFactoryTest {
             .prompt("fast probe")
             .model("haiku")
             .build());
-        assertEquals("claude-haiku-4-5-20251001", config.model());
+        assertEquals(ModelCatalog.LATEST_HAIKU, config.model());
     }
 
     @Test
@@ -1384,7 +1385,7 @@ class DefaultSubAgentFactoryTest {
         assertNotNull(captured.get());
         assertTrue(Strings.CS.contains(captured.get().systemPrompt(),
             BuiltInAgentDefinitions.EXPLORE_SYSTEM_PROMPT));
-        assertEquals("claude-haiku-4-5-20251001", captured.get().model(),
+        assertEquals(ModelCatalog.LATEST_HAIKU, captured.get().model(),
             "the sidecar agent type must select Explore's model on the actual API wire");
         assertEquals(agentId, captured.get().agentId());
         assertTrue(captured.get().tools().stream().noneMatch(tool ->

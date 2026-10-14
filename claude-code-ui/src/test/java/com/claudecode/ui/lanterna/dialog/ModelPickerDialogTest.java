@@ -44,8 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code ANTHROPIC_DEFAULT_*_MODEL} actually being set on the machine running
  * the suite — with the empty lookup, options come from the bundled catalogue:
  * {@code [0]=Default, [1]=fable, [2]=opus, [3]=sonnet, [4]=haiku}; their concrete IDs
- * are resolved by the centralized model catalogue. Sonnet 5 supports effort,
- * while Haiku does not, so effort-toggle tests use Sonnet.
+ * are resolved by the centralized model catalogue. Every bundled family supports
+ * effort as of the 5.5 catalogue, so effort-toggle tests use Sonnet and the
+ * non-effort case pins a family to a pre-effort generation through the env seam.
  */
 class ModelPickerDialogTest {
 
@@ -68,7 +69,7 @@ class ModelPickerDialogTest {
     void show_activatesAndPreselectsCurrentModel() {
         AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
         ModelPickerDialog d = new ModelPickerDialog();
-        show(d, "claude-sonnet-5", null, result::set);
+        show(d, ModelCatalog.LATEST_SONNET, null, result::set);
         assertTrue(d.isActive());
         // Focus is on Sonnet (index 3); Enter without touching effort returns it.
         d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
@@ -92,7 +93,7 @@ class ModelPickerDialogTest {
     void resolvedCurrentModelSelectsItsAliasRowWithoutDuplication() {
         AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
         ModelPickerDialog d = new ModelPickerDialog();
-        show(d, "claude-sonnet-5", null, result::set);
+        show(d, ModelCatalog.LATEST_SONNET, null, result::set);
 
         assertEquals(12, d.calculatePreferredSize().getRows());
         d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
@@ -120,7 +121,7 @@ class ModelPickerDialogTest {
             return true;
         });
         ModelPickerDialog.PreparedModelPicker prepared = d.prepare(
-            "claude-sonnet-5", null, null, List.of());
+            ModelCatalog.LATEST_SONNET, null, null, List.of());
         int readsAfterPrepare = allowlistReads.get();
 
         d.setModelAllowed(_ -> {
@@ -243,14 +244,20 @@ class ModelPickerDialogTest {
 
     @Test
     void effortToggle_onNonEffortModel_isNoOp() {
+        // Every bundled family now supports effort (Haiku 5.5 gained it with the
+        // 5.5 catalogue bump), so the non-effort case is reached by pinning a
+        // family to a pre-effort generation through the same env seam the family
+        // table itself uses.
         AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
         ModelPickerDialog d = new ModelPickerDialog();
-        show(d, "sonnet", null, result::set);
-        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // idx 4 = Haiku (no effort)
+        d.show("sonnet", null, result::set,
+            env -> Strings.CS.equals("ANTHROPIC_DEFAULT_HAIKU_MODEL", env)
+                ? "claude-3-5-haiku" : null);
+        d.handleKey(k(KeyType.ARROW_DOWN), new AtomicBoolean(true)); // idx 4 = Haiku row
         d.handleKey(k(KeyType.ARROW_RIGHT), new AtomicBoolean(true)); // no-op
         d.handleKey(k(KeyType.ENTER), new AtomicBoolean(true));
         assertEquals("haiku", result.get().model());
-        assertNull(result.get().effort(), "Haiku has no effort → set model alone");
+        assertNull(result.get().effort(), "a model without effort → set model alone");
     }
 
     @Test
@@ -873,7 +880,7 @@ class ModelPickerDialogTest {
     void settingsOverrideProviderIdSelectsAliasWithoutDuplicateCurrentRow() {
         AtomicReference<ModelPickResult> result = new AtomicReference<>();
         ModelCatalog.installModelOverrideLookup(modelId ->
-            Strings.CS.equals("claude-sonnet-5", modelId) ? "provider-sonnet" : null);
+            Strings.CS.equals(ModelCatalog.LATEST_SONNET, modelId) ? "provider-sonnet" : null);
         try {
             ModelPickerDialog d = new ModelPickerDialog();
             d.setBuiltInFamiliesVisible(false);

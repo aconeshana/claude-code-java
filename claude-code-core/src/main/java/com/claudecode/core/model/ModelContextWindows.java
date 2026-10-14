@@ -22,11 +22,25 @@ public final class ModelContextWindows {
         if (model != null && Strings.CI.contains(model, "[1m]")) {
             return ONE_MILLION_CONTEXT_WINDOW;
         }
+        // Generation 5.5 ships the full 1M window across all three families;
+        // generation 5 only did so on Opus.
+        if (model != null && isGenerationFiveFive(model)) {
+            return ONE_MILLION_CONTEXT_WINDOW;
+        }
         if (model != null && Strings.CI.contains(model, "claude-opus-5")) {
             return ONE_MILLION_CONTEXT_WINDOW;
         }
         if (isGpt56(model)) return GPT_5_6_CONTEXT_WINDOW;
         return DEFAULT_CONTEXT_WINDOW;
+    }
+
+    /** Matches any generation-5.5 family id, with or without a provider prefix. */
+    public static boolean isGenerationFiveFive(String model) {
+        if (StringUtils.isBlank(model)) return false;
+        String normalized = model.toLowerCase(Locale.ROOT);
+        return Strings.CS.contains(normalized, "claude-opus-5-5")
+            || Strings.CS.contains(normalized, "claude-sonnet-5-5")
+            || Strings.CS.contains(normalized, "claude-haiku-5-5");
     }
 
     /** Matches built-in and gateway-prefixed GPT 5.6 ids, including suffixes. */

@@ -1,25 +1,25 @@
 {
-  "catalogVersion": 2,
+  "catalogVersion": 3,
   "pickerOrder": ["fable", "opus", "sonnet", "haiku"],
   "families": [
     {
       "alias": "opus",
-      "modelId": "claude-opus-5",
-      "displayName": "Opus 5",
+      "modelId": "claude-opus-5-5",
+      "displayName": "Opus 5.5",
       "description": "Deepest reasoning",
       "environmentVariable": "ANTHROPIC_DEFAULT_OPUS_MODEL"
     },
     {
       "alias": "sonnet",
-      "modelId": "claude-sonnet-5",
-      "displayName": "Sonnet 5",
+      "modelId": "claude-sonnet-5-5",
+      "displayName": "Sonnet 5.5",
       "description": "Best for everyday tasks",
       "environmentVariable": "ANTHROPIC_DEFAULT_SONNET_MODEL"
     },
     {
       "alias": "haiku",
-      "modelId": "claude-haiku-4-5-20251001",
-      "displayName": "Haiku 4.5",
+      "modelId": "claude-haiku-5-5",
+      "displayName": "Haiku 5.5",
       "description": "Fastest",
       "environmentVariable": "ANTHROPIC_DEFAULT_HAIKU_MODEL"
     },

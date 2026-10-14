@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -54,6 +55,27 @@ class SystemPromptSnapshotTest {
     }
 
     /**
+     * A known, deliberate deviation from the frozen 197 snapshot: the sentence
+     * advertising the newest Claude models. The fixtures were captured from the
+     * 197 TypeScript build, which named the generation-5 family; this product
+     * ships the 5.5 catalogue, so the sentence legitimately names 5.5 instead.
+     * Rewriting the fixtures would destroy their value as a TS reference, so the
+     * one sentence is normalized on both sides before comparison and everything
+     * else must still match byte-for-byte.
+     */
+    private static final Pattern NEWEST_MODELS_SENTENCE = Pattern.compile(
+        "The most recent Claude models are.*?When building AI applications,"
+            + " default to the latest and most capable Claude models\\.",
+        Pattern.DOTALL);
+
+    private static String normalizeKnownDeviations(String text) {
+        return NEWEST_MODELS_SENTENCE.matcher(text)
+            .replaceAll("The most recent Claude models are <ADVERTISED-SET>."
+                + " When building AI applications, default to the latest and most"
+                + " capable Claude models.");
+    }
+
+    /**
      * Report the first divergence in a way that's actually readable when a
      * ~25 KB snapshot mismatches. Standard {@code assertEquals} on huge
      * strings prints the whole diff which drowns the actual delta.
@@ -76,6 +98,8 @@ class SystemPromptSnapshotTest {
             }
             return;
         }
+        expected = normalizeKnownDeviations(expected);
+        actual = normalizeKnownDeviations(actual);
         if (expected.equals(actual)) return;
         int minLen = Math.min(expected.length(), actual.length());
         int diffAt = 0;

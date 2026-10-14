@@ -11,9 +11,6 @@ import com.claudecode.core.process.SubprocessEnvironment;
 
 import java.util.Locale;
 
-
-
-
 public final class GoalContextWindowPolicy {
 
     public static final long DEFAULT_CONTEXT_WINDOW = ModelContextWindows.DEFAULT_CONTEXT_WINDOW;
@@ -70,7 +67,11 @@ public final class GoalContextWindowPolicy {
     }
 
     private static boolean isGenerationFiveNativeOneMillionModel(String model) {
-        return isSonnetFive(model) || Strings.CS.contains(model, "claude-opus-5");
+        // Generation 5.5 ships 1M on every family; generation 5 only on
+        // Sonnet and Opus.
+        return Strings.CS.contains(model, "claude-haiku-5-5")
+            || isSonnetFive(model)
+            || Strings.CS.contains(model, "claude-opus-5");
     }
 
 }

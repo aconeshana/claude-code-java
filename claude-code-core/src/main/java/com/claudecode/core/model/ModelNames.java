@@ -131,7 +131,9 @@ public final class ModelNames {
 
         if (Strings.CS.contains(m, "fable-5")) return "Fable 5";
 
-        // Opus models
+        // Opus models. Generation 5.5 must precede generation 5 — "opus-5" is
+        // a substring of "opus-5-5", so the narrower match has to win.
+        if (Strings.CS.contains(m, "opus-5-5") || Strings.CS.contains(m, "opus-5.5")) return "Opus 5.5";
         if (Strings.CS.contains(m, "opus-5")) return "Opus 5";
         if (Strings.CS.contains(m, "opus-4-8") || Strings.CS.contains(m, "opus-4.8")) return "Opus 4.8";
         if (Strings.CS.contains(m, "opus-4-7") || Strings.CS.contains(m, "opus-4.7")) return "Opus 4.7";
@@ -143,6 +145,9 @@ public final class ModelNames {
         if (Strings.CS.contains(m, "opus-4-0") || Strings.CS.contains(m, "opus-4.0")) return "Opus 4";
 
         // Sonnet models
+        if (Strings.CS.contains(m, "sonnet-5-5") || Strings.CS.contains(m, "sonnet-5.5")) {
+            return Strings.CS.contains(m, "1m") ? "Sonnet 5.5 (1M context)" : "Sonnet 5.5";
+        }
         if (Strings.CS.contains(m, "sonnet-5")) {
             return Strings.CS.contains(m, "1m") ? "Sonnet 5 (1M context)" : "Sonnet 5";
         }
@@ -157,6 +162,7 @@ public final class ModelNames {
         if (Strings.CS.contains(m, "sonnet-3-5") || Strings.CS.contains(m, "sonnet-3.5")) return "Sonnet 3.5";
 
         // Haiku models
+        if (Strings.CS.contains(m, "haiku-5-5") || Strings.CS.contains(m, "haiku-5.5")) return "Haiku 5.5";
         if (Strings.CS.contains(m, "haiku-4-5") || Strings.CS.contains(m, "haiku-4.5")) return "Haiku 4.5";
         if (Strings.CS.contains(m, "haiku-3-5") || Strings.CS.contains(m, "haiku-3.5")) return "Haiku 3.5";
         if (Strings.CS.contains(m, "haiku-3")) return "Haiku 3";

@@ -10,6 +10,8 @@ import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.engine.WorkingDirectoryController;
 import com.claudecode.core.message.ImageBlock;
+import com.claudecode.core.model.ModelCatalog;
+import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
@@ -49,12 +51,18 @@ class BashToolTest {
         assertEquals("Bash", tool.name());
     }
 
+    /**
+     * The attribution line names the current Sonnet by its display name, so it
+     * tracks the catalogue rather than a pinned generation.
+     */
     @Test
     void defaultAttributionTracksCurrentSonnetModel() {
         String description = tool.description();
 
         assertTrue(Strings.CS.contains(description,
-            "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"));
+            "Co-Authored-By: Claude "
+                + ModelNames.displayName(ModelCatalog.LATEST_SONNET)
+                + " <noreply@anthropic.com>"));
         assertFalse(Strings.CS.contains(description,
             "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"));
     }

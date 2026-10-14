@@ -938,6 +938,9 @@ final class StdoutMessageWriter {
             return metadata.model();
         }
         return switch (display) {
+            case "Opus 5.5" -> "claude-opus-5-5";
+            case "Sonnet 5.5" -> "claude-sonnet-5-5";
+            case "Haiku 5.5" -> "claude-haiku-5-5";
             case "Opus 5" -> "claude-opus-5";
             case "Sonnet 4.5" -> "claude-sonnet-4-5";
             case "Sonnet 4.6" -> "claude-sonnet-4-6";

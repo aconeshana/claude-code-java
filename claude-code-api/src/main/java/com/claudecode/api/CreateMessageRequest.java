@@ -55,7 +55,7 @@ public record CreateMessageRequest(
          * Nested effort config required by newer models (adaptive-thinking generation, e.g.
          */
         @JsonProperty("output_config") OutputConfig outputConfig,
-/** Fast Mode request tier; the established wire sends the literal {@code "fast"}. */
+        /** Fast Mode request tier; the established wire sends the literal {@code "fast"}. */
         @JsonProperty("speed") String speed,
         /**
          * Native context-management edits (currently just thinking-block pruning).
@@ -363,11 +363,13 @@ public record CreateMessageRequest(
         if (StringUtils.isBlank(model)) return false;
         String canonical = model.toLowerCase(Locale.ROOT);
         return Strings.CS.contains(canonical, "claude-opus-5")
-            || Strings.CS.contains(canonical, "claude-sonnet-4-6")
+            || Strings.CS.contains(canonical, "claude-sonnet-5")
+            ||Strings.CS.contains( canonical, "claude-sonnet-4-6")
             ||Strings.CS.contains( canonical, "claude-sonnet-4-5")
             ||Strings.CS.contains( canonical, "claude-opus-4-1")
             ||Strings.CS.contains( canonical, "claude-opus-4-5")
             ||Strings.CS.contains( canonical, "claude-opus-4-6")
+            ||Strings.CS.contains( canonical, "claude-haiku-5-5")
             ||Strings.CS.contains( canonical, "claude-haiku-4-5");
     }
 

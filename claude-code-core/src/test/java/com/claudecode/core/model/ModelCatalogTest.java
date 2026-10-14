@@ -14,13 +14,19 @@ class ModelCatalogTest {
 
     private static final Function<String, String> NO_ENV = _ -> null;
 
+    /**
+     * The catalogue is the single source of truth for the shipped defaults, so
+     * these assertions read the constants rather than pinning a generation:
+     * bumping the catalogue must not require editing this test, and an alias
+     * that stopped resolving to its own family is what this actually guards.
+     */
     @Test
     void latestFamilyModelsComeFromOneCatalogue() {
-        assertEquals(2, ModelCatalog.catalogVersion());
-        assertEquals("claude-sonnet-5", ModelCatalog.resolve("sonnet", NO_ENV));
-        assertEquals("claude-opus-5", ModelCatalog.resolve("opus", NO_ENV));
-        assertEquals("claude-haiku-4-5-20251001", ModelCatalog.resolve("haiku", NO_ENV));
-        assertEquals("claude-fable-5", ModelCatalog.resolve("fable", NO_ENV));
+        assertEquals(3, ModelCatalog.catalogVersion());
+        assertEquals(ModelCatalog.LATEST_SONNET, ModelCatalog.resolve("sonnet", NO_ENV));
+        assertEquals(ModelCatalog.LATEST_OPUS, ModelCatalog.resolve("opus", NO_ENV));
+        assertEquals(ModelCatalog.LATEST_HAIKU, ModelCatalog.resolve("haiku", NO_ENV));
+        assertEquals(ModelCatalog.LATEST_FABLE, ModelCatalog.resolve("fable", NO_ENV));
         assertEquals(List.of(
             ModelCatalog.FABLE, ModelCatalog.OPUS, ModelCatalog.SONNET, ModelCatalog.HAIKU),
             ModelCatalog.pickerFamilies());
@@ -36,7 +42,7 @@ class ModelCatalogTest {
         Function<String, String> env = key ->
             Strings.CS.equals("ANTHROPIC_DEFAULT_SONNET_MODEL", key) ? "gateway-sonnet" : null;
         Function<String, String> overrides = modelId ->
-            Strings.CS.equals("claude-opus-5", modelId) ? "gateway-opus" : null;
+            Strings.CS.equals(ModelCatalog.LATEST_OPUS, modelId) ? "gateway-opus" : null;
 
         assertEquals(List.of(ModelCatalog.OPUS, ModelCatalog.SONNET),
             ModelCatalog.pickerFamilies(false, env, overrides));
@@ -61,7 +67,7 @@ class ModelCatalogTest {
     @Test
     void settingsModelOverridePrecedesCatalogueFallbackButNotEnvironmentPin() {
         Function<String, String> override = modelId ->
-            Strings.CS.equals("claude-sonnet-5", modelId) ? "provider-sonnet" : null;
+            Strings.CS.equals(ModelCatalog.LATEST_SONNET, modelId) ? "provider-sonnet" : null;
         assertEquals("provider-sonnet",
             ModelCatalog.resolve("sonnet", NO_ENV, override));
         assertEquals("env-sonnet", ModelCatalog.resolve("sonnet",
@@ -71,7 +77,7 @@ class ModelCatalogTest {
 
     @Test
     void pickerMetadataComesFromTheSameFamilyEntry() {
-        assertEquals("Sonnet 5", ModelCatalog.label(ModelCatalog.SONNET, NO_ENV));
+        assertEquals("Sonnet 5.5", ModelCatalog.label(ModelCatalog.SONNET, NO_ENV));
         assertEquals("Best for everyday tasks",
             ModelCatalog.description(ModelCatalog.SONNET, NO_ENV));
         Function<String, String> env = key -> switch (key) {
@@ -86,14 +92,14 @@ class ModelCatalogTest {
 
     @Test
     void aliasAndResolvedIdHaveTheSameSemanticIdentity() {
-        assertTrue(ModelCatalog.sameModel("sonnet", "claude-sonnet-5", NO_ENV));
-        assertTrue(ModelCatalog.sameModel("opus", "claude-opus-5", NO_ENV));
+        assertTrue(ModelCatalog.sameModel("sonnet", ModelCatalog.LATEST_SONNET, NO_ENV));
+        assertTrue(ModelCatalog.sameModel("opus", ModelCatalog.LATEST_OPUS, NO_ENV));
         assertTrue(ModelCatalog.sameModel("best", "opus", NO_ENV));
         assertTrue(ModelCatalog.sameModel(null, null, NO_ENV));
         assertFalse(ModelCatalog.sameModel(null, "sonnet", NO_ENV));
         assertFalse(ModelCatalog.sameModel("sonnet", null, NO_ENV));
         Function<String, String> overrides = modelId ->
-            Strings.CS.equals("claude-sonnet-5", modelId) ? "provider-sonnet" : null;
+            Strings.CS.equals(ModelCatalog.LATEST_SONNET, modelId) ? "provider-sonnet" : null;
         assertTrue(ModelCatalog.sameModel(
             "sonnet", "provider-sonnet", NO_ENV, overrides));
     }

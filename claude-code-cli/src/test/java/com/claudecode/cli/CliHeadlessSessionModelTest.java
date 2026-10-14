@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.model.CustomModelCatalog;
+import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.gateway.GatewayHeadlessSessions;
@@ -169,7 +170,9 @@ class CliHeadlessSessionModelTest {
 
         SessionHostModelState cleared = opened.session().models().set("default");
 
-        assertThat(cleared.current()).isEqualTo(MODEL);
+        // "default" falls back to the catalogue's current Sonnet rather than a
+        // pinned id, so this tracks the catalogue.
+        assertThat(cleared.current()).isEqualTo(ModelCatalog.LATEST_SONNET);
     }
 
     @Test

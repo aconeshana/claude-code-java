@@ -91,6 +91,9 @@ public final class EnvInfoSection {
         String canonical = modelId.toLowerCase(Locale.ROOT);
         if (Strings.CS.contains(canonical, "claude-fable-5")) return "Fable 5";
         if (Strings.CS.contains(canonical, "claude-mythos-5")) return "Mythos 5";
+        // Generation 5.5 before generation 5: "claude-opus-5" is a prefix of
+        // "claude-opus-5-5", so the narrower match has to come first.
+        if (Strings.CS.contains(canonical, "claude-opus-5-5")) return "Opus 5.5";
         if (Strings.CS.contains(canonical, "claude-opus-5")) return "Opus 5";
         if (Strings.CS.contains(canonical, "claude-opus-4-8")) return "Opus 4.8";
         if (Strings.CS.contains(canonical, "claude-opus-4-6"))
@@ -98,6 +101,8 @@ public final class EnvInfoSection {
         if (Strings.CS.contains(canonical, "claude-opus-4-5")) return "Opus 4.5";
         if (Strings.CS.contains(canonical, "claude-opus-4-1")) return "Opus 4.1";
         if (Strings.CS.contains(canonical, "claude-opus-4")) return "Opus 4";
+        if (Strings.CS.contains(canonical, "claude-sonnet-5-5")) return "Sonnet 5.5";
+        if (Strings.CS.contains(canonical, "claude-sonnet-5")) return "Sonnet 5";
         if (Strings.CS.contains(canonical, "claude-sonnet-4-6"))
             return has1m ? "Sonnet 4.6 (with 1M context)" : "Sonnet 4.6";
         if (Strings.CS.contains(canonical, "claude-sonnet-4-5"))
@@ -106,6 +111,7 @@ public final class EnvInfoSection {
             return has1m ? "Sonnet 4 (with 1M context)" : "Sonnet 4";
         if (Strings.CS.contains(canonical, "claude-3-7-sonnet")) return "Claude 3.7 Sonnet";
         if (Strings.CS.contains(canonical, "claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
+        if (Strings.CS.contains(canonical, "claude-haiku-5-5")) return "Haiku 5.5";
         if (Strings.CS.contains(canonical, "claude-haiku-4-5")) return "Haiku 4.5";
         if (Strings.CS.contains(canonical, "claude-3-5-haiku")) return "Claude 3.5 Haiku";
         return null;
@@ -115,7 +121,15 @@ public final class EnvInfoSection {
     public static String getKnowledgeCutoff(String modelId) {
         if (modelId == null) return null;
         String canonical = modelId.toLowerCase(Locale.ROOT);
+        // The whole generation-5.5 lineup shares a June 2026 cutoff, which is
+        // later than generation 5's May 2026, so 5.5 is matched first.
+        if (Strings.CS.contains(canonical, "claude-opus-5-5")
+                || Strings.CS.contains(canonical, "claude-sonnet-5-5")
+                || Strings.CS.contains(canonical, "claude-haiku-5-5")) {
+            return "June 2026";
+        }
         if (Strings.CS.contains(canonical, "claude-opus-5")) return "May 2026";
+        if (Strings.CS.contains(canonical, "claude-sonnet-5")) return "May 2026";
         if (Strings.CS.contains(canonical, "claude-fable-5")
                 || Strings.CS.contains(canonical, "claude-mythos-5")
                 || Strings.CS.contains(canonical, "claude-opus-4-8")) {
@@ -209,9 +223,9 @@ public final class EnvInfoSection {
         if (knowledgeCutoffMessage != null) items.add(knowledgeCutoffMessage);
         if (modelId != null) {
             items.add("The most recent Claude models are the Claude 5 family and Haiku 4.5. "
-                + "Model IDs — Fable 5: 'claude-fable-5', Opus 5: 'claude-opus-5', "
-                + "Sonnet 5: 'claude-sonnet-5', Haiku 4.5: "
-                + "'claude-haiku-4-5-20251001'. When building AI applications, default "
+                + "Model IDs — Fable 5: 'claude-fable-5', Opus 5.5: 'claude-opus-5-5', "
+                + "Sonnet 5.5: 'claude-sonnet-5-5', Haiku 5.5: "
+                + "'claude-haiku-5-5'. When building AI applications, default "
                 + "to the latest and most capable Claude models.");
             items.add("Claude Code is available as a CLI in the terminal, desktop app "
                 + "(Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, "

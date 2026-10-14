@@ -18,6 +18,14 @@ class ModelNamesTest {
         assertEquals("Sonnet 4.6", ModelNames.displayName("claude-sonnet-4-6"));
         assertEquals("Haiku 4.5", ModelNames.displayName("claude-haiku-4-5-20251001"));
         assertEquals("Opus 4.6 (1M context)", ModelNames.displayName("claude-opus-4-6[1m]"));
+        // Generation 5.5 must win over its generation-5 prefix.
+        assertEquals("Opus 5.5", ModelNames.displayName("claude-opus-5-5"));
+        assertEquals("Sonnet 5.5", ModelNames.displayName("claude-sonnet-5-5"));
+        assertEquals("Sonnet 5.5 (1M context)",
+            ModelNames.displayName("claude-sonnet-5-5[1m]"));
+        assertEquals("Haiku 5.5", ModelNames.displayName("claude-haiku-5-5"));
+        assertEquals("Opus 5.5",
+            ModelNames.displayName("anthropic.claude-opus-5-5"));
         assertEquals("GPT-5.6 Sol", ModelNames.displayName("sol"));
         assertEquals("GPT-5.6 Luna", ModelNames.displayName("luna"));
         assertEquals("gpt-5.6-sol", ModelNames.displayName("gpt-5.6-sol"));
@@ -64,26 +72,31 @@ class ModelNamesTest {
     }
 
 
+    /**
+     * Aliases resolve through the catalogue, so these assert against its
+     * constants rather than a pinned generation — a model bump must not
+     * require editing this test.
+     */
     @Test
     void parseUserSpecifiedModel_aliases() {
         Function<String, String> noEnv = _ -> null;
-        assertEquals("claude-sonnet-5",
+        assertEquals(ModelCatalog.LATEST_SONNET,
             ModelNames.parseUserSpecifiedModel("sonnet", noEnv));
-        assertEquals("claude-sonnet-5",
+        assertEquals(ModelCatalog.LATEST_SONNET,
             ModelNames.parseUserSpecifiedModel("opusplan", noEnv),
             "opusplan base model is Sonnet — Opus only via plan-mode runtime swap");
-        assertEquals("claude-opus-5",
+        assertEquals(ModelCatalog.LATEST_OPUS,
             ModelNames.parseUserSpecifiedModel("opus", noEnv));
-        assertEquals("claude-opus-5",
+        assertEquals(ModelCatalog.LATEST_OPUS,
             ModelNames.parseUserSpecifiedModel("best", noEnv));
-        assertEquals("claude-haiku-4-5-20251001",
+        assertEquals(ModelCatalog.LATEST_HAIKU,
             ModelNames.parseUserSpecifiedModel("haiku", noEnv));
         assertEquals("gpt-5.6-sol",
             ModelNames.parseUserSpecifiedModel(" SOL ", noEnv));
         assertEquals("gpt-5.6-luna",
             ModelNames.parseUserSpecifiedModel("Luna", noEnv));
 
-        assertEquals("claude-sonnet-5[1m]",
+        assertEquals(ModelCatalog.LATEST_SONNET + "[1m]",
             ModelNames.parseUserSpecifiedModel("sonnet[1m]", noEnv));
         // concrete id passes through untouched
         assertEquals("claude-opus-4-8",

@@ -6,6 +6,7 @@ import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.model.ModelCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -126,7 +127,13 @@ class SideQueryTest {
         assertNotNull(message);
         assertEquals("ok", ((TextBlock) message.content().getFirst()).text());
         assertTrue(client.request.stream());
-        assertEquals(32_000, client.request.maxTokens());
+        // The preset's budget is the current small-fast model's default, so it
+        // is read from the model table rather than pinned: Haiku moved from
+        // 32k to 64k when the catalogue was bumped to the 5.5 family.
+        assertEquals(
+            ModelOutputTokens.getModelMaxOutputTokens(ModelCatalog.LATEST_HAIKU)
+                .defaultTokens(),
+            client.request.maxTokens());
         assertEquals(List.of(), client.request.tools());
         assertEquals(CreateMessageRequest.ThinkingConfig.disabled(), client.request.thinking());
         assertFalse(client.request.promptCachingEnabled());

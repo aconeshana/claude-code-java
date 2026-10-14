@@ -23,10 +23,8 @@ public final class SystemPromptProfileResolver {
     private static final String LEAN_PROMPT = "lean_prompt";
     private static final String FABLE_5_MITIGATIONS = "fable_5_mitigations";
 
-
-
-
     private static final Map<String, Set<String>> MODEL_CAPABILITIES = Map.of(
+        "claude-opus-5-5", Set.of(LEAN_PROMPT),
         "claude-opus-5", Set.of(LEAN_PROMPT),
         "claude-opus-4-8", Set.of(LEAN_PROMPT),
         "claude-fable-5", Set.of(LEAN_PROMPT, FABLE_5_MITIGATIONS)
@@ -118,9 +116,13 @@ public final class SystemPromptProfileResolver {
             .replace('_', '-')
             .replace('.', '-');
 
+        // Ordered most-specific first: this is a substring scan, so a
+        // "claude-opus-5" entry ahead of "claude-opus-5-5" would truncate the
+        // newer id to the older family.
         List<String> knownFamilies = List.of(
             "claude-mythos-5",
             "claude-fable-5",
+            "claude-opus-5-5",
             "claude-opus-5",
             "claude-opus-4-8",
             "claude-opus-4-7",
@@ -128,9 +130,11 @@ public final class SystemPromptProfileResolver {
             "claude-opus-4-5",
             "claude-opus-4-1",
             "claude-opus-4-0",
+            "claude-sonnet-5-5",
             "claude-sonnet-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
+            "claude-haiku-5-5",
             "claude-haiku-4-5",
             "claude-3-7-sonnet",
             "claude-3-5-sonnet",

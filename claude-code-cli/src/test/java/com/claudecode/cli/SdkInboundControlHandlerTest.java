@@ -591,8 +591,8 @@ class SdkInboundControlHandlerTest {
         assertEquals(List.of("default", "opus[1m]", "sonnet", "sonnet[1m]", "haiku", "glm-5.2"),
             StreamSupport.stream(init.path("models").spliterator(), false)
                 .map(model -> model.path("value").asText()).toList());
-        assertEquals("claude-opus-5", init.path("models").get(0).path("resolvedModel").asText());
-        assertEquals("claude-opus-5", init.path("models").get(1).path("resolvedModel").asText());
+        assertEquals(ModelCatalog.LATEST_OPUS, init.path("models").get(0).path("resolvedModel").asText());
+        assertEquals(ModelCatalog.LATEST_OPUS, init.path("models").get(1).path("resolvedModel").asText());
         assertTrue(Strings.CS.contains(
             init.path("models").get(0).path("description").asText(), "Opus 5"));
         assertTrue(init.path("account").isObject());

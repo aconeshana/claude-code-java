@@ -19,6 +19,7 @@ import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.ModelCatalog;
+import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.runtime.session.MessagesDeserializer;
 import org.junit.jupiter.api.Test;
@@ -347,12 +348,15 @@ class QueryLoopRefusalFallbackTest {
         assertEquals(new StopDetails("cyber", "Flagged for review."),
             errorRow.message().stopDetails());
         String text = ((TextBlock) errorRow.message().content().getFirst()).text();
+        // The name comes from ModelNames.displayName(refusedModel), so it tracks
+        // whatever the catalogue points OPUS at rather than a pinned generation.
         assertEquals("""
-            API Error: Opus 5's safeguards flagged this message for a cybersecurity \
+            API Error: %s's safeguards flagged this message for a cybersecurity \
             topic. If your work requires this access, you can apply for an exemption: \
             https://claude.com/form/cyber-use-case
             Send feedback with /feedback or learn more: \
-            https://support.claude.com/en/articles/15363606""", text);
+            https://support.claude.com/en/articles/15363606""".formatted(
+                ModelNames.displayName(ModelCatalog.OPUS.modelId())), text);
     }
 
     @Test

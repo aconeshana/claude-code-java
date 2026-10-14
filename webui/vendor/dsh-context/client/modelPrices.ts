@@ -24,6 +24,21 @@ function triple(miss: number, out: number, hit: number, write: number): PriceTri
  */
 export const ANTHROPIC_LIST_PRICES: ModelPrices = {
   anthropic: {
+    // Generation 5.5. Opus 5.5 and Sonnet 5.5 take a 0.05x cache-read
+    // multiplier rather than the standard 0.1x.
+    'claude-opus-5-5': triple(4, 20, 0.2, 5),
+    'claude-sonnet-5-5': triple(2, 10, 0.1, 2.5),
+    // Haiku 5.5 is priced by prompt length: $0.10/$0.50 up to 100k tokens, then
+    // $0.50/$2.50 above it. This static book can only carry one triple, so it
+    // holds the short-prompt tier; a request over 100k therefore prices LOW
+    // here (the TUI's CostCalculator applies the real tiering). Deviation
+    // recorded in webui/UPSTREAM.md.
+    'claude-haiku-5-5': triple(0.1, 0.5, 0.01, 0.125),
+    // Generation 5.
+    'claude-opus-5': triple(5, 25, 0.5, 6.25),
+    'claude-sonnet-5': triple(2, 10, 0.2, 2.5),
+    'claude-fable-5': triple(10, 50, 1, 12.5),
+    // Generation 4.x and earlier.
     'claude-opus-4-5': triple(5, 25, 0.5, 6.25),
     'claude-opus-4-1': triple(15, 75, 1.5, 18.75),
     'claude-opus-4': triple(15, 75, 1.5, 18.75),

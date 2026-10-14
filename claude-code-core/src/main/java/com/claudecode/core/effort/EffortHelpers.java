@@ -204,11 +204,15 @@ public final class EffortHelpers {
         }
         if (Strings.CS.contains(m, "sonnet-5")
                 || Strings.CS.contains(m, "opus-5")
+                || Strings.CS.contains(m, "haiku-5-5")
                 || Strings.CS.contains(m, "fable-5")
                 || Strings.CS.contains(m, "mythos-5")
                 || Strings.CS.contains(m, "opus-4-8")
                 || Strings.CS.contains(m, "opus-4-7")) {
-            return new EffortCapabilities(true, CLAUDE_ALL_LEVELS, "high");
+            // Haiku 5.5 supports the same effort levels as the rest of the
+            // family but defaults to medium rather than high.
+            String defaultLevel = Strings.CS.contains(m, "haiku") ? "medium" : "high";
+            return new EffortCapabilities(true, CLAUDE_ALL_LEVELS, defaultLevel);
         }
         if (Strings.CS.contains(m, "sonnet-4-6")
                 || Strings.CS.contains(m, "opus-4-6")) {

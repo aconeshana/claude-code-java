@@ -32,6 +32,12 @@ public final class ModelOutputTokens {
         String m = model == null ? "" : model.toLowerCase(Locale.ROOT);
         if (Strings.CS.contains(m, "opus-5") || Strings.CS.contains(m, "opus-4-6")) {
             return new Bounds(64_000, 128_000);
+        } else if (Strings.CS.contains(m, "sonnet-5-5") || Strings.CS.contains(m, "haiku-5-5")) {
+            // Generation 5.5 raises its non-Opus families to the 128K ceiling
+            // the Opus line already had. Deliberately narrower than "sonnet-5":
+            // generation-5 sonnet is out of scope for this bump and keeps the
+            // bounds it had before.
+            return new Bounds(64_000, 128_000);
         } else if (Strings.CS.contains(m, "sonnet-4-6")) {
             return new Bounds(32_000, 128_000);
         } else if (Strings.CS.contains(m, "opus-4-5") || Strings.CS.contains(m, "sonnet-4") || Strings.CS.contains(m, "haiku-4")) {
