@@ -63,7 +63,7 @@ public final class FileHistoryManager {
 
     private CompletableFuture<Void> pendingSnapshots = CompletableFuture.completedFuture(null);
     private volatile FileHistorySnapshotSink snapshotSink;
-/**
+    /**
      * Fired (off the caller's thread is NOT guaranteed) when a file with a previously-unseen extension
      * is first tracked — backs the LSP plugin recommendation prompt.
      */
@@ -498,7 +498,7 @@ public final class FileHistoryManager {
         return snapshots.isEmpty() ? null : snapshots.getLast();
     }
 
-/**
+    /**
      * Caller must hold the monitor.
      */
     private Snapshot findLastByMessageId(String messageId) {

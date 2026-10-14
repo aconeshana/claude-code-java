@@ -83,7 +83,7 @@ public class LocalShellTask {
     private volatile long stallLastGrowth;
     private final Object progressEmissionLock = new Object();
 
-/**
+    /**
      * Progress sink for live output updates.
      */
     private final ProgressSink progressSink;

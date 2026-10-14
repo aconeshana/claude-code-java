@@ -62,7 +62,7 @@ public class CopyCommand implements AnnotatedCommand {
         this.copyFullResponseOverride = copyFullResponse;
     }
 
-/**
+    /**
      * One extracted markdown code block.
      */
     public record CodeBlock(String code, String lang) {}
@@ -254,7 +254,7 @@ public class CopyCommand implements AnnotatedCommand {
         return count;
     }
 
-/**
+    /**
      * Write text to {@code $TMPDIR/claude/<filename>}.
      */
     static Path writeToFile(String text, String filename) throws IOException {
@@ -265,7 +265,7 @@ public class CopyCommand implements AnnotatedCommand {
         return file;
     }
 
-/**
+    /**
      * Platform clipboard tool; best-effort.
      */
     private static boolean setClipboard(String text) {

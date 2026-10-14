@@ -23,15 +23,15 @@ public record SubmitOptions(
     String querySource,
     JsonNode jsonSchema,
     Map<Integer, PastedContent> pastedContents,
-/**
+    /**
      * Current permission mode at submit time — stored in UserMessage for rewind restore.
      */
     String permissionMode,
-/**
+    /**
      * When true, skip adding this submit to history.
      */
     boolean fromKeybinding,
-/**
+    /**
      * When true, the submit originated from a slash/prompt/skill command re-submission
      * (SlashCommandDispatcher → executeQuery).
      */
@@ -45,7 +45,7 @@ public record SubmitOptions(
     /** User-visible slash-command metadata/result messages placed immediately before
      *  the hidden model-facing prompt. */
     List<MessageContent> precedingUserMessages,
-/**
+    /**
      * Commands 2..N of a batched queue drain, materialized as their own user messages after this turn's
      * attachment pass.
      */

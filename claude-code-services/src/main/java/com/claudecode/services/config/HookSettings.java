@@ -99,7 +99,7 @@ public final class HookSettings {
         return hooks == null || hooks.isEmpty() ? HooksSettings.EMPTY : HooksSettings.fromJson(hooks);
     }
 
-/**
+    /**
      * Absent or non-array setting → {@code null}.
      */
     private static List<String> optionalStringArray(

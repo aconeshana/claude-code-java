@@ -295,7 +295,7 @@ public final class AutoMemoryPrompt {
         injectedAutoMemoryDirectory = dir;
     }
 
-/**
+    /**
      * Max safe length for a project-key segment before truncation + hash.
      */
     private static final int MAX_SANITIZED_LENGTH = 200;

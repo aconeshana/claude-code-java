@@ -83,7 +83,7 @@ public class McpConnection implements AutoCloseable {
         this.instructions = McpUtils.truncateDescription(result.path("instructions").asText(null));
     }
 
-/**
+    /**
      * Server-declared usage instructions from initialize (optional per MCP spec).
      */
     private volatile String instructions;

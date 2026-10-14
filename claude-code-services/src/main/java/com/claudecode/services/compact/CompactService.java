@@ -330,7 +330,7 @@ public class CompactService implements MessageCompactor {
         compactWarningSuppressed = true;
     }
 
-/**
+    /**
      * Whether the token warning is currently suppressed.
      */
     public boolean isCompactWarningSuppressed() {

@@ -40,7 +40,7 @@ public final class WindowInputRouter implements WindowListener {
     private final UserKeybindingsStore keybindingsStore;
     private final Runnable onResize;
 
-/**
+    /**
      * Wheel scroll accel — one per window, tracks last-event timestamp + multiplier across mouse
      * events.
      */

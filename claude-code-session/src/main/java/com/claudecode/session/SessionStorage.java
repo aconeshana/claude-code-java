@@ -271,7 +271,7 @@ public class SessionStorage {
         }
     }
 
-/**
+    /**
      * Builds an {@link ObjectNode} from {@code message} with all session-level metadata stamped — the
      * shared stamping logic used by both {@link #appendMessage} and {@link #appendMessageWithParent}.
      */

@@ -44,7 +44,7 @@ public class TodoWriteTool extends AnnotatedTool<JsonNode, String> {
 
     private static final JsonNode SCHEMA = buildSchema();
 
-/**
+    /**
      * In-memory todo store keyed by session/agent ID.
      */
     private static final Map<String, List<TodoItem>> TODO_STORE = new ConcurrentHashMap<>();

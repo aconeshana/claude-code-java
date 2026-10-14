@@ -70,7 +70,7 @@ public final class BashModeExecutor {
 
 /** In-flight process ref for {@link #interrupt} — null when idle. */
     private final AtomicReference<Process> currentProcess = new AtomicReference<>(null);
-/** Set once {@link #interrupt} is called for the current execution;
+    /** Set once {@link #interrupt} is called for the current execution;
      *  the executor branch treats stdout/stderr as user-interrupted. */
     private volatile boolean interrupted = false;
 

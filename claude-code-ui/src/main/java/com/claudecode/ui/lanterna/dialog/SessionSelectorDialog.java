@@ -148,7 +148,7 @@ public class SessionSelectorDialog extends BasicWindow {
         MouseScrollHandler.newState();
 
     private final StringBuilder searchQuery = new StringBuilder();
-/**
+    /**
      * Cursor position within searchQuery.
      */
     private int searchCursorOffset = 0;
@@ -323,7 +323,7 @@ public class SessionSelectorDialog extends BasicWindow {
         refreshDisplay();
     }
 
-/**
+    /**
      * Build grouped entry list from raw InteractiveSessionPort.SessionEntry.
      */
     private void rebuildEntries() {
@@ -1689,7 +1689,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
 
 
-/**
+    /**
      * Called after each navigation step — loads more sessions when near the bottom.
      */
     private void maybeLoadMore() {

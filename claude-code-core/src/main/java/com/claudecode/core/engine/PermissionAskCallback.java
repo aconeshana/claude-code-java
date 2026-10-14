@@ -73,7 +73,7 @@ public interface PermissionAskCallback {
         /** Deny + feedback — model sees REJECT_MESSAGE_WITH_REASON_PREFIX+feedback, no abort. */
         public static Result denyWithFeedback(String feedback) { return new Result(false, feedback, null); }
 
-/**
+        /**
          * Deny + feedback/images — used by ExitPlanMode's.
          */
         public static Result denyWithFeedback(String feedback, List<ContentBlock> contentBlocks) {

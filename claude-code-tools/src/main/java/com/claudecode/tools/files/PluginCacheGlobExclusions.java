@@ -104,7 +104,7 @@ public final class PluginCacheGlobExclusions {
         return ClaudePaths.CLAUDE_HOME.resolve(getPluginsDirectoryName()).resolve("cache");
     }
 
-/**
+    /**
      * Directory name under config home: {@code cowork_plugins} when cowork is enabled, else {@code
      * plugins}.
      */

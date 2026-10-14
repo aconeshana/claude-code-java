@@ -795,7 +795,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
 
     // result whose file is git-ignored (build output, vendored trees, etc).
 
-/**
+    /**
      * Resolve the set of git-ignored URIs among {@code uris}.
      */
     Set<String> ignoredUris(List<String> uris) {

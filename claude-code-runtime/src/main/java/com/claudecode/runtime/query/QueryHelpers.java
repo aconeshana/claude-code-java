@@ -208,7 +208,7 @@ final class QueryHelpers {
         };
     }
 
-/**
+    /**
      * Fires StopFailure hooks on failure exit paths.
      */
     public static void dispatchStopFailure(DefaultQuerySession engine) {

@@ -488,7 +488,7 @@ public final class SuggestionController implements AutoCloseable {
         return best;
     }
 
-/**
+    /**
      * Convert a SkillEntry to a Suggestion.
      */
     private static SuggestionPanel.Suggestion toSuggestion(SkillEntry skill) {

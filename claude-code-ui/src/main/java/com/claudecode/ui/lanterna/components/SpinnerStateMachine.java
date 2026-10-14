@@ -302,7 +302,7 @@ public final class SpinnerStateMachine {
         return thinkMs > 0 ? System.currentTimeMillis() - thinkMs : 0;
     }
 
-/**
+    /**
      * Clear the thinking indicator 2s after a thinking→work transition.
      */
     private void scheduleThinkingClear() {

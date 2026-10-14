@@ -30,7 +30,7 @@ public final class TrustConfigStore {
     public static final String FIELD_HAS_CLAUDE_MD_EXTERNAL_INCLUDES_WARNING_SHOWN =
         "hasClaudeMdExternalIncludesWarningShown";
 
-/**
+    /**
      * Auth fields that the GH #3117 guard must never let a write drop.
      */
     private static final List<String> AUTH_FIELDS = List.of("primaryApiKey", "oauthAccount", "hasCompletedOnboarding");

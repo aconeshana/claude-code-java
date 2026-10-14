@@ -109,7 +109,7 @@ public final class AgentListingDeltaAttachmentProvider implements AttachmentProv
         return servers;
     }
 
-/**
+    /**
      * Case-insensitive substring match.
      */
     private static boolean hasRequiredMcpServers(AgentDefinition agent, Set<String> available) {

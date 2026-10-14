@@ -109,9 +109,9 @@ public class LocalAgentTask {
         log.debug("Agent task {} progress: {}% - {}", taskState.id(), (int) (progress * 100), step);
     }
 
-/**
- * Persists live Agent progress so the coordinator selector can render.
- */
+    /**
+     * Persists live Agent progress so the coordinator selector can render.
+     */
     public void updateUsage(long totalTokens, int toolUses, long durationMs) {
         long normalizedTokens = Math.max(0L, totalTokens);
         int normalizedTools = Math.max(0, toolUses);

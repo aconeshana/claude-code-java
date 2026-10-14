@@ -20,7 +20,7 @@ public record SkillListingAttachment(
         names = names == null ? List.of() : List.copyOf(names);
     }
 
-/**
+    /**
      * Backward-compatible constructor for pre.
      */
     public SkillListingAttachment(String content, int skillCount, boolean isInitial) {

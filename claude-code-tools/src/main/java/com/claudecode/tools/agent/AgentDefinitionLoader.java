@@ -73,7 +73,7 @@ public final class AgentDefinitionLoader {
         return CACHE.computeIfAbsent(key, AgentDefinitionLoader::buildAll).parseErrors();
     }
 
-/**
+    /**
      * Clears the per-cwd cache.
      */
     public static void clearCache() {

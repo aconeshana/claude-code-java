@@ -257,7 +257,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         return toResult(result);
     }
 
-/**
+    /**
      * Forwards an MCP elicitation over the same.
      */
     public JsonNode askElicitation(String serverName, JsonNode params) {

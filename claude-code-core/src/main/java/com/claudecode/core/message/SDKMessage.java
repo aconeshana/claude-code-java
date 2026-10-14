@@ -189,7 +189,7 @@ public sealed interface SDKMessage permits
         }
     }
 
-/**
+    /**
      * A sparse background-task state patch, matching.
      */
     record TaskUpdated(String taskId, Map<String, Object> patch) implements SDKMessage {}

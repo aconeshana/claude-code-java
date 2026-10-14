@@ -35,7 +35,7 @@ public final class KeybindingValidator {
 
     public enum Severity { ERROR, WARNING }
 
-/**
+    /**
      * A single validation issue.
      */
     public record KeybindingWarning(
@@ -405,7 +405,7 @@ public final class KeybindingValidator {
         return out;
     }
 
-/**
+    /**
      * Format one warning for terminal display.
      */
     public static String formatWarning(KeybindingWarning w) {
@@ -417,7 +417,7 @@ public final class KeybindingValidator {
         return msg;
     }
 
-/**
+    /**
      * Format all warnings, grouped by severity.
      */
     public static String formatWarnings(List<KeybindingWarning> warnings) {

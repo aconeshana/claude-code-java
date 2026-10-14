@@ -212,7 +212,7 @@ public final class QuerySessionSpec {
      * Supplies the resolved file-read deny-rule glob patterns to exclude from GlobTool results.
      */
     private final Supplier<List<FileReadIgnorePattern>> readDenyIgnorePatternsSupplier;
-/**
+    /**
      * Live current-rule check for changed-file attachment rereads.
      */
     private final Predicate<String> fileReadDeniedPredicate;

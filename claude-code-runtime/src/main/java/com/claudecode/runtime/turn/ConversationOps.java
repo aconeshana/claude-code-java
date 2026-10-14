@@ -9,7 +9,7 @@ import com.claudecode.core.message.MessageConstants;
  */
 public interface ConversationOps {
 
-/**
+    /**
      * Pop the last entry from the persistent prompt history.
      */
     void dropLastPromptHistoryEntry();

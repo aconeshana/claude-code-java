@@ -93,11 +93,11 @@ public final class LanternaTheme {
     // ── Brand ──────────────────────────────────────────────────────────────
     public static TextColor claude()               { return toLC(theme().claude()); }
     public static TextColor claudeShimmer()        { return toLC(theme().claudeShimmer()); }
-/**
+    /**
      * System-spinner blue — used while compact hooks are running.
      */
     public static TextColor systemSpinner()        { return toLC(theme().claudeBlue_FOR_SYSTEM_SPINNER()); }
-/**
+    /**
      * System-spinner shimmer blue.
      */
     public static TextColor systemSpinnerShimmer() { return toLC(theme().claudeBlueShimmer_FOR_SYSTEM_SPINNER()); }
@@ -144,7 +144,7 @@ public final class LanternaTheme {
      */
     public static TextColor inverseText()   { return toLC(theme().inverseText()); }
 
-/**
+    /**
      * Maps an agent color name to its theme TextColor.
      */
     public static TextColor agentColor(String name) {

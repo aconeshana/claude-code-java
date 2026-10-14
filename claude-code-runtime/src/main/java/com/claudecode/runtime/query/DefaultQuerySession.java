@@ -1679,7 +1679,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     /** Snapshot the current turn's tools so the next turn can diff against them. */
     @Override public void setPreviousTurnTools(List<String> tools) { this.previousTurnTools = tools; }
 
-/**
+    /**
      * Per-turn attachment orchestrator.
      */
     @Override public AttachmentService getAttachmentService() {

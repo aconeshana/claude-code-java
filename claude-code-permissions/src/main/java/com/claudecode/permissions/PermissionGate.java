@@ -425,7 +425,7 @@ public final class PermissionGate {
         });
     }
 
-/**
+    /**
      * Non-policy sources stripped under {@code shouldAllowManagedPermissionRulesOnly}.
      */
     private static final Set<RuleSource> MANAGED_STRIP_SOURCES = Set.of(

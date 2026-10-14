@@ -118,7 +118,7 @@ public final class ImageStore {
             storeImage(content, sessionId));
     }
 
-/**
+    /**
      * Look up a previously stored path.
      */
     public static String getStoredImagePath(int imageId) {

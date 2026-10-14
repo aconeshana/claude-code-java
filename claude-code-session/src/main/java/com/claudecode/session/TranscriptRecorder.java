@@ -152,7 +152,7 @@ public class TranscriptRecorder implements TranscriptSink {
         this(sessionManager, sessionStorage, cwd, isSidechain, agentId, null, null);
     }
 
-/**
+    /**
      * Routes a grouped sub-agent transcript to an explicit.
      */
     public TranscriptRecorder(SessionManager sessionManager, SessionStorage sessionStorage,
@@ -162,7 +162,7 @@ public class TranscriptRecorder implements TranscriptSink {
             explicitTranscriptFile, null, null);
     }
 
-/**
+    /**
      * Routes a grouped sub-agent transcript and stamps its.
      */
     public TranscriptRecorder(SessionManager sessionManager, SessionStorage sessionStorage,

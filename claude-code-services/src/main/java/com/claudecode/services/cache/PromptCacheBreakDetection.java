@@ -23,7 +23,7 @@ public final class PromptCacheBreakDetection {
     /** Minimum absolute token drop required to trigger a cache-break warning. */
     private static final long MIN_CACHE_MISS_TOKENS = 2_000;
     private static final long CACHE_TTL_5MIN_MS = 5L * 60 * 1000;
-/**
+    /**
      * Package-external visibility: also drives {@code LlmClientAdapter}'s thinking-clear latch.
      */
     public static final long CACHE_TTL_1HOUR_MS = 60L * 60 * 1000;

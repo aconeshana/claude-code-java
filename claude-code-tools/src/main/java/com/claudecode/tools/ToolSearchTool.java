@@ -386,7 +386,7 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
         return Pattern.compile("\\b" + Pattern.quote(term) + "\\b");
     }
 
-/**
+    /**
      * Parsed, lowercased name parts for search matching.
      */
     private record ParsedName(List<String> parts, String full, boolean isMcp) {}

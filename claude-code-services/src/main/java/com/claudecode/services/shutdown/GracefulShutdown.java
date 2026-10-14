@@ -27,7 +27,7 @@ public final class GracefulShutdown {
     /** Single-shot guard — subsequent shutdown calls are no-ops. */
     private static final AtomicBoolean IN_PROGRESS = new AtomicBoolean(false);
 
-/**
+    /**
      * Failsafe headroom on top of the SessionEnd hook budget.
      */
     private static final long FAILSAFE_HEADROOM_MS = 3_500;
@@ -35,7 +35,7 @@ public final class GracefulShutdown {
 
     private GracefulShutdown() {}
 
-/**
+    /**
      * Whether a shutdown sequence has already started.
      */
     public static boolean isShuttingDown() {

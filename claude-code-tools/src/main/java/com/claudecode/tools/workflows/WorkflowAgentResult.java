@@ -15,7 +15,7 @@ public record WorkflowAgentResult(
         output = output == null ? "" : output;
     }
 
-/**
+    /**
      * Compatibility shape from before output-token/API-error.
      */
     public WorkflowAgentResult(String output, long tokensUsed, int toolUseCount,

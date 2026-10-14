@@ -23,7 +23,7 @@ public final class MouseScrollHandler {
     private static final int    WHEEL_DECAY_HALFLIFE_MS       = 150;
     private static final int    WHEEL_BURST_MS                = 5;
 
-/**
+    /**
      * Mutable accel state — one instance per scroll target.
      */
     public static final class WheelAccelState {

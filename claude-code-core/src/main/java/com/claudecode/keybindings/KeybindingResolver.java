@@ -18,7 +18,7 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
     /** A single parsed keybinding: a chord, an action (may be null = unbind), and a context. */
     public record ParsedBinding(KeystrokeParser.Chord chord, String action, String context) {}
 
-/**
+    /**
      * Result of a single-keystroke resolution.
      */
     public sealed interface ResolveResult permits ResolveResult.Match,
@@ -28,7 +28,7 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
         record Unbound() implements ResolveResult {}
     }
 
-/**
+    /**
      * Result of a chord-aware resolution.
      */
     public sealed interface ChordResolveResult permits ChordResolveResult.ChordMatch,
@@ -214,7 +214,7 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
         return DefaultHolder.RESOLVER;
     }
 
-/**
+    /**
      * Convert {@link DefaultBindings#BLOCKS} into resolver bindings.
      */
     private static List<ParsedBinding> fromDefaultBlocks() {
@@ -252,7 +252,7 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
         return out;
     }
 
-/**
+    /**
      * Positionally merge defaults then user bindings (last wins).
      */
     public static List<ParsedBinding> merge(List<ParsedBinding> defaults, List<ParsedBinding> user) {

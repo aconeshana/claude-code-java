@@ -14,7 +14,7 @@ public record LspPluginRecommendation(
     String description,
     /** File extensions (with leading dot, lower-cased) this server covers. */
     List<String> extensions,
-/**
+    /**
      * LSP server launch command (e.g.
      */
     String command,

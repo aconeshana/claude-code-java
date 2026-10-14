@@ -22,21 +22,21 @@ public record UserMessage(
     @JsonProperty("parentUuid") String parentUuidValue,
     @JsonProperty("timestamp") Instant timestampValue,
     @JsonProperty("imagePasteIds") @JsonInclude(JsonInclude.Include.NON_NULL) List<Integer> imagePasteIds,
-/**
+    /**
      * Permission mode active when the message was submitted — stored for rewind restore.
      */
     @JsonProperty("permissionMode") @JsonInclude(JsonInclude.Include.NON_NULL) String permissionMode,
-/**
+    /**
      * Logical session id — forked sessions inherit the parent's sessionId so {@code /resume} can group
      * forks.
      */
     @JsonProperty("sessionId") @JsonInclude(JsonInclude.Include.NON_NULL) String sessionIdValue,
-/**
+    /**
      * Assistant uuid that produced this tool result, when the user message wraps a tool result spawned
      * by a sub-agent/tool.
      */
     @JsonProperty("sourceToolAssistantUUID") @JsonInclude(JsonInclude.Include.NON_NULL) String sourceToolAssistantUUID,
-/**
+    /**
      * Tool-use id that injected this transient user message.
      */
     @JsonProperty("sourceToolUseID") @JsonInclude(JsonInclude.Include.NON_NULL) String sourceToolUseID,

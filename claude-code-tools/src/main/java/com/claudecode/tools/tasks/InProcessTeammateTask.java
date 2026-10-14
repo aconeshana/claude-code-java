@@ -872,14 +872,14 @@ public class InProcessTeammateTask {
         }
     }
 
-/**
+    /**
      * Updates the teammate's permission mode; picked up on the next turn.
      */
     public void setPermissionMode(PermissionMode mode) {
         context.setPermissionMode(mode);
     }
 
-/**
+    /**
      * Display name the leader/peers address this teammate by.
      */
     public String name() {
@@ -891,7 +891,7 @@ public class InProcessTeammateTask {
         return context.teamId();
     }
 
-/**
+    /**
      * Current permission mode — re-read each turn by the run loop.
      */
     public PermissionMode permissionMode() {
@@ -906,7 +906,7 @@ public class InProcessTeammateTask {
         return taskStore.get(getTaskId()).map(TaskState::status).orElse(TaskStatus.RUNNING);
     }
 
-/**
+    /**
      * True while the run loop is alive and not aborted.
      */
     public boolean isRunning() {
@@ -1010,7 +1010,7 @@ public class InProcessTeammateTask {
         }
     }
 
-/**
+    /**
      * Registers a no-poll wait primitive.
      */
     public CompletableFuture<Void> onIdle() {
@@ -1216,7 +1216,7 @@ public class InProcessTeammateTask {
         return true;
     }
 
-/**
+    /**
      * Formats a claimed team task as the next prompt for the teammate.
      */
     static String formatTaskAsPrompt(Task task) {
@@ -1286,7 +1286,7 @@ public class InProcessTeammateTask {
         }
     }
 
-/**
+    /**
      * Leader's plan-approval decision returned to a teammate.
      */
     public record PlanApproval(boolean approved, String feedback, String mode) {}

@@ -159,7 +159,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
     private final Map<Integer, BlinkEntry> blinkEntries = new ConcurrentHashMap<>();
     private final AtomicBoolean blinkPhase = new AtomicBoolean(true);  // true = ⏺ visible
     private ScheduledFuture<?> blinkFuture;
-/**
+    /**
      * When false, blink phase is frozen (⏺ stays visible).
      */
     private volatile boolean terminalFocused = true;

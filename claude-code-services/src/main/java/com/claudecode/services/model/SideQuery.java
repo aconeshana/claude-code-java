@@ -50,7 +50,7 @@ public final class SideQuery {
             return thread;
         });
 
-/**
+    /**
      * Default when no env override is set. Kept as the "haiku" family alias
      * (not a bare model ID) so the live entry points below can run it through
      * {@link ModelCatalog#resolve(String)} and pick up modelOverrides-redirected

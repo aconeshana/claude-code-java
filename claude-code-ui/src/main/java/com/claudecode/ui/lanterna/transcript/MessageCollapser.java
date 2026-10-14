@@ -206,13 +206,13 @@ public class MessageCollapser {
      */
     private final Object renderLock = new Object();
 
-/**
+    /**
      * Last non-read-search tool name (Bash/Edit/Write/…) — used by buildActiveGroupPhrase to render
      * "Running $ <cmd>…" when no read/search/MCP run is active.
      */
     private String               lastNonReadSearchToolName = null;
 
-/**
+    /**
      * Listener fired whenever counters mutate — wired to SpinnerComponent::setSpinnerTip so the
      * dialog-above-spinner shows live progress.
      */
@@ -265,7 +265,7 @@ public class MessageCollapser {
         emitPhrase();
     }
 
-/**
+    /**
      * Wire a listener (typically {@code SpinnerComponent::setSpinnerTip}) — fires on every counter
      * mutation with the current active-group phrase, or {@code ""} when nothing is running.
      */

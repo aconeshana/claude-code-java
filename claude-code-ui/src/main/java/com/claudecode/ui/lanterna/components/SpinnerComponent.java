@@ -51,7 +51,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
 
     // ── State ──────────────────────────────────────────────────────────────
     private final AtomicInteger     frame       = new AtomicInteger(0);
-/**
+    /**
      * Response length for token count estimation.
      */
     private final AtomicInteger     responseLength = new AtomicInteger(0);
@@ -198,7 +198,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         setVisible(false);
     }
 
-/**
+    /**
      * Show spinner with a randomly-chosen verb.
      */
     public synchronized void start() {
@@ -810,7 +810,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
         return "";
     }
 
-/**
+    /**
      * Update response length for token count display.
      */
     public void setResponseLength(int length) {
@@ -1123,7 +1123,7 @@ public class SpinnerComponent extends AbstractInteractableComponent<SpinnerCompo
     /** Sets the optional tip text shown beneath the spinner. Pass null to hide. */
     public void setSpinnerTip(String tip) { this.spinnerTip = tip; invalidate(); }
 
-/**
+    /**
      * Sets the /btw use count from global config.
      */
     public void setBtwUseCount(int count) { this.btwUseCount = count; }

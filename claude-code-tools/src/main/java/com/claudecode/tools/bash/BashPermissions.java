@@ -708,7 +708,7 @@ public final class BashPermissions {
             blockedPath, null, null, null, null, suggestions);
     }
 
-/**
+    /**
      * Output redirection has the narrower.
      */
     private static PermissionDecision.Ask redirectPathAsk(

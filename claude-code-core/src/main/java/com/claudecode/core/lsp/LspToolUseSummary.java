@@ -42,7 +42,7 @@ public final class LspToolUseSummary {
         return Optional.of(sb.toString());
     }
 
-/**
+    /**
      * Compact display: the file name (last path segment).
      */
     private static String displayPath(String filePath) {

@@ -366,7 +366,7 @@ public class AnthropicSdkClient implements LlmClient {
      */
     static final String INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
 
-/**
+    /**
      * Context-management beta header.
      */
     static final String CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";

@@ -55,7 +55,7 @@ public final class SpinnerVerbs {
 
     public static List<String> activeVerbs()     { return ACTIVE_VERBS; }
 
-/**
+    /**
      * Immutable view of the resolved past-tense list.
      */
     public static List<String> completionVerbs() { return COMPLETION_VERBS; }

@@ -66,7 +66,7 @@ public final class SessionCostState {
         if (durationMs > 0) totalToolDurationMs.addAndGet(durationMs);
     }
 
-/**
+    /**
      * Records a file edit's line delta.
      */
     public void recordLinesChanged(long added, long removed) {
@@ -117,7 +117,7 @@ public final class SessionCostState {
         return Collections.unmodifiableMap(costByModel);
     }
 
-/**
+    /**
      * Exact process-cumulative cost using.
      */
     public double totalCostUsd() {

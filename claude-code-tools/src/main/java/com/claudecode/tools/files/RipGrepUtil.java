@@ -41,7 +41,7 @@ public final class RipGrepUtil {
 
     private static final long MAX_BUFFER_SIZE = 20_000_000; // 20MB; large monorepos can have 200k+ files
 
-/**
+    /**
      * Falsy values for {@link #envTruthy(String, boolean)}.
      */
     private static final Set<String> FALSY = Set.of("false", "0", "no", "off", "f");
@@ -386,7 +386,7 @@ public final class RipGrepUtil {
         return listMarkdownFilesNative(dir);
     }
 
-/**
+    /**
      * Whether {@code p} is a regular {@code.md} file.
      */
     private static boolean acceptMarkdown(Path p) {
@@ -517,7 +517,7 @@ public final class RipGrepUtil {
         }
     }
 
-/**
+    /**
      * Splits a glob input into rg {@code --glob} arguments: preserves brace patterns, splits the rest
      * on whitespace and commas.
      */

@@ -178,7 +178,7 @@ public final class Ansi {
         return COLOR_SUPPORTED;
     }
 
-/**
+    /**
      * Additional terminals that support OSC 8 hyperlinks.
      */
     private static final Set<String> HYPERLINK_TERMINALS = Set.of(

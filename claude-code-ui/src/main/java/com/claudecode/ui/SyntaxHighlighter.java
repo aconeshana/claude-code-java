@@ -18,7 +18,7 @@ public final class SyntaxHighlighter {
 
     private SyntaxHighlighter() {}
 
-/**
+    /**
      * Check if syntax highlighting is disabled via settings.
      */
     private static boolean isSyntaxHighlightingDisabled() {

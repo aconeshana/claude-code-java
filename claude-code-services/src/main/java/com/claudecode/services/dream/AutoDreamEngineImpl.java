@@ -66,7 +66,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
     private final QuerySessionFactory querySessionFactory;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-/**
+    /**
      * Per-process scan-throttle timestamp.
      */
     private volatile long lastSessionScanAt = 0;

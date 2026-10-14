@@ -121,7 +121,7 @@ class QueryLoop implements SdkEventSequencedIterator {
      * after the normal attachment pass so transcript/request order remains
      * user → initial listings → hook context, matching processUserInputBase. */
     private HookAdditionalContextAttachment pendingUserPromptHookContext;
-/**
+    /**
      * Image source metadata is appended after the initial attachment list.
      */
     private UserMessage pendingImageMetadataMessage;

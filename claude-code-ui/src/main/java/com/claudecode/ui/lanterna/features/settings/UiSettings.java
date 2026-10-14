@@ -258,7 +258,7 @@ public final class UiSettings {
         return node != null && node.isBoolean() && node.booleanValue();
     }
 
-/**
+    /**
      * Reads {@code disableAllHooks} from the policy-managed settings file.
      */
     static boolean readDisableAllHooksByPolicy() {

@@ -186,7 +186,7 @@ public abstract class SandboxManager {
     private static final List<String> BARE_GIT_FILES =
         List.of("HEAD", "objects", "refs", "hooks", "config");
 
-/**
+    /**
      * Built-in writable paths always allowed: the Claude temp dir.
      */
     static List<String> builtInAllowWrite() {

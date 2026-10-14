@@ -44,7 +44,7 @@ public final class ImagePaste {
     private static final String SCREENSHOT_PREFIX = "claude_cli_screenshot_";
     private static final Duration CLIPBOARD_PROCESS_TIMEOUT = Duration.ofSeconds(5);
 
-/**
+    /**
      * Regex for image file extensions.
      */
     public static final String IMAGE_EXTENSION_REGEX = "(?i)\\.(png|jpe?g|gif|webp)$";
@@ -201,7 +201,7 @@ public final class ImagePaste {
         return asImageFilePath(text) != null;
     }
 
-/**
+    /**
      * Remove outer single/double quotes.
      */
     static String removeOuterQuotes(String text) {
@@ -248,7 +248,7 @@ public final class ImagePaste {
         return src;
     }
 
-/**
+    /**
      * Detect image media type from magic bytes.
      */
     static String detectMediaType(byte[] bytes) {

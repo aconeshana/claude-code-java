@@ -29,7 +29,7 @@ interface InputEditingSurface {
      */
     void applyEntry(PromptHistory.Entry entry, boolean cursorToStart);
 
-/**
+    /**
      * Restore the saved draft on Down-to-index-0, including.
      */
     void restoreDraft(String text, InputPanel.Mode modeOverride,

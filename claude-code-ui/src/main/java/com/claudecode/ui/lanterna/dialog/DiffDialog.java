@@ -455,7 +455,7 @@ public final class DiffDialog extends Panel implements InlineOverlay {
         }
     }
 
-/**
+    /**
      * Wrap a rendered hunk line by character width.
      */
     private List<DiffRenderer.DiffLineView> wrapDiffLineView(DiffRenderer.DiffLineView lv, int avail) {

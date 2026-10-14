@@ -117,7 +117,7 @@ public final class AgentFileWriter {
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
     }
 
-/**
+    /**
      * Deletes an agent's file.
      */
     public static void delete(BuiltInAgentDefinitions.AgentDefinition agent) throws IOException {

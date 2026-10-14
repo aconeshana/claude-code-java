@@ -236,7 +236,7 @@ public final class ManagedSettingsUtils {
         return new DangerousSettings(shell, env, hasHooks);
     }
 
-/**
+    /**
      * True when any dangerous setting is present.
      */
     public static boolean hasDangerousSettings(DangerousSettings d) {

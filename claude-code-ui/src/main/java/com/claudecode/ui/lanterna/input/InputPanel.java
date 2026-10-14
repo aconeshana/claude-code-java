@@ -942,7 +942,7 @@ public class InputPanel extends Panel {
         historyController.setPromptHistory(history);
     }
 
-/**
+    /**
      * Set session ID and project for history filtering.
      */
     public void setHistoryContext(String sessionId, String project) {

@@ -26,7 +26,7 @@ public final class MemoryManifestScanner {
 
     private MemoryManifestScanner() {}
 
-/**
+    /**
      * One memory file's header info.
      */
     public record MemoryHeader(String filename, Path filePath, long mtimeMs, String description, String type) {}

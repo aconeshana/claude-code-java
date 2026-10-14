@@ -12,7 +12,7 @@ public enum HookSource {
     SESSION_HOOK,
     BUILTIN_HOOK;
 
-/**
+    /**
      * Full description string shown in detail view.
      */
     public String descriptionDisplay() {
@@ -42,7 +42,7 @@ public enum HookSource {
         };
     }
 
-/**
+    /**
      * Short inline label shown next to matchers.
      */
     public String inlineDisplay() {

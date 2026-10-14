@@ -25,7 +25,7 @@ public record AttachmentContext(
     List<Message> messages,
     /** The current turn's user input; empty on tool-result-only turns. */
     String input,
-/**
+    /**
      * Session read-before-write cache (LRU 100).
      */
     FileStateCache fileStateCache,

@@ -80,7 +80,7 @@ public record ContextData(
         long unattributedTokens,
         List<ToolIo> toolCallsByType
     ) {
-/**
+        /**
          * Compatibility constructor for callers without.
          */
         public MessageBreakdown(

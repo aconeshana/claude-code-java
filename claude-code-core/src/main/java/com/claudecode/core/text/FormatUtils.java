@@ -586,7 +586,7 @@ public final class FormatUtils {
     private static final DateTimeFormatter MONTH_DAY_FMT =
         DateTimeFormatter.ofPattern("MMM d", Locale.US);
 
-/**
+    /**
      * Export filename timestamp, e.g.
      */
     public static String formatExportTimestamp(Instant when) {
@@ -598,7 +598,7 @@ public final class FormatUtils {
         return ISO_MILLIS_FMT.format(when);
     }
 
-/**
+    /**
      * Chart axis label "Jul 8" (en-US).
      */
     public static String formatMonthDay(Instant when) {

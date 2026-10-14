@@ -130,7 +130,7 @@ public class LspService {
 
 // ── 9 navigation operations — route by file extension ──────────────────.
 
-/**
+    /**
      * How long a navigation call waits for a server that is still initializing before giving up with a
      * "no server" message.
      */

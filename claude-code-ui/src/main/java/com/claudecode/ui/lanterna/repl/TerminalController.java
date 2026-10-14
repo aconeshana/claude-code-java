@@ -33,7 +33,7 @@ final class TerminalController {
 
     // ── Terminal title ──────────────────────────────────────────────────────
 
-/**
+    /**
      * Animation frames for terminal title.
      */
     private static final String[] TITLE_ANIMATION_FRAMES = {"⠂", "⠐"};

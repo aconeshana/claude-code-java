@@ -347,7 +347,7 @@ public class CompactCommand implements AnnotatedCommand {
         return compactor.estimateTokenCount(result.buildPostCompactMessages());
     }
 
-/**
+    /**
      * Joins two possibly-null/blank strings with {@code \n}.
      */
     private static String joinNonBlank(String a, String b) {

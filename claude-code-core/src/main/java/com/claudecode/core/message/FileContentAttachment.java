@@ -15,7 +15,7 @@ public record FileContentAttachment(
     public FileContentAttachment {
     }
 
-/**
+    /**
      * Accepts both Java's model-facing text shape and.
      */
     @JsonCreator(mode = JsonCreator.Mode.DELEGATING)

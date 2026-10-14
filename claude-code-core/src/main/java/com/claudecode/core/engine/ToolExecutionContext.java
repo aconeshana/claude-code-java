@@ -388,7 +388,7 @@ public record ToolExecutionContext(
         progressSink.accept(ProgressUpdate.of(progress, message));
     }
 
-/**
+    /**
      * Structured progress reporting — carries the raw tool payload.
      */
     public void reportProgress(ProgressUpdate update) {

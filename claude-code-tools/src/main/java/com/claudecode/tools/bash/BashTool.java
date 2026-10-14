@@ -140,7 +140,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
     private static final Set<String> SEMANTIC_NEUTRAL_COMMANDS = Set.of(
         "echo", "printf", "true", "false", ":");
 
-/**
+    /**
      * Pattern to detect trailing incomplete operators.
      */
     private static final Pattern INCOMPLETE_COMMAND_PATTERN =

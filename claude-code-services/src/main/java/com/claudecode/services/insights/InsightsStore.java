@@ -125,7 +125,7 @@ public final class InsightsStore {
         }
     }
 
-/**
+    /**
      * Persists {@code meta} to; failures are silent.
      */
     public void saveSessionMeta(SessionMeta meta) {
@@ -157,7 +157,7 @@ public final class InsightsStore {
         return parsed;
     }
 
-/**
+    /**
      * Persists {@code facets} to; failures are silent.
      */
     public void saveFacets(SessionFacets facets) {

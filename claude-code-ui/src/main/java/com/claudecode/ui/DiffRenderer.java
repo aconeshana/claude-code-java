@@ -382,7 +382,7 @@ public final class DiffRenderer {
         return List.of(new Segment(o.content, kind));
     }
 
-/**
+    /**
      * Compute the word-level diff for a paired remove/add, honoring the change threshold.
      */
     private static void resolveWordDiff(LineObj a, LineObj b) {
@@ -429,7 +429,7 @@ public final class DiffRenderer {
         return segs;
     }
 
-/**
+    /**
      * Word-level diff of two strings; returns aligned tokens.
      */
     private static List<DiffPart> wordLevelDiff(String a, String b) {

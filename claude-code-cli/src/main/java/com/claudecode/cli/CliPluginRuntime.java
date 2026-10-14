@@ -63,7 +63,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
 
     private CommandRegistry commandRegistry;
     private volatile PluginRuntimeSnapshot current = PluginRuntimeSnapshot.empty();
-/** Optional hook fired at the end of {@link #refresh} — the CLI installs
+    /** Optional hook fired at the end of {@link #refresh} — the CLI installs
      *  one that reloads LSP servers from the freshly reloaded plugin snapshot.
      *  Kept as a {@code Runnable} (not an LSP-typed callback) so this commands
      *  module never depends on {@code claude-code-lsp}. */

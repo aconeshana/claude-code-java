@@ -71,7 +71,7 @@ public final class SelectionController {
     /** Read the underlying {@link Selection} — for keyboard handlers to drive. */
     public Selection getSelection() { return selection; }
 
-/**
+    /**
      * Applies the immutable startup setting before the first frame is.
      */
     public void setCopyOnSelect(boolean enabled) { copyOnSelect = enabled; }

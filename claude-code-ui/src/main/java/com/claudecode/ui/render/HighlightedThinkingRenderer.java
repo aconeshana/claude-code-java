@@ -20,12 +20,12 @@ public final class HighlightedThinkingRenderer {
     /** Singleton — this renderer is stateless. */
     public static final HighlightedThinkingRenderer INSTANCE = new HighlightedThinkingRenderer();
 
-/**
+    /**
      * Label text shown before the thinking token.
      */
     static final String LABEL = "∴ Thinking";
 
-/**
+    /**
      * Indent prefix applied to the token text lines.
      */
     static final String INDENT = "  ";

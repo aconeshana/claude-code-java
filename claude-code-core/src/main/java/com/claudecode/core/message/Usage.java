@@ -74,7 +74,7 @@ public record Usage(
         if (serverToolUse == null) serverToolUse = ServerToolUse.ZERO;
     }
 
-/**
+    /**
      * Backward-compatible constructor with server-tool counts and.
      */
     public Usage(long inputTokens, long outputTokens,

@@ -72,7 +72,7 @@ public final class WorkingDirectoryPaths {
         return path;
     }
 
-/**
+    /**
      * Applies macOS mount aliasing, then unconditional lowercasing.
      */
     private static String forComparison(Path normalized) {

@@ -12,16 +12,16 @@ public final class TeammateContext {
     private final String agentId;
     /** Team this teammate belongs to (null for a standalone spawn). */
     private final String teamId;
-/**
+    /**
      * Permission mode the teammate runs under.
      */
     private final AtomicReference<PermissionMode> permissionMode;
     /** Whether the teammate is required to obtain plan approval before coding. */
     private final AtomicReference<Boolean> planModeRequired;
-/** Shared abort handle — {@link com.claudecode.tools.tasks.InProcessTeammateTask#stop}
+    /** Shared abort handle — {@link com.claudecode.tools.tasks.InProcessTeammateTask#stop}
      * calls {@code abort("shutdown")} on this to unwind the running query loop. */
     private final AbortController abortController;
-/**
+    /**
      * Optional human-readable agent name (e.g.
      */
     private final String name;
@@ -43,7 +43,7 @@ public final class TeammateContext {
     public AbortController abortController() { return abortController; }
     public String name() { return name; }
 
-/**
+    /**
      * Updates the teammate's permission mode.
      */
     public void setPermissionMode(PermissionMode mode) {

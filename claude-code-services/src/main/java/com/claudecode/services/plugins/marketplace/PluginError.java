@@ -13,7 +13,7 @@ public sealed interface PluginError {
     /** Where the error originated (marketplace name, path, ...). */
     String source();
 
-/**
+    /**
      * User-facing display message — text.
      */
     String getMessage();

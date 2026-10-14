@@ -27,12 +27,12 @@ public final class UserKeybindingsStore {
     /** Legacy preview flag retained for callers that still reference the old setting name. */
     public static final String FEATURE_ENV = "CLAUDE_CODE_ENABLE_KEYBINDINGS";
 
-/**
+    /**
      * File-stability threshold (ms) before a reload fires.
      */
     private static final long STABILITY_MS = 500;
 
-/**
+    /**
      * The merged result handed to subscribers.
      */
     public record KeybindingsLoadResult(
@@ -267,7 +267,7 @@ public final class UserKeybindingsStore {
 
     // ── disposal / testing ──────────────────────────────────────────────────────
 
-/**
+    /**
      * Dispose the watcher and clear listeners.
      */
     public void dispose() {

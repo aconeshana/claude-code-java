@@ -14,7 +14,7 @@ public final class MailTypes {
     public static final String USER_MESSAGE = "user_message";
     /** Teammate → leader: the teammate has finished its turn and is idle/available. */
     public static final String IDLE_NOTIFICATION = "idle_notification";
-/**
+    /**
      * Local-only marker appended to the teammate's message log when a single turn is interrupted (Esc /
      * currentWorkAbortController).
      */
