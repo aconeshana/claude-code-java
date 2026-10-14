@@ -554,7 +554,7 @@ class InputPanelTasksPillTest {
 
     // The subagent coordinator panel and the teammate/tasks footer are two
     // distinct subsystems that must never steal each other's keys. These tests
-// wire the coordinator (which fixture deliberately omits) and assert the
+    // wire the coordinator (which fixture deliberately omits) and assert the
     // footer-entry precedence stays isolated in both directions.
 
     /** A no-op {@link CoordinatorPanelView}; the panel projection is exercised

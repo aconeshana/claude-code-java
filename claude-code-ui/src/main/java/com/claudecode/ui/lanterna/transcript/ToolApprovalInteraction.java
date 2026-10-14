@@ -311,7 +311,7 @@ public final class ToolApprovalInteraction {
                 return result;
             });
         } finally {
-// Normal completion closes on the GUI thread from PermissionDialog.hide.
+            // Normal completion closes on the GUI thread from PermissionDialog.hide.
             // This queued fallback covers exceptional exits and is idempotent.
             gui.getGUIThread().invokeLater(closeUi);
         }

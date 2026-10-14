@@ -91,7 +91,7 @@ class HookEngineCwdTest {
     void nullFixedDir_hookInputCwdFieldFollowsLiveCwd() {
         assumeTrue(shellAvailable(), "sh not available");
         // The JSON cwd field fed to the hook (via dispatchSessionStart building
-// HookInput internally with resolveCwd) must also be live.
+        // HookInput internally with resolveCwd) must also be live.
         HooksSettings settings = new HooksSettings(Map.of(
             HookEvent.SESSION_START,
             List.of(new HookMatcher(Optional.empty(), List.of(new BashCommandHook("true"))))));

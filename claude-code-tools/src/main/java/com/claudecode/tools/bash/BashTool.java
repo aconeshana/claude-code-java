@@ -355,7 +355,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
         boolean dangerouslyDisableSandbox =
             input.has("dangerouslyDisableSandbox") && input.get("dangerouslyDisableSandbox").asBoolean(false);
         // context is nullable at the API boundary; downstream executors
-// dereference workingDirectory/abortController/etc., so resolve a
+        // dereference workingDirectory/abortController/etc., so resolve a
         // minimal fallback (cwd = user.dir, NOOP progress sink) once here
         // instead of re-guarding at every call site.
         if (context == null) {

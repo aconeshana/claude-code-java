@@ -34,7 +34,7 @@ final class SettingsTreeReader {
     /** Reads strict JSON after removing a UTF-8 BOM, preserving parser and I/O failures. */
     static JsonNode readJson(Path settingsPath) throws IOException {
         String content = Files.readString(settingsPath, StandardCharsets.UTF_8);
-// parseSettingsFileUncached treats an empty settings file as an accepted
+        // parseSettingsFileUncached treats an empty settings file as an accepted
         // empty object before calling safeParseJSON. Keep the raw settings-tree
         // boundary consistent too, including a UTF-8 BOM followed only by
         // whitespace; this is distinct from a literal JSON null root.
@@ -139,7 +139,7 @@ final class SettingsTreeReader {
         String file = path.toAbsolutePath().normalize().toString();
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8);
-// parseSettingsFileUncached returns an accepted empty object for blank
+            // parseSettingsFileUncached returns an accepted empty object for blank
             // files, including a UTF-8 BOM followed only by whitespace. Preserve
             // that shape for diagnostics as well; a blank source is valid and empty,
             // not an absent or malformed settings tree.

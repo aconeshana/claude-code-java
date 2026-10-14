@@ -64,7 +64,7 @@ class PathSafetyTest {
 
         // On macOS/Linux a Java Path collapses a leading "//" (UNC) into "/", so
         // UNC detection is exercised via the raw-string hasSuspiciousWindowsPathPattern
-// test above. Here we use a Windows pattern that survives Path.normalize.
+        // test above. Here we use a Windows pattern that survives Path.normalize.
         PathSafety.SafetyResult windows = PathSafety.checkPathSafetyForAutoEdit(Path.of("/foo/.../bar"));
         assertFalse(windows.safe());
         assertFalse(windows.classifierApprovable());

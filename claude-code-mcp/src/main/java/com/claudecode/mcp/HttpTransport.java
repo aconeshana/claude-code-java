@@ -40,7 +40,7 @@ public class HttpTransport implements McpTransport {
     private final AtomicInteger requestId = new AtomicInteger(0);
     private volatile boolean connected = false;
     // Session id echoed back to us by the server after the first successful
-// response — carried on every subsequent POST until close.
+    // response — carried on every subsequent POST until close.
     private volatile String sessionId;
 
     public HttpTransport(McpServerConfig config) {

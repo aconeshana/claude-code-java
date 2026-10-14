@@ -375,7 +375,7 @@ public class MessageCollapser {
                 return;
             }
             // Content events mark the start of Claude's response — flush any pending
-// tool output first.  Preserves the compatibility rule where tool results are flushed before text.
+            // tool output first.  Preserves the compatibility rule where tool results are flushed before text.
             if (Strings.CS.equals("content_block_delta", et) || Strings.CS.equals("content_block_start", et)
                     || Strings.CS.equals("content_block_stop", et)) {
                 if (log.isDebugEnabled()) {

@@ -92,7 +92,7 @@ class ResumeStateRestorerFileHistoryTest {
         fhm.makeSnapshot("msg-2");
 
         // Resume in what stands in for a new process — a fresh engine/manager
-// with no in-memory state, same session id (matches /resume, which
+        // with no in-memory state, same session id (matches /resume, which
         // does not mint a new session id — see ResumeStateRestorer#restoreFileHistory).
         DefaultQuerySession resumedEngine = newEngineWithFileHistory(identity);
         ResumeStateRestorer restorer = new ResumeStateRestorer(resumedEngine, storage, null, null);

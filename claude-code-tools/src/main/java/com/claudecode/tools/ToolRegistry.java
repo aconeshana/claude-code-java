@@ -567,7 +567,7 @@ public class ToolRegistry implements ToolExecutor {
 // REPL-less) ask→deny.
 
                     //      decision but no callback exists, it returns
-// AUTO_REJECT_MESSAGE(tool.name).
+                    // AUTO_REJECT_MESSAGE(tool.name).
                     String denial = MessageConstants.autoRejectMessage(canonicalName);
                     recordPermissionDenial(context, canonicalName, permissionInput);
                     return ToolResult.error(denial).withToolUseResult("Error: " + denial);

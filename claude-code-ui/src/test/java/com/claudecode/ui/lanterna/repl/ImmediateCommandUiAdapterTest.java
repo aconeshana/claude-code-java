@@ -99,7 +99,7 @@ class ImmediateCommandUiAdapterTest {
     // ── GUI-thread affinity ───────────────────────────────────────────────
     // executeAndNotify runs on the immediate-cmd virtual thread. A Lanterna
     // component mutated from there locks itself and then walks the parent
-// chain for its theme, while a concurrent updateScreen holds those
+    // chain for its theme, while a concurrent updateScreen holds those
     // parents and descends — a silent, intermittent TUI freeze. MessagePanel
     // is exempt by design (private ReentrantReadWriteLock, never the component
     // monitor), but every InputPanel touch must be marshalled.

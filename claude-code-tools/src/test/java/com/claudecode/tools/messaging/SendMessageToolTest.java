@@ -140,7 +140,7 @@ class SendMessageToolTest {
         mb.clearAll();
         try {
             // Seed one teammate inbox so broadcast has a recipient, then drain the
-// seed so the real broadcast message is what poll returns.
+            // seed so the real broadcast message is what poll returns.
             mb.send(Mail.of(MailTypes.USER_MESSAGE, "leader", "teammate1", "seed"));
             mb.poll("teammate1");
 

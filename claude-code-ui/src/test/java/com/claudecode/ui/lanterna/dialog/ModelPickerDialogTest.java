@@ -410,8 +410,8 @@ class ModelPickerDialogTest {
 
     @Test
     void idle_afterHide_hasZeroPreferredSizeAndDoesNotThrow() {
-// Regression guard: PickerRenderer.getPreferredSize is queried by the
-// Lanterna layout manager even while inactive (before the first show
+        // Regression guard: PickerRenderer.getPreferredSize is queried by the
+        // Lanterna layout manager even while inactive (before the first show
         // and again after Esc/Enter hides it) — must not NPE on a null options list.
         ModelPickerDialog d = new ModelPickerDialog();
         assertEquals(new TerminalSize(0, 0), d.calculatePreferredSize());
@@ -423,7 +423,7 @@ class ModelPickerDialogTest {
 
     @Test
     void envOverride_replacesOptionAndIsSelectable() {
-// Full show path with an injected non-empty lookup — the picker's real
+        // Full show path with an injected non-empty lookup — the picker's real
         // consumer path (the machine's actual env is never touched).
         AtomicReference<ModelPickerDialog.ModelPickResult> result = new AtomicReference<>();
         ModelPickerDialog d = new ModelPickerDialog();

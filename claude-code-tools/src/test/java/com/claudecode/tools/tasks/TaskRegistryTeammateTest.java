@@ -99,7 +99,7 @@ class TaskRegistryTeammateTest {
     @Test
     void killNonRunningTeammateIsNoOp() {
         // A teammate whose task was created but never started (still PENDING)
-// must not be force-killed — kill reflects the not-RUNNING guard.
+        // must not be force-killed — kill reflects the not-RUNNING guard.
         TaskRegistry registry = new TaskRegistry(TaskStore.inMemory());
         TaskStore store = TaskStore.inMemory();
         TaskState task = store.create(TaskType.IN_PROCESS_TEAMMATE, "Teammate");

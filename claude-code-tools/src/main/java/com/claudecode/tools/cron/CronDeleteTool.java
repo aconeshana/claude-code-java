@@ -71,7 +71,7 @@ public class CronDeleteTool extends AnnotatedTool<JsonNode, String> {
     public ValidationResult validateInput(JsonNode input, ToolExecutionContext context) {
 
         // is_error (errorCode 1), not a plain-text "Error: …" returned from
-// call. Teammates may delete only jobs carrying their own runtime
+        // call. Teammates may delete only jobs carrying their own runtime
         // agentId; the leader (no teammate context) may delete any job.
         String id = input.path("id").asText("");
         if (id.isEmpty()) {

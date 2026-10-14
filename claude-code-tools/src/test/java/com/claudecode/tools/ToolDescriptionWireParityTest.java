@@ -91,11 +91,11 @@ class ToolDescriptionWireParityTest {
             String name = tool.name();
             if (!BASELINE_TOOLS.contains(name)) continue;
 
-// Wire (prompt(null)) and permission UI (description) must agree:
+            // Wire (prompt(null)) and permission UI (description) must agree:
             // the registry builds the model tool catalogue from prompt(null), so
             // any divergence is exactly the ambiguity we removed. Agent is exempt
-// (its short description intentionally differs from its full
-// prompt).
+            // (its short description intentionally differs from its full
+            // prompt).
             if (!INTENTIONAL_DIVERGENCES.contains(name)) {
                 assertEquals(tool.description(), tool.prompt(null),
                     name + ": wire prompt() must equal permission description()");
@@ -113,7 +113,7 @@ class ToolDescriptionWireParityTest {
         // Every baseline tool reachable in a unit test must be registered
         // (catches accidental drops from the converged set). Workflow is excluded
         // here only because its registration needs a workflow runtime/catalog;
-// it is still covered by the end-to-end wire contract test.
+        // it is still covered by the end-to-end wire contract test.
         Set<String> expectedRegistered = new HashSet<>(BASELINE_TOOLS);
         expectedRegistered.remove("Workflow");
         Map<String, Tool<?, ?>> byName = new HashMap<>();

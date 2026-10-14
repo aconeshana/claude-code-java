@@ -148,7 +148,7 @@ class DefaultManualCompactStrategyPtlPairingTest {
         // groupByApiRound's first group is always the lone leading user message
         // (there is no assistant id yet to anchor a group boundary before it),
         // so the round-0 tool_use/tool_result group is only removed on the
-// *second* truncation call — this matches what streamCompactSummary's
+        // *second* truncation call — this matches what streamCompactSummary's
         // retry loop actually drives, one PTL retry at a time.
         List<Message> history = new ArrayList<>(parallelToolRound(0, 5));
         history.addAll(textOnlyRound(1));

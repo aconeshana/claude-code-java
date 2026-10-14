@@ -192,7 +192,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
 
         // context is nullable at the API boundary; resolve a minimal fallback so
         // downstream dereferences (workingDirectory/sandboxConfig/abortController)
-// don't NPE, matching BashTool.
+        // don't NPE, matching BashTool.
         if (context == null) {
             context = ToolExecutionContext.of(new AbortController(), "unknown");
         }

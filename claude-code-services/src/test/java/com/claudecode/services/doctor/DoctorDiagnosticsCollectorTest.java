@@ -378,7 +378,7 @@ class DoctorDiagnosticsCollectorTest {
         var inputs = new DoctorDiagnosticsCollector.Inputs(tmp, home, List.of(), List.of());
         DiagnosticReport report = collector.collect(inputs);
 
-// Environment-robust: the machine's real ~/on may or may
+        // Environment-robust: the machine's real ~/on may or may
         // not exist, so assert on the project file specifically rather than a count.
         String projectSettings = tmp.resolve(".claude").resolve("settings.json").toString();
         assertTrue(report.invalidSettings().stream()

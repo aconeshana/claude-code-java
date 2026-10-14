@@ -32,7 +32,7 @@ public final class Selection {
     // Pre-clamp virtual rows. When anchor/focus row is clamped to the
     // viewport edge during shiftSelection, the "true" row lives here so a
     // reverse scroll can restore the on-screen position and pop the
-// matching accumulator entry. null when no clamp debt exists. matches
+    // matching accumulator entry. null when no clamp debt exists. matches
 
     private Integer virtualAnchorRow;
     private Integer virtualFocusRow;
@@ -260,7 +260,7 @@ public final class Selection {
                     int charIdx = cellToChar(t, col);
                     if (charIdx > 0) charIdx--;          // step back from anchor cell
                     // Skip non-word chars left, then skip word chars left,
-// landing on the start of the previous word. matches
+                    // landing on the start of the previous word. matches
                     // Vim/readline word-back motion.
                     while (charIdx > 0 && !isWordChar(t.charAt(charIdx))) charIdx--;
                     while (charIdx > 0 && isWordChar(t.charAt(charIdx - 1))) charIdx--;

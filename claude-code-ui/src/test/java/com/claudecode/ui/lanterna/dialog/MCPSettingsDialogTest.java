@@ -122,7 +122,7 @@ class MCPSettingsDialogTest {
         // Regression: Ctrl+C inside the dialog previously got swallowed with
         // every other key, so users couldn't double-press to exit while the
         // dialog was open. Now Ctrl+C must leave deliver unchanged (true)
-// so the outer REPL onInput switch can dispatch to handleCtrlC.
+        // so the outer REPL onInput switch can dispatch to handleCtrlC.
         MCPSettingsDialog d = new MCPSettingsDialog();
         d.show(configWithScopes(new Server[]{ stdioServer("s1", false) }),
             Set.of("s1"), () -> {});
@@ -381,7 +381,7 @@ class MCPSettingsDialogTest {
     @Test
     void refresh_rebuildsServerMenuItems_whenDisabledFlagFlips() {
         // Regression: after runToggleDisabled updates disabledMcpServers and calls
-// refresh, the SERVER_MENU must show the actions for the *new*
+        // refresh, the SERVER_MENU must show the actions for the *new*
         // state (Enable + Back) — not the stale ones from before the toggle.
         MCPSettingsDialog d = new MCPSettingsDialog();
         d.show(configWithScopes(new Server[]{ stdioServer("a", false) }),

@@ -69,7 +69,7 @@ public final class ExternalEditorLauncher {
             screen.stopScreen();
             screenStopped = true;
             // 2. Run the editor in-place (blocking; the child drives the terminal directly).
-// The resolver supplies the GUI editor wait flag before waitFor.
+            // The resolver supplies the GUI editor wait flag before waitFor.
             int rc = ControllingTerminal
                 .connect(new ProcessBuilder(command.argvFor(file)))
                 .start()

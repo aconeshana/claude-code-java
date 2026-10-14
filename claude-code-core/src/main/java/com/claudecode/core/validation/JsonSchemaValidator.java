@@ -296,7 +296,7 @@ public class JsonSchemaValidator {
     private boolean validateUri(String value) {
         try {
             URI uri = URI.create(value);
-// create throws IllegalArgumentException on malformed input; a
+            // create throws IllegalArgumentException on malformed input; a
             // successfully-parsed value is a valid URI reference once any of its
             // components is present (or it is the empty reference).
             return uri.getScheme() != null || uri.getSchemeSpecificPart() != null

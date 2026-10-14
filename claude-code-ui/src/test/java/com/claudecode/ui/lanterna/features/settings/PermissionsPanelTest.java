@@ -70,7 +70,7 @@ class PermissionsPanelTest {
         PermissionsPanel p = opened(PermissionsPanel.Tab.ALLOW, gateWithSampleRules(), () -> {});
         assertEquals(List.of("Bash"), p.allowTab().filteredRuleStrings());
         // Deny/Ask are lazily reloaded only when they become the selected tab
-// (matches SettingsTabContainer's statusPane/usagePane pattern) — switch
+        // (matches SettingsTabContainer's statusPane/usagePane pattern) — switch
         // to each before checking its contents.
         send(p, RIGHT); // -> ASK
         assertEquals(List.of(), p.askTab().filteredRuleStrings());

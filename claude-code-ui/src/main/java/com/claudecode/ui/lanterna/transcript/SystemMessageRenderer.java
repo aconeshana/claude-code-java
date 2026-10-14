@@ -208,7 +208,7 @@ final class SystemMessageRenderer {
             }
 
             case "informational" -> {
-// matches SystemTextMessageInner. Verbose info has no dot and is
+                // matches SystemTextMessageInner. Verbose info has no dot and is
                 // dim; notice/warning rows have a BLACK_CIRCLE gutter. Only the
                 // warning level applies warning color — notice uses terminal text.
                 if (Strings.CS.equals("info", level)) {

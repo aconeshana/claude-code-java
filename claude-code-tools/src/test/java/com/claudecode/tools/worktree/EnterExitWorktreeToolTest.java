@@ -230,7 +230,7 @@ class EnterExitWorktreeToolTest {
     @Test
     void exit_withNoActiveSession_isNoOp(@TempDir Path dir) {
         // The no-op refusal now lives in validateInput (so the model sees
-// is_error: true) — call itself is never reached by a real caller
+        // is_error: true) — call itself is never reached by a real caller
         // (ToolRegistry) in this case, only its defensive re-check fallback.
         ValidationResult validation = exitTool.validateInput(exitInput("keep", null), ctx(dir, "sess-1"));
         assertInstanceOf(ValidationResult.Invalid.class, validation);

@@ -869,7 +869,7 @@ public final class PluginRuntimeLoader {
                 // itself for SKILL.md before scanning child directories. Some
                 // marketplace plugins are cached exactly in that direct form
                 // (the cache root is the skill directory, with no local
-// on), so defaulting only to root/skills
+                // on), so defaulting only to root/skills
                 // silently drops an otherwise enabled skill.
                 skillDirs.add(new PluginSkillDir(
                     ctx.pluginName(), ctx.root(), ctx.pluginName()));

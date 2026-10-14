@@ -64,7 +64,7 @@ class CommandImmediateOverrideTest {
         // McpCommand requires a live McpClientManager since M1.9 (no-arg
         // ctor removed to make wire-order failures compile-time errors).
         // For a metadata assertion we can pass a plain instance — the ctor
-// only null-checks it, and the isImmediate answer is static.
+        // only null-checks it, and the isImmediate answer is static.
         assertTrue(new McpCommand(McpManagementPort.none()).isImmediate(),
             "McpCommand (TS mcp) must be immediate");
     }
@@ -112,10 +112,10 @@ class CommandImmediateOverrideTest {
 
     @Test
     void defaultRegistryContainsAllImmediateCommands() {
-// /mcp is intentionally *not* in CommandFactory.createDefault — it
+        // /mcp is intentionally *not* in CommandFactory.createDefault — it
         // requires a live McpClientManager that only exists after MCP init,
         // so the CLI startup path adds it to the registry itself. The
-// metadata assertion for /mcp lives in mcp_isImmediate above.
+        // metadata assertion for /mcp lives in mcp_isImmediate above.
         Set<String> expectedImmediate = Set.of(
             "btw", "color", "exit", "hooks", "plugin", "rename", "status",
             "model", "fast", "effort"

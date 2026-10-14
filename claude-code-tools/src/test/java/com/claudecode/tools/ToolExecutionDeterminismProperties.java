@@ -109,7 +109,7 @@ class ToolExecutionDeterminismProperties {
         PermissionDecision d1 = BashPermissions.check(command);
         PermissionDecision d2 = BashPermissions.check(command);
 
-// PermissionDecision variants are empty records, so.equals is
+        // PermissionDecision variants are empty records, so.equals is
         // structural equality by type — equivalent to the old enum's
         // reference equality (==), which no longer applies now that each
         // call constructs a fresh instance instead of returning a singleton.

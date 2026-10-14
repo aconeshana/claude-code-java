@@ -101,7 +101,7 @@ class AddDirDialogTest {
         // clipboard paste) arrives as a single PasteKeyStroke, not a run of
         // CHARACTER events. Before this fix the dialog had no branch for
         // KeyType.PASTE, so the event fell through undelivered=false-unset and
-// compatibility baselineto whatever held real Lanterna focus underneath (the main
+        // compatibility baselineto whatever held real Lanterna focus underneath (the main
         // chat input), instead of landing in this dialog's own field.
         AddDirDialog d = new AddDirDialog();
         AtomicReference<String> submittedPath = new AtomicReference<>();

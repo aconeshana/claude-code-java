@@ -317,7 +317,7 @@ class MessagesDeserializerTest {
 
     @Test
     void pruningKeepsLastBoundaryWhenSeveral() {
-// matches Java writing a fresh boundary on top of an already-compacted
+        // matches Java writing a fresh boundary on top of an already-compacted
         // transcript: only the trailing boundary's view survives.
         UserMessage old = user("o1", "ancient");
         SystemMessage firstBoundary = boundary("b1");

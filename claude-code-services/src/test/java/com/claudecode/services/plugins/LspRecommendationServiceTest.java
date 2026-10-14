@@ -95,7 +95,7 @@ class LspRecommendationServiceTest {
         catalog.put("claude-code-marketplace",
             List.of(entry("typescript", "TypeScript LSP", tsLspServers("sh"))));
 
-// An installed plugin is skipped by matchAgainst via isInstalled; here
+        // An installed plugin is skipped by matchAgainst via isInstalled; here
         // we just verify a never-suggest entry is excluded (same exclusion path).
         svc.addToNeverSuggest("typescript@claude-code-marketplace");
         assertTrue(svc.matchAgainst(catalog, ".ts").isEmpty());

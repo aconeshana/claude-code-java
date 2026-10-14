@@ -103,7 +103,7 @@ final class SecureStorageCodec {
         root.set("pluginSecrets", secrets);
 
         // Extras land last so callers that mutated extras via
-// SecureStorageData.extras write through.
+        // SecureStorageData.extras write through.
         for (var e : data.extras().entrySet()) {
             root.set(e.getKey(), JsonUtils.getMapper().valueToTree(e.getValue()));
         }

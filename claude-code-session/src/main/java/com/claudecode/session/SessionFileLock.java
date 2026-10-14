@@ -80,10 +80,10 @@ public final class SessionFileLock {
             }
 
             try {
-// Investigation (2026-07-29): FileChannel.lock has no timeout
-// parameter, while tryLock provides no notification when another JVM
+                // Investigation (2026-07-29): FileChannel.lock has no timeout
+                // parameter, while tryLock provides no notification when another JVM
                 // releases the OS lock. WatchService cannot observe lock ownership either.
-// A deadline-bounded tryLock retry with a 50 ms backoff is therefore the
+                // A deadline-bounded tryLock retry with a 50 ms backoff is therefore the
                 // portable way to preserve this API's timeout and interruption semantics;
                 // the sleep is deliberate contention backoff, not an unbounded busy-spin.
                 //noinspection BusyWait

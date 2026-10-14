@@ -54,7 +54,7 @@ final class McpMessageDispatcher {
             // Notification — no reply, no id. hasId is false here; hasMethod may
             // be false (a message with neither id nor method, case ④), in which
             // case it falls through to the ignore-log instead of NPE-ing on
-// msg.get("method").asText in dispatchNotification.
+            // msg.get("method").asText in dispatchNotification.
             dispatchNotification(msg, notificationHandlers);
             return;
         }

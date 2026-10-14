@@ -1242,7 +1242,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
     public TerminalSize calculatePreferredSize() {
         // Return projected display height so SmartLayout places pinned components below
         // folded tool rows as well as ordinary source lines. Width changes invalidate the
-// cached projection and therefore match OutputLine's reactive terminal-size render.
+        // cached projection and therefore match OutputLine's reactive terminal-size render.
         TerminalSize current = getSize();
         int width = current == null || current.getColumns() <= 0 ? 80 : current.getColumns();
         int contentHeight = displayRowsForWidth(width).size();
@@ -2034,7 +2034,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             // Capture visible-row text snapshot for Selection.getSelectedText.
             // Index 0 = top of viewport, matches what mouse events see.
             // Done BEFORE the per-row draw loop so empty rows in [endRow, height)
-// map to "" through the snapshotVisibleRows.get(y) null guard.
+            // map to "" through the snapshotVisibleRows.get(y) null guard.
             List<String> frameRows = new ArrayList<>(visibleRows.size());
             for (StyledLine row : visibleRows) {
                 frameRows.add(row.isDivider() ? "" : row.text());

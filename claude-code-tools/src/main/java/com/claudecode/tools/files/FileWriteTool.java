@@ -125,7 +125,7 @@ public class FileWriteTool extends AnnotatedTool<JsonNode, Object> {
 
 
         // decision to the permission layer (returns {result:true}) to avoid an
-// SMB auth round-trip on Windows. match that: skip the read-before-write
+        // SMB auth round-trip on Windows. match that: skip the read-before-write
         // gate and proceed.
         boolean isUnc = Strings.CS.startsWith(absolutePath, UNC_PREFIX) || Strings.CS.startsWith(absolutePath, "//");
 

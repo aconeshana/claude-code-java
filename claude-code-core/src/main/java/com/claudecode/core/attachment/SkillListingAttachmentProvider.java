@@ -40,8 +40,8 @@ public final class SkillListingAttachmentProvider implements AttachmentProvider 
         }
         String agentKey = ctx.agentId() != null ? ctx.agentId() : "";
         Set<String> sent = sentByAgent.computeIfAbsent(agentKey, _ -> new HashSet<>());
-// The provider instance is new after process restart, so reconstruct the
-// announced set from persisted skill_listing
+        // The provider instance is new after process restart, so reconstruct the
+        // announced set from persisted skill_listing
         // attachments. Without this scan, --resume/--continue re-emits the
         // entire initial skill catalogue into JSONL even though it is already
         // present in the restored conversation.

@@ -261,7 +261,7 @@ class ConcurrentToolRunnerTest {
     void siblingBashError_interruptsInFlightSibling() {
 
         // sibling-abort cancelling in-flight concurrency-safe tools). The Read
-// executor is abort-aware (polls ctx.abortController.isAborted), exactly
+        // executor is abort-aware (polls ctx.abortController.isAborted), exactly
 
         // the sibling abort fires. The batch finishing well under the 2s in-flight
         // timeout proves the in-flight sibling was interrupted, not awaited.
@@ -285,7 +285,7 @@ class ConcurrentToolRunnerTest {
                 }
                 // Production tools register their own abort handler (e.g. BashTool's
                 // process.destroyForcibly) so an in-flight sibling abort is observed
-// even if the tool body hasn't started polling yet. match that here.
+                // even if the tool body hasn't started polling yet. match that here.
                 ctx.abortController().onAbort(() -> inFlightReadInterrupted.set(true));
                 // Poll the abort signal; bail promptly when a sibling aborted the batch.
                 for (int i = 0; i < 40; i++) {

@@ -208,7 +208,7 @@ class PromptCacheSerializationTest {
     @Test
     void toolsArrayGetsNoAutomaticCacheControlMarker() throws Exception {
 
-// the tools array never carries
+        // the tools array never carries
         // cache_control on the wire. The cache breakpoint that covers tool
         // definitions lives on the system prompt block instead.
         CreateMessageRequest req = CreateMessageRequest.builder()

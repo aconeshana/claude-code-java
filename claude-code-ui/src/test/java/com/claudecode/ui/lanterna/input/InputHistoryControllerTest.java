@@ -623,7 +623,7 @@ class InputHistoryControllerTest {
 
     @Test
     void editingMidNavigation_doesNotCorruptTheIndex() {
-// Regression: an edit used to reset the whole state, so the next Up restarted from the
+        // Regression: an edit used to reset the whole state, so the next Up restarted from the
         // top ("history forking" — 4 Ups then only a couple Downs back to empty). onUserEdit must
         // NOT touch the index.
         RecordingSurface s = new RecordingSurface();

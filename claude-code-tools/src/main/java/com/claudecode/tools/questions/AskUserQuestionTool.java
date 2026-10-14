@@ -136,7 +136,7 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
         }
         List<QuestionPresenter.Question> qs = parseQuestions(input);
         if (qs == null) {
-// Malformed input is reported by call/the structural gate; the
+            // Malformed input is reported by call/the structural gate; the
             // uniqueness/html checks below only apply to well-formed inputs.
             return ValidationResult.valid();
         }

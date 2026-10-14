@@ -269,7 +269,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
             InitializeParams params = new InitializeParams();
             // rootUri is @Deprecated in lsp4j (LSP 3.16) but kept for compatibility:
 
-//  which deliberately retains the
+            //  which deliberately retains the
             // deprecated rootUri/rootPath so some servers still resolve URIs.
             params.setRootUri(workspaceRoot.toUri().toString());
             // rootPath is @Deprecated in lsp4j (LSP 3.8) but kept for compatibility:
@@ -428,7 +428,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
 
     private ClientCapabilities createClientCapabilities() {
 
-//  Declaring an unimplemented
+        //  Declaring an unimplemented
         // capability is worse than omitting it: LSP4J's default LanguageClient
         // handlers throw UnsupportedOperationException, so a server acting on a
         // false declaration (workspace/applyEdit, window/workDoneProgress/create,

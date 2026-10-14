@@ -141,7 +141,7 @@ class InProcessTeammateTaskViewTest {
         TaskState task = store.create(TaskType.IN_PROCESS_TEAMMATE, "Teammate");
         String prompt = "explore";
         // The sub-agent's conversation already begins with the initial prompt
-// (matches the real DefaultSubAgentFactory, whose engine appends the
+        // (matches the real DefaultSubAgentFactory, whose engine appends the
         // prompt as the first user message). The display transcript must NOT
         // seed a second copy — that would duplicate it.
         List<Message> conv = List.of(

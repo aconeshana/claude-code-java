@@ -65,7 +65,7 @@ final class PowerShellParser {
             return ParseResult.unavailable("PowerShell parser failed to start: " + e.getMessage());
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
-// builder.start either returns a live Process or throws, so a
+            // builder.start either returns a live Process or throws, so a
             // non-null process here means start succeeded — destroy it.
             process.destroyForcibly();
             return new ParseResult(true, false, "PowerShell parser was interrupted");

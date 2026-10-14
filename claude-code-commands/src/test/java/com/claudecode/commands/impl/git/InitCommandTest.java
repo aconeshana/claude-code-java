@@ -59,7 +59,7 @@ class InitCommandTest {
     @Test
     void promptFor_switchesOnTheGate() {
         // Regression guard: a prior version switched only the description on
-// CLAUDE_CODE_NEW_INIT and always returned OLD from execute.
+        // CLAUDE_CODE_NEW_INIT and always returned OLD from execute.
         assertSame(InitCommand.OLD_INIT_PROMPT, InitCommand.promptFor(false));
         assertSame(InitCommand.NEW_INIT_PROMPT, InitCommand.promptFor(true));
     }

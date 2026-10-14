@@ -104,7 +104,7 @@ final class FilePermissionRuleMatcher {
         if (Strings.CS.endsWith(p, "/**")) {
             String prefix = p.substring(0, p.length() - 3);
             if (Strings.CS.startsWith(prefix, "/")) prefix = prefix.substring(1);
-// matches ignore: a trailing /** matches the directory itself and
+            // matches ignore: a trailing /** matches the directory itself and
             // everything beneath it. Both checks are glob-aware (so "foo-*/**"
             // matches "foo-bar/baz"), and the bare-directory check is anchored so
             // a non-slash prefix glob cannot match a mid-path segment.

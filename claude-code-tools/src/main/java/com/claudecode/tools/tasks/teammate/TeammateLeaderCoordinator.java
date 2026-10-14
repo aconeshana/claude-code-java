@@ -81,7 +81,7 @@ public final class TeammateLeaderCoordinator {
     private void loop() {
         try {
             while (running.get()) {
-// receive blocks on BlockingQueue.take and never returns null;
+                // receive blocks on BlockingQueue.take and never returns null;
                 // interruption surfaces as InterruptedException, handled below.
                 Mail mail = mailbox.receive(TeammateMailbox.TEAM_LEAD);
                 handle(mail);

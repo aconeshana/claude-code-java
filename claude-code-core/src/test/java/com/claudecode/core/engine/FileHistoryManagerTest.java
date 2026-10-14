@@ -569,7 +569,7 @@ class FileHistoryManagerTest {
         mgr.trackEdit(f.toString());
         assertTrue(Files.exists(backupRoot.resolve("session-old")));
 
-// matches QueryEngine#switchToSession mutating the SAME SessionIdentity
+        // matches QueryEngine#switchToSession mutating the SAME SessionIdentity
         // in place (resume/branch do not construct a new QueryEngine/manager).
         identity.set("session-new");
         write(f, "after switch");

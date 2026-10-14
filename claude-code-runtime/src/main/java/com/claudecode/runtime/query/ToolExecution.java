@@ -152,7 +152,7 @@ final class ToolExecution {
         // placeholders for every tool skipped after the query is aborted.
         // A sibling-error cascade (siblingAbort aborted but the engine itself
         // is NOT aborted) gets the distinct sibling-error message so the model
-// doesn't read it as a user reject (matches StreamingToolExecutor).
+        // doesn't read it as a user reject (matches StreamingToolExecutor).
         if (abortCtrl.isAborted()) {
 
             // sibling error (hasErrored) wins over a plain engine abort, so the

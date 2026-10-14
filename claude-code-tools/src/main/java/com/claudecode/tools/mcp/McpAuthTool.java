@@ -202,7 +202,7 @@ public final class McpAuthTool extends Tool<JsonNode, String> {
                 .build();
             try (Response response = httpClient.newCall(request).execute()) {
                 // OkHttp may hand back a null body on some failure paths; hoist
-// it once instead of dereferencing response.body twice.
+                // it once instead of dereferencing response.body twice.
                 ResponseBody responseBodyObject = response.body();
                 String responseBody = responseBodyObject.string();
                 if (response.code() == 200) {

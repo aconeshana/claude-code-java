@@ -116,7 +116,7 @@ public class ConfigLoader {
      */
     private ApiConfig buildProviderConfig(String apiKey, String authToken, String model,
                                           String baseUrl, List<String> betas) {
-// Routed through getEnvironmentVariable (not the no-arg resolve) so
+        // Routed through getEnvironmentVariable (not the no-arg resolve) so
         // ConfigLoader subclasses can inject provider env vars for testing,
         // same seam as resolveBedrockRegion/resolveVertexProjectId below.
         ApiConfig.ApiProvider provider = ApiProviderResolver.resolve(

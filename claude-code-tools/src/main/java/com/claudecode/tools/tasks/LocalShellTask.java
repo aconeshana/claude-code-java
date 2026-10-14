@@ -476,7 +476,7 @@ public class LocalShellTask {
             SandboxManager.scrubBareGitRepoFiles(this.cwd, this.bareGitBefore);
         }
 
-// If kill already raced us to a terminal state, don't try to
+        // If kill already raced us to a terminal state, don't try to
         // transition again.
         if (killed.get()) {
             return;

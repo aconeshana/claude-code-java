@@ -94,7 +94,7 @@ public class NotebookEditTool extends AnnotatedTool<JsonNode, String> {
 
         Path path = Path.of(context.workingDirectory()).resolve(notebookPath);
 
-// BEFORE normalize. On POSIX normalize collapses a leading "//" to "/",
+        // BEFORE normalize. On POSIX normalize collapses a leading "//" to "/",
         // so the UNC short-circuit below must run on the un-normalized resolved path
         // or it would never fire (a "//server/share/x" notebook would be wrongly
         // rejected as non-.ipynb). absolutePath stays normalized for cache/history keys.

@@ -17,8 +17,8 @@ import com.claudecode.tools.ToolRegistry;
 
 class AgentToolSchemaTest {
 
-// Inspect the schema at the model boundary. AgentTool.inputSchema is the
-// permissive execution schema; ToolRegistry applies the established wire
+    // Inspect the schema at the model boundary. AgentTool.inputSchema is the
+    // permissive execution schema; ToolRegistry applies the established wire
     // projection that hides teammate-only fields when teams are disabled.
     private static JsonNode schema() {
         return schema(new AgentTool(dummyClient(), new ToolRegistry()));

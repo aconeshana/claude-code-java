@@ -217,7 +217,7 @@ class DefaultSubAgentFactoryTest {
             SubAgentRequest.builder().prompt("test").build());
 
         assertEquals("parent-session-id", config.sessionIdentity().get());
-// Same reference, not just an equal value — a later switchToSession
+        // Same reference, not just an equal value — a later switchToSession
         // on the parent's identity must be visible to this sub-engine too.
         shared.set("switched-id");
         assertEquals("switched-id", config.sessionIdentity().get());

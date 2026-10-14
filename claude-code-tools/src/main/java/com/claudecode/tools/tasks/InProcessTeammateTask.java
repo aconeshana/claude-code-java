@@ -1089,7 +1089,7 @@ public class InProcessTeammateTask {
         if (taskStore != null) {
             var cur = taskStore.get(getTaskId());
             // Only a NATURAL exit (lifecycle abort, loop end) becomes COMPLETED.
-// An explicit stop/kill sets explicitlyKilled and writes KILLED
+            // An explicit stop/kill sets explicitlyKilled and writes KILLED
             // itself; leaving that status intact here avoids a race where this
             // method could otherwise clobber KILLED back to COMPLETED.
             if (cur.isPresent() && cur.get().status() == TaskStatus.RUNNING && !explicitlyKilled) {

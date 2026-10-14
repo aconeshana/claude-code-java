@@ -922,7 +922,7 @@ final class StdoutMessageWriter {
                 yield node;
             }
             case SDKMessage.ToolUseSummary tus -> {
-// plain object with
+                // plain object with
                 // camelCase keys, serialized as-is (no snake_case remap for this type).
                 ObjectNode node = envelope("tool_use_summary", sessionId, false);
                 node.put("summary", tus.summary());

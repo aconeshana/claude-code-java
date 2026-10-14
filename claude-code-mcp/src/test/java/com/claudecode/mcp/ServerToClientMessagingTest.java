@@ -122,7 +122,7 @@ class ServerToClientMessagingTest {
         public void connect(McpServerConfig config) {
             // Reuse the real connect logic (register handlers, populate map)
             // but replace transport creation via a subclass path. Simplest:
-// manually match what connect does, minus createTransport.
+            // manually match what connect does, minus createTransport.
 
             // We bypass the parent's connect entirely and call the handler
             // registration paths via reflection-free means: construct the
@@ -138,7 +138,7 @@ class ServerToClientMessagingTest {
         }
 
         // Runs the same code paths registerServerRequestHandlers +
-// registerNotificationHandlers in the production connect would.
+        // registerNotificationHandlers in the production connect would.
         private void registerHandlers(McpTransport transport, McpServerConfig config) {
             transport.onServerRequest("roots/list", _ -> {
                 var mapper = JsonUtils.getMapper();

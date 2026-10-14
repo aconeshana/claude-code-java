@@ -378,7 +378,7 @@ public class FileReadTool extends AnnotatedTool<JsonNode, Object> {
             }
 
             // Task 57.4: Read deduplication check — only when the requested
-// range (offset/limit) matches the previously-read range. matches
+            // range (offset/limit) matches the previously-read range. matches
 
             // offset/limit + mtime), so a re-read of a DIFFERENT range is never
             // collapsed into [file_unchanged].
@@ -574,7 +574,7 @@ public class FileReadTool extends AnnotatedTool<JsonNode, Object> {
                                    ToolExecutionContext context) {
         // Direct Tool#call tests bypass ToolRegistry's semantic gate. Keep a
         // defensive copy here; production requests are rejected earlier and
-// therefore retain the expected <tool_use_error> wrapper.
+        // therefore retain the expected <tool_use_error> wrapper.
         if (StringUtils.isNotBlank(pages)) {
             String validationError = validatePageRange(pages);
             if (validationError != null) return officialReadError(validationError);

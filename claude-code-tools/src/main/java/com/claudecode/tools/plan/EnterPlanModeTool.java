@@ -56,7 +56,7 @@ public class EnterPlanModeTool extends AnnotatedTool<JsonNode, String> {
 
     @Override public JsonNode inputSchema() {
 
-// extra keys are rejected. createObjectSchema alone is permissive,
+        // extra keys are rejected. createObjectSchema alone is permissive,
         // so set additionalProperties:false to match z.strictObject.
         ObjectNode schema = createObjectSchema();
         schema.put("additionalProperties", false);

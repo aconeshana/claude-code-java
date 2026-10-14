@@ -133,7 +133,7 @@ public final class RequestMessageNormalizer {
             String model, Set<String> availableToolNames,
             Map<String, String> toolNameAliases) {
 
-// before any other processing ( These are
+        // before any other processing ( These are
         // display-only envelopes that must never reach the model. Applied first
         // so later reorder/merge passes never observe them.
         messages = messages.stream()

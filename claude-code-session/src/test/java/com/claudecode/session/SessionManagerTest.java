@@ -238,7 +238,7 @@ class SessionManagerTest {
     @Test
     void listSessionsIgnoresAgentTranscriptSubdirectory() throws IOException {
         // Main session file + a same-stem "subagents/" directory both exist —
-// listSessions's non-recursive "*.jsonl" glob must only find the
+        // listSessions's non-recursive "*.jsonl" glob must only find the
         // main file, never mistake the sidechain directory for a session.
         String id = manager.createSession();
         Path file = manager.getSessionFile(id);

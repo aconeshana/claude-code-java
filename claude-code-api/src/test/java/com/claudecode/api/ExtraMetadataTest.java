@@ -39,7 +39,7 @@ class ExtraMetadataTest {
 
     @Test
     void spreadBeneathIdentityKeysSoIdentityAlwaysWins() {
-// matches requestMetadata's setAll(extra) followed by the three.put
+        // matches requestMetadata's setAll(extra) followed by the three.put
         // calls: extra's own values appear, but identity keys override them.
         ObjectNode userId = JsonUtils.getMapper().createObjectNode();
         ObjectNode extra = ExtraMetadata.parse("{\"device_id\":\"EVIL\",\"team\":\"atlas\"}");

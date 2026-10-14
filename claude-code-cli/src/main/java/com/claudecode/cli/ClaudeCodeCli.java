@@ -364,7 +364,7 @@ public class ClaudeCodeCli implements Callable<Integer> {
         // symptom). apple.awt.UIElement=true tells LaunchServices to treat the
         // process as a background UI element (status-bar-app style) so no Dock
         // icon appears — AWT itself still functions normally. Must be set
-// before ANY AWT class loads, so this stays at the top of main.
+        // before ANY AWT class loads, so this stays at the top of main.
         // Also skip when explicitly overridden (e.g. dev debugging).
         if (System.getProperty("apple.awt.UIElement") == null) {
             System.setProperty("apple.awt.UIElement", "true");

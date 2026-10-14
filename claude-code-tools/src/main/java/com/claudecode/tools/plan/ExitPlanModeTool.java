@@ -103,7 +103,7 @@ public class ExitPlanModeTool extends AnnotatedTool<JsonNode, StructuredToolOutp
         }
 
         // allowedPrompts item schema, so extra keys are allowed — do NOT set
-// additionalProperties:false here. The outer schema is.passthrough
+        // additionalProperties:false here. The outer schema is.passthrough
         // (permissive top-level), preserved below.
 
         schema.putObject("additionalProperties");

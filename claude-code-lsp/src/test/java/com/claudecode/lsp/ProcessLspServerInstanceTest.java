@@ -83,9 +83,9 @@ class ProcessLspServerInstanceTest {
 
         server.onPublishDiagnostics(publish(uri, lsp4jDiagnostic(1, 2, "Type error")));
 
-// getDiagnostics(Path) gates on isRunning, which requires a live
+        // getDiagnostics(Path) gates on isRunning, which requires a live
         // subprocess — use the raw cache accessor instead since we never
-// call initialize here.
+        // call initialize here.
         List<Diagnostic> diags = server.getAllDiagnostics().get(uri);
         assertNotNull(diags);
         assertEquals(1, diags.size());
@@ -210,10 +210,10 @@ class ProcessLspServerInstanceTest {
 
     @Test
     void crashedServer_stopsAfterMaxRestarts() throws Exception {
-// A command that exits non-zero immediately fails initialize and leaves the
+        // A command that exits non-zero immediately fails initialize and leaves the
         // server down. With the lazy crash-recovery model (G2) there is no eager
         // respawn, so the server stays stopped — restart only happens later via
-// ensureStarted and is bounded by MAX_RESTARTS.
+        // ensureStarted and is bounded by MAX_RESTARTS.
         var server = new ProcessLspServerInstance("java",
             List.of("sh", "-c", "exit 3"), null, null);
         Path ws = Path.of(System.getProperty("java.io.tmpdir"));
@@ -258,7 +258,7 @@ class ProcessLspServerInstanceTest {
     @Test
     void crash_doesNotEagerlyRestart() throws Exception {
         // G2 regression: onCrash must NOT eagerly respawn the process. A crashed
-// server stays down until a future request calls ensureStarted (matching
+        // server stays down until a future request calls ensureStarted (matching
 
         var server = new ProcessLspServerInstance("java",
             List.of("sh", "-c", "exit 3"), null, null);
@@ -272,7 +272,7 @@ class ProcessLspServerInstanceTest {
 
     @Test
     void ensureStarted_onFreshServerDoesNotAutoStart() {
-// ensureStarted is the crash-recovery path, not an auto-start: a freshly
+        // ensureStarted is the crash-recovery path, not an auto-start: a freshly
         // constructed server (crashCount == 0) must be left parked.
         var server = new ProcessLspServerInstance("java", List.of("echo"), null, null);
         server.ensureStarted();
@@ -282,7 +282,7 @@ class ProcessLspServerInstanceTest {
 
     @Test
     void ensureStarted_pastMaxRestartsGivesUp() throws Exception {
-// Once crashCount exceeds MAX_RESTARTS, ensureStarted must stop trying
+        // Once crashCount exceeds MAX_RESTARTS, ensureStarted must stop trying
         // rather than respawn indefinitely.
         var server = new ProcessLspServerInstance("java",
             List.of("sh", "-c", "exit 3"), null, null);

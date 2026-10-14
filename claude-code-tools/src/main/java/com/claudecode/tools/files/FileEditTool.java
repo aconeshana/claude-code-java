@@ -63,7 +63,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
     private static final Set<String> NOTEBOOK_EXTENSIONS = Set.of(".ipynb");
 
 
-//  Claude can't emit curly quotes, so we map
+    //  Claude can't emit curly quotes, so we map
     // the file's curly quotes to straight quotes for matching and re-apply the
     // file's quote style on write-back.
     private static final String LEFT_SINGLE_CURLY = "‘"; // \u2018
@@ -152,7 +152,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
 
 
         // filesystem decision to the permission layer (returns {result:true})
-// to avoid triggering an SMB auth round-trip on Windows. match that:
+        // to avoid triggering an SMB auth round-trip on Windows. match that:
         // skip the existence/size/notebook/read-before-write gates and proceed.
         boolean isUnc = Strings.CS.startsWith(absolutePath, "\\\\") || Strings.CS.startsWith(absolutePath, "//");
 

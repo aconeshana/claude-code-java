@@ -73,7 +73,7 @@ final class CliInteractiveStartupCoordinator {
 
         CompletableFuture<Void> hooksReady = inventory.pluginSnapshot().thenCompose(_ ->
             CliStartupTasks.run("interactive-hook-startup", () -> {
-// Plugin hooks are already installed by loadAndInject at this
+                // Plugin hooks are already installed by loadAndInject at this
                 // boundary. Setup and FileChanged matcher capture therefore see
                 // the complete generation.
                 hooks.effects().setSink(hookEffects);

@@ -502,7 +502,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         CompletableFuture<Void> waiter = toolUseOutputWaiters.computeIfAbsent(
             toolUseId, _ -> new CompletableFuture<>());
         // Close the signal-before-registration race: the writer may have added
-// the id between the first contains and computeIfAbsent.
+        // the id between the first contains and computeIfAbsent.
         if (writtenToolUseIds.contains(toolUseId)
                 && toolUseOutputWaiters.remove(toolUseId, waiter)) {
             waiter.complete(null);
@@ -533,7 +533,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
     private static String wireDescription(String description) {
         if (description == null || description.length() <= 50) return description;
 
-// UTF-16 code units, so substring is deliberately used instead of a
+        // UTF-16 code units, so substring is deliberately used instead of a
         // Unicode-code-point truncator here.
         return description.substring(0, 49) + "…";
     }
@@ -649,7 +649,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
             QueuedCommand.orphanedPermission(new OrphanedPermission(toolUseId, permissionResult)));
 
 
-// abortController.abort while converting the decision during tool re-use),
+        // abortController.abort while converting the decision during tool re-use),
         // so the rejection tool_result is emitted first. The interrupt is honored in
         // OrphanedPermissionExecutor after the replay step completes.
     }

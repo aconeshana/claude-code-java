@@ -222,7 +222,7 @@ final class CliWorkspaceBootstrap {
             // The hook snapshot is intentionally captured before worktree
             // creation so WorktreeCreate can itself be a configured hook. Once
 
-// updateHooksConfigSnapshot and atomically switch the engine to
+            // updateHooksConfigSnapshot and atomically switch the engine to
             // the worktree's effective hooks/policy.
             hookEngine.registry().replaceSettings(HookSettings.loadHooksSettings());
             hookEngine.http().replacePolicy(HookSettings.loadHttpHookPolicy());

@@ -137,9 +137,9 @@ class SchemaTruthTest {
                         int obj = indexOfAny(content,
                                 new String[]{"z.object(", "z.strictObject("}, j);
                         if (obj >= 0) {
-// If wrapped in lazySchema( =>...), the z.object must be
+                            // If wrapped in lazySchema( =>...), the z.object must be
                             // the immediate return (before lazySchema's closing ')');
-// an indirection (fullInputSchema) is skipped.
+                            // an indirection (fullInputSchema) is skipped.
                             if (lazy >= 0 && lazy < obj) {
                                 int lparen = content.indexOf('(', lazy);
                                 int close = matchParen(content, lparen);
@@ -208,7 +208,7 @@ class SchemaTruthTest {
     }
 
     private TsProp analyzeValue(String value) {
-// optional/default may be wrapped (e.g. semanticNumber(z.number.optional)),
+        // optional/default may be wrapped (e.g. semanticNumber(z.number.optional)),
         // and formats may be chained; scan as substrings (zod markers are unambiguous).
         boolean optional = Strings.CS.contains(value, ".optional(") || Strings.CS.contains(value, ".default(");
         Set<String> formats = new HashSet<>();

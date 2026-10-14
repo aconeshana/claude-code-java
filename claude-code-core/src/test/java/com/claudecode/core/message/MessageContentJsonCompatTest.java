@@ -73,7 +73,7 @@ class MessageContentJsonCompatTest {
 
     @Test
     void allUnknownBlocksLeavesEmptyBlocksNull() throws Exception {
-// Every block is unrecognised → blocks returns null (not empty list),
+        // Every block is unrecognised → blocks returns null (not empty list),
         // which downstream renderUser interprets as "nothing to draw" — the
         // message is silently invisible instead of a stack-trace on resume.
         MessageContent mc = mapper.readValue(
@@ -97,7 +97,7 @@ class MessageContentJsonCompatTest {
     @Test
     void embeddedInUserMessageRoundTripsTsShape() throws Exception {
         // The full path exercised by /resume: {type:"user", uuid:..., message:{role,content}}
-// must land in UserMessage.message with correctly-parsed text.
+        // must land in UserMessage.message with correctly-parsed text.
         String tsLine = "{\"type\":\"user\",\"uuid\":\"u1\","
             + "\"message\":{\"role\":\"user\",\"content\":\"resume me\"}}";
         Message m = mapper.readValue(tsLine, Message.class);

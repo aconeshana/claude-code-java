@@ -93,7 +93,7 @@ class PrestartTextGUIThreadFactoryTest {
 
     // ── invokeAndWait: UI work marshalled from slash-command virtual threads ──
     // Mutating a Lanterna component off the GUI thread deadlocks against a
-// concurrent updateScreen (component monitor vs. parent-chain monitors),
+    // concurrent updateScreen (component monitor vs. parent-chain monitors),
     // so SessionController routes its UI half through invokeAndWait. These
     // guard the two windows where the loop cannot run the task for us.
 

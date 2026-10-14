@@ -22,7 +22,7 @@ public record StatusLineConfig(String command, int padding) {
      */
     public static Optional<StatusLineConfig> load(String cwd) {
 
-// getSettings_DEPRECATED call. In particular, --settings and SDK
+        // getSettings_DEPRECATED call. In particular, --settings and SDK
         // apply_flag_settings live in the flagSettings tier and are not on
         // disk, so loading the four file paths directly silently ignored them.
         JsonNode snapshot = SettingsSnapshots.withSources(cwd);

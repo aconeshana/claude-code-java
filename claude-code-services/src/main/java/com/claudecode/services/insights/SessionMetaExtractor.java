@@ -242,7 +242,7 @@ public final class SessionMetaExtractor {
 
                         if (Strings.CS.equals("Edit", toolName)) {
 
-// DiffHunks is the repo's structuredPatch match and
+                            // DiffHunks is the repo's structuredPatch match and
                             // yields the same +/- counts for a line-level LCS.
                             String oldString = input.path("old_string").asText("");
                             String newString = input.path("new_string").asText("");

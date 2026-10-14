@@ -42,7 +42,7 @@ public final class McpServerHealth {
     static HealthResult check(McpClientManager manager, McpServerConfig config) {
         if (config.disabled()) {
 
-// Disabled servers are normally filtered from listings. Report the state rather than
+            // Disabled servers are normally filtered from listings. Report the state rather than
             // surfacing McpClientManager's "Cannot connect to disabled" throw.
             return status(FAILED);
         }

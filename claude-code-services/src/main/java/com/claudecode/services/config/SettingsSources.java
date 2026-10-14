@@ -223,7 +223,7 @@ public final class SettingsSources {
         Path normalized = path.toAbsolutePath().normalize();
 
         // three editable targets here too: worktree enter/exit can move that root, and a new
-// root may alias ~/on. A cached deny path would then incorrectly
+        // root may alias ~/on. A cached deny path would then incorrectly
         // suppress an enabled source at the aliased location.
         String fallbackCwd = System.getProperty("user.dir");
         Path settingsRoot = settingsSelectionRoot(fallbackCwd);

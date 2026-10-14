@@ -333,7 +333,7 @@ final class CliEngineAssembler {
             // @Explanation teamMemoryEnabled (default false) — local
             // team-memory secret-write guard, see RuntimeSettings#loadTeamMemoryEnabled.
             // Held in a local so the config builder below can capture it (the
-// guard is session-stable, read once at engine build, matching
+            // guard is session-stable, read once at engine build, matching
             // memoryExtractor above).
             boolean teamMemoryEnabled = RuntimeSettings.loadTeamMemoryEnabled();
 
@@ -346,7 +346,7 @@ final class CliEngineAssembler {
 
 
             // nested_memory scanner deliberately uses a null HookDispatcher:
-// NestedMemoryAttachmentProvider.add fires INSTRUCTIONS_LOADED
+            // NestedMemoryAttachmentProvider.add fires INSTRUCTIONS_LOADED
             // itself via the late-bound supplier below, so the scanner must
             // not double-fire on its own cache-miss path.
             MemoryFileScanner nestedScanner = MemoryFileScanner.forConfigHome(
@@ -414,7 +414,7 @@ final class CliEngineAssembler {
                     "CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT"))),
                 new BudgetUsdAttachmentProvider(),
                 new OutputTokenUsageAttachmentProvider(),
-// Tier-2→implemented: async_hook_responses — re-injects completed
+                // Tier-2→implemented: async_hook_responses — re-injects completed
                 // background (output-driven / config-async) hook results as
                 // attachments, fed by HookDispatcher.checkForAsyncHookResponses.
                 new AsyncHookResponseAttachmentProvider()),
@@ -479,7 +479,7 @@ final class CliEngineAssembler {
                     : new AutoDreamEngineImpl(client, toolRegistry, querySessionFactory))
                 .attachmentService(attachmentService)
                 // Per-turn suppliers feeding the Phase-2 delta attachments.
-// Re-evaluated every turn (matches claudeMdContentSupplier) so
+                // Re-evaluated every turn (matches claudeMdContentSupplier) so
                 // /agents edits and MCP connect/disconnect show up without a
                 // restart. Both delta providers are feature-gated OFF by
                 // default, so an empty pool/map simply yields no attachment.
@@ -604,7 +604,7 @@ final class CliEngineAssembler {
             }
             QuerySessionSpec config = configBuilder.build();
             // Surface (or refuse to start on) a misconfigured sandbox at launch —
-// matches  (#34044): an explicitly enabled sandbox whose
+            // matches  (#34044): an explicitly enabled sandbox whose
             // backend is missing must warn (or hard-fail) once, not reject each
             // command later.
             CliHeadlessOutput.validateSandboxAtStartup(errorOutput);
@@ -666,7 +666,7 @@ final class CliEngineAssembler {
             // Post-compact file re-attachment needs the live FileStateCache, which
             // only exists once QuerySession is built — compactService is constructed
             // above, so wire it in with a late-bound supplier instead of a
-// constructor argument (matches setPermissionModeSupplier above).
+            // constructor argument (matches setPermissionModeSupplier above).
             compactService.setFileStateCacheSupplier(engine.forks()::getFileStateCache);
             compactService.setSessionIdentity(sessionIdentity);
             compactService.setTranscriptPathSupplier(() ->

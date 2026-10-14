@@ -117,8 +117,8 @@ public class TaskOutputTool extends AnnotatedTool<JsonNode, String> {
              .put("description", "Whether to wait for completion");
 
 
-// z.number, not an int refinement, so the wire schema type is
-// "number"; zod's.default also lands the field in "required"
+        // z.number, not an int refinement, so the wire schema type is
+        // "number"; zod's.default also lands the field in "required"
         // (safeParse still applies the default when the key is absent, but
         // the openapi/JSON-Schema generator doesn't special-case defaulted
         // fields out of the required array).

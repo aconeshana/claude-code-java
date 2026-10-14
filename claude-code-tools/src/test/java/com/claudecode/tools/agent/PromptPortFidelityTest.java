@@ -35,7 +35,7 @@ class PromptPortFidelityTest {
     @Test
     void agentToolDescription_isPortedFromTs() {
         // Construct via the prompt class directly — AgentTool requires a wired
-// LlmClient/registry that we don't care about for prompt.
+        // LlmClient/registry that we don't care about for prompt.
         String d = AgentToolPrompt.getPrompt(List.of());
         assertTrue(Strings.CS.contains(d, "Launch a new agent to handle complex"), d);
         assertTrue(Strings.CS.contains(d, "Writing the prompt"), d);

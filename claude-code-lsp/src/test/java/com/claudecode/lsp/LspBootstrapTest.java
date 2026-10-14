@@ -100,7 +100,7 @@ class LspBootstrapTest {
         LspDiagnosticRegistry registry = bootstrap.registry();
 
         AtomicInteger notifications = new AtomicInteger();
-// match PassiveFeedback: empty diagnostic lists (e.g. the one fired by
+        // match PassiveFeedback: empty diagnostic lists (e.g. the one fired by
         // clearDiagnostics) are not counted as a real delivery.
         registry.addListener((_, diags) -> {
             if (!diags.isEmpty()) notifications.incrementAndGet();

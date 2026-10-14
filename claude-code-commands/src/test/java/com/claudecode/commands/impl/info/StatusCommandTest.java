@@ -75,7 +75,7 @@ class StatusCommandTest {
 
     @Test
     void buildProperties_sessionNameFallsBackWhenNoCustomTitle() {
-// CommandContext.minimal has currentSessionId == null (no shorter
+        // CommandContext.minimal has currentSessionId == null (no shorter
         // overload sets it) — no session file to read a title from either way.
         List<StatusProperty> props = StatusCommand.buildProperties(CommandContext.minimal());
         assertTrue(props.stream().anyMatch(p ->

@@ -213,7 +213,7 @@ class EventSourceStreamBridgeTest {
         server.start();
 
         // A non-200 response arrives before the SSE handshake completes, so
-// connect fails synchronously (see class Javadoc: "connect (succeed
+        // connect fails synchronously (see class Javadoc: "connect (succeed
         // or throw)") rather than handing back an iterator that later yields
         // a StreamEvent.Error.
         ApiException failure = assertThrows(ApiException.class, () -> EventSourceStreamBridge.connect(

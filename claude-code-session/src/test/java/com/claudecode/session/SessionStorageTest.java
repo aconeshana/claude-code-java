@@ -1064,10 +1064,10 @@ class SessionStorageTest {
 
 
     // (mode / permission-mode / file-history-snapshot / agent-name / …) into
-// the same JSONL. isMetadataEntry must strip every one before Jackson
+    // the same JSONL. isMetadataEntry must strip every one before Jackson
     // sees the line — otherwise resume floods the console with "not a valid
     // subtype" warnings and (worse) loses ordering information around
-// dropped lines. See  branches ~1159-1215.
+    // dropped lines. See  branches ~1159-1215.
 
     @Test
     void isMetadataEntrySkipsAllTsMetadataTypes() {

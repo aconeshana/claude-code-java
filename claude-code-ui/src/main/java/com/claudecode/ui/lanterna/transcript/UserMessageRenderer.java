@@ -358,7 +358,7 @@ final class UserMessageRenderer {
         String commandMessage = XmlTagUtils.extractTag(text, XmlConstants.COMMAND_MESSAGE_TAG).orElse(null);
         if (StringUtils.isBlank(commandMessage)) {
             // Plain-text user message — accept feedback (Tab amend) lands here after the
-// tool_result block.
+            // tool_result block.
             String trimmed = UserMessageStyle.truncateForDisplay(text).strip();
             if (trimmed.isEmpty()) return;
             panel.appendMixed(List.of());

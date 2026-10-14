@@ -253,7 +253,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
     boolean isRestrictedByPolicyForTest() { return restrictedByPolicy; }
 
     // Package-private hooks for driving the state machine in tests without
-// going through key events. `enter*` match the behaviour that the
+    // going through key events. `enter*` match the behaviour that the
     // handle* methods perform on ENTER; kept intentionally minimal.
     void enterMatcherStateForTest(HookEvent event) {
         this.selectedEvent = event;

@@ -58,8 +58,8 @@ public final class MessageHistory {
     private static boolean shouldRecord(SDKMessage msg) {
         if (msg instanceof SDKMessage.CompactBoundary(_, _, var boundaryMessage)) {
             // QueryLoop emits a progress-only CompactBoundary before compaction
-// and a boundaryMessage-bearing event only after success. Replay
-// state contains only the completed system boundary.
+            // and a boundaryMessage-bearing event only after success. Replay
+            // state contains only the completed system boundary.
             return boundaryMessage != null;
         }
         if (msg instanceof SDKMessage.StreamEvent(var eventType, _)) {

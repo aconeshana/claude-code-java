@@ -183,7 +183,7 @@ public class FrontmatterParser {
                 } else if (Strings.CS.startsWith(value, "[") && Strings.CS.endsWith(value, "]")) {
 
                     // form, e.g. allowedTools: [Bash, Write]). Split on commas,
-// matching a minimal YAML sequence — quotes/brackets inside
+                    // matching a minimal YAML sequence — quotes/brackets inside
                     // values are not supported, matching the simple parser's scope.
                     List<String> inline = new ArrayList<>();
                     String inner = value.substring(1, value.length() - 1).trim();

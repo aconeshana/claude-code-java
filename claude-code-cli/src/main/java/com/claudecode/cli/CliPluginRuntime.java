@@ -198,7 +198,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
     private void injectAll() {
         PluginRuntimeSnapshot snapshot = current;
         // Provider reads the volatile snapshot; setting it also clears the
-// per-cwd agent cache so the next getAll rebuild picks up changes.
+        // per-cwd agent cache so the next getAll rebuild picks up changes.
         AgentDefinitionLoader.setPluginAgentsProvider(() -> current.agents());
         Path path = Path.of(cwd);
         if (skillLoader != null) {

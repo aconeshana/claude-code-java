@@ -343,7 +343,7 @@ public final class BackgroundTasksRenderer {
         row += 2;
 
         // NOTE: keep the progress-block row arithmetic in lockstep with
-// detailRowCount.
+        // detailRowCount.
         Optional<LocalAgentTask> handle = registry.getAgentHandle(task.id());
         if (task.status() == TaskStatus.RUNNING && handle.isPresent()) {
             g.setForegroundColor(LanternaTheme.welcomeDim());

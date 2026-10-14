@@ -44,7 +44,7 @@ public final class OSC52Helper {
      */
     public static void copyToClipboard(String text) {
         if (StringUtils.isEmpty(text)) return;
-// setClipboard fires the native write before the OSC/tmux
+        // setClipboard fires the native write before the OSC/tmux
         // path. Keep it asynchronous so mouse-up never stalls the GUI, while
         // preserving the original UTF-8 bytes for pbcopy/wl-copy/xclip/xsel.
         Thread.startVirtualThread(() -> copyNative(text));

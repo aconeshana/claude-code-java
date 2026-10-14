@@ -81,7 +81,7 @@ public final class RipGrepUtil {
         }
         // Default (and the only other mode besides explicit opt-out): the builtin vendored binary.
         // Aligned with the original — do NOT fall back to system rg if it is missing;
-// findBundledRipgrep returns the would-be path so the spawn fails with ENOENT (a
+        // findBundledRipgrep returns the would-be path so the spawn fails with ENOENT (a
         // critical error), exactly as the original does.
         String bundled = findBundledRipgrep();
         if (bundled != null) {
@@ -314,7 +314,7 @@ public final class RipGrepUtil {
                 Thread.currentThread().interrupt();
             }
 
-// 20MB buffer was not hit — rg may be killed mid-write. match that by treating
+            // 20MB buffer was not hit — rg may be killed mid-write. match that by treating
             // the output as capped here so parseLines drops the last line.
             List<String> partial = parseLines(stdout, true);
             if (!partial.isEmpty()) {
@@ -485,7 +485,7 @@ public final class RipGrepUtil {
         List<String> result = new ArrayList<>();
         // Normalize to posix separators so the comparisons in normalizePatternToPath
         // (which build posix full patterns via joinPosix/prependDirSep) are separator-
-// consistent on Windows, where Path.toString uses backslashes. On Unix this is
+        // consistent on Windows, where Path.toString uses backslashes. On Unix this is
         // a no-op. Without this, a deny rule rooted under a nested dir inside searchDir
         // could be wrongly dropped (fullPattern.startsWith(rootPath + "/") mismatched on
         // '\' vs '/'), silently disabling the Read-deny mask.

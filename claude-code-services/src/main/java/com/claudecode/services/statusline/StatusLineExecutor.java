@@ -59,7 +59,7 @@ public final class StatusLineExecutor {
             }
 
             // Drain BOTH streams on virtual threads. Reading stdout on this
-// thread would block in readLine until the process closes its
+            // thread would block in readLine until the process closes its
             // pipe — which for a hung command never happens, so waitFor's
             // timeout below would never be reached. Off-thread drains let us
             // enforce the timeout and kill a stalled command.

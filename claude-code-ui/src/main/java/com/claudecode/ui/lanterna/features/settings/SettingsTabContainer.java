@@ -170,7 +170,7 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
     }
 
     private void onConfigPanelResult(Map<String, String> pending) {
-// ConfigPanel already collapsed its own visibility flag via commit/cancel;
+        // ConfigPanel already collapsed its own visibility flag via commit/cancel;
         // reflect that at the container level and forward the result unchanged.
         active = false;
         renderedHeaderSize = null;

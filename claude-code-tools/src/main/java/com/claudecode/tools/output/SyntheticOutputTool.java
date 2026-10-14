@@ -241,7 +241,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
             }
         }
 
-// schemaWellFormedError, which iterates defs.fields). Each named entry
+        // schemaWellFormedError, which iterates defs.fields). Each named entry
         // must be recursed, not treated as a single schema — otherwise e.g.
         // definitions.foo.pattern escapes pattern validation.
         JsonNode defs = schema.get("definitions");

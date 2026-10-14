@@ -97,7 +97,7 @@ public final class ApiMessageFormatter {
                     if (am.message() == null || am.message().content() == null) continue;
 
                     // the message contains only one text block. Collapsing that
-// case to a string changes the established wire shape and the
+                    // case to a string changes the established wire shape and the
                     // prompt-cache bytes after compaction/resume.
                     List<Map<String, Object>> contentArray = new ArrayList<>();
                     for (ContentBlock block : am.message().content()) {
@@ -217,7 +217,7 @@ public final class ApiMessageFormatter {
                             // result must survive as a structured element — flattening to
                             // one joined string (the plain-text fast path below) would
                             // silently drop it. ToolSearchTool's tool_result is the first
-// real producer of tool_reference blocks; matches the hasImage
+                            // real producer of tool_reference blocks; matches the hasImage
                             // array-vs-string branching a few lines below for UserMessage
                             // content.
                             boolean hasNonText = tr.content().stream()
@@ -239,7 +239,7 @@ public final class ApiMessageFormatter {
                                         refMap.put("tool_name", trb.toolName());
                                         innerArray.add(refMap);
                                     } else if (inner instanceof ImageBlock ib && ib.source() != null) {
-// matches the plain-user-message image handling
+                                        // matches the plain-user-message image handling
                                         // (below): the model receives the actual image
                                         // base64, not a [Image #N] text placeholder.
                                         Map<String, Object> imgMap = new LinkedHashMap<>();
@@ -285,7 +285,7 @@ public final class ApiMessageFormatter {
                 boolean hasMultipleTextBlocks = um.message().blocks().size() > 1;
                 if (hasMedia || hasMultipleTextBlocks) {
                     // Mixed text + image/document content must remain an array
-// so the API receives the actual base64 media block.
+                    // so the API receives the actual base64 media block.
                     List<Map<String, Object>> contentArray = new ArrayList<>();
                     for (ContentBlock block : um.message().blocks()) {
                         if (block instanceof TextBlock tb && tb.text() != null) {

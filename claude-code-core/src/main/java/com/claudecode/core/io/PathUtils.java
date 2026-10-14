@@ -95,7 +95,7 @@ public final class PathUtils {
         }
         String expanded = expandTilde(trimmed);
         // Windows POSIX-style drive path (/c/Users/...) → native Windows path
-// runs this only under its ^/[a-z]/ guard on Windows).
+        // runs this only under its ^/[a-z]/ guard on Windows).
         if (isWindows() && expanded.matches("/[a-zA-Z]/.*")) {
             expanded = posixPathToWindowsPath(expanded);
         }

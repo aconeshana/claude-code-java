@@ -96,7 +96,7 @@ public final class SettingsEditor {
         Path settingsPath = editableSettingsPath(cwd, tier);
         String arrayKey = arrayKeyForBehavior(behavior);
         try {
-// deletePermissionRuleFromSettings first asks the validated source reader for the
+            // deletePermissionRuleFromSettings first asks the validated source reader for the
             // rule.  A schema-invalid source therefore behaves as a no-op; only the add/update
             // path is allowed to fall back to raw JSON so unrelated invalid fields survive.
             ObjectNode accepted = SettingsTreeReader.readAccepted(settingsPath, false);

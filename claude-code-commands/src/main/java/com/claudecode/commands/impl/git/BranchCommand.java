@@ -161,7 +161,7 @@ public class BranchCommand implements AnnotatedCommand {
         // When a fork title was computed, surface it via CommandResult.rename so
         // the dispatcher refreshes InputPanel's prompt-bar banner via
         // setAgentName — otherwise the badge stays blank until a later
-// /resume redoes restoreSessionColor. matches /rename's contract; the
+        // /resume redoes restoreSessionColor. matches /rename's contract; the
         // title is already persisted to JSONL via saveCustomTitle above, so
         // /resume continues to read it back identically.
         if (StringUtils.isNotBlank(effectiveForkTitle)) {

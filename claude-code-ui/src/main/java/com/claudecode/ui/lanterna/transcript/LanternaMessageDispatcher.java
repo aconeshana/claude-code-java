@@ -914,7 +914,7 @@ public class LanternaMessageDispatcher {
             case "tool_call_start" -> {
                 // Stage 2 (IN-PROGRESS): tool about to execute — start blinking.
 
-// Use peekFirst because tools execute serially in FIFO order —
+                // Use peekFirst because tools execute serially in FIFO order —
                 // the first streamed tool is the first to execute.
                 String[] parts = evData.split("\\|", 3);
                 String toolName = parts[0];
@@ -1023,7 +1023,7 @@ public class LanternaMessageDispatcher {
                     panel.stopBlinkLine(pendingIdx, doneSegs);
                 } else {
                     // Replay/fallback: no blink state — render directly.
-// match the blank-line separator that tool_streaming_start normally adds.
+                    // match the blank-line separator that tool_streaming_start normally adds.
                     if (stream.isOpen()) {
                         panel.appendLine("", TextColor.ANSI.DEFAULT);
                     }

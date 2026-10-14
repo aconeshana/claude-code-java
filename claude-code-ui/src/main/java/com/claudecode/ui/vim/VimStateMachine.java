@@ -56,7 +56,7 @@ public class VimStateMachine {
     private StringBuilder buffer;
     private int cursor;
     // Sticky column used by vertical motions (j/k/gj/gk) so the cursor keeps
-// its column across lines of differing length (matches vim).
+    // its column across lines of differing length (matches vim).
     private int preferredColumn;
 
 
@@ -318,7 +318,7 @@ public class VimStateMachine {
             pendingFind = key;
             findForward = (key == 'f' || key == 't');
             findTill = (key == 't' || key == 'T');
-// NOTE: do NOT resetCount here — a count prefix (e.g. "3fw") must
+            // NOTE: do NOT resetCount here — a count prefix (e.g. "3fw") must
             // survive until processFindChar consumes the target char.
             return VimAction.waitingForChar();
         }

@@ -755,7 +755,7 @@ public final class ModelPickerDialog extends Panel implements InlineOverlay {
             }
             String modelDefault = metadata.defaultLevel();
             // The picker preserves only an explicit user-tier value. Project or
-// policy effort must not leak into ~/on writes.
+            // policy effort must not leak into ~/on writes.
             // This snapshot was loaded before mounting; Enter performs no I/O.
             resolvedEffort = EffortHelpers.resolvePickerEffortPersistence(
                 displayEffort(metadata), modelDefault,

@@ -598,7 +598,7 @@ class BashToolTest {
 
     @Test
     void backgroundSpawnFailure_evictsTask_noZombieLeftBehind() {
-// A working directory that doesn't exist makes ProcessBuilder.start
+        // A working directory that doesn't exist makes ProcessBuilder.start
         // throw IOException after the task was already created in the store.
         var registry = new TaskRegistry(TaskStore.inMemory());
         TaskRegistry.setGlobalForTest(registry);

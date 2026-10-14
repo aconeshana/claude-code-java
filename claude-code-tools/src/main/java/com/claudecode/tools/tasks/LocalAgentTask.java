@@ -180,7 +180,7 @@ public class LocalAgentTask {
             return false;
         }
 
-// Compute-atomic: if complete/fail wins the race, this returns
+        // Compute-atomic: if complete/fail wins the race, this returns
         // the winner's terminal state instead of throwing — report no kill.
         TaskState after = taskStore.updateStatusAndMarkNotified(getTaskId(), TaskStatus.KILLED);
         if (after.status() != TaskStatus.KILLED) {
@@ -195,7 +195,7 @@ public class LocalAgentTask {
         }
         scheduleEviction();
 
-// abortController.abort); the thread interrupt below then breaks any
+        // abortController.abort); the thread interrupt below then breaks any
         // blocking I/O the loop is parked on. Interrupt alone was best-effort —
         // the loop only observes it at blocking points, so an in-flight API
         // stream could run to completion before dying.
@@ -217,7 +217,7 @@ public class LocalAgentTask {
         }
         var current = taskStore.get(getTaskId());
         if (current.isPresent() && current.get().status() == TaskStatus.RUNNING) {
-// Compute-atomic: a racing kill can't be overwritten and can't
+            // Compute-atomic: a racing kill can't be overwritten and can't
             // make this throw — a lost race just returns KILLED silently.
             TaskState after = taskStore.updateStatus(getTaskId(), target);
             if (after.status().isTerminal()) {

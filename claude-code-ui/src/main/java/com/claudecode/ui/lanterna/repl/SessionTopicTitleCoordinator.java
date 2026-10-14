@@ -42,7 +42,7 @@ final class SessionTopicTitleCoordinator {
         CompletableFuture<String> future;
         try {
             // The generator establishes the streaming request before returning,
-// preserving the title-before-main request order.
+            // preserving the title-before-main request order.
             future = generator.apply(text);
         } catch (Exception _) {
             resetFailedAttempt(requestGeneration);

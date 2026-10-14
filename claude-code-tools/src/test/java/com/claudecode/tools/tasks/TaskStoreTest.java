@@ -120,7 +120,7 @@ class TaskStoreTest {
         // A kill racing a completion could last-write-win (KILLED overwritten
         // by COMPLETED, listener fired twice) or throw IllegalStateException
         // up the loser's stack — which on the kill side propagated into the
-// Lanterna GUI thread. compute serializes per task.
+        // Lanterna GUI thread. compute serializes per task.
         for (int i = 0; i < 100; i++) {
             TaskStore store = TaskStore.inMemory();
             AtomicInteger notifications = new AtomicInteger();

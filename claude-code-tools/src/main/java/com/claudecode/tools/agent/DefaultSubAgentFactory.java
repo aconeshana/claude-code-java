@@ -913,7 +913,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                 emitProgress(progressCallback, "Finalizing...", 95);
                 // NOTE: the sub-agent's text output is accumulated from the
                 // streaming SDKMessage.Assistant messages above — NOT from
-// result.messages here. result.messages is the full
+                // result.messages here. result.messages is the full
                 // conversation and contains the SAME assistant turns already
                 // streamed, so re-appending it would duplicate the entire output
                 // (a pre-existing bug). Usage is still taken from the final
@@ -941,7 +941,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         if (stopSummarization != null) stopSummarization.run();
 
 
-// recordable message yielded by query. TranscriptRecorder deliberately
+        // recordable message yielded by query. TranscriptRecorder deliberately
         // queues writes, so establish the equivalent normal-return durability
         // boundary here. Without it, the child can report completion while its
         // final JSONL row (and lock acquisition) is still racing caller teardown.

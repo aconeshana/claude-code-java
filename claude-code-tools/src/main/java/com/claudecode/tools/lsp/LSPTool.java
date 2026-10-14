@@ -166,7 +166,7 @@ public class LSPTool extends AnnotatedTool<JsonNode, String> {
             return "Error: invalid file path: " + filePath;
         }
 
-// before dispatching; match that so a bad path fails cleanly instead of
+        // before dispatching; match that so a bad path fails cleanly instead of
         // producing a cryptic downstream error.
         if (!Files.exists(path)) return "Error: file does not exist: " + filePath;
         if (!Files.isRegularFile(path)) return "Error: not a file: " + filePath;

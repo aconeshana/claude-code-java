@@ -108,9 +108,9 @@ public final class SettingsHotReloader implements AutoCloseable {
 
         this.pathToSource = new LinkedHashMap<>();
         // Order matters: user > project > local. If cwd == $HOME (user runs
-// `java -jar` from ~), userSettingsPath and projectSettingsPath(cwd)
+        // `java -jar` from ~), userSettingsPath and projectSettingsPath(cwd)
         // resolve to the same file — putIfAbsent keeps the first mapping so
-// the user-visible label for an edit of ~/on stays
+        // the user-visible label for an edit of ~/on stays
         // "user settings", not "project settings". Merge semantics are
         // unaffected: the settings snapshot engine always reads all three files on reload.
         this.pathToSource.putIfAbsent(normalize(userPath),    RuleSource.USER_SETTINGS);
@@ -127,7 +127,7 @@ public final class SettingsHotReloader implements AutoCloseable {
         // of that source's settings files already exists. Keep that distinction:
         // a fresh ~/.claude/ directory is not watched until a settings file is
         // present; the independent MDM poll above still runs immediately.
-// Skips dirs that don't exist — watcher.build would otherwise throw.
+        // Skips dirs that don't exist — watcher.build would otherwise throw.
         this.watchedDirs = new LinkedHashSet<>();
         Map<Path, Boolean> sourceDirHasFile = new LinkedHashMap<>();
         for (Path p : new Path[] { userPath, projectPath, localPath }) {
@@ -259,7 +259,7 @@ public final class SettingsHotReloader implements AutoCloseable {
                     });
             } catch (NoSuchFileException | NotDirectoryException _) {
                 // Raced with rename / delete between isDirectory() and list().
-// Common for lock files (~/onl.lock) and
+                // Common for lock files (~/onl.lock) and
                 // IDE atomic saves — nothing pathological, just retry on the
                 // next event.
                 LOG.debug("shallowVisitor: {} vanished mid-scan", root);

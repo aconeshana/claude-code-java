@@ -438,7 +438,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
         if (inputBatchDepth == 0 && searchFilterDirty) {
             searchFilterDirty = false;
             // A decoded PTY text/backspace run is one semantic edit. Its final
-// query is already known before processInput returns, so rebuild
+            // query is already known before processInput returns, so rebuild
             // the small precomputed inventory now and commit one complete
             // frame instead of painting query-only and filtered-list frames.
             searchFilterGeneration++;

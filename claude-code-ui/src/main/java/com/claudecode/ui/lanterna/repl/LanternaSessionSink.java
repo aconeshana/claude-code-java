@@ -366,7 +366,7 @@ public final class LanternaSessionSink implements SessionSink {
         // `[Image #N]` refs are deliberately left alone by expandPastedTextRefs
         // (images render as their own pill, not inlined text) and the SDK's
         // real echo of this same message is suppressed right below via
-// suppressNextUserEcho, so this is the only chance to show the
+        // suppressNextUserEcho, so this is the only chance to show the
         // pasted text's real content rather than a permanent placeholder.
         String expanded = PastedRefParser.expandPastedTextRefs(displayText, pasted);
         String truncated = truncateUserInput(expanded);

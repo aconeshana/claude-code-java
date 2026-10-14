@@ -99,7 +99,7 @@ public final class SettingsDiagnostics {
 
                 // parses each scope independently and does not expose that merge
                 // bookkeeping as a validation error, so it must not leak through
-// getSettingsWithAllErrors.
+                // getSettingsWithAllErrors.
                 if (warning.message() != null
                         &&Strings.CS.contains( warning.message(), "overrides an earlier entry")) {
                     continue;

@@ -84,7 +84,7 @@ class InProcessTeammateTaskTest {
                 return SubAgentResult.of("done");
             } catch (InterruptedException _) {
                 // A cooperative shutdown aborts the run; surface it as a failure
-// (matches how a real sub-agent query loop unwinds on abort).
+                // (matches how a real sub-agent query loop unwinds on abort).
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("interrupted by shutdown");
             }

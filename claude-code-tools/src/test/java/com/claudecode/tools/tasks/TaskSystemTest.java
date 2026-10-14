@@ -385,7 +385,7 @@ class TaskSystemTest {
 
     @Test
     void taskStopToolKillsLiveHandleViaRegistry() {
-// Background tasks live in TaskRegistry.global's in-memory store and
+        // Background tasks live in TaskRegistry.global's in-memory store and
         // their live process handle is registered there. TaskStopTool must route
         // the kill through the registry so the underlying task is actually
         // terminated (HIGH fix #1) — not merely have its status flipped.
@@ -393,7 +393,7 @@ class TaskSystemTest {
         TaskStore store = registry.store();
         TaskState task = store.create(TaskType.LOCAL_BASH, "sleep 1000");
         store.updateStatus(task.id(), TaskStatus.RUNNING);
-// Register a live handle; kill flips status to KILLED (no real process
+        // Register a live handle; kill flips status to KILLED (no real process
         // here, so the destroy is skipped, but the transition must still happen).
         registry.registerShell(new LocalShellTask(task, "sleep 1000", store));
 

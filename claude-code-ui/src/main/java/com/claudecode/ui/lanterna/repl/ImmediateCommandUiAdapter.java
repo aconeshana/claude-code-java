@@ -59,7 +59,7 @@ public final class ImmediateCommandUiAdapter {
 
         inputPanel.setText("");
 
-// Execute on a virtual thread — command.execute may do I/O (file reads, etc.)
+        // Execute on a virtual thread — command.execute may do I/O (file reads, etc.)
         // and must not block the Lanterna GUI event thread.
         final String commandName = cmd.name();
         Thread.ofVirtual()
@@ -125,7 +125,7 @@ public final class ImmediateCommandUiAdapter {
             // Handle side-effects from the result.
             if (result.shouldExit()) {
                 // Exit is also an immediate-safe side-effect; signal handled outside this class.
-// The caller in LanternaReplScreen must check result.shouldExit if needed.
+                // The caller in LanternaReplScreen must check result.shouldExit if needed.
                 // Here we only log — the REPL exit flag is owned by LanternaReplScreen.
                 log.debug("[immediate] command {} requested exit — not propagated from adapter", commandName);
             }
@@ -133,7 +133,7 @@ public final class ImmediateCommandUiAdapter {
 
             // Marshalled: this runs on the immediate-cmd virtual thread, and a Lanterna
             // component mutated off the GUI thread can lock itself and then walk the
-// parent chain for its theme while updateScreen holds those parents and
+            // parent chain for its theme while updateScreen holds those parents and
             // descends — a silent, intermittent TUI freeze (see SessionController).
             if (result.newSessionName() != null) {
                 String newName = result.newSessionName();

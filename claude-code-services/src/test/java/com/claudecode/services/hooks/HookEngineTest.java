@@ -235,7 +235,7 @@ class HookEngineTest {
 
     @Test
     void dispatchSessionEndReachesSessionEndMatchers() {
-// match image of the previous test: a `once: true` SessionEnd hook
+        // match image of the previous test: a `once: true` SessionEnd hook
         // IS consumed by dispatchSessionEnd, proving it correctly fires
         // HookEvent.SESSION_END (not just a no-op or the wrong event).
         BashCommandHook onceSessionEndHook = new BashCommandHook(
@@ -262,7 +262,7 @@ class HookEngineTest {
 
     // ---- Matcher routing regression tests -----------------------------
     // getMatchingHooks used to test every event's matcher against
-// input.toolName, which is always empty for non-tool events — a
+    // input.toolName, which is always empty for non-tool events — a
     // SessionEnd/SessionStart/InstructionsLoaded/PreCompact/PostCompact
     // matcher scoped to a specific reason/trigger/load_reason value could
     // never fire. Each test below proves both directions: the matcher DOES

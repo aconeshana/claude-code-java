@@ -356,7 +356,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         try {
 
         // CLAUDE.md + currentDate context is computed once and prepended to
-// every API call via buildRequestMessages (matches production line 390).
+        // every API call via buildRequestMessages (matches production line 390).
         String claudeMdUserContext = QueryHelpers.buildClaudeMdUserContext(engine);
         String systemPrompt = this.effectiveSystemPrompt != null
             ? this.effectiveSystemPrompt
@@ -990,7 +990,7 @@ class QueryLoop implements SdkEventSequencedIterator {
 
             // StructuredOutput completion enforcement — a minimal, purpose-built
 
-// merged into the same Stop
+            // merged into the same Stop
             // dispatch rather than a general-purpose function-hook framework.
             // Blocks natural termination until a successful StructuredOutput tool
 
@@ -1080,7 +1080,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 config.memoryExtractor().extractAsync(engine.getMutableMessages(), engine);
             }
             // Auto-dream: background memory consolidation. Same main-thread-only
-// gate as the memory extractor (config.agentId() == null) — matches
+            // gate as the memory extractor (config.agentId() == null) — matches
 
             if (config.autoDreamEngine() != null && config.agentId() == null) {
                 config.autoDreamEngine().maybeRunAutoDream(engine);

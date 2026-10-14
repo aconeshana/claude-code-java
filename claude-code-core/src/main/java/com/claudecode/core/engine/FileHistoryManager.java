@@ -109,7 +109,7 @@ public final class FileHistoryManager {
      * mutation.
      */
     public void trackEdit(String absoluteFilePath, String snapshotUpdateMessageId) {
-// Submission does not await snapshot I/O, but every edit
+        // Submission does not await snapshot I/O, but every edit
         // awaits that pending checkpoint before mutating the file. This keeps
         // rewind correctness without putting backup work on the request path.
         awaitPendingSnapshots();

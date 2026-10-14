@@ -172,7 +172,7 @@ class GlobToolTest {
         Files.writeString(dir.resolve("b.txt"), "b");
 
         // An absolute pattern is rerooted: the dir becomes the search dir, the relative
-// remainder is passed to rg.
+        // remainder is passed to rg.
         ObjectNode in = input(dir.resolve("*.txt").toString());
         String out = glob(new GlobTool(), in, dir, List.of());
         assertTrue(Strings.CS.contains(out, "a.txt"), out);

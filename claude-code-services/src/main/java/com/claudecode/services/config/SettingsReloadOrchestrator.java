@@ -182,9 +182,9 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
                 ManagedEnvironmentApplier.applySafeConfigEnvironmentVariables(cwd);
             }
 
-// loadAllPermissionRulesFromDisk then skips that source and
+            // loadAllPermissionRulesFromDisk then skips that source and
             // continues with the remaining enabled tiers.  Keep strict
-// loadPermissionRules for callers that need diagnostics, but
+            // loadPermissionRules for callers that need diagnostics, but
             // use the per-source lenient path for live change notifications.
             List<PermissionRule> diskRules = PermissionSettings.loadPermissionRulesForReload(cwd);
             // Enterprise managed mode: when allowManagedPermissionRulesOnly is on,

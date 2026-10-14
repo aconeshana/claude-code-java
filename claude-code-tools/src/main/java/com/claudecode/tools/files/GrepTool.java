@@ -570,7 +570,7 @@ public class GrepTool extends AnnotatedTool<JsonNode, String> {
         // Normalize to absolute so prefix comparisons are exact. A plain startsWith is wrong:
         // cwd="/a/foo" would wrongly relativize "/a/foobar". We instead require the result of
         // relativize to not escape upward (no leading ".."), which only holds for true
-// descendants. matches GlobTool's safeRelativize.
+        // descendants. matches GlobTool's safeRelativize.
         Path cwdN = cwd.toAbsolutePath().normalize();
         Path fileN = file.toAbsolutePath().normalize();
         if (fileN.startsWith(cwdN)) {

@@ -277,7 +277,7 @@ public class McpClientManager implements McpClientRuntime, AutoCloseable {
                 }
             }
         });
-// Channel handler registration is deferred to after performInitialize
+        // Channel handler registration is deferred to after performInitialize
         // because the capability gate requires the initialize result.
     }
 

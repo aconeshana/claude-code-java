@@ -80,7 +80,7 @@ public class SleepPreventer {
         try {
             // -i: prevent idle sleep (least aggressive — display can still sleep).
             // -t: self-expiry in seconds — self-healing if this JVM is SIGKILLed
-// before allowSleep/cleanup can run.
+            // before allowSleep/cleanup can run.
             process = new ProcessBuilder(
                     "caffeinate", "-i", "-t", String.valueOf(CAFFEINATE_TIMEOUT_SECONDS))
                     .redirectErrorStream(true)

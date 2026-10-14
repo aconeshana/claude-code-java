@@ -287,7 +287,7 @@ class ToolRegistryTest {
 
         // the base passthrough inputSchema safeParse gate — so the structural
         // check must never run against the caller-supplied schema. If it did,
-// this would fail here as an InputValidationError before call runs.
+        // this would fail here as an InputValidationError before call runs.
         ObjectNode schema = mapper.createObjectNode();
         schema.put("type", "object");
         ObjectNode properties = schema.putObject("properties");
@@ -301,7 +301,7 @@ class ToolRegistryTest {
         ToolResult result = registry.execute("StructuredOutput", input, ctx);
 
         assertTrue(result.isError());
-// The mismatch is caught by the tool's own call (SchemaValidator), not
+        // The mismatch is caught by the tool's own call (SchemaValidator), not
         // the structural gate — so it's a plain formatError(e) message, not the
         // "<tool_use_error>InputValidationError: ..." wrapper.
         String text = firstText(result);

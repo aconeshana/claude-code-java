@@ -62,7 +62,7 @@ public class ExitWorktreeTool extends AnnotatedTool<JsonNode, String> {
 
     @Override
     public ValidationResult validateInput(JsonNode input, ToolExecutionContext context) {
-// Scope guard: getCurrentWorktreeSession is null unless EnterWorktree ran
+        // Scope guard: getCurrentWorktreeSession is null unless EnterWorktree ran
         // in THIS session. Worktrees created by raw `git worktree add`, or by
         // EnterWorktree in a previous session, do not populate it.
         WorktreeSession session = WorktreeService.getCurrentWorktreeSession();
@@ -124,7 +124,7 @@ public class ExitWorktreeTool extends AnnotatedTool<JsonNode, String> {
     }
 
     private Invocation invoke(JsonNode input, ToolExecutionContext context) {
-// validateInput guards this, but getCurrentWorktreeSession is a mutable
+        // validateInput guards this, but getCurrentWorktreeSession is a mutable
         // singleton — defend against a race between validation and execution
 
         WorktreeSession session = WorktreeService.getCurrentWorktreeSession();

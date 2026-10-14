@@ -859,7 +859,7 @@ public class WebFetchTool extends AnnotatedTool<JsonNode, String> {
 
 
 
-// contract (call below still honors it as an internal default,
+        // contract (call below still honors it as an internal default,
         // just not settable via the tool_use input anymore).
         ObjectNode schema = mapper().createObjectNode();
         schema.put("type", "object");

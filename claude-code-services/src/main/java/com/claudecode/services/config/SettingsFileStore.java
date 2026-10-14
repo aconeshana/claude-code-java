@@ -44,7 +44,7 @@ public final class SettingsFileStore {
         if (!targetExists(path)) {
             return JsonUtils.getMapper().createObjectNode();
         }
-// parseSettingsFileUncached treats a blank settings file as an empty
+        // parseSettingsFileUncached treats a blank settings file as an empty
         // object before invoking JSON.parse.  Keep the same read-modify-write
         // behavior here, including a UTF-8 BOM followed only by whitespace;
         // an editor should be able to populate an intentionally empty file.
@@ -133,7 +133,7 @@ public final class SettingsFileStore {
     private static void writeNode(Path path, JsonNode root) throws IOException {
         Path parent = path.toAbsolutePath().normalize().getParent();
         if (parent != null) {
-// updateSettingsForSource creates the settings directory before
+            // updateSettingsForSource creates the settings directory before
             // the first write.  Keep the shared writer safe for a fresh
             // project/user config as well as for an existing file.
             Files.createDirectories(parent);

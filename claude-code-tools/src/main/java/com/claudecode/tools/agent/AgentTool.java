@@ -871,7 +871,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         LocalAgentTask handle = new LocalAgentTask(task, registry.store());
         configureStoppedByUserPersistence(handle, context, request);
         // Real cancellation: the sub-engine runs on this controller, and
-// kill aborts it (plus the thread interrupt for blocking I/O).
+        // kill aborts it (plus the thread interrupt for blocking I/O).
         AbortController abortController = new AbortController();
         handle.setAbortController(abortController);
         CountDownLatch firstModelRequest = subAgentFactory.supportsFirstModelRequestSignal()
@@ -1107,7 +1107,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         // Ensure the leader-side TEAM_LEAD consumer is running so the teammate's
         // permission/plan/idle asks are actually serviced (idempotent).
         TeammateLeaderCoordinator.instance().start();
-// start transitions the task to RUNNING; don't pre-set it here or the
+        // start transitions the task to RUNNING; don't pre-set it here or the
         // second transition (RUNNING -> RUNNING) throws an IllegalStateException.
 
         AbortController abortController = new AbortController();
@@ -1126,7 +1126,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             .build();
 
         // Break the cycle: the handle needs the (callback-carrying) request, and
-// the callback needs the handle. The supplier resolves by the time ask
+        // the callback needs the handle. The supplier resolves by the time ask
         // is invoked (during the run, after the handle is started).
         AtomicReference<InProcessTeammateTask> handleRef = new AtomicReference<>();
         TeammatePermissionAskCallback teammateCallback =
@@ -1473,7 +1473,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         // immutable snapshots before the child engine is created; ordinary
         // sub-agents continue through the independent prompt/tool path below.
         // context was already dereferenced unconditionally above
-// (context.messageQueueManager, context.reportProgress(...)), so the
+        // (context.messageQueueManager, context.reportProgress(...)), so the
         // fork snapshot needs no separate null guard.
         if (fork) {
             if (!context.conversationMessages().isEmpty()) {

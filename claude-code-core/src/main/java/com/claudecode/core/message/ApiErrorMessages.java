@@ -89,7 +89,7 @@ public final class ApiErrorMessages {
         }
 
         // strips nothing (handled by reactive compact). Kept as its own kind, NOT in
-// errorToBlockTypes, so it does not accidentally strip image/document blocks.
+        // errorToBlockTypes, so it does not accidentally strip image/document blocks.
         if (Strings.CI.contains(errorText, "prompt is too long")
                 || isGenericContextLengthOverflow(errorText)) {
             return TooLargeKind.PROMPT_TOO_LONG;

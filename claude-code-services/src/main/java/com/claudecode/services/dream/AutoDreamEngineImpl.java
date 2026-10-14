@@ -233,7 +233,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
         // the thread interrupt below then breaks any blocking I/O the loop is
         // parked on. Interrupt alone was best-effort — the loop only observes
         // it at blocking points, so an in-flight API stream may run to
-// completion before dying (matches LocalAgentTask.kill).
+        // completion before dying (matches LocalAgentTask.kill).
         run.controller.abort("killed via /tasks");
         Thread thread = run.runnerThread;
         if (thread != null && thread.isAlive()) {

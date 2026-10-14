@@ -14,7 +14,7 @@ public class ShellVariableInjector {
 
     private final Map<String, String> variables;
     // Live reference — CLAUDE_SESSION_ID must reflect the CURRENT session at
-// inject time (a resume/branch mid-run changes it), so it can't be
+    // inject time (a resume/branch mid-run changes it), so it can't be
     // baked into `variables` like the other, write-once entries.
     private final SessionIdentity sessionIdentity;
 

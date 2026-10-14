@@ -609,11 +609,11 @@ class QueryEngineTest {
 
     @Test
     void sharedSessionIdentity_isVisibleToOtherHoldersWithoutASetterCall() {
-// matches the real CLI/UI wiring: DefaultQuerySession and some other
+        // matches the real CLI/UI wiring: DefaultQuerySession and some other
         // component (HookEngine, InputPanel, ShellVariableInjector in
         // production) are handed the SAME SessionIdentity instance. A single
-// switchToSession call must be visible to the other holder on its
-// next read — no setSessionId-style sync call should be needed.
+        // switchToSession call must be visible to the other holder on its
+        // next read — no setSessionId-style sync call should be needed.
         SessionIdentity shared = SessionIdentity.newRandom();
         DefaultQuerySession engine = new DefaultQuerySession(
             QuerySessionSpec.builder().llmClient(NOOP_CLIENT).sessionIdentity(shared).build());

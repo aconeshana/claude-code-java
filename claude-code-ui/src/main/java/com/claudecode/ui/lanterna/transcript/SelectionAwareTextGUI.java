@@ -281,7 +281,7 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
             } catch (RuntimeException renderFailure) {
                 // A single component's content must not take the GUI thread down
                 // with it: Lanterna rejects control characters at paint time, and
-// the throw unwinds through updateScreen into the loop's fatal
+                // the throw unwinds through updateScreen into the loop's fatal
                 // handler. Keep this window on its previous buffer, keep the rest
                 // of the frame, and keep input alive so the user can navigate out.
                 reportWindowRenderFailure(window, renderFailure);

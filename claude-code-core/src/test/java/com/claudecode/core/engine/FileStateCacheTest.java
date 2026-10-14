@@ -128,7 +128,7 @@ class FileStateCacheTest {
 
     @Test
     void isPartialView_marksSyntheticView() {
-// matches NestedMemoryAttachmentProvider: auto-injected (stripped) memory
+        // matches NestedMemoryAttachmentProvider: auto-injected (stripped) memory
         // files store isPartialView=true so Edit/Write still require a real Read.
         FileStateCache cache = new FileStateCache();
         cache.set("/CLAUDE.md", partial("stripped body"));

@@ -92,7 +92,7 @@ public class EnterWorktreeTool extends AnnotatedTool<JsonNode, String> {
         }
 
         // Capture the session's real cwd BEFORE any switch below — this is also
-// what the resulting WorktreeSession.originalCwd anchors on, so the
+        // what the resulting WorktreeSession.originalCwd anchors on, so the
         // session's JSONL file (keyed by this cwd via SessionManager) stays the
         // one the conversation has always lived in, not a path derived from the
         // worktree we're about to enter.

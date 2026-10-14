@@ -95,7 +95,7 @@ class PermissionPathAlignmentTest {
             assertEquals(paths.rootFor(RuleSource.LOCAL_SETTINGS), worktreeRoot);
             assertEquals(paths.rootFor(RuleSource.POLICY_SETTINGS), worktreeRoot);
 
-// Absolute CLI/session patterns use getOriginalCwd too. Relative
+            // Absolute CLI/session patterns use getOriginalCwd too. Relative
             // patterns are intentionally tested separately against liveCwd.
             assertEquals(paths.rootFor(RuleSource.CLI_ARG), worktreeRoot);
             assertEquals(paths.rootFor(RuleSource.COMMAND), worktreeRoot);

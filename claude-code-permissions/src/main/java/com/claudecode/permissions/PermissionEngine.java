@@ -483,7 +483,7 @@ public class PermissionEngine {
         // Unknown content shape: return null so an unrecognized content rule does
 
         // extractInputText fallback for non-file tools — unmatched content rules
-// fall through to the rule/mode decision rather than matching input.toString.
+        // fall through to the rule/mode decision rather than matching input.toString.
         return null;
     }
 
@@ -635,7 +635,7 @@ public class PermissionEngine {
         // builder turned "git:*" into the literal string "git:*", so the rule
 
         // rule match a compound command (e.g. "git:*" must not match
-// "cd /x && git push"); that containment check lives in the not-yet-implemented
+        // "cd /x && git push"); that containment check lives in the not-yet-implemented
         // Bash AST splitter, not here.
         String cmdPrefix = permissionRuleExtractPrefix(trimmedPattern);
         if (cmdPrefix != null) {

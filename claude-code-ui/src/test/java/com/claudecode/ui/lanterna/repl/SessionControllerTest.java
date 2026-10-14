@@ -1521,7 +1521,7 @@ class SessionControllerTest {
     // ── GUI-thread affinity ──────────────────────────────────────────────────
     // /clear and /resume run on a slash-command virtual thread. A Lanterna
     // component mutated from there locks the component and then walks the
-// parent chain for its theme, while a concurrent updateScreen holds the
+    // parent chain for its theme, while a concurrent updateScreen holds the
     // parents and descends into the same component — an intermittent, silent
     // TUI freeze. Every UI touch on those paths must go through onGuiThread.
 

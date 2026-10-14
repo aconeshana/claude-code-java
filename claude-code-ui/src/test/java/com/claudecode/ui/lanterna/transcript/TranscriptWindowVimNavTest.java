@@ -114,7 +114,7 @@ class TranscriptWindowVimNavTest {
     @Test
     void gScrollsToTop_GScrollsToBottom() {
         // g lands at maxOffset (lines - visibleRows = 200 - 40 = 160), the
-// in-bounds top — not lines.size-1 (the overshoot scrollToTop used).
+        // in-bounds top — not lines.size-1 (the overshoot scrollToTop used).
         win.handleInput(chr('g'));
         assertEquals(160, offset(panel), "g → top (maxOffset, in-bounds)");
         win.handleInput(chr('G'));
@@ -206,7 +206,7 @@ class TranscriptWindowVimNavTest {
 
     @Test
     void gDoesNotOvershootSoLineScrollWorksImmediately() {
-// g must land within maxOffset (160), not at lines.size-1 (199),
+        // g must land within maxOffset (160), not at lines.size-1 (199),
         // otherwise the next 'j' would be a no-op until the excess drains.
         win.handleInput(chr('g'));
         int top = offset(panel);

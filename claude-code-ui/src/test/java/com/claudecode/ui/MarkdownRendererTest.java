@@ -227,7 +227,7 @@ class MarkdownRendererTest {
 
     // ── Visual width helpers ──────────────────────────────────────────────
     // These are what fix table alignment for Chinese / CJK content. Without
-// them String.length undercounts the display width by a factor of ~2
+    // them String.length undercounts the display width by a factor of ~2
     // and every downstream pipe drifts left.
 
     @Test

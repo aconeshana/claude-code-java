@@ -40,7 +40,7 @@ public class MemoryCommand implements AnnotatedCommand {
         }
 
 
-// x which returns a
+        // x which returns a
         // <MemoryFileSelector> JSX component immediately.
 
 
@@ -67,7 +67,7 @@ public class MemoryCommand implements AnnotatedCommand {
         // Interactive TUI: route through the Lanterna pause/resume launcher
         // so vi doesn't paint on top of the alt-screen and corrupt state on
         // :q. Headless mode has no launcher and no Lanterna, so the direct
-// ProcessBuilder in openInEditor is safe.
+        // ProcessBuilder in openInEditor is safe.
         if (context.presentation().openEditor() != null) {
             context.presentation().openEditor().accept(target);
             // The launcher channel is caption-less (shared with /plan open and

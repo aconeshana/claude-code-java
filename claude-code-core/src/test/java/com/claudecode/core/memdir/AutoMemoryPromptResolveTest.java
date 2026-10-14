@@ -84,7 +84,7 @@ class AutoMemoryPromptResolveTest {
         AutoMemoryPrompt.setAutoMemoryDirectory(tmp.toString());
         Path memDir = AutoMemoryPrompt.resolveAutoMemPath(Path.of("/some/other/cwd"));
 
-// getAutoMemPathSetting returning the full validated path. The resolver
+        // getAutoMemPathSetting returning the full validated path. The resolver
         // appends a trailing separator (".../memory/"), so strip it before comparing.
         assertEquals(Normalizer.normalize(tmp.toString(), Normalizer.Form.NFC),
             stripTrailingSep(memDir.toString()));

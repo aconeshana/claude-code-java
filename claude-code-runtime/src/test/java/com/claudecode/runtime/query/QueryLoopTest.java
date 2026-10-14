@@ -228,7 +228,7 @@ class QueryLoopTest {
             .deps(fakeDeps(events))
             .build();
 
-// A blank raw-String prompt matches a queued command with empty text reaching
+        // A blank raw-String prompt matches a queued command with empty text reaching
         // runPreamble directly (bypassing the UI-edge blank-input guard in
         // LanternaReplScreen.executeQueuedCommands). Without the fallback branch this
         // used to become a literal TextBlock(""), which strict downstream backends
@@ -1535,7 +1535,7 @@ class QueryLoopTest {
         drain(new QueryLoop(engine, params, "Look at this image", options));
 
         // The submitted user message must be block-based, carrying the inline image
-// block, the prompt text, and the pasted chip id — matching
+        // block, the prompt text, and the pasted chip id — matching
 
         UserMessage userMsg = engine.getMutableMessages().stream()
             .filter(m -> m instanceof UserMessage um && !um.isMeta())
@@ -1872,7 +1872,7 @@ class QueryLoopTest {
             .deps(fakeDeps(events))
             .build();
 
-// 4-arg constructor matches submitMessage(prompt, options) with the flag on:
+        // 4-arg constructor matches submitMessage(prompt, options) with the flag on:
         // runs the preamble (processUserInput + user/system-init emit) then the loop.
         List<SDKMessage> messages = drain(new QueryLoop(engine, params, "Hi there", SubmitOptions.DEFAULT));
 

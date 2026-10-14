@@ -40,7 +40,7 @@ public final class ConsolidationPromptGenerator {
     }
 
 
-// "index, not a dump"
+    // "index, not a dump"
     // is literal text, NOT a placeholder):
     //   %s = memoryRoot              (Memory directory:)
     //   %s = DIR_EXISTS_GUIDANCE

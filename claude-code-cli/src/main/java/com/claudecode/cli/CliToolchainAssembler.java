@@ -581,7 +581,7 @@ final class CliToolchainAssembler {
 
     private static List<PermissionRule> loadPermissionRules() {
 
-// getSettingsForSource: a malformed source is empty, but valid sibling
+        // getSettingsForSource: a malformed source is empty, but valid sibling
         // sources still contribute their rules.  Keep strict readers for diagnostics
         // and editing, not for executable startup state.
         return PermissionSettings.loadPermissionRulesForExecution(System.getProperty("user.dir"));

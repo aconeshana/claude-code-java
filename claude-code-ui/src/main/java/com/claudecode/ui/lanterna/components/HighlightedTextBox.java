@@ -86,11 +86,11 @@ public class HighlightedTextBox extends TextBox {
     }
 
     private void resetViewportIfOutOfBounds() {
-// The upward walk: AbstractComponent.getRenderer is synchronized and
-// unconditionally calls getTheme, which recurses parent.getTheme
+        // The upward walk: AbstractComponent.getRenderer is synchronized and
+        // unconditionally calls getTheme, which recurses parent.getTheme
         // (also synchronized) all the way to the window. Called from the
         // synchronized setText above, that is child-monitor-then-ancestor —
-// the reverse of updateScreen's top-down order. Base Lanterna's
+        // the reverse of updateScreen's top-down order. Base Lanterna's
         // TextBox.setText does NOT touch the renderer; this override is what
         // creates the hazard, hence the GUI-thread requirement documented on
         // setText. Keep any new viewport logic renderer-free if you can.
@@ -156,8 +156,8 @@ public class HighlightedTextBox extends TextBox {
             }
             TerminalPosition caret = component.getCaretPosition();
             String line = component.getLine(caret.getRow());
-// caret.getColumn is a CHARACTER INDEX; the cursor location must be
-// a SCREEN COLUMN. CJK characters take 2 columns — matches Lanterna's
+            // caret.getColumn is a CHARACTER INDEX; the cursor location must be
+            // a SCREEN COLUMN. CJK characters take 2 columns — matches Lanterna's
             // DefaultTextBoxRenderer at TextBox.java:843-849.
             int charIdx = Math.min(caret.getColumn(), line.length());
             int screenCol = TerminalTextUtils.getColumnIndex(line, charIdx);
@@ -179,7 +179,7 @@ public class HighlightedTextBox extends TextBox {
             }
             // Return actual line count + longest line width so the parent
             // layout grows/shrinks with content. Original impl delegated back
-// to component.getPreferredSize which forms a caching loop that
+            // to component.getPreferredSize which forms a caching loop that
             // freezes at the initial constructor size — fine for SINGLE_LINE
             // (always 1 row) but breaks MULTI_LINE where Shift+Enter should
             // add a row.
@@ -220,7 +220,7 @@ public class HighlightedTextBox extends TextBox {
 
 
             // DefaultTextBoxRenderer.drawTextArea bookkeeping for single-line.
-// viewTopLeft.getColumn and caret column are CHARACTER indices,
+            // viewTopLeft.getColumn and caret column are CHARACTER indices,
             // but the visibility test must compare SCREEN widths so CJK
             // characters (2 cells) don't make the view scroll twice as fast.
             if (!component.isReadOnly()) {

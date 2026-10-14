@@ -459,7 +459,7 @@ public final class EffortHelpers {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-// Model-picker helpers (implemented for the /model picker's integrated effort
+    // Model-picker helpers (implemented for the /model picker's integrated effort
     // row — ← / → adjustment + "set model alone" persistence semantics).
     // ──────────────────────────────────────────────────────────────────────
 

@@ -52,7 +52,7 @@ class CallModelAdapter implements QueryDeps {
         }
         try {
             // isAutoCompact=true; customInstructions comes from the PreCompact hook
-// (matches production runAutoCompact passing mergeHookInstructions(null, hookText)).
+            // (matches production runAutoCompact passing mergeHookInstructions(null, hookText)).
             MessageCompactor.CompactionResult result =
                 compactor.compactConversation(messages, true, customInstructions, model);
             return new AutoCompactResult(result, 0, null);

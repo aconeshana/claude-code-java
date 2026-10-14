@@ -73,7 +73,7 @@ class LanternaThemeIntegrationTest {
     void toLC_convertsRgbColorCorrectly() {
         var c = Themes.DARK.success();
         var tc = LanternaTheme.toLC(c);
-// toLC returns TextColor.RGB at chalkLevel==3 (truecolor),
+        // toLC returns TextColor.RGB at chalkLevel==3 (truecolor),
         // or TextColor.Indexed at level<3 (256-color quantization).
         assertNotNull(tc);
         assertFalse(tc instanceof TextColor.ANSI,

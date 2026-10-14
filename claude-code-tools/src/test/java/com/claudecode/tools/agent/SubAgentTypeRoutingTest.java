@@ -212,7 +212,7 @@ class SubAgentTypeRoutingTest {
     @Test
     void customAgentWithAuthoredPrompt_usesItVerbatim(@TempDir Path tmp) throws IOException {
         // Before the fix, buildSystemPrompt only ever consulted
-// BuiltInAgentDefinitions.getBuiltInAgents — a custom agent's
+        // BuiltInAgentDefinitions.getBuiltInAgents — a custom agent's
         // hand-written markdown body was silently discarded and replaced
         // with the generic DEFAULT_AGENT_PROMPT.
         Path agentsDir = tmp.resolve(".claude/agents");

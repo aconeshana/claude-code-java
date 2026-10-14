@@ -110,7 +110,7 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
 
         // expression / next-run / MAX_JOBS checks are returned as is_error
         // (errorCodes 1/2/3) via ValidationResult.invalid, NOT as a plain-text
-// "Error: …" from call (which would look like a successful result).
+        // "Error: …" from call (which would look like a successful result).
         String cron = input.path("cron").asText("");
         String rejection = CronStore.validateNewJob(cron);
         if (rejection != null) {

@@ -96,7 +96,7 @@ class PermissionEngineParityTest {
     }
 
 
-// runs BEFORE the 1.7 safety check). Editing on would
+    // runs BEFORE the 1.7 safety check). Editing on would
     // otherwise hit the safety gate and return Ask.
     @Test
     void sessionClaudeFolderAllowBypassesSafety(@TempDir Path dir) throws Exception {
@@ -211,7 +211,7 @@ class PermissionEngineParityTest {
     // Finding 8: an unrecognized content rule (input has no known field such as
     // file_path/command/content) must NOT match the whole serialized JSON — it
     // returns null and falls through to the mode decision (Ask in DEFAULT mode),
-// instead of letting input.toString spuriously match a glob.
+    // instead of letting input.toString spuriously match a glob.
     @Test
     void unrecognizedContentRuleDoesNotMatchWholeJson() {
         ToolPermissionContext ctx = ToolPermissionContext.builder()

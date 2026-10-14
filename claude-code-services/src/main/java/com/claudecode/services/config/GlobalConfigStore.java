@@ -371,8 +371,8 @@ public final class GlobalConfigStore {
             }
             try {
 
-// provides the same companion-lock exclusion. Java's FileChannel.lock has
-// no timeout parameter, and tryLock exposes no release notification that
+                // provides the same companion-lock exclusion. Java's FileChannel.lock has
+                // no timeout parameter, and tryLock exposes no release notification that
                 // could replace polling while retaining this port's explicit three-second
                 // acquisition window. This bounded 40 ms sleep is intentional contention
                 // backoff, not an unbounded busy-spin; interruption is restored and stops

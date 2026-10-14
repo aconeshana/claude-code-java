@@ -63,7 +63,7 @@ public class AgentSummaryService implements SubAgentProgressSummarizer, AutoClos
         if (!isEnabled()) return () -> {};
 
         // Lazily create the shared scheduling pool under lock. The pool is
-// owned by this service and torn down in close — it must NOT be
+        // owned by this service and torn down in close — it must NOT be
         // closed here, so we read the field directly rather than hold the
         // AutoCloseable returned from a helper (avoids the spurious
         // try-with-resources warning).
