@@ -2,6 +2,7 @@ package com.claudecode.ui.lanterna.bashmode;
 
 import com.claudecode.commands.XmlConstants;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.process.DetachedSession;
 import com.claudecode.core.process.ProcessTreeTerminator;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.interaction.SudoPasswordInteraction;
@@ -171,7 +172,7 @@ public final class BashModeExecutor {
             }
             pb.directory(Path.of(cwd).toFile());
             pb.redirectErrorStream(false);
-            Process proc = pb.start();
+            Process proc = DetachedSession.apply(pb).start();
             currentProcess.set(proc);
             try {
                 if (sudoCommand != null) {

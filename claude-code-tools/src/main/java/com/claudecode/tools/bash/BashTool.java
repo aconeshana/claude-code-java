@@ -12,6 +12,7 @@ import com.claudecode.core.imagestore.ImageResizer;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.platform.Platform;
+import com.claudecode.core.process.DetachedSession;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.process.ProcessTreeTerminator;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -537,7 +538,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
 
         Process process;
         try {
-            process = pb.start();
+            process = DetachedSession.apply(pb).start();
         } catch (IOException | RuntimeException e) {
             if (sudoCommand != null) sudoCommand.close();
             cwdTracker.discard();

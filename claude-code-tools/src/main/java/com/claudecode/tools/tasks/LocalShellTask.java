@@ -12,6 +12,7 @@ import com.claudecode.tools.sandbox.SandboxManager;
 import com.claudecode.core.text.StringUtils;
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.platform.Platform;
+import com.claudecode.core.process.DetachedSession;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.process.ProcessTreeTerminator;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -246,7 +247,7 @@ public class LocalShellTask {
         Path output = outputPath;
         Files.createDirectories(output.getParent());
 
-        process = pb.start();
+        process = DetachedSession.apply(pb).start();
         try {
             process.getOutputStream().close();
         } catch (IOException _) {

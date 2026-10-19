@@ -5,6 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.process.DetachedSession;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.session.SessionManager;
 import com.claudecode.core.text.FormatUtils;
@@ -107,9 +108,9 @@ final class SecurityReviewPromptRenderer {
             String command, Path cwd, ToolExecutionContext context) {
         Process process = null;
         try {
-            process = new ProcessBuilder(
+            process = DetachedSession.apply(new ProcessBuilder(
                 ExecutableFinder.bashExecutable(), "-c", command)
-                .directory(cwd.toFile())
+                .directory(cwd.toFile()))
                 .start();
             Process running = process;
             CompletableFuture<String> stdout = CompletableFuture.supplyAsync(
