@@ -20,9 +20,9 @@ require(JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_25)) {
 }
 
 group = "com.claudecode"
-// 版本号可用 `-Pversion=` 在命令行覆盖（release CI 从 tag 推导），
-// 日常开发默认回退到 SNAPSHOT。
-version = providers.gradleProperty("version").getOrElse("0.1.0-SNAPSHOT")
+// The release tag is the only version source: CI passes `-Pversion=` from the pushed tag, and
+// every other build derives it from `git describe` (see buildSrc ProjectVersion.kt).
+version = providers.projectVersion().get()
 
 subprojects {
     group = rootProject.group

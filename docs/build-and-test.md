@@ -18,7 +18,7 @@
 ./gradlew :claude-code-app:nativeReleaseCompile
 
 # Run the application
-java -jar claude-code-app/build/libs/claude-code-app-0.1.0-SNAPSHOT.jar
+java -jar claude-code-app/build/libs/poco-*.jar
 ~~~
 
 The Gradle wrapper pins Gradle 9.7.0 and its distribution checksum. Dependency
@@ -27,6 +27,20 @@ with the Java 25 toolchain and `--release 25`; `build-recipes` is a separate
 build-time helper project. Gradle itself must also run on Java 25 or newer.
 Build caching, configuration caching, and parallel project execution are
 enabled in `gradle.properties`.
+
+### Project version
+
+The release tag is the only version source; no file in the repository holds a
+version number. The release workflow passes the pushed `v*` tag as
+`-Pversion=`, and every other build derives the version from
+`git describe --tags` (`buildSrc/src/main/kotlin/ProjectVersion.kt`): a tagged
+commit builds as `0.2.5`, and five commits later as `0.2.5-5-gb9361840`.
+Suffixed tags such as `v0.2.6-rc1` are skipped, and a checkout without tags
+falls back to `0.1.0-SNAPSHOT`. The version flows into the jar manifest's
+`Implementation-Version`, which `VersionInfo` reports at runtime (welcome box,
+`--version`, `/doctor`).
+
+To release, push a `v<major>.<minor>.<patch>` tag; there is nothing to bump.
 
 ### Lanterna fork
 

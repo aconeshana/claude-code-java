@@ -9,7 +9,7 @@ modules plus the build-time `build-recipes` helper project.
 | Task | Command |
 |------|---------|
 | Build | `./gradlew build` |
-| Run | `java -jar claude-code-app/build/libs/claude-code-app-0.1.0-SNAPSHOT.jar` |
+| Run | `java -jar claude-code-app/build/libs/poco-*.jar` |
 | Test | `./gradlew test` |
 | Package | `./gradlew :claude-code-app:shadowJar` |
 | Single module | `./gradlew :claude-code-core:build` |
