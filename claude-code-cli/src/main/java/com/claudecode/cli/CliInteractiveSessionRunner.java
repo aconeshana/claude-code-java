@@ -102,6 +102,7 @@ import com.claudecode.ui.lanterna.repl.ReplStartupReadiness;
 import com.claudecode.ui.lanterna.repl.ReplWiring;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -132,6 +133,12 @@ import org.slf4j.LoggerFactory;
 final class CliInteractiveSessionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(CliInteractiveSessionRunner.class);
+
+    /**
+     * Covers the memory-extractor drain (5s) plus GracefulShutdown's own failsafe budget, which
+     * halts the process itself if a SessionEnd hook hangs.
+     */
+    private static final Duration SHUTDOWN_COMPLETION_TIMEOUT = Duration.ofSeconds(15);
 
     private CliInteractiveSessionRunner() {}
 
@@ -562,6 +569,7 @@ final class CliInteractiveSessionRunner {
             HookConfigurationPort hookConfiguration =
                 CliRuntimeAdapters.newHookConfigurationPort(settingsReload, hookEngine);
             var memoryCatalog = CliRuntimeAdapters.newMemoryCatalog(interactiveCwd);
+            var shutdownPort = CliRuntimeAdapters.newShutdownPort(engine, shellOutput);
             WorktreeService.setMemoryFileCacheClearer(memoryCatalog::clearCache);
             mcpRuntime.clientRuntime().setMessageQueue(engine.conversation().getMessageQueue());
             Consumer<String> skillHookRegistrar = rawHooks -> {
@@ -581,7 +589,7 @@ final class CliInteractiveSessionRunner {
                 pluginMarketplace,
                 CliRuntimeAdapters.newStatusLinePort(interactiveCwd),
                 CliRuntimeAdapters.newStartupTrustPort(),
-                CliRuntimeAdapters.newShutdownPort(engine, shellOutput),
+                shutdownPort,
                 CliRuntimeAdapters.newTurnAwakeGuard(), taskBoard);
             var featureRuntime = interactiveRuntime.features(
                 permissionGate, toolRegistry,
@@ -647,6 +655,7 @@ final class CliInteractiveSessionRunner {
                 .collect(Collectors.toList()));
             try {
                 lanternaRepl.run();
+                shutdownPort.awaitCompletion(SHUTDOWN_COMPLETION_TIMEOUT);
                 return 0;
             } finally {
                 sessionHostRuntime.close();

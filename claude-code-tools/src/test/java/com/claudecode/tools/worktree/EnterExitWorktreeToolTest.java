@@ -168,9 +168,12 @@ class EnterExitWorktreeToolTest {
         assertEquals(existing.toRealPath().toString(), System.getProperty("user.dir"));
         assertNotNull(WorktreeService.getCurrentWorktreeSession());
         assertTrue(WorktreeService.getCurrentWorktreeSession().enteredExisting());
+        assertNull(WorktreeService.getResumeHintWorktreeName(),
+            "a worktree entered by path is not one --worktree <name> recreates");
 
         String exit = exitTool.call(exitInput("keep", null), ctx(existing, "sess-1"));
         assertTrue(Strings.CS.contains(exit, "Exited worktree"), exit);
+        assertNull(WorktreeService.getResumeHintWorktreeName());
         assertEquals(repo.toRealPath().toString(), System.getProperty("user.dir"));
         assertTrue(Files.isDirectory(existing), "an entered existing worktree remains on disk");
     }
@@ -260,6 +263,8 @@ class EnterExitWorktreeToolTest {
         assertEquals(repo.toRealPath().toString(), System.getProperty("user.dir"));
         assertTrue(Files.isDirectory(Path.of(worktreePath)), "keep must leave the worktree on disk");
         assertNull(WorktreeService.getCurrentWorktreeSession());
+        assertEquals("feature-a", WorktreeService.getResumeHintWorktreeName(),
+            "a kept worktree must still be named in the exit resume hint");
 
         SessionStorage storage = new SessionStorage(JsonUtils.getMapper());
         Path sessionFile = new SessionManager(repo.toRealPath().toString()).getSessionFile("sess-1");
@@ -329,11 +334,14 @@ class EnterExitWorktreeToolTest {
         initRepoWithOneCommit(repo);
         enterTool.call(enterInput("feature-a"), ctx(repo, "sess-1"));
         String worktreePath = System.getProperty("user.dir");
+        assertEquals("feature-a", WorktreeService.getResumeHintWorktreeName());
 
         String result = exitTool.call(exitInput("remove", null), ctx(Path.of(worktreePath), "sess-1"));
 
         assertTrue(Strings.CS.contains(result, "Exited and removed worktree"), result);
         assertFalse(Files.isDirectory(Path.of(worktreePath)));
+        assertNull(WorktreeService.getResumeHintWorktreeName(),
+            "a removed worktree cannot be reopened, so the resume hint must drop it");
     }
 
     @Test

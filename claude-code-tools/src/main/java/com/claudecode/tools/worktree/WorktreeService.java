@@ -55,6 +55,13 @@ public final class WorktreeService {
     private static final AtomicReference<WorktreeSession> CURRENT = new AtomicReference<>();
 
     /**
+     * Worktree name the exit resume hint should carry. Outlives {@link #CURRENT}: keeping a
+     * worktree clears the session but the hint still has to say {@code --worktree <name>};
+     * only removal forgets it.
+     */
+    private static final AtomicReference<String> RESUME_HINT_WORKTREE_NAME = new AtomicReference<>();
+
+    /**
      * Optional user-configured {@code WorktreeCreate}/{@code WorktreeRemove} hook seam.
      * Null when unwired (tests, or a build without hook wiring) → git-only behavior.
      * Injected by the composition root ({@code ClaudeCodeCli}). See {@link WorktreeHooks}.
@@ -120,11 +127,29 @@ public final class WorktreeService {
 
     public static void restoreWorktreeSession(WorktreeSession session) {
         CURRENT.set(session);
+        rememberResumeHintWorktree(session);
     }
 
     /** Replaces active tracking when EnterWorktree(path=...) switches worktrees. */
     public static void replaceCurrentWorktreeSession(WorktreeSession session) {
         CURRENT.set(session);
+        rememberResumeHintWorktree(session);
+    }
+
+    /**
+     * Name for the exit hint's {@code --worktree} flag, or {@code null} when the session never
+     * created a worktree of its own (worktrees entered by path are not reopened by name).
+     */
+    public static String getResumeHintWorktreeName() {
+        WorktreeSession session = CURRENT.get();
+        if (session != null) return session.enteredExisting() ? null : session.worktreeName();
+        return RESUME_HINT_WORKTREE_NAME.get();
+    }
+
+    private static void rememberResumeHintWorktree(WorktreeSession session) {
+        if (session != null && !session.enteredExisting()) {
+            RESUME_HINT_WORKTREE_NAME.set(session.worktreeName());
+        }
     }
 
     /**
@@ -135,13 +160,16 @@ public final class WorktreeService {
      * two tool calls ever ran concurrently.
      */
     public static boolean tryClaim(WorktreeSession session) {
-        return CURRENT.compareAndSet(null, session);
+        boolean claimed = CURRENT.compareAndSet(null, session);
+        if (claimed) rememberResumeHintWorktree(session);
+        return claimed;
     }
 
     /** Test-only reset of the module-level singleton — public so tests in sibling
      *  packages ({@code com.claudecode.tools}'s tool tests) can reach it too. */
     public static void clearCurrentSessionForTests() {
         CURRENT.set(null);
+        RESUME_HINT_WORKTREE_NAME.set(null);
     }
 
     public static void setTmuxSessionKillerForTests(Consumer<String> killer) {
@@ -858,6 +886,7 @@ public final class WorktreeService {
             log.error("Error cleaning up worktree: {}", e.getMessage());
         } finally {
             CURRENT.set(null);
+            RESUME_HINT_WORKTREE_NAME.set(null);
             resetLatches();
         }
         return "Worktree removed.";

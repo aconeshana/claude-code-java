@@ -5,6 +5,7 @@ import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.services.cost.CostStatePersistence;
 import com.claudecode.session.SessionManager;
 import com.claudecode.tools.tasks.TeamSessionCleanup;
+import com.claudecode.tools.worktree.WorktreeService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.ScheduledFuture;
@@ -99,10 +100,19 @@ public final class GracefulShutdown {
                 : req.sessionId;
             req.resumeHintSink.accept("");
             req.resumeHintSink.accept("Resume this session with:");
-            req.resumeHintSink.accept("claude --resume " + arg);
+            req.resumeHintSink.accept(resumeCommand(arg, WorktreeService.getResumeHintWorktreeName()));
         } catch (Throwable t) {
             log.debug("printResumeHint suppressed: {}", t.getMessage());
         }
+    }
+
+    /**
+     * A kept {@code --worktree} session can only be resumed from inside that worktree, so the
+     * hint names it; the transcript lives under the worktree's project directory.
+     */
+    static String resumeCommand(String resumeArg, String worktreeName) {
+        String worktreeFlag = StringUtils.isNotBlank(worktreeName) ? "--worktree " + worktreeName + " " : "";
+        return "claude " + worktreeFlag + "--resume " + resumeArg;
     }
 
     /**

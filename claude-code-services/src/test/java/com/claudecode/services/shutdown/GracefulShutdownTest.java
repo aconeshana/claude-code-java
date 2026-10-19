@@ -50,6 +50,14 @@ class GracefulShutdownTest {
     }
 
     @Test
+    void resumeCommand_namesKeptWorktreeBeforeResume() {
+        assertEquals("claude --worktree named2 --resume \"mysess\"",
+            GracefulShutdown.resumeCommand("\"mysess\"", "named2"));
+        assertEquals("claude --resume abc", GracefulShutdown.resumeCommand("abc", null));
+        assertEquals("claude --resume abc", GracefulShutdown.resumeCommand("abc", " "));
+    }
+
+    @Test
     void run_toleratesNullHookDispatcher() {
         assertDoesNotThrow(() ->
             GracefulShutdown.run(GracefulShutdown.Request.of("other")));

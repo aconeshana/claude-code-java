@@ -76,9 +76,11 @@ final class ReplExitController implements ReplFeature {
                                        JobControlActions jobControlActions,
                                        InteractiveSessionPort sessions,
                                        Supplier<WorktreeSession> currentWorktree,
+                                       Supplier<String> sessionTitle,
                                        UserKeybindingsStore keybindingsStore) {
         WorktreeExitDialog dialog = new WorktreeExitDialog(); // inline, zero height until shown
         dialog.setKeybindingsStore(keybindingsStore);
+        dialog.setSessionTitleSource(sessionTitle);
         return new ReplExitController(
             shutdown,
             interruptActions,

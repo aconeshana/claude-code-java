@@ -68,10 +68,14 @@ import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.Optional;
 
@@ -325,23 +329,54 @@ final class CliRuntimeAdapters {
         };
     }
 
-    static ShutdownPort newShutdownPort(QuerySession engine, CliOutput shellOutput) {
-        return new ShutdownPort() {
-            @Override
-            public void prepare(String reason, int exitCode) {
-                var transcript = engine.execution().getTranscriptSink();
-                String sessionId = engine.conversation().getSessionId();
-                if (transcript != null && sessionId != null && !StringUtils.isBlank(sessionId)) {
-                    transcript.flushCachedLastPrompt(sessionId);
-                    transcript.awaitPendingWrites(sessionId, 2_000);
-                    if (transcript instanceof TranscriptRecorder recorder) {
-                        recorder.releaseSessionState(sessionId, 2_000);
-                    }
+    static CliShutdownPort newShutdownPort(QuerySession engine, CliOutput shellOutput) {
+        return new CliShutdownPort(engine, shellOutput);
+    }
+
+    /**
+     * Shutdown runs on whichever thread delivered the exit decision — a worktree exit choice
+     * lands on a virtual thread — while closing the window wakes the main thread, which then
+     * heads for {@code System.exit}. {@link #awaitCompletion} lets main wait so the resume
+     * hint and SessionEnd hooks are not cut off mid-way.
+     */
+    static final class CliShutdownPort implements ShutdownPort {
+        private final QuerySession engine;
+        private final CliOutput shellOutput;
+        private final AtomicBoolean started = new AtomicBoolean();
+        private final CountDownLatch finished = new CountDownLatch(1);
+
+        private CliShutdownPort(QuerySession engine, CliOutput shellOutput) {
+            this.engine = engine;
+            this.shellOutput = shellOutput;
+        }
+
+        /** Returns at once when no shutdown was requested; otherwise waits up to {@code timeout}. */
+        void awaitCompletion(Duration timeout) {
+            if (!started.get()) return;
+            try {
+                finished.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        @Override
+        public void prepare(String reason, int exitCode) {
+            var transcript = engine.execution().getTranscriptSink();
+            String sessionId = engine.conversation().getSessionId();
+            if (transcript != null && sessionId != null && !StringUtils.isBlank(sessionId)) {
+                transcript.flushCachedLastPrompt(sessionId);
+                transcript.awaitPendingWrites(sessionId, 2_000);
+                if (transcript instanceof TranscriptRecorder recorder) {
+                    recorder.releaseSessionState(sessionId, 2_000);
                 }
             }
+        }
 
-            @Override
-            public void shutdown(String reason, int exitCode) {
+        @Override
+        public void shutdown(String reason, int exitCode) {
+            if (!started.compareAndSet(false, true)) return;
+            try {
                 if (engine.configuration().getConfig().memoryExtractor() != null) {
                     engine.configuration().getConfig().memoryExtractor().drainPending(5000);
                 }
@@ -352,10 +387,25 @@ final class CliRuntimeAdapters {
                         .sessionId(sessionId)
                         .workingDirectory(engine.configuration().getConfig().workingDirectory())
                         .hookDispatcher(engine.execution().getHookDispatcher())
-                        .sessionManager(new SessionManager(System.getProperty("user.dir")))
+                        .sessionManager(transcriptSessionManager())
                         .resumeHintSink(shellOutput::println));
+                shellOutput.flush();
+            } finally {
+                finished.countDown();
             }
-        };
+        }
+
+        /**
+         * The project the transcript is actually written to. Keeping a {@code --worktree}
+         * session moves {@code user.dir} back to the original checkout, but the transcript —
+         * and its custom title — stays under the worktree's project directory.
+         */
+        private SessionManager transcriptSessionManager() {
+            if (engine.execution().getTranscriptSink() instanceof TranscriptRecorder recorder) {
+                return recorder.sessionManager();
+            }
+            return new SessionManager(System.getProperty("user.dir"));
+        }
     }
 
     static TurnAwakeGuard newTurnAwakeGuard() {

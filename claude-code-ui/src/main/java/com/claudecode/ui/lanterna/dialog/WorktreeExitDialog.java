@@ -19,6 +19,7 @@ import com.googlecode.lanterna.input.KeyType;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
@@ -49,9 +50,11 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
     private volatile WorktreeSession session;
     private volatile List<String> changes = List.of();
     private volatile int commitCount = 0;
+    private volatile String sessionTitle;
     private volatile Option focused;
 
     private Consumer<Result> onResult;
+    private volatile Supplier<String> sessionTitleSource = () -> null;
     private final ContextKeybindingDispatcher keybindings =
         new ContextKeybindingDispatcher();
 
@@ -67,6 +70,14 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
     }
 
     /**
+     * Source of the session's {@code /rename} title. A named session is one the user means to
+     * come back to, so a clean worktree is offered for keeping instead of being removed silently.
+     */
+    public void setSessionTitleSource(Supplier<String> source) {
+        sessionTitleSource = source != null ? source : () -> null;
+    }
+
+    /**
      * Activate and start scanning. Must run on the GUI thread; the git probe
      * itself is scheduled to a virtual thread to avoid stalling the UI.
      */
@@ -79,6 +90,9 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
         this.session = session;
         this.onResult = onResult;
         this.state = State.LOADING;
+        this.changes = List.of();
+        this.commitCount = 0;
+        this.sessionTitle = null;
         this.focused = session.hasTmuxSession() ? Option.KEEP_WITH_TMUX : Option.KEEP;
         this.active = true;
         invalidate();
@@ -94,13 +108,14 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
      */
     private void loadChanges() {
         try {
+            this.sessionTitle = StringUtils.trimToNull(readSessionTitle());
             String cwd = session.worktreePath();
             List<String> lines = WorktreeService.gitStatusPorcelain(cwd);
             int count = WorktreeService.commitCountAhead(cwd, session.originalHeadCommit());
             this.changes = lines;
             this.commitCount = count;
 
-            if (lines.isEmpty() && count == 0) {
+            if (lines.isEmpty() && count == 0 && sessionTitle == null) {
                 // Fast path: nothing to lose, remove silently.
                 this.state = State.REMOVING;
                 invalidate();
@@ -114,6 +129,14 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
             // Probe failure → fall back to asking with empty stats.
             this.state = State.ASKING;
             invalidate();
+        }
+    }
+
+    private String readSessionTitle() {
+        try {
+            return sessionTitleSource.get();
+        } catch (RuntimeException _) {
+            return null;
         }
     }
 
@@ -157,6 +180,15 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
             };
             if (handled) {
                 deliver.set(false);
+                return;
+            }
+        }
+        if (t == KeyType.CHARACTER && !key.isCtrlDown() && !key.isAltDown()) {
+            int pick = Character.digit(key.getCharacter(), 10) - 1;
+            if (pick >= 0 && pick < options.size()) {
+                deliver.set(false);
+                focused = options.get(pick);
+                performSelection(focused);
                 return;
             }
         }
@@ -326,9 +358,13 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
             g.putString(LEFT_PAD, 2, subtitleText());
 
             List<Option> options = optionsForState();
+            int labelWidth = 0;
+            for (int i = 0; i < options.size(); i++) {
+                labelWidth = Math.max(labelWidth, ((i + 1) + ". " + labelFor(options.get(i))).length());
+            }
             int y = 4;
-            for (Option opt : options) {
-                drawOption(g, y++, opt);
+            for (int i = 0; i < options.size(); i++) {
+                drawOption(g, y++, i, options.get(i), labelWidth);
             }
             g.setForegroundColor(LanternaTheme.welcomeDim());
             g.putString(LEFT_PAD, y + 1,
@@ -355,12 +391,16 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
                     "You have %d %s on %s. The branch will be deleted if you remove the worktree.",
                     commitCount, commitCount == 1 ? "commit" : "commits", branch);
             }
+            if (sessionTitle != null) {
+                return "This session was named \"" + sessionTitle
+                    + "\". Keep the worktree to resume it later, or remove it to clean up.";
+            }
             return "You are working in a worktree. Keep it to continue working there, or remove it to clean up.";
         }
 
-        private void drawOption(TextGUIGraphics g, int y, Option opt) {
+        private void drawOption(TextGUIGraphics g, int y, int index, Option opt, int labelWidth) {
             boolean isFocused = focused == opt;
-            String label = labelFor(opt);
+            String label = StringUtils.rightPad((index + 1) + ". " + labelFor(opt), labelWidth);
             if (isFocused) {
                 g.setForegroundColor(LanternaTheme.statusCost());
                 g.enableModifiers(SGR.BOLD);
@@ -370,6 +410,8 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
                 g.setForegroundColor(LanternaTheme.welcomeDim());
                 g.putString(LEFT_PAD, y, "  " + label);
             }
+            g.setForegroundColor(LanternaTheme.welcomeDim());
+            g.putString(LEFT_PAD + 2 + labelWidth + 2, y, descriptionFor(opt));
         }
 
         private String labelFor(Option opt) {
@@ -377,8 +419,21 @@ public final class WorktreeExitDialog extends Panel implements InlineOverlay {
                 case KEEP           -> "Keep worktree";
                 case REMOVE         -> "Remove worktree";
                 case KEEP_WITH_TMUX -> "Keep worktree and tmux session";
-                case KEEP_KILL_TMUX -> "Keep worktree, kill tmux session";
+                case KEEP_KILL_TMUX -> "Keep worktree, end tmux session";
                 case REMOVE_WITH_TMUX -> "Remove worktree and tmux session";
+            };
+        }
+
+        private String descriptionFor(Option opt) {
+            return switch (opt) {
+                case KEEP -> "Stays at " + session.worktreePath();
+                case KEEP_WITH_TMUX -> "Stays at " + session.worktreePath()
+                    + ". Reattach with: tmux attach -t " + session.tmuxSessionName();
+                case KEEP_KILL_TMUX -> "Keeps worktree at " + session.worktreePath()
+                    + ", terminates tmux session.";
+                case REMOVE, REMOVE_WITH_TMUX -> changes.isEmpty() && commitCount == 0
+                    ? "Clean up the worktree directory."
+                    : "All changes and commits will be lost.";
             };
         }
     }

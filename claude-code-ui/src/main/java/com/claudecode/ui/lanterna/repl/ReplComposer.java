@@ -259,7 +259,13 @@ final class ReplComposer {
             new ReplExitController.JobControlActions() {
                 @Override public void beforeSuspend() { host.suspendForJobControl(); }
                 @Override public void afterResume() { host.resumeAfterJobControl(); }
-            }, interactiveSessions, runtime.currentWorktree(), keybindings);
+            }, interactiveSessions, runtime.currentWorktree(),
+            () -> {
+                String sessionId = queryEngine.conversation().getSessionId();
+                return StringUtils.isBlank(sessionId) ? null : interactiveSessions.readCustomTitle(
+                    ctx.commandContext().session().workingDirectory(), sessionId);
+            },
+            keybindings);
         collaborationPickerDialog.setExitGestureHandler(key -> {
             if (key == 'c') exit.handleCtrlC();
             else if (key == 'd') exit.handleCtrlD();

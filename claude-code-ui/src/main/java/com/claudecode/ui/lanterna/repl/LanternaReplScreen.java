@@ -144,6 +144,8 @@ public class LanternaReplScreen implements SlashHost {
     private PrestartTextGUIThreadFactory prestartGuiThreadFactory;
     private BasicWindow         mainWindow;
     private volatile boolean terminalReleasedForExit;
+    /** Closed together with the screen so the resume hint reaches the shell, not the diagnostic file. */
+    private TuiOutputGuard outputGuard;
 
     // ── UI Components ──────────────────────────────────────────────────────
     private MessagePanel    messagePanel;
@@ -739,6 +741,10 @@ public class LanternaReplScreen implements SlashHost {
         } catch (Exception e) {
             log.warn("[LANTERNA] stopScreen failed", e);
         }
+        // Graceful shutdown prints the resume hint right after this returns, possibly on another
+        // thread than the one closing the guard's try-with-resources; fd 1 must already point
+        // back at the shell by then. close() is idempotent.
+        if (outputGuard != null) outputGuard.close();
         closeTerminalInput();
     }
 
@@ -909,6 +915,7 @@ public class LanternaReplScreen implements SlashHost {
         if (virtualTerminal) TuiOutputGuard.closeTerminalChannel(terminalChannel);
         TuiOutputGuard outputGuard = virtualTerminal
             ? null : TuiOutputGuard.install(terminalChannel);
+        this.outputGuard = outputGuard;
 
         try {
 
