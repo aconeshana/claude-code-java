@@ -283,12 +283,14 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                 return EditPreview.error(source, "Cannot create new file - file already exists.");
             }
             return EditPreview.success(oldValue, newValue, newValue,
-                DiffHunks.compute(source, newValue));
+                DiffHunks.computeForDisplay(source, newValue));
         }
         String actualOld = findActualString(source, oldValue);
         if (actualOld == null) {
+            String note = EditEscapeMatching.mightInvolveEscapes(oldValue)
+                ? EditEscapeMatching.NOT_FOUND_NOTE : "";
             return EditPreview.error(source,
-                "Error: String to replace not found in file.\nString: " + oldValue);
+                "Error: String to replace not found in file.\nString: " + oldValue + note);
         }
         int count = countOccurrences(source, actualOld);
         if (count > 1 && !replaceAll) {
@@ -298,12 +300,13 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                     + "To replace only one occurrence, please provide more context to uniquely identify the instance.\n"
                     + "String: " + oldValue);
         }
-        String normalizedNew = preserveQuoteStyle(oldValue, actualOld, newValue);
+        String normalizedNew = EditEscapeMatching.carryOverSpelling(
+            oldValue, actualOld, preserveQuoteStyle(oldValue, actualOld, newValue));
         String changed = replaceAll
             ? source.replace(actualOld, normalizedNew)
             : replaceFirst(source, actualOld, normalizedNew);
         return EditPreview.success(actualOld, normalizedNew, changed,
-            DiffHunks.compute(source, changed));
+            DiffHunks.computeForDisplay(source, changed));
     }
 
     /** Result of the pure edit preview; {@code error} is empty on success. */
@@ -344,7 +347,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
             return content.substring(searchIndex, searchIndex + searchStr.length());
         }
 
-        return null;
+        return EditEscapeMatching.findEscapeSwapped(content, searchStr);
     }
 
 

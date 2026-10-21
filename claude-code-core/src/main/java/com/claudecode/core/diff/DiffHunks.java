@@ -5,11 +5,14 @@ import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public final class DiffHunks {
 
     private static final int CONTEXT_LINES = 3;
+    private static final Pattern LEADING_TABS = Pattern.compile("^\t+", Pattern.MULTILINE);
 
     private DiffHunks() {}
 
@@ -19,6 +22,23 @@ public final class DiffHunks {
      */
     public static List<StructuredPatchHunk> compute(String oldContent, String newContent) {
         return compute(oldContent, newContent, CONTEXT_LINES);
+    }
+
+    /**
+     * Display-oriented diff: each leading tab becomes two spaces on both sides before diffing,
+     * so tab-indented files render at a readable width. The 2.1.197/2.1.236 bundles do this
+     * for every Edit/Write patch and permission preview ({@code jz}/{@code O0e} feeding
+     * {@code structuredPatch}); the file on disk is never touched.
+     */
+    public static List<StructuredPatchHunk> computeForDisplay(String oldContent, String newContent) {
+        return compute(expandLeadingTabs(oldContent), expandLeadingTabs(newContent));
+    }
+
+    /** Replaces every run of tabs at the start of a line with two spaces per tab. */
+    public static String expandLeadingTabs(String text) {
+        if (text == null || text.indexOf('\t') < 0) return text;
+        return LEADING_TABS.matcher(text)
+            .replaceAll(run -> Matcher.quoteReplacement("  ".repeat(run.end() - run.start())));
     }
 
 

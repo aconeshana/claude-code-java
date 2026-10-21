@@ -101,7 +101,7 @@ sealed interface PermissionRequestBody {
         List<StructuredPatchHunk> hunks = preview.hunks();
         if (!preview.error().isEmpty()) {
             warning = preview.error();
-            hunks = DiffHunks.compute(oldString, newString);
+            hunks = DiffHunks.computeForDisplay(oldString, newString);
         }
         String subtitle = relativeToCwd(path);
         String name = path.getFileName() == null ? rawPath : path.getFileName().toString();
@@ -119,7 +119,7 @@ sealed interface PermissionRequestBody {
         String warning = snapshot.warning();
         boolean exists = snapshot.exists();
         List<StructuredPatchHunk> hunks = exists
-            ? DiffHunks.compute(oldContent, newContent) : List.of();
+            ? DiffHunks.computeForDisplay(oldContent, newContent) : List.of();
         String subtitle = relativeToCwd(path);
         String name = path.getFileName() == null ? rawPath : path.getFileName().toString();
         return new FileChange(exists ? "Overwrite file" : "Create file", subtitle,
@@ -139,7 +139,7 @@ sealed interface PermissionRequestBody {
         FileSnapshotReader.FileSnapshot snapshot = fileSnapshotReader.read(path);
         String oldSource = notebookCellSource(snapshot.content(), cellId);
         List<StructuredPatchHunk> hunks = Strings.CS.equals("replace", mode)
-            ? DiffHunks.compute(oldSource, newSource) : List.of();
+            ? DiffHunks.computeForDisplay(oldSource, newSource) : List.of();
         String preview = Strings.CS.equals("delete", mode) ? oldSource
             : Strings.CS.equals("insert", mode) ? newSource : "";
         String action = switch (mode) {

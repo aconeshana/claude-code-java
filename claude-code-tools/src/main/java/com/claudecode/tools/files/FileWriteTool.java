@@ -187,7 +187,7 @@ public class FileWriteTool extends AnnotatedTool<JsonNode, Object> {
                 changed = DiffHunks.countLinesChanged(List.of(), content);
             } else {
                 result.append("The file ").append(filePath).append(" has been updated successfully.");
-                List<StructuredPatchHunk> hunks = DiffHunks.compute(oldContent, content);
+                List<StructuredPatchHunk> hunks = DiffHunks.computeForDisplay(oldContent, content);
                 change = FileChangeResult.updated(absolutePath, content, oldContent, hunks);
                 changed = DiffHunks.countLinesChanged(hunks, null);
             }

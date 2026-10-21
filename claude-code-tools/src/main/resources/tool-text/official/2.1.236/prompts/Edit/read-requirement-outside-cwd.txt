@@ -1,0 +1,1 @@
+- If the file is outside the working directory, you must use your `Read` tool to read it before editing. This tool will error if you edit such a file without reading it first.

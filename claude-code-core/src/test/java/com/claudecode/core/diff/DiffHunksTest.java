@@ -169,4 +169,26 @@ class DiffHunksTest {
         assertEquals(0, counts[0]);
         assertEquals(0, counts[1]);
     }
+
+    @Test
+    void expandLeadingTabsTurnsEachLeadingTabIntoTwoSpacesOnEveryLine() {
+        assertEquals("a\n    b\n  c\td\n", DiffHunks.expandLeadingTabs("a\n\t\tb\n\tc\td\n"));
+        assertEquals("  $1\\", DiffHunks.expandLeadingTabs("\t$1\\"));
+        assertEquals("no tabs", DiffHunks.expandLeadingTabs("no tabs"));
+    }
+
+    @Test
+    void computeForDisplayShowsTabIndentedLinesAtTwoSpacesPerTab() {
+        List<StructuredPatchHunk> hunks = DiffHunks.computeForDisplay(
+            "class A {\n\tint x;\n}", "class A {\n\tint x;\n\tint y;\n}");
+
+        assertEquals(List.of(" class A {", "   int x;", "+  int y;", " }"),
+            hunks.getFirst().lines());
+    }
+
+    @Test
+    void computeForDisplayTreatsTabAndTwoSpaceIndentAsEqual() {
+        assertTrue(DiffHunks.computeForDisplay("\tx", "  x").isEmpty());
+        assertEquals(1, DiffHunks.compute("\tx", "  x").size());
+    }
 }

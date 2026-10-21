@@ -1,0 +1,4 @@
+Performs exact string replacement in a file.
+{{READ_REQUIREMENT}}
+- `old_string` must match the file exactly, including indentation, and be unique — the edit fails otherwise. Strip the Read line prefix ({{LINE_PREFIX}}) before matching.
+- `replace_all: true` replaces every occurrence instead.
