@@ -14,12 +14,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Reads and persists permission-specific settings without coupling consumers to the legacy
  * all-settings facade.
  */
 public final class PermissionSettings {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PermissionSettings.class);
 
     private static final List<PermissionBehavior> RULE_BEHAVIORS = List.of(
         PermissionBehavior.ALLOW, PermissionBehavior.DENY, PermissionBehavior.ASK);
@@ -187,6 +191,7 @@ public final class PermissionSettings {
         List<String> directories = new ArrayList<>();
         Set<String> seenDirectories = new HashSet<>();
         Set<Path> seenEditablePaths = new HashSet<>();
+        AdditionalDirectoriesTrustGate.Gate gate = AdditionalDirectoriesTrustGate.evaluate(cwd);
         for (RuleSource source : SettingsSources.enabledOrder()) {
             switch (source) {
                 case FLAG_SETTINGS, POLICY_SETTINGS ->
@@ -196,8 +201,12 @@ public final class PermissionSettings {
                     Path path = SettingsSources.editablePath(source, cwd);
                     Path normalized = path.toAbsolutePath().normalize();
                     if (seenEditablePaths.add(normalized)) {
-                        addAdditionalDirectories(directories, seenDirectories,
-                            SettingsTreeReader.readAccepted(path, true));
+                        JsonNode accepted = SettingsTreeReader.readAccepted(path, true);
+                        if (gate.blocks(source)) {
+                            warnIgnoredAdditionalDirectories(path, accepted);
+                        } else {
+                            addAdditionalDirectories(directories, seenDirectories, accepted);
+                        }
                     }
                 }
                 default -> throw new IllegalStateException(
@@ -315,6 +324,15 @@ public final class PermissionSettings {
                         entry.asText(), behavior, source));
                 }
             }
+        }
+    }
+
+    private static void warnIgnoredAdditionalDirectories(Path path, JsonNode settings) {
+        JsonNode permissions = SettingsTreeReader.objectValue(settings, "permissions");
+        JsonNode configured = permissions == null ? null : permissions.get("additionalDirectories");
+        if (configured != null && configured.isArray() && !configured.isEmpty()) {
+            LOG.warn("Ignoring {} permissions.additionalDirectories entries from {}: "
+                + "this workspace has not been trusted.", configured.size(), path);
         }
     }
 

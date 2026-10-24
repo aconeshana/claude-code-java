@@ -160,6 +160,14 @@ public final class TrustConfigStore {
     }
 
 
+    /**
+     * True only when this exact project entry carries an accepted trust dialog; unlike
+     * {@link #isTrustAccepted(Path)} it ignores parent-directory trust and the session flag.
+     */
+    public static boolean isProjectTrustRecorded() {
+        return isTrue(readProjects(), originalCwdProjectKey(), FIELD_HAS_TRUST_DIALOG_ACCEPTED);
+    }
+
     public static boolean isPathTrusted(Path dir) {
         ObjectNode projects = readProjects();
         String current = normalizePathForConfigKey(dir.toAbsolutePath().normalize(), false);

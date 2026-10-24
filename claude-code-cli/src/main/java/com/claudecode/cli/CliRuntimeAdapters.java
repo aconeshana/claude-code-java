@@ -308,7 +308,7 @@ final class CliRuntimeAdapters {
         };
     }
 
-    static StartupTrustPort newStartupTrustPort() {
+    static StartupTrustPort newStartupTrustPort(PermissionGate permissionGate) {
         return new StartupTrustPort() {
             @Override public void migrateLegacyTrust() {
                 TrustConfigStore.migrateRemoveLegacyTrustedFolders();
@@ -316,7 +316,14 @@ final class CliRuntimeAdapters {
             @Override public boolean isTrustAccepted(Path cwd) {
                 return TrustConfigStore.isTrustAccepted(cwd);
             }
-            @Override public void acceptTrust(Path cwd) { TrustConfigStore.acceptTrust(cwd); }
+            @Override public void acceptTrust(Path cwd) {
+                TrustConfigStore.acceptTrust(cwd);
+                // The toolchain is built before the trust dialog, so directories from
+                // project-scoped settings that were withheld as untrusted are admitted now.
+                permissionGate.addDirectories(
+                    PermissionSettings.loadAdditionalDirectories(cwd.toString()).stream()
+                        .map(Path::of).toList());
+            }
             @Override public boolean hasExternalIncludesApproved(Path cwd) {
                 return TrustConfigStore.hasExternalIncludesApproved(cwd);
             }

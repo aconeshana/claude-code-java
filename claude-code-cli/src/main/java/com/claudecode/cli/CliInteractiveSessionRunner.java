@@ -588,7 +588,7 @@ final class CliInteractiveSessionRunner {
                 doctorPort,
                 pluginMarketplace,
                 CliRuntimeAdapters.newStatusLinePort(interactiveCwd),
-                CliRuntimeAdapters.newStartupTrustPort(),
+                CliRuntimeAdapters.newStartupTrustPort(permissionGate),
                 shutdownPort,
                 CliRuntimeAdapters.newTurnAwakeGuard(), taskBoard);
             var featureRuntime = interactiveRuntime.features(

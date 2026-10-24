@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
@@ -52,6 +53,9 @@ class PermissionSettingsTest {
 
     @AfterEach
     void restoreSettingsSources() {
+        TrustConfigStore.resetSessionTrustForTesting();
+        TrustConfigStore.resetOriginalCwdForTesting();
+        TrustConfigStore.setConfigPathForTesting(ClaudePaths.GLOBAL_JSON);
         SettingsSources.clearFlagSettings();
         restoreProperty("user.home", originalHome);
         restoreProperty("user.dir", originalDirectory);
@@ -239,6 +243,9 @@ class PermissionSettingsTest {
 
     @Test
     void loadAdditionalDirectories_unionsEnabledSourcesInOrderAndDeduplicates() throws Exception {
+        TrustConfigStore.setConfigPathForTesting(tempDir.resolve("claude.json"));
+        TrustConfigStore.setOriginalCwd(project);
+        TrustConfigStore.acceptTrust(project);
         Files.writeString(home.resolve(".claude/settings.json"),
             "{\"permissions\":{\"additionalDirectories\":[\"/tmp/user\",\"/tmp/shared\"]}}");
         Files.writeString(project.resolve(".claude/settings.json"),
