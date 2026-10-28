@@ -83,6 +83,13 @@ public record CreateMessageRequest(
     private static final Pattern TWO_PART_MODEL_VERSION =
         Pattern.compile("-(\\d{1,2})-(\\d{1,2})$");
     private static final Pattern ONE_PART_MODEL_VERSION = Pattern.compile("-(\\d{1,2})$");
+    /** Canonical families 2.1.236 {@code KDr} lets send disabled thinking ({@code r4} substring order). */
+    private static final List<String> DISABLED_THINKING_FAMILIES = List.of(
+        "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+        "claude-opus-4-5", "claude-opus-4-1", "claude-opus-4-0", "claude-sonnet-5",
+        "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-sonnet-4-0", "claude-haiku-4-5");
+    private static final Pattern OPUS_4_0 = Pattern.compile("claude-opus-4(?!-\\d(?!\\d))");
+    private static final Pattern SONNET_4_0 = Pattern.compile("claude-sonnet-4(?!-\\d(?!\\d))");
 
     /** Internal separator for a cacheable system prefix followed by an uncached dynamic suffix. */
     public static final String UNCACHED_SYSTEM_SUFFIX_BOUNDARY =
@@ -356,6 +363,29 @@ public record CreateMessageRequest(
     public static boolean supportsThinking(String model) {
         if (StringUtils.isBlank(model)) return false;
         return !Strings.CI.contains(model, "claude-3-");
+    }
+
+    /**
+     * Whether an explicit {@code thinking:{type:"disabled"}} may be sent for {@code model}
+     * on the first-party Messages protocol (2.1.236 {@code tJs(model) && !KDr(model)}).
+     * Models outside the known-accepting families are assumed to reject it, so the
+     * field is omitted for them instead.
+     */
+    public static boolean acceptsDisabledThinking(String model) {
+        return supportsThinking(model) && !rejectsDisabledThinking(model);
+    }
+
+    /** 2.1.236 {@code KDr}: the canonical-family allow-list, else first-party rejection. */
+    static boolean rejectsDisabledThinking(String model) {
+        if (StringUtils.isBlank(model)) return false;
+        String m = model.toLowerCase(Locale.ROOT);
+        if (Strings.CS.containsAny(m, "claude-fable-5", "claude-mythos-5")) return true;
+        if (Strings.CS.contains(m, "claude-3-")) return false;
+        boolean acceptingFamily = DISABLED_THINKING_FAMILIES.stream()
+                .anyMatch(family -> Strings.CS.contains(m, family))
+            || OPUS_4_0.matcher(m).find()
+            || SONNET_4_0.matcher(m).find();
+        return !acceptingFamily;
     }
 
 

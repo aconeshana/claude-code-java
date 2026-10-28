@@ -123,7 +123,15 @@ public record ToolExecutionContext(
      * boundary. Forked agents inherit this prompt byte-for-byte when available;
      * ordinary agents continue to build their own prompt.
      */
-    String renderedSystemPrompt
+    String renderedSystemPrompt,
+    /**
+     * Snapshot of the owning engine's thinking state at the tool call boundary.
+     * Sub-agents inherit it the way the parent's {@code thinkingConfig} is
+     * passed down to {@code runAgent}.
+     */
+    boolean thinkingEnabled,
+    /** Legacy explicit thinking budget of the owning engine, or null for the default mode. */
+    Integer thinkingBudgetTokens
 ) {
 
     public ToolExecutionContext {
@@ -262,6 +270,8 @@ public record ToolExecutionContext(
         private PermissionModeKind currentPermissionMode;
         private List<Message> conversationMessages = List.of();
         private String renderedSystemPrompt;
+        private boolean thinkingEnabled = true;
+        private Integer thinkingBudgetTokens;
 
         private Builder(AbortController abortController, String sessionId) {
             this.abortController = abortController;
@@ -296,6 +306,8 @@ public record ToolExecutionContext(
             currentPermissionMode = source.currentPermissionMode;
             conversationMessages = source.conversationMessages;
             renderedSystemPrompt = source.renderedSystemPrompt;
+            thinkingEnabled = source.thinkingEnabled;
+            thinkingBudgetTokens = source.thinkingBudgetTokens;
         }
 
         public Builder abortController(AbortController value) { abortController = value; return this; }
@@ -325,6 +337,8 @@ public record ToolExecutionContext(
         public Builder currentPermissionMode(PermissionModeKind value) { currentPermissionMode = value; return this; }
         public Builder conversationMessages(List<Message> value) { conversationMessages = value; return this; }
         public Builder renderedSystemPrompt(String value) { renderedSystemPrompt = value; return this; }
+        public Builder thinkingEnabled(boolean value) { thinkingEnabled = value; return this; }
+        public Builder thinkingBudgetTokens(Integer value) { thinkingBudgetTokens = value; return this; }
 
         public ToolExecutionContext build() {
             return new ToolExecutionContext(abortController, sessionId, workingDirectory,
@@ -335,7 +349,8 @@ public record ToolExecutionContext(
                 teamMemoryEnabled, currentModel, sandboxConfig,
                 readDenyIgnorePatterns, toolUseId, toolDurationTiming, turnTokenBudget,
                 workingDirectoryController, enabledTools, permissionDenialSink,
-                currentPermissionMode, conversationMessages, renderedSystemPrompt);
+                currentPermissionMode, conversationMessages, renderedSystemPrompt,
+                thinkingEnabled, thinkingBudgetTokens);
         }
     }
 

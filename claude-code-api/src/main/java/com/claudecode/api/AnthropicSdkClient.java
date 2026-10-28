@@ -67,6 +67,9 @@ import org.slf4j.LoggerFactory;
  *       of the response {@code request-id} header into refusal diagnostics.</li>
  *   <li>beta Messages
  *       {@code countTokens} request used by context-usage analysis.</li>
+ *   <li>src/services/api/claude.ts — the first-party {@code thinking:{type:"disabled"}}
+ *       gate ({@code tJs && !KDr}, 2.1.236 bundle) and the forced {@code tool_choice}
+ *       demotion when the field is omitted.</li>
  * </ul>
  */
 public class AnthropicSdkClient implements LlmClient {
@@ -552,6 +555,26 @@ public class AnthropicSdkClient implements LlmClient {
         return serializeWithCacheControl(request, null);
     }
 
+    /**
+     * Drops an explicit {@code thinking:{type:"disabled"}} the model would reject (Bedrock-backed
+     * gateways answer it with a 400). The server then applies its default thinking, so a forced
+     * {@code tool_choice} is demoted to {@code auto} exactly as 2.1.236 does when thinking is active.
+     */
+    private static void omitRejectedDisabledThinking(
+            ObjectNode root, CreateMessageRequest request, String model) {
+        if (request.thinking() == null
+                || !Strings.CS.equals("disabled", request.thinking().type())
+                || CreateMessageRequest.acceptsDisabledThinking(model)) {
+            return;
+        }
+        root.remove("thinking");
+        if (CreateMessageRequest.supportsThinking(model)
+                && request.toolChoice() != null
+                && Strings.CS.equals("tool", request.toolChoice().type())) {
+            root.set("tool_choice", JsonUtils.getMapper().createObjectNode().put("type", "auto"));
+        }
+    }
+
     private static String serializeWithCacheControl(
             CreateMessageRequest request,
             String defaultModel) throws IOException {
@@ -560,6 +583,7 @@ public class AnthropicSdkClient implements LlmClient {
         String effectiveModel = request.model() != null ? request.model() : defaultModel;
         if (effectiveModel != null) {
             root.put("model", effectiveModel);
+            omitRejectedDisabledThinking(root, request, effectiveModel);
         }
 
 

@@ -466,8 +466,14 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             config.setPermissionModeSupplier(() -> request.permissionMode().kind());
         }
 
-        // this must be reflected as thinking:{type:"disabled"} on the wire.
-        config.setThinkingEnabled(false);
+        // The child runs with the parent's thinking state (adaptive by default);
+        // forcing thinking:{type:"disabled"} here gets every sub-agent request
+        // rejected by endpoints that refuse disabled thinking for the model.
+        ToolExecutionContext parent = request.parentContext();
+        if (parent != null) {
+            config.setThinkingBudgetTokens(parent.thinkingEnabled()
+                ? parent.thinkingBudgetTokens() : Integer.valueOf(0));
+        }
         return config;
     }
 
@@ -966,7 +972,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         // Hand the full post-turn conversation back so a multi-turn caller (the
         // in-process teammate) can thread it into the next runSubAgent call.
         List<Message> conversation = new ArrayList<>(subEngine.conversation().getMessages());
-        FinalAssistantResult finalAssistant = finalizeAssistantResult(conversation);
+        FinalAssistantResult finalAssistant = finalizeAssistantResult(conversation, errorMessage);
         String output = structuredOutput != null
             ? JsonUtils.toJson(structuredOutput)
             : finalAssistant.output();
@@ -1162,7 +1168,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     }
 
 
-    private static FinalAssistantResult finalizeAssistantResult(List<Message> messages) {
+    private static FinalAssistantResult finalizeAssistantResult(
+            List<Message> messages, String terminalError) {
         AssistantMessage lastAssistant = null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             if (messages.get(i) instanceof AssistantMessage assistant) {
@@ -1171,7 +1178,10 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             }
         }
         if (lastAssistant == null) {
-            throw new IllegalStateException("No assistant messages found");
+            // A child whose first request was rejected has no assistant turn;
+            // report the request failure rather than the missing turn it caused.
+            throw new IllegalStateException(StringUtils.isNotBlank(terminalError)
+                ? terminalError : "No assistant messages found");
         }
 
         String output = assistantText(lastAssistant);

@@ -208,6 +208,61 @@ class DefaultSubAgentFactoryTest {
     }
 
     @Test
+    void subAgentInheritsTheParentThinkingStateInsteadOfDisablingIt() {
+        DefaultSubAgentFactory factory = new DefaultSubAgentFactory(NOOP_CLIENT, null, "/tmp");
+
+        QuerySessionSpec standalone = factory.buildSubEngineConfig(
+            SubAgentRequest.builder().prompt("test").build());
+        assertTrue(standalone.isThinkingEnabled(),
+            "236 runAgent defaults a child without a parent thinkingConfig to adaptive");
+
+        QuerySessionSpec inherited = factory.buildSubEngineConfig(SubAgentRequest.builder()
+            .prompt("test")
+            .parentContext(ToolExecutionContext.builder(new AbortController(), "parent").build())
+            .build());
+        assertTrue(inherited.isThinkingEnabled());
+        assertNull(inherited.thinkingBudgetTokens());
+
+        QuerySessionSpec budgeted = factory.buildSubEngineConfig(SubAgentRequest.builder()
+            .prompt("test")
+            .parentContext(ToolExecutionContext.builder(new AbortController(), "parent")
+                .thinkingBudgetTokens(4096).build())
+            .build());
+        assertTrue(budgeted.isThinkingEnabled());
+        assertEquals(4096, budgeted.thinkingBudgetTokens());
+
+        QuerySessionSpec disabled = factory.buildSubEngineConfig(SubAgentRequest.builder()
+            .prompt("test")
+            .parentContext(ToolExecutionContext.builder(new AbortController(), "parent")
+                .thinkingEnabled(false).thinkingBudgetTokens(4096).build())
+            .build());
+        assertFalse(disabled.isThinkingEnabled());
+        assertNull(disabled.thinkingBudgetTokens());
+    }
+
+    @Test
+    void aRejectedFirstRequestSurfacesTheApiErrorInsteadOfAMissingAssistant() {
+        StreamingClient rejecting = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                throw new IllegalArgumentException(
+                    "400 thinking.type.disabled is not supported for this model");
+            }
+            @Override
+            public String getModel() { return "test-model"; }
+        };
+        DefaultSubAgentFactory factory = wired(
+            new DefaultSubAgentFactory(rejecting, null, "/tmp"));
+
+        SubAgentResult result = factory.runSubAgent(SubAgentRequest.builder()
+            .prompt("inspect").build());
+
+        String error = result.error().orElse(result.output());
+        assertFalse(Strings.CS.contains(error, "No assistant messages found"), error);
+        assertTrue(Strings.CS.contains(error, "thinking.type.disabled"), error);
+    }
+
+    @Test
     void sharedSessionIdentity_isPassedToEverySubEngineConfig() {
         SessionIdentity shared = SessionIdentity.of("parent-session-id");
         DefaultSubAgentFactory factory = new DefaultSubAgentFactory(

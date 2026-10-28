@@ -303,6 +303,8 @@ final class ToolExecution {
             .currentPermissionMode(currentPermissionMode)
             .conversationMessages(engine.getMessages())
             .renderedSystemPrompt(engine.fetchSystemPromptParts())
+            .thinkingEnabled(engine.getConfig().isThinkingEnabled())
+            .thinkingBudgetTokens(engine.getConfig().thinkingBudgetTokens())
             .build();
 
         ToolExecutor executor = engine.getConfig().toolExecutor();
