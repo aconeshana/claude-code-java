@@ -12,6 +12,12 @@ import com.claudecode.commands.metadata.SlashCommand;
 )
 public class ClearCommand implements AnnotatedCommand {
 
+    /** Clearing runs the SessionEnd / SessionStart hooks, which are user processes. */
+    @Override
+    public boolean isLongRunning() {
+        return true;
+    }
+
     @Override
     public CommandResult execute(CommandContext context, String args) {
         context.session().clearMessages().run();

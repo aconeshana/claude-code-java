@@ -47,6 +47,9 @@ public class BranchCommand implements AnnotatedCommand {
         return true;
     }
 
+    /** 236 declares {@code /branch} {@code type:"local-jsx"}. */
+    @Override public boolean isLocalJsx() { return true; }
+
     @Override
     public CommandResult execute(CommandContext context, String args) {
         return executeWithAdditionalMessages(context, args, List.of());
@@ -216,7 +219,7 @@ public class BranchCommand implements AnnotatedCommand {
     private static String firstTextBlock(List<ContentBlock> blocks) {
         if (blocks == null) return null;
         for (ContentBlock block : blocks) {
-            if (block instanceof TextBlock tb) return tb.text();
+            if (block instanceof TextBlock(String text)) return text;
         }
         return null;
     }
@@ -256,10 +259,4 @@ public class BranchCommand implements AnnotatedCommand {
         return baseName + " (Branch " + nextNumber + ")";
     }
 
-    /**
-     * Appends {@code {type:"custom-title", customTitle, sessionId}} to the
-     * fork's session JSONL — same shape/entry type as {@code /rename}
-     * ({@link RenameCommand}) so {@code /resume}/{@code /status} read it
-     * back identically regardless of which command wrote it.
-     */
 }

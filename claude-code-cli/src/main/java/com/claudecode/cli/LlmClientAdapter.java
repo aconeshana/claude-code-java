@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -173,6 +174,11 @@ public class LlmClientAdapter implements StreamingClient {
 
     @Override
     public Iterator<StreamingEvent> createStream(StreamRequest request) {
+        // fetch rejects an already-aborted signal before any network I/O; OkHttp would have
+        // enqueued the call before the abort registration cancels it.
+        if (request.abortController() != null && request.abortController().isAborted()) {
+            throw new CancellationException("Request was aborted before it was sent");
+        }
         // Convert core's StreamRequest to api's CreateMessageRequest
         List<CreateMessageRequest.RequestMessage> apiMessages = new ArrayList<>();
         for (StreamRequest.RequestMessage msg : request.messages()) {

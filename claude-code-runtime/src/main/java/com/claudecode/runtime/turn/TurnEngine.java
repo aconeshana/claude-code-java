@@ -17,10 +17,13 @@ import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.runtime.query.QuerySession;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -53,6 +56,10 @@ import org.slf4j.LoggerFactory;
  *       attachments and the between-turn {@code utils/queueProcessor.ts} drain orders
  *       strictly by priority ({@link #enqueue}, {@link #takeNextBatch},
  *       {@link #popAllEditable}).</li>
+ *   <li>{@code utils/messageQueueManager.ts} {@code popAllEditable} (authoritative logic from the
+ *       2.1.236 bundle, {@code Y1t}) — bash entries are editable only into an empty prompt;
+ *       an all-bash pop returns in bash mode, a mixed pop leaves the bash entries queued
+ *       ({@link #popAllEditable}).</li>
  *   <li>{@code screens/REPL.tsx} — the queue effect that aborts the in-flight turn
  *       whenever a {@code priority:'now'} entry is present in the queue (the
  *       subscription registered by this engine, see {@link #enqueue}).</li>
@@ -249,7 +256,17 @@ public final class TurnEngine {
      */
     public QueuedInputDraft popAllEditable(String currentInput, int currentCursorOffset) {
         String draft = currentInput == null ? "" : currentInput;
-        List<QueuedCommand> editable = queue().dequeueAllMatching(TurnEngine::isQueuedCommandEditable);
+        // 236 Y1t / popAllEditable: a bash entry is only editable into an empty prompt; when
+        // every candidate is bash the draft returns in bash mode, otherwise only the non-bash
+        // entries are popped and the bash ones stay queued.
+        List<QueuedCommand> candidates = queue().snapshot().stream()
+            .filter(c -> isQueuedCommandEditable(c) && (draft.isEmpty() || !isBashEntry(c)))
+            .toList();
+        if (candidates.isEmpty()) return null;
+        boolean bashMode = candidates.stream().allMatch(TurnEngine::isBashEntry);
+        Set<QueuedCommand> chosen = Collections.newSetFromMap(new IdentityHashMap<>());
+        candidates.stream().filter(c -> bashMode || !isBashEntry(c)).forEach(chosen::add);
+        List<QueuedCommand> editable = queue().dequeueAllMatching(chosen::contains);
         if (editable.isEmpty()) return null;
 
         List<String> queuedTexts = editable.stream().map(QueuedCommand::text).toList();
@@ -268,7 +285,7 @@ public final class TurnEngine {
             });
         }
 
-        return new QueuedInputDraft(text, cursorOffset, images);
+        return new QueuedInputDraft(text, cursorOffset, images, bashMode);
     }
 
     /** Count queued commands matching {@code p} — for the adapter's task-notification overflow logic. */
@@ -386,6 +403,8 @@ public final class TurnEngine {
         try {
             Iterator<SDKMessage> messages = queryEngine.submission()
                 .submitMessage(input.queryContent(), opts);
+            // After submitMessage's abort reset, so the cancel sticks for this turn.
+            if (input.startAborted()) queryEngine.submission().interrupt();
             while (messages.hasNext()) {
                 SDKMessage msg = messages.next();
                 if (log.isDebugEnabled()) {
@@ -688,6 +707,10 @@ public final class TurnEngine {
         } catch (RuntimeException sinkFailure) {
             log.warn("Session sink failed while reporting a turn error", sinkFailure);
         }
+    }
+
+    private static boolean isBashEntry(QueuedCommand command) {
+        return Strings.CS.equals("bash", command.mode());
     }
 
     private static boolean isQueuedCommandEditable(QueuedCommand command) {

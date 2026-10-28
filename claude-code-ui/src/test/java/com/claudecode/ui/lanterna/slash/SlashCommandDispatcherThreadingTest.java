@@ -14,8 +14,11 @@ import com.claudecode.commands.CommandRegistry;
 import com.claudecode.commands.CommandResult;
 import com.claudecode.commands.impl.config.ModelCommand;
 import com.claudecode.commands.metadata.CommandMetadata;
+import com.claudecode.commands.metadata.CommandMetadataEncoder;
 import com.claudecode.commands.prompt.PromptInvocation;
+import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.PastedContent;
+import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.permissions.PermissionGate;
@@ -31,11 +34,13 @@ import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
 class SlashCommandDispatcherThreadingTest {
@@ -214,6 +219,186 @@ class SlashCommandDispatcherThreadingTest {
         assertEquals(1, host.finished.get());
     }
 
+    /**
+     * The host gets the typed input (for the processing placeholder) and a cancel
+     * hook bound to the command itself, so Esc reaches the running execution.
+     */
+    @Test
+    void typedLongRunningCommandHandsTheHostItsInputAndCancelHook() throws Exception {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new Command() {
+            @Override public CommandMetadata metadata() {
+                return new CommandMetadata("recap", "test");
+            }
+            @Override public boolean isLongRunning() { return true; }
+            @Override public boolean cancelInFlight() {
+                cancelled.set(true);
+                return true;
+            }
+            @Override public CommandResult execute(CommandContext context, String args) {
+                return CommandResult.skip();
+            }
+        });
+        TrackingHost host = new TrackingHost();
+        ReplRefs refs = new ReplRefs(immediateGui(), new MessagePanel(), new InputPanel(),
+            new MessageHistory(), null, null, null);
+        SlashCommandDispatcher dispatcher = new SlashCommandDispatcher(
+            host, refs, registry, CommandContext.minimal());
+
+        dispatcher.dispatch("/recap");
+
+        assertTrue(host.finishedLatch.await(1, TimeUnit.SECONDS));
+        assertEquals("/recap", host.startedInput.get());
+        assertTrue(host.startedCancel.get().getAsBoolean());
+        assertTrue(cancelled.get());
+    }
+
+    /**
+     * 236 force-ends the guard on Esc and the late {@code onQuery} still runs the command's
+     * prompt, against the aborted controller: it becomes an already-cancelled turn.
+     */
+    @Test
+    void interruptedLongRunningCommandSubmitsItsPromptAsAnAbortedTurn() throws Exception {
+        TrackingHost host = new TrackingHost();
+        CountDownLatch release = new CountDownLatch(1);
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new Command() {
+            @Override public CommandMetadata metadata() {
+                return new CommandMetadata("slow-prompt", "test");
+            }
+            @Override public boolean isLongRunning() { return true; }
+            @Override public CommandResult execute(CommandContext context, String args) {
+                try {
+                    release.await(1, TimeUnit.SECONDS);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+                return CommandResult.forQuery("summarize");
+            }
+        });
+        ReplRefs refs = new ReplRefs(immediateGui(), new MessagePanel(), new InputPanel(),
+            new MessageHistory(), null, null, null);
+        SlashCommandDispatcher dispatcher = new SlashCommandDispatcher(
+            host, refs, registry, CommandContext.minimal());
+
+        dispatcher.dispatch("/slow-prompt");
+        host.interrupted = true;
+        release.countDown();
+
+        assertTrue(host.finishedLatch.await(1, TimeUnit.SECONDS));
+        assertEquals(0, host.queries.get(), "no ordinary turn");
+        assertEquals("/slow-prompt", host.interruptedPrompt.get());
+    }
+
+    /**
+     * 236's {@code run} finds the guard taken by a turn the cancel drained: the command's visible
+     * messages are resurrected into the queue; the command does not run again.
+     */
+    @Test
+    void interruptedPromptBehindARunningTurnResurrectsItsBreadcrumb() throws Exception {
+        TrackingHost host = new TrackingHost();
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger runs = new AtomicInteger();
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new Command() {
+            @Override public CommandMetadata metadata() {
+                return new CommandMetadata("slow-prompt", "test");
+            }
+            @Override public boolean isLongRunning() { return true; }
+            @Override public CommandResult execute(CommandContext context, String args) {
+                runs.incrementAndGet();
+                try {
+                    release.await(1, TimeUnit.SECONDS);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+                return CommandResult.forPrompt(PromptInvocation.builder(
+                        List.of(new TextBlock("prompt body")))
+                    .precedingUserMessages(List.of(MessageContent.ofText("<command-message>x")))
+                    .build());
+            }
+        });
+        ReplRefs refs = new ReplRefs(immediateGui(), new MessagePanel(), new InputPanel(),
+            new MessageHistory(), null, null, null);
+        SlashCommandDispatcher dispatcher = new SlashCommandDispatcher(
+            host, refs, registry, CommandContext.minimal());
+
+        dispatcher.dispatch("/slow-prompt");
+        host.interrupted = true;
+        host.turnInFlight = true;
+        release.countDown();
+
+        assertTrue(host.finishedLatch.await(1, TimeUnit.SECONDS));
+        assertEquals(1, runs.get());
+        assertNull(host.interruptedPrompt.get());
+        assertEquals(List.of("<command-message>x"),
+            host.queued.stream().map(QueuedCommand::text).toList());
+        assertEquals("prompt", host.queued.getFirst().mode());
+    }
+
+    /**
+     * A force-ended local command whose result lands while a drained turn runs: 236's
+     * {@code run} re-enqueues the non-meta user messages instead of appending them.
+     */
+    @Test
+    void forceEndedLocalResultBehindARunningTurnIsResurrected() throws Exception {
+        TrackingHost host = new TrackingHost();
+        dispatchSlowLocal(host, true, false);
+
+        assertEquals(List.of(CommandMetadataEncoder.encodeCommandInputTags("slow-local", "")),
+            host.queued.stream().map(QueuedCommand::text).toList(),
+            "a local command re-enqueues only its tagged input, which never re-runs it");
+    }
+
+    @Test
+    void forceEndedLocalJsxResultBehindARunningTurnCarriesItsOutput() throws Exception {
+        TrackingHost host = new TrackingHost();
+        dispatchSlowLocal(host, true, true);
+
+        assertEquals(List.of(CommandMetadataEncoder.encodeCommandInputTags("slow-local", ""),
+                "<local-command-stdout>done</local-command-stdout>"),
+            host.queued.stream().map(QueuedCommand::text).toList());
+    }
+
+    @Test
+    void forceEndedLocalResultOnAnIdleSessionRendersInPlace() throws Exception {
+        TrackingHost host = new TrackingHost();
+        dispatchSlowLocal(host, false, false);
+
+        assertTrue(host.queued.isEmpty());
+    }
+
+    private static void dispatchSlowLocal(TrackingHost host, boolean turnInFlight,
+                                          boolean localJsx) throws InterruptedException {
+        CountDownLatch release = new CountDownLatch(1);
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new Command() {
+            @Override public CommandMetadata metadata() {
+                return new CommandMetadata("slow-local", "test");
+            }
+            @Override public boolean isLongRunning() { return true; }
+            @Override public boolean isLocalJsx() { return localJsx; }
+            @Override public CommandResult execute(CommandContext context, String args) {
+                try {
+                    release.await(1, TimeUnit.SECONDS);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+                return CommandResult.localJsx("done");
+            }
+        });
+        ReplRefs refs = new ReplRefs(immediateGui(), new MessagePanel(), new InputPanel(),
+            new MessageHistory(), null, null, null);
+        new SlashCommandDispatcher(host, refs, registry, CommandContext.minimal())
+            .dispatch("/slow-local");
+        host.interrupted = true;
+        host.turnInFlight = turnInFlight;
+        release.countDown();
+
+        assertTrue(host.finishedLatch.await(1, TimeUnit.SECONDS));
+    }
+
     @Test
     void commandPermissionTransitionSynchronizesPromptMode() throws Exception {
         PermissionGate gate = new PermissionGate();
@@ -293,7 +478,44 @@ class SlashCommandDispatcherThreadingTest {
         private final AtomicInteger finished =
             new AtomicInteger();
 
-        @Override public void longRunningCommandStarted() { started.incrementAndGet(); }
-        @Override public void longRunningCommandFinished() { finished.incrementAndGet(); }
+        private volatile boolean interrupted;
+        private volatile boolean turnInFlight;
+        private final List<QueuedCommand> queued = new CopyOnWriteArrayList<>();
+        private final AtomicInteger queries = new AtomicInteger();
+        private final AtomicReference<String> interruptedPrompt = new AtomicReference<>();
+
+        @Override public LongRunningCommand longRunningCommandStarted(String input,
+                                                                     BooleanSupplier cancel) {
+            startedInput.set(input);
+            startedCancel.set(cancel);
+            started.incrementAndGet();
+            return new LongRunningCommand() {
+                @Override public boolean interrupted() { return interrupted; }
+                @Override public void finished() {
+                    finished.incrementAndGet();
+                    finishedLatch.countDown();
+                }
+            };
+        }
+        @Override public void executeQuery(String displayText, String queryContent,
+                                           Map<Integer, PastedContent> pasted) {
+            queries.incrementAndGet();
+        }
+        @Override public void executePrompt(String displayText, PromptInvocation invocation,
+                                            Map<Integer, PastedContent> pasted) {
+            queries.incrementAndGet();
+        }
+        @Override public boolean isTurnInFlight() { return turnInFlight; }
+        @Override public void renderAndQueue(QueuedCommand cmd, String displayText) {
+            queued.add(cmd);
+        }
+        @Override public void executeInterruptedPrompt(String displayText,
+                                                       PromptInvocation invocation,
+                                                       Map<Integer, PastedContent> pasted) {
+            interruptedPrompt.set(displayText);
+        }
+        private final AtomicReference<String> startedInput = new AtomicReference<>();
+        private final AtomicReference<BooleanSupplier> startedCancel = new AtomicReference<>();
+        private final CountDownLatch finishedLatch = new CountDownLatch(1);
     }
 }

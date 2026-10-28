@@ -322,6 +322,27 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         invalidate();
     }
 
+    /**
+     * Show rows after the transcript without adding them to history, e.g. the
+     * processing echo of an input whose authoritative transcript rows are only
+     * produced once it completes. Replaces any active transient tail; the caller
+     * clears it with {@link #clearTransientTail()}.
+     */
+    public void showTransientRows(List<List<Segment>> rows) {
+        List<StyledLine> tail = rows.stream()
+            .map(row -> new StyledLine(List.copyOf(row), false, 0))
+            .toList();
+        lock.writeLock().lock();
+        try {
+            transientTail = tail;
+            markRenderChangedLocked();
+        } finally {
+            lock.writeLock().unlock();
+        }
+        scrollToBottom();
+        invalidate();
+    }
+
     /** Remove the active non-persistent interaction projection, if any. */
     public void clearTransientTail() {
         lock.writeLock().lock();

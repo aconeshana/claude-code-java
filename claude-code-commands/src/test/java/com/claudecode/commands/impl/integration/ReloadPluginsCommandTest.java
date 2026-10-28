@@ -41,4 +41,9 @@ class ReloadPluginsCommandTest {
             6 plugin MCP servers · 7 plugin LSP servers
             1 error during load. Run /doctor for details.""", output);
     }
+
+    @Test
+    void isLongRunning() {
+        assertTrue(new ReloadPluginsCommand().isLongRunning());
+    }
 }

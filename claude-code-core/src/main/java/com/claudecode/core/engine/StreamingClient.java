@@ -313,6 +313,19 @@ public interface StreamingClient {
                 fastMode, onFastModeFailure);
         }
 
+        /**
+         * Copy of this request bound to a different cancellation signal; every
+         * serialized component is kept, so the wire request is unchanged.
+         */
+        public StreamRequest withAbortController(AbortController abortController) {
+            return new StreamRequest(
+                model, maxTokens, systemPrompt, messages, stream, tools, jsonSchema,
+                effort, fallbackModel, maxOutputTokensOverride, taskBudget, toolChoice,
+                onStreamingFallback, thinkingEnabled, sessionId, agentId,
+                skipCacheWrite, querySource, abortController, thinkingBudgetTokens,
+                fastMode, onFastModeFailure);
+        }
+
         public record RequestMessage(String role, Object content) {}
 
         /**

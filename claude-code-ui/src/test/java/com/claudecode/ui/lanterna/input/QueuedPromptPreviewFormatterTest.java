@@ -2,6 +2,8 @@ package com.claudecode.ui.lanterna.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.claudecode.core.constants.Figures;
+import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.queue.QueuedCommand;
 import java.util.Arrays;
 import java.util.List;
@@ -35,6 +37,35 @@ class QueuedPromptPreviewFormatterTest {
 
         assertEquals(List.of("  ❯ raw prompt"),
             QueuedPromptPreviewFormatter.format(List.of(command)));
+    }
+
+    @Test
+    void aResurrectedBashInputShowsAsItsBangCommand() {
+        assertEquals(List.of("  ❯ !sleep 5"), QueuedPromptPreviewFormatter.format(
+            List.of(QueuedCommand.prompt("<bash-input>sleep 5</bash-input>"))));
+    }
+
+    @Test
+    void aResurrectedCommandBreadcrumbShowsAsItsSlashEcho() {
+        QueuedCommand breadcrumb = QueuedCommand.prompt(
+            """
+            <command-message>srv:review</command-message>
+            <command-name>/srv:review</command-name>
+            <command-args>pr 12</command-args>""");
+
+        assertEquals(List.of("  ❯ /srv:review pr 12"),
+            QueuedPromptPreviewFormatter.format(List.of(breadcrumb)));
+    }
+
+    @Test
+    void aResurrectedLocalCommandOutputAndInterruptionShowAsResponseRows() {
+        assertEquals(List.of(
+                Figures.RESULT_PREFIX + "Renamed",
+                Figures.RESULT_INDENT + "to x",
+                Figures.RESULT_PREFIX + "Interrupted · What should Claude do instead?"),
+            QueuedPromptPreviewFormatter.format(List.of(
+                QueuedCommand.prompt("<local-command-stdout>Renamed\nto x</local-command-stdout>"),
+                QueuedCommand.prompt(MessageConstants.INTERRUPT_MESSAGE))));
     }
 
     @Test

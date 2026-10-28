@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import org.apache.commons.lang3.StringUtils;
@@ -22,6 +23,7 @@ import com.claudecode.commands.prompt.PromptInvocation;
 import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.PastedContent;
+import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.queue.QueuePriority;
 import com.claudecode.core.queue.QueuedCommand;
@@ -36,7 +38,9 @@ import com.claudecode.ui.lanterna.dialog.PermissionDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.ui.lanterna.input.PromptHistoryView;
 import com.claudecode.ui.lanterna.slash.PromptInvocationAdapter;
+import com.claudecode.ui.lanterna.slash.PromptResurrection;
 import com.claudecode.ui.lanterna.slash.SlashCommandDispatcher;
+import com.claudecode.ui.lanterna.slash.SlashHost;
 
 /**
  * Owns the interactive text-to-turn pipeline: routes submitted prompt text through history,
@@ -99,7 +103,11 @@ final class ReplSubmissionCoordinator {
     private final String projectRoot;
     private final TurnSubmission submission;
     private final PlanContinuation plan;
+    private final LongRunningCommandPresenter longRunningPresenter;
+    private final BashModeSubmissions bashSubmissions;
     private volatile boolean longRunning;
+    /** The long-running command holding the loading state; null when none does. */
+    private volatile LongRunningHandle currentLongRunning;
     /** True only while the one-shot argv prompt is synchronously routed through handleInput. */
     private boolean routingInteractiveStartupPrompt;
     private volatile boolean lastSubmittedInputWasInteractiveStartupPrompt;
@@ -108,7 +116,8 @@ final class ReplSubmissionCoordinator {
                               CommandContext commandContext, ImmediateCommandUiAdapter immediate,
                               BashModeExecutor bash, SlashCommandDispatcher slash,
                               String projectRoot, TurnSubmission submission,
-                              PlanContinuation plan) {
+                              PlanContinuation plan,
+                              LongRunningCommandPresenter longRunningPresenter) {
         this.input = input;
         this.history = history;
         this.commands = commands;
@@ -120,6 +129,12 @@ final class ReplSubmissionCoordinator {
         this.projectRoot = projectRoot;
         this.submission = submission;
         this.plan = plan;
+        this.longRunningPresenter = Objects.requireNonNull(
+            longRunningPresenter, "longRunningPresenter");
+        this.bashSubmissions = new BashModeSubmissions(this::runBash, queued -> {
+            renderAndQueue(queued, null);
+            input.setQueuedHint(true);
+        }, this::bashReleased);
     }
 
     // ── Routing ─────────────────────────────────────────────────────────────
@@ -145,7 +160,11 @@ final class ReplSubmissionCoordinator {
         Map<Integer, PastedContent> forTurn = hasImages ? pasted : Map.of();
 
         if (Strings.CS.startsWith(finalInput, "!")) {
-            bash.handle(finalInput.substring(1));
+            // 236 steers the active turn for a bash submission exactly as for a prompt.
+            steerActiveTurn();
+            bashSubmissions.submit(finalInput.substring(1),
+                Strings.CS.startsWith(value, "!") ? value.substring(1) : null, forTurn,
+                turns.isInFlight() || longRunning);
             return;
         }
         if (Strings.CS.startsWith(finalInput, "/")) {
@@ -153,12 +172,13 @@ final class ReplSubmissionCoordinator {
             String name = parts[0].toLowerCase(Locale.ROOT);
             String args = parts.length > 1 ? parts[1].trim() : "";
             Command command = commands.find(name).orElse(null);
-            boolean busy = turns.isInFlight() || longRunning;
+            boolean busy = turns.isInFlight() || externallyBusy();
             if (command != null && immediate.tryDispatchImmediate(command, args, false, busy, commandContext)) return;
-            if (longRunning) {
+            if (externallyBusy()) {
                 enqueue(finalInput, forTurn, value);
                 return;
             }
+            if (command == null || !command.isImmediate()) steerActiveTurn();
             slash.dispatch(finalInput);
             return;
         }
@@ -190,21 +210,120 @@ final class ReplSubmissionCoordinator {
         handleQuery(value, pasted == null ? Map.of() : Map.copyOf(pasted), null, true);
     }
 
-    void longRunningStarted() { longRunning = true; }
-    void longRunningFinished() { longRunning = false; turns.drainIfIdle(); }
-    boolean longRunningInFlight() { return longRunning; }
+    SlashHost.LongRunningCommand longRunningStarted(String input, BooleanSupplier cancel) {
+        LongRunningHandle handle = new LongRunningHandle(longRunningPresenter.started(input, cancel));
+        currentLongRunning = handle;
+        longRunning = true;
+        return handle;
+    }
+
+    /**
+     * Busy outside the turn engine: a long-running local command or a {@code !} bash command
+     * holds the session the way 236's reserved query guard does, so submissions queue.
+     */
+    boolean externallyBusy() { return longRunning || bashSubmissions.isRunning(); }
+
+    /**
+     * Interrupt gesture with no active turn: like 236's {@code cancel} with a reserved guard,
+     * it ends the running local command's loading state at once (cancelling it if it can) and
+     * lets queued input run at once, without waiting for the command — 236's queue processor
+     * drains as soon as the guard is idle, and the command's late result renders wherever it
+     * lands.
+     *
+     * @return {@code true} when a long-running command was holding the session
+     */
+    boolean cancelLongRunning() {
+        LongRunningHandle handle = currentLongRunning;
+        if (handle == null) return false;
+        handle.interrupted = true;
+        currentLongRunning = null;
+        longRunning = false;
+        longRunningPresenter.forceEnd();
+        submission.guiInvoker().accept(turns::drainIfIdle);
+        return true;
+    }
+
+    /**
+     * Queue steer: when the active turn's executing tools are all steerable, a submission that
+     * is about to queue aborts the turn first so the drained queue starts at once — the twin of
+     * handlePromptSubmit's hasInterruptibleToolInProgress branch. A long-running slash command
+     * or {@code !} command owns no engine turn and never steers.
+     */
+    private void steerActiveTurn() {
+        if (turns.isInFlight() && turns.hasInterruptibleToolInProgress()) {
+            turns.interruptForQueuedSubmit();
+        }
+    }
+
+    /**
+     * A {@code !} command holds the loading state like 236's reserved guard, so Esc reaches
+     * {@code interruptBashIfRunning}; there is no spinner ({@code BashModeProgress} has
+     * {@code showSpinner:!1}) — the bash pill streams its own progress.
+     */
+    private void runBash(String command, BooleanSupplier forceEnded, Runnable onFinished) {
+        input.setIsLoading(true);
+        bash.handle(command, onFinished,
+            messages -> resurrectLateBashResult(messages, forceEnded));
+    }
+
+    /**
+     * Esc / Ctrl+C on a running {@code !} command: 236's {@code cancel()} aborts the shell and
+     * {@code forceEnd}s the guard, so queued input runs without waiting for the process to exit.
+     *
+     * @return whether a {@code !} command was running
+     */
+    boolean interruptBash() {
+        if (!bashSubmissions.isRunning()) return false;
+        bash.interrupt();
+        bashSubmissions.forceEnd();
+        return true;
+    }
+
+    /** A bash run gave up the busy state, on completion or force-ended (maybe off the GUI thread). */
+    private void bashReleased() {
+        submission.guiInvoker().accept(() -> {
+            if (!turns.isInFlight() && !longRunning && !bashSubmissions.isRunning()) {
+                input.setIsLoading(false);
+            }
+            turns.drainIfIdle();
+        });
+    }
+
+    /**
+     * 236's {@code run} when a force-ended command's late result finds a drained turn holding
+     * the guard: its non-meta user messages are re-enqueued as prompts instead of appended.
+     */
+    private boolean resurrectLateBashResult(List<UserMessage> messages, BooleanSupplier forceEnded) {
+        if (!forceEnded.getAsBoolean() || !turns.isInFlight()) return false;
+        List<String> texts = PromptResurrection.userTexts(messages);
+        submission.guiInvoker().accept(() -> {
+            texts.forEach(text -> renderAndQueue(QueuedCommand.prompt(text), null));
+            input.setQueuedHint(true);
+        });
+        return true;
+    }
+
+    /** {@link SlashHost.LongRunningCommand} for one presenter token. */
+    private final class LongRunningHandle implements SlashHost.LongRunningCommand {
+        private final long token;
+        private volatile boolean interrupted;
+
+        private LongRunningHandle(long token) { this.token = token; }
+
+        @Override public boolean interrupted() { return interrupted; }
+
+        @Override public void finished() {
+            if (!longRunningPresenter.finished(token, turns.isInFlight())) return;
+            if (currentLongRunning == this) currentLongRunning = null;
+            longRunning = false;
+            turns.drainIfIdle();
+        }
+    }
 
     private void handleQuery(String value, Map<Integer, PastedContent> pasted,
                              String preExpansionValue, boolean remote) {
-        if (turns.isInFlight() || longRunning) {
-            // Queue steer: when the active turn's executing tools are all
-            // steerable, the submission aborts the turn BEFORE enqueuing so the
-            // drained queue can start a fresh turn immediately — the twin of
-            // handlePromptSubmit's hasInterruptibleToolInProgress branch. A
-            // long-running slash command owns no engine turn and never steers.
-            if (turns.isInFlight() && turns.hasInterruptibleToolInProgress()) {
-                turns.interruptForQueuedSubmit();
-            }
+        if (turns.isInFlight() || externallyBusy()) {
+            steerActiveTurn();
             enqueue(value, pasted, preExpansionValue, remote ? "session-host" : null);
             return;
         }
@@ -281,6 +400,12 @@ final class ReplSubmissionCoordinator {
             transcript.recordQueueOperation(sessionId(), "dequeue", null);
         }
         QueuedCommand cmd = batch.getFirst();
+        if (BashModeSubmissions.isBashEntry(cmd)) {
+            // Bash entries drain alone (TurnEngine.isIndividuallyProcessed) and run the shell
+            // locally; enveloping them as <bash-input> would make them a model turn.
+            bashSubmissions.runQueued(cmd.text());
+            return;
+        }
         String text = QueuedCommandMapper.envelope(cmd);
         // skipSlashCommands: treat as plain text even if starts with '/'.
         // Covers inputs that must bypass local slash-command routing.
@@ -368,6 +493,17 @@ final class ReplSubmissionCoordinator {
      */
     void executePrompt(String displayText, PromptInvocation invocation,
                        Map<Integer, PastedContent> pasted) {
+        executePrompt(displayText, invocation, pasted, false);
+    }
+
+    /** {@link SlashHost#executeInterruptedPrompt}: the turn starts already user-cancelled. */
+    void executeInterruptedPrompt(String displayText, PromptInvocation invocation,
+                                  Map<Integer, PastedContent> pasted) {
+        executePrompt(displayText, invocation, pasted, true);
+    }
+
+    private void executePrompt(String displayText, PromptInvocation invocation,
+                               Map<Integer, PastedContent> pasted, boolean startAborted) {
         HookDispatcher.HookOutcome expansionOutcome =
             PromptInvocationAdapter.installTurnScopedState(
             invocation,
@@ -391,6 +527,7 @@ final class ReplSubmissionCoordinator {
                 displayText, invocation, pasted, this.input.getPermissionMode()),
             expansionOutcome);
         input = withStartupPromptProvenance(input);
+        if (startAborted) input = input.asStartAborted();
         noteUserQuery(invocation.textContent(), true);
         submit(input);
     }

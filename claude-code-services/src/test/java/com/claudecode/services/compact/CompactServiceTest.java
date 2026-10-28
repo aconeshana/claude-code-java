@@ -817,19 +817,6 @@ class CompactServiceTest {
         }
     }
 
-    // ========== createPostCompactAttachments Tests ==========
-
-    @Nested
-    class PostCompactAttachmentsTests {
-
-        @Test
-        void createPostCompactAttachmentsReturnsEmptyList() {
-            List<Message> attachments = service.createPostCompactAttachments();
-            assertNotNull(attachments);
-            assertTrue(attachments.isEmpty());
-        }
-    }
-
 // ========== Token warning state.
 
     @Nested

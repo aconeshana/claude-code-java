@@ -95,6 +95,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
@@ -1262,8 +1263,9 @@ public class LanternaReplScreen implements SlashHost {
             if (turnView != null) turnView.salvageInterruptedThinking();
             featureRuntime.loopWakeups().cancelAll();
             // Shares its abort rule with Ctrl+C (ReplExitController.handleCtrlC) via the
-            // same ReplInterruptActions instance instead of re-deriving it here.
-            interruptActions.interruptTurnIfRunning();
+            // same ReplInterruptActions instance instead of re-deriving it here. A running
+            // `!` command holds the loading state too, and 236's cancel aborts it the same way.
+            if (!interruptActions.interruptBashIfRunning()) interruptActions.interruptTurnIfRunning();
         }
 
         @Override public void killBackgroundAgents() {
@@ -1483,19 +1485,18 @@ public class LanternaReplScreen implements SlashHost {
     }
 
     /**
-     * True while a background long-running slash command ({@code /compact}) is executing off the GUI
-     * thread.
+     * A background long-running slash command ({@code /recap}, {@code /compact}, …) started
+     * executing off the GUI thread.
      */
     @Override
-    public void longRunningCommandStarted() { submissionCoordinator.longRunningStarted(); }
+    public LongRunningCommand longRunningCommandStarted(String input, BooleanSupplier cancel) {
+        return submissionCoordinator.longRunningStarted(input, cancel);
+    }
 
     @Override
     public void prepareLongRunningCommandTranscript() {
         turnView.recordLocalCommandTranscriptMetadata(inputPanel.getPermissionMode());
     }
-
-    @Override
-    public void longRunningCommandFinished() { submissionCoordinator.longRunningFinished(); }
 
     @Override
     public void handleQuery(String userInput) {
@@ -1534,6 +1535,12 @@ public class LanternaReplScreen implements SlashHost {
     public void executePrompt(String displayText, PromptInvocation invocation,
                               Map<Integer, PastedContent> pasted) {
         submissionCoordinator.executePrompt(displayText, invocation, pasted);
+    }
+
+    @Override
+    public void executeInterruptedPrompt(String displayText, PromptInvocation invocation,
+                                         Map<Integer, PastedContent> pasted) {
+        submissionCoordinator.executeInterruptedPrompt(displayText, invocation, pasted);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -1717,6 +1724,6 @@ public class LanternaReplScreen implements SlashHost {
     // ── SlashHost command port ───────────────────────────────────────────
     @Override public boolean isTurnInFlight() { return turnEngine.isInFlight(); }
     @Override public boolean isLongRunningCommandInFlight() {
-        return submissionCoordinator.longRunningInFlight();
+        return submissionCoordinator.externallyBusy();
     }
 }

@@ -2,7 +2,6 @@ package com.claudecode.ui.lanterna.repl;
 
 import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
-import com.claudecode.ui.lanterna.bashmode.BashModeExecutor;
 import com.claudecode.ui.lanterna.input.InputPanel;
 
 import java.util.function.BooleanSupplier;
@@ -31,7 +30,7 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
         TranscriptSink transcriptSink();
     }
 
-    private final Supplier<BashModeExecutor> bashModeExecutor;
+    private final BooleanSupplier interruptBash;
     private final BooleanSupplier hasActiveTurn;
     private final TurnAbortTarget abortTarget;
     private final InteractionCoordinator interactionCoordinator;
@@ -39,17 +38,19 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
     private final Consumer<Runnable> onUi;
     private final Supplier<String> lastSubmittedInput;
     private final BooleanSupplier lastSubmittedInputWasStartupPrompt;
+    private final BooleanSupplier cancelLongRunningCommand;
 
     ReplInterruptActions(
-            Supplier<BashModeExecutor> bashModeExecutor,
+            BooleanSupplier interruptBash,
             BooleanSupplier hasActiveTurn,
             TurnAbortTarget abortTarget,
             InteractionCoordinator interactionCoordinator,
             Supplier<InputPanel> inputPanel,
             Consumer<Runnable> onUi,
             Supplier<String> lastSubmittedInput,
-            BooleanSupplier lastSubmittedInputWasStartupPrompt) {
-        this.bashModeExecutor = bashModeExecutor;
+            BooleanSupplier lastSubmittedInputWasStartupPrompt,
+            BooleanSupplier cancelLongRunningCommand) {
+        this.interruptBash = interruptBash;
         this.hasActiveTurn = hasActiveTurn;
         this.abortTarget = abortTarget;
         this.interactionCoordinator = interactionCoordinator;
@@ -57,14 +58,12 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
         this.onUi = onUi;
         this.lastSubmittedInput = lastSubmittedInput;
         this.lastSubmittedInputWasStartupPrompt = lastSubmittedInputWasStartupPrompt;
+        this.cancelLongRunningCommand = cancelLongRunningCommand;
     }
 
     @Override
     public boolean interruptBashIfRunning() {
-        BashModeExecutor bash = bashModeExecutor.get();
-        if (bash == null || !bash.isRunning()) return false;
-        bash.interrupt();
-        return true;
+        return interruptBash.getAsBoolean();
     }
 
     @Override
@@ -77,7 +76,11 @@ final class ReplInterruptActions implements ReplExitController.InterruptActions 
         // exclude the post-turn idle tail (deferred rewind/compact) instead, where interrupt()
         // is a no-op abort signal with nothing left to catch it — that used to swallow Ctrl+C
         // for the whole tail, leaving it completely unresponsive.
-        if (!hasActiveTurn.getAsBoolean()) return false;
+        //
+        // With no turn, the gesture still reaches a running local command: 236 hands every
+        // local command the REPL's abortController, which Esc / Ctrl+C abort (e.g. /recap →
+        // "Recap cancelled.").
+        if (!hasActiveTurn.getAsBoolean()) return cancelLongRunningCommand.getAsBoolean();
         abortTarget.interrupt();
         if (interactionCoordinator != null) {
             interactionCoordinator.cancelSession(abortTarget.sessionId());

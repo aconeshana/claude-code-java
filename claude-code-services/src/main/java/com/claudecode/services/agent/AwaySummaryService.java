@@ -1,6 +1,7 @@
 package com.claudecode.services.agent;
 
 import com.claudecode.core.annotation.CacheTier;
+import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ForkFallbackRetry;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.StreamingClient;
@@ -121,7 +122,9 @@ public class AwaySummaryService {
         /** No fork parameters and nothing worth recapping (236 {@code no-turn}). */
         NO_TURN,
         /** Generation could not complete (API error or internal failure). */
-        FAILED
+        FAILED,
+        /** The caller's abort signal fired before a recap was read (236 {@code aborted}). */
+        ABORTED
     }
 
     /**
@@ -141,6 +144,10 @@ public class AwaySummaryService {
         static RecapResult failed() {
             return new RecapResult(Kind.FAILED, null);
         }
+
+        static RecapResult aborted() {
+            return new RecapResult(Kind.ABORTED, null);
+        }
     }
 
     /** Whether the feature is enabled via {@code settings.awaySummaryEnabled}. */
@@ -159,20 +166,29 @@ public class AwaySummaryService {
      * conversation would move the prompt-cache breakpoint and miss the entire
      * prefix on every recap. Anything appended after the last completed
      * assistant turn belongs to an unfinished turn, which 236 strips as well.
+     *
+     * <p>{@code abort} is the caller's own signal (236 passes the command's or
+     * watcher's {@code AbortSignal} and links a fresh fork controller to it).
+     * The fork never inherits the main loop's controller: that one is left
+     * aborted after an interrupted turn until the next query resets it, which
+     * would cancel the recap before its request was even sent.
      */
     @CacheTier(CacheTier.Tier.FORKED_PREFIX)
-    public RecapResult synthesizeRecap(List<Message> messages) {
+    public RecapResult synthesizeRecap(List<Message> messages, AbortController abort) {
+        Objects.requireNonNull(abort, "abort");
         QuerySession engine = engineSupplier.get();
         if (engine == null) return RecapResult.noTurn();
+        if (abort.isAborted()) return RecapResult.aborted();
 
         StreamingClient.StreamRequest request;
         try {
-            request = buildRecapRequest(engine, messages);
+            request = buildRecapRequest(engine, messages, abort);
         } catch (RuntimeException failure) {
             log.debug("[awaySummary] fork params rebuild failed: {}", failure.toString());
             return RecapResult.failed();
         }
         if (request == null) return RecapResult.noTurn();
+        if (abort.isAborted()) return RecapResult.aborted();
 
         try {
             long startedAt = System.currentTimeMillis();
@@ -193,6 +209,7 @@ public class AwaySummaryService {
                 return ForkedTextStream.consume(stream);
             });
             recordCost(attempted.get(), result, attemptedStream.get(), startedAt);
+            if (abort.isAborted()) return RecapResult.aborted();
             if (StringUtils.isBlank(result.text())) {
                 if (!result.requestedTools().isEmpty()) {
                     log.debug("[awaySummary] recap turn was spent calling tools: {}",
@@ -202,6 +219,9 @@ public class AwaySummaryService {
             }
             return RecapResult.ok(capRecapText(result.text().strip()));
         } catch (Exception failure) {
+            // A cancelled HTTP call surfaces as an exception; it is the
+            // user's abort, not a generation failure.
+            if (abort.isAborted()) return RecapResult.aborted();
             // Warn, not debug: a recap that fails is user-visible ("Couldn't
             // generate a recap") and this is the only record of why. Debug-level
             // logging here is what kept the dropped Fast Mode state and the
@@ -217,7 +237,7 @@ public class AwaySummaryService {
      * {@code no-turn} and {@code failed} kinds.
      */
     public String generateAwaySummary(List<Message> messages) {
-        RecapResult result = synthesizeRecap(messages);
+        RecapResult result = synthesizeRecap(messages, new AbortController());
         return result.kind() == Kind.OK ? result.text() : null;
     }
 
@@ -227,12 +247,13 @@ public class AwaySummaryService {
      * {@code no-turn}.
      */
     private StreamingClient.StreamRequest buildRecapRequest(
-            QuerySession engine, List<Message> messages) {
+            QuerySession engine, List<Message> messages, AbortController abort) {
         StreamingClient.StreamRequest saved = engine.forks().getLastCacheSafeForkRequest();
-        if (saved != null) return appendRecapPrompt(saved);
+        if (saved != null) return appendRecapPrompt(saved, abort);
         if (!hasRecappableContent(messages)) return null;
-        return engine.forks().buildCacheSharingRequest(
+        StreamingClient.StreamRequest rebuilt = engine.forks().buildCacheSharingRequest(
             stripUnfinishedTurn(messages), RECAP_PROMPT, QUERY_SOURCE);
+        return rebuilt == null ? null : rebuilt.withAbortController(abort);
     }
 
     /**
@@ -250,11 +271,11 @@ public class AwaySummaryService {
      * and could never trigger the cooldown.
      */
     private static StreamingClient.StreamRequest appendRecapPrompt(
-            StreamingClient.StreamRequest parent) {
+            StreamingClient.StreamRequest parent, AbortController abort) {
         List<StreamingClient.StreamRequest.RequestMessage> messages =
             new ArrayList<>(parent.messages());
         messages.add(new StreamingClient.StreamRequest.RequestMessage("user", RECAP_PROMPT));
-        return parent.asFork(messages, QUERY_SOURCE, parent.abortController());
+        return parent.asFork(messages, QUERY_SOURCE, abort);
     }
 
     /**

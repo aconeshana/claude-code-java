@@ -78,6 +78,28 @@ public interface Command {
     }
 
     /**
+     * Requests cancellation of this command's in-flight {@link #execute}, mirroring the
+     * {@code abortController} 236 hands every local command. The command still returns its own
+     * result (e.g. {@code "Recap cancelled."}).
+     *
+     * @return {@code true} when an in-flight execution accepted the request
+     */
+    default boolean cancelInFlight() {
+        return false;
+    }
+
+    /**
+     * Whether 236 declares this command {@code type:"local-jsx"} rather than {@code "local"}.
+     * The two report completion differently: a {@code local} command always records its input
+     * as a user message, while a {@code local-jsx} one records nothing user-visible when its
+     * result is shown as a system message. Consulted when the late result of a force-ended
+     * command is resurrected into the queue.
+     */
+    default boolean isLocalJsx() {
+        return false;
+    }
+
+    /**
      * Whether this command should be excluded from user-visible listings (/help output and
      * slash-command suggestions / tab-complete).
      */

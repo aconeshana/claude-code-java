@@ -27,6 +27,11 @@ public interface CompactSummarizer {
         // Standalone summarizers have no session-scoped cancellation state.
     }
 
+    /** Aborts the summary request of a manual compact in progress. */
+    default void cancelManualCompact() {
+        // Standalone summarizers have no session-scoped cancellation state.
+    }
+
     default SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
         return new SummaryResult(summarize(messages, compactPrompt), Usage.EMPTY);
     }

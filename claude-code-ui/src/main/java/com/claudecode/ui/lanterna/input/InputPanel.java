@@ -781,6 +781,7 @@ public class InputPanel extends Panel {
 
         state.suppressUndoRecording();
         state.resetMode();
+        if (restored.bashMode()) state.setModeOverride(Mode.BASH);
         textBox.setText(restored.text());
         moveCaretTo(Math.min(restored.cursorOffset(), restored.text().length()));
         restored.pastedContents().values().forEach(pastedContent::put);

@@ -1,17 +1,16 @@
 package com.claudecode.core.engine;
 
-import org.apache.commons.lang3.StringUtils;
-import com.claudecode.core.message.Message;
 import com.claudecode.core.message.CompactMetadata;
+import com.claudecode.core.message.Message;
 import com.claudecode.core.message.PreservedMessages;
 import com.claudecode.core.message.PreservedSegment;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TokenEstimator;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Interface for message compaction operations used by the query engine.
@@ -35,7 +34,7 @@ public interface MessageCompactor {
         PreservedMessages preservedMessages = new PreservedMessages(
             anchorUuid, keptUuids, keptUuids);
         CompactMetadata base = boundary.compactMetadata() != null
-            ? boundary.compactMetadata() : new CompactMetadata((PreservedSegment) null);
+            ? boundary.compactMetadata() : new CompactMetadata(null);
         CompactMetadata metadata = base.withPreserved(segment, preservedMessages);
         return new SystemMessage(boundary.uuid(), boundary.subtype(), boundary.level(),
             boundary.content(), boundary.parentUuid().orElse(null),
@@ -52,11 +51,6 @@ public interface MessageCompactor {
     interface UsageBearingFailure {
         Usage compactionUsage();
     }
-
-    /**
-     * Circuit breaker: stop retrying autocompact after this many consecutive failures.
-     */
-    int MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3;
 
     /**
      * Result of a microcompact operation.
@@ -173,6 +167,14 @@ public interface MessageCompactor {
     }
 
     /**
+     * Interrupt gesture during a user-initiated compaction: aborts the in-flight summary
+     * request, the counterpart of the REPL {@code abortController} 236 hands {@code /compact}.
+     */
+    default void cancelManualCompact() {
+        // Most compactor implementations do not own operation cancellation state.
+    }
+
+    /**
      * Check whether auto-compaction should be triggered.
      *
      * @param messages    the conversation messages
@@ -213,14 +215,6 @@ public interface MessageCompactor {
     default CompactionResult compactConversation(List<Message> messages, boolean isAutoCompact,
                                                   String customInstructions, String model) {
         return compactConversation(messages, isAutoCompact, customInstructions);
-    }
-
-    /**
-     * Returns true if {@code tokenUsage} has reached or exceeded the hard blocking limit ({@code
-     * effectiveContextWindow - MANUAL_COMPACT_BUFFER_TOKENS}).
-     */
-    default boolean isAtBlockingLimit(long tokenUsage, String model) {
-        return false; // safe default; CompactService overrides with real logic
     }
 
     /**

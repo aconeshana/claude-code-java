@@ -11,6 +11,7 @@ import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SummarizeMetadata;
 import com.claudecode.core.message.TextBlock;
@@ -61,6 +62,9 @@ import org.apache.commons.lang3.Strings;
  *       hyperlinked to the cached file.</li>
  *   <li>{@code src/components/messages/TaskNotificationMessage.tsx} — background
  *       agent completion summary coloured by status.</li>
+ *   <li>{@code src/components/messages/UserTextMessage.tsx} — a user-origin
+ *       {@code [Request interrupted by user]} text renders {@code InterruptedByUser}
+ *       (authoritative logic from the 2.1.236 bundle).</li>
  * </ul>
  */
 final class UserMessageRenderer {
@@ -132,6 +136,13 @@ final class UserMessageRenderer {
         if (!MessageConstants.shouldShowUserMessage(msg.message(), host.transcriptMode())) return;
         if (msg.message().isCompactSummary()) {
             renderCompactSummary(msg.message(), panel);
+            return;
+        }
+        // A human-origin interruption (a force-ended `!` command's resurrected result) is not
+        // the live turn's own originless sentinel, which TurnOutcome paints instead.
+        if (msg.message().origin() == MessageOrigin.USER
+                && TranscriptReplay.isInterruptMessage(msg.message())) {
+            ToolResultLines.renderInterruptedToolResult(panel);
             return;
         }
         MessageContent mc = msg.message().message();
@@ -302,6 +313,23 @@ final class UserMessageRenderer {
     }
 
     /**
+     * Whether {@link #renderTextBlock} gives a user text its own layout ({@code !} input, bash or
+     * local-command output, {@code /command} echo, interruption) rather than the plain prompt.
+     */
+    static boolean hasOwnLayout(String text) {
+        if (text == null) return false;
+        return Strings.CS.startsWith(text, "<" + XmlConstants.BASH_INPUT_TAG)
+            || Strings.CS.startsWith(text, "<" + XmlConstants.BASH_STDOUT_TAG)
+            || Strings.CS.startsWith(text, "<" + XmlConstants.BASH_STDERR_TAG)
+            || Strings.CS.startsWith(text, "<" + XmlConstants.LOCAL_COMMAND_STDOUT_TAG)
+            || Strings.CS.startsWith(text, "<" + XmlConstants.LOCAL_COMMAND_STDERR_TAG)
+            || MessageConstants.INTERRUPT_MESSAGE.equals(text)
+            || MessageConstants.INTERRUPT_MESSAGE_FOR_TOOL_USE.equals(text)
+            || StringUtils.isNotBlank(
+                XmlTagUtils.extractTag(text, XmlConstants.COMMAND_MESSAGE_TAG).orElse(null));
+    }
+
+    /**
      * Renders a TextBlock in a user message that may contain command metadata.
      */
     void renderTextBlock(String text, MessagePanel panel) {
@@ -358,21 +386,9 @@ final class UserMessageRenderer {
         String commandMessage = XmlTagUtils.extractTag(text, XmlConstants.COMMAND_MESSAGE_TAG).orElse(null);
         if (StringUtils.isBlank(commandMessage)) {
             // Plain-text user message — accept feedback (Tab amend) lands here after the
-            // tool_result block.
-            String trimmed = UserMessageStyle.truncateForDisplay(text).strip();
-            if (trimmed.isEmpty()) return;
-            panel.appendMixed(List.of());
-            // Multi-line prompts: each line is a separate MessagePanel row so
-            // \n renders as an actual line break. First row carries the "❯ "
-            // marker; continuation rows are indented to line up under it.
-            String[] userLines = trimmed.split("\n", -1);
-            for (int i = 0; i < userLines.length; i++) {
-                String prefix = (i == 0) ? "❯ " : "  ";
-                panel.appendMixed(List.of(
-                    new MessagePanel.Segment(prefix, LanternaTheme.welcomeDim()),
-                    new MessagePanel.Segment(userLines[i], LanternaTheme.inputText())
-                ));
-            }
+            // tool_result block. Multi-line prompts: each line is a separate MessagePanel
+            // row so \n renders as an actual line break.
+            UserMessageStyle.promptRows(text).forEach(panel::appendMixed);
             return;
         }
         String args = XmlTagUtils.extractTag(text, XmlConstants.COMMAND_ARGS_TAG).orElse(null);

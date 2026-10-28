@@ -1323,12 +1323,13 @@ final class CliInteractiveSessionRunner {
     static RecapPort recapPort(StreamingClient client, Supplier<QuerySession> engineSupplier) {
         if (client == null || engineSupplier == null) return RecapPort.none();
         AwaySummaryService awaySummary = new AwaySummaryService(client, engineSupplier);
-        return messages -> {
-            AwaySummaryService.RecapResult result = awaySummary.synthesizeRecap(messages);
+        return (messages, abort) -> {
+            AwaySummaryService.RecapResult result = awaySummary.synthesizeRecap(messages, abort);
             return switch (result.kind()) {
                 case OK -> RecapPort.Outcome.ok(result.text());
                 case NO_TURN -> RecapPort.Outcome.noTurn();
                 case FAILED -> RecapPort.Outcome.failed();
+                case ABORTED -> RecapPort.Outcome.aborted();
             };
         };
     }

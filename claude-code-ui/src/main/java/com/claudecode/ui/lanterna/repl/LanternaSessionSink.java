@@ -227,9 +227,17 @@ public final class LanternaSessionSink implements SessionSink {
         collapser.setLoading(true, messagePanel);
         inputPanel.setQueuedHint(false);
 
-        if (input.precedingUserMessages().isEmpty() && isHumanInput(input)) {
+        boolean human = isHumanInput(input);
+        if (human && input.precedingUserMessages().isEmpty()
+                && !LanternaMessageDispatcher.userTextHasOwnLayout(input.displayText())) {
             renderEcho(input.displayText(), input.pasted());
-        } else if (!isHumanInput(input)) {
+        } else if (human && input.precedingUserMessages().isEmpty()) {
+            // A drained resurrected result (a /command breadcrumb, a `!` input, its output or
+            // interruption) shows as 236's UserTextMessage renders it: the streamed user message
+            // paints it through the tag-aware renderer, not as a raw `❯` echo.
+            dispatcher.resetTurn();
+            collapser.resetTurn();
+        } else if (!human) {
             // renderEcho normally opens a fresh dispatcher/collapser turn. An
             // internal notification deliberately skips that human-input echo,
             // so reset the presentation state explicitly before its streamed

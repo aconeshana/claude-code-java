@@ -26,6 +26,7 @@ import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.CancellationException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -148,6 +149,44 @@ class TurnEngineTest {
         assertEquals(1, engine.countQueued(c -> Strings.CS.equals("task-notification", c.mode())));
         assertEquals(List.of(), snapshots.getFirst());
         assertEquals(List.of(QueuedCommand.notification("task finished")), snapshots.getLast());
+    }
+
+    @Test
+    void popAllEditableReturnsAllBashEntriesInBashModeIntoAnEmptyPrompt() {
+        var engine = engine(new FakeQueryEngine(List.of()), new RecordingSink(),
+            new RecordingOps(), new ArrayList<>(), new ArrayList<>());
+        engine.enqueue(bashEntry("ls"));
+        engine.enqueue(bashEntry("pwd"));
+
+        QueuedInputDraft restored = engine.popAllEditable("", 0);
+
+        assertNotNull(restored);
+        assertTrue(restored.bashMode());
+        assertEquals("ls\npwd", restored.text());
+        assertEquals(0, engine.countQueued(_ -> true));
+    }
+
+    @Test
+    void popAllEditableLeavesBashEntriesQueuedBehindPromptsOrADraft() {
+        var engine = engine(new FakeQueryEngine(List.of()), new RecordingSink(),
+            new RecordingOps(), new ArrayList<>(), new ArrayList<>());
+        engine.enqueue(bashEntry("ls"));
+        engine.enqueue(QueuedCommand.prompt("hello"));
+
+        QueuedInputDraft mixed = engine.popAllEditable("", 0);
+
+        assertNotNull(mixed);
+        assertFalse(mixed.bashMode());
+        assertEquals("hello", mixed.text());
+        assertEquals(1, engine.countQueued(c -> Strings.CS.equals("bash", c.mode())));
+
+        assertNull(engine.popAllEditable("draft", 5));
+        assertEquals(1, engine.countQueued(_ -> true));
+    }
+
+    private static QueuedCommand bashEntry(String command) {
+        return new QueuedCommand(command, null, "bash", QueuePriority.NEXT,
+            false, null, false, false, null, null, null);
     }
 
     @Test
@@ -488,6 +527,54 @@ class TurnEngineTest {
     }
 
     // ── Interrupt auto-restore ───────────────────────────────────────────────────
+
+    /**
+     * 236's {@code onQuery} runs a force-ended command's late prompt against the aborted
+     * controller: the abort must outlive submitMessage's per-turn reset.
+     */
+    @Test
+    void startAbortedTurnUnwindsAsUserCancel() {
+        var qe = new FakeQueryEngine(List.of());
+        boolean[] abortedDuringSubmit = {true};
+        qe.duringSubmit = () -> abortedDuringSubmit[0] = qe.getAbortController().isAborted();
+        var sink = new RecordingSink();
+        var engine = engine(qe, sink, new RecordingOps(), new ArrayList<>(), new ArrayList<>());
+
+        engine.submit(input("/mcp-prompt").asStartAborted());
+
+        assertFalse(abortedDuringSubmit[0], "the fake stands in for submitMessage's reset");
+        assertTrue(qe.getAbortController().isAborted());
+        assertTrue(sink.lastCompletion().userCancel());
+    }
+
+    /**
+     * The request carries the session controller the start-aborted turn already cancelled; a
+     * client that rejects it (LlmClientAdapter, like fetch) unwinds the turn as a user cancel.
+     */
+    @Test
+    void startAbortedTurnHandsTheModelAnAlreadyAbortedRequest() {
+        int[] streams = {0};
+        StreamingClient counting = new StreamingClient() {
+            @Override public Iterator<StreamingClient.StreamingEvent> createStream(
+                    StreamingClient.StreamRequest request) {
+                if (request.abortController().isAborted()) {
+                    throw new CancellationException("aborted");
+                }
+                streams[0]++;
+                return Collections.emptyIterator();
+            }
+            @Override public String getModel() { return "test-model"; }
+        };
+        var qe = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(counting).model("test-model").build());
+        var sink = new RecordingSink();
+        var engine = engine(qe, sink, new RecordingOps(), new ArrayList<>(), new ArrayList<>());
+
+        engine.submit(input("/mcp-prompt").asStartAborted());
+
+        assertEquals(0, streams[0]);
+        assertTrue(sink.lastCompletion().userCancel());
+    }
 
     @Test
     void userCancel_withNoMeaningfulContent_restoresAndRewinds() {

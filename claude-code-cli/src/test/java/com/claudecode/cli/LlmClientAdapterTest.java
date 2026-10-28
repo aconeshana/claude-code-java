@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -232,6 +233,34 @@ class LlmClientAdapterTest {
         assertTrue(events.stream().anyMatch(event -> event instanceof StreamingEvent.ContentBlockDeltaEvent delta
             && Strings.CS.equals("recovered", delta.deltaText())));
         assertInstanceOf(StreamingEvent.MessageStopEvent.class, events.getLast());
+    }
+
+    /** fetch rejects an already-aborted signal: nothing is handed to the transport. */
+    @Test
+    void anAlreadyAbortedRequestIsNeverSent() {
+        AtomicInteger sent = new AtomicInteger();
+        LlmClient client = new LlmClient() {
+            @Override public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request) {
+                sent.incrementAndGet();
+                return List.<StreamEvent>of(new StreamEvent.MessageStop()).iterator();
+            }
+            @Override public ApiMessage createMessage(CreateMessageRequest request) {
+                sent.incrementAndGet();
+                return ApiMessage.stub("test-model", "x");
+            }
+            @Override public ApiMessage createMessage(CreateMessageRequest request, long timeoutMillis) {
+                return createMessage(request);
+            }
+            @Override public String getModel() { return "test-model"; }
+        };
+        AbortController aborted = new AbortController();
+        aborted.abort("user-cancel");
+        var request = new StreamingClient.StreamRequest(
+            "test-model", 100, "system", List.of(), true).withAbortController(aborted);
+
+        LlmClientAdapter adapter = new LlmClientAdapter(client);
+        assertThrows(CancellationException.class, () -> adapter.createStream(request));
+        assertEquals(0, sent.get());
     }
 
     @Test

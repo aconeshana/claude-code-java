@@ -19,6 +19,12 @@ import java.util.List;
 )
 public class ReloadPluginsCommand implements AnnotatedCommand {
 
+    /** Re-reads every plugin from disk and restarts the servers they contribute. */
+    @Override
+    public boolean isLongRunning() {
+        return true;
+    }
+
     @Override
     public CommandResult execute(CommandContext context, String args) {
         PluginRuntimePort runtime = context.application().plugins();
@@ -33,8 +39,8 @@ public class ReloadPluginsCommand implements AnnotatedCommand {
         } catch (Exception e) {
             return CommandResult.of("Failed to reload plugins: " + e.getMessage());
         }
-// Plugin MCP/LSP counts are named explicitly to distinguish them from
-// user-configured servers (gh-31321).
+        // Plugin MCP/LSP counts are named explicitly to distinguish them from
+        // user-configured servers (gh-31321).
         List<String> parts = List.of(
             n(r.enabledCount(), "plugin"),
             n(r.commandCount(), "skill"),

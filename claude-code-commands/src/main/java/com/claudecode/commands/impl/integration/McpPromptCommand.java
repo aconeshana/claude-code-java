@@ -57,6 +57,9 @@ public final class McpPromptCommand implements Command {
 
     @Override public boolean supportsNonInteractive() { return true; }
 
+    /** Fetching the prompt is an MCP {@code prompts/get} round trip to the server. */
+    @Override public boolean isLongRunning() { return true; }
+
     @Override
     public CommandResult execute(CommandContext context, String args) {
         List<String> tokens = tokenise(args);

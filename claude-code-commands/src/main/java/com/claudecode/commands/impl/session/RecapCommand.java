@@ -5,9 +5,11 @@ import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
 import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.recap.RecapPort;
+import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.message.Message;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@code /recap} — generate a one-line session recap.
@@ -17,10 +19,11 @@ import java.util.List;
  * {@code description:"Generate a one-line session recap now"}, dispatched via
  * the shared away-summary execution path). Generation is delegated to a
  * {@link RecapPort} wired by the composition root so the command module stays
- * decoupled from the model-facing {@code AwaySummaryService}. The five
- * terminal states of 236 ({@code ok / api-error / no-turn / aborted / failed})
- * are collapsed onto the recap outcome; api-error and aborted cannot arise in a
- * blocking synchronous command, so both surface as {@code failed}.
+ * decoupled from the model-facing {@code AwaySummaryService}. Of the five
+ * terminal states of 236 ({@code ok / api-error / no-turn / aborted / failed}),
+ * api-error is collapsed onto {@code failed}; {@code aborted} is reached through
+ * {@link #cancelInFlight()}, the counterpart of the {@code abortController}
+ * 236 passes to {@code BlT}.
  *
  * <p>TS coverage:
  * <ul>
@@ -35,6 +38,9 @@ import java.util.List;
 )
 public class RecapCommand implements AnnotatedCommand {
 
+    /** Signal of the execution currently in flight, or {@code null} when idle. */
+    private final AtomicReference<AbortController> inFlight = new AtomicReference<>();
+
     @Override
     public boolean supportsNonInteractive() { return true; }
 
@@ -43,13 +49,29 @@ public class RecapCommand implements AnnotatedCommand {
     public boolean isLongRunning() { return true; }
 
     @Override
+    public boolean cancelInFlight() {
+        AbortController abort = inFlight.get();
+        if (abort == null) return false;
+        abort.abort("user-cancel");
+        return true;
+    }
+
+    @Override
     public CommandResult execute(CommandContext context, String args) {
         RecapPort port = context.application().recap();
         List<Message> messages = context.session().messagesSupplier().get();
-        RecapPort.Outcome outcome = port.synthesize(messages);
+        AbortController abort = new AbortController();
+        inFlight.set(abort);
+        RecapPort.Outcome outcome;
+        try {
+            outcome = port.synthesize(messages, abort);
+        } finally {
+            inFlight.compareAndSet(abort, null);
+        }
         return switch (outcome.kind()) {
             case OK -> CommandResult.local(outcome.text());
             case NO_TURN -> CommandResult.local("Nothing to recap yet — send a message first.");
+            case ABORTED -> CommandResult.local("Recap cancelled.");
             case FAILED -> CommandResult.local("Couldn't generate a recap. Run with --debug for details.");
         };
     }

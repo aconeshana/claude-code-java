@@ -47,4 +47,8 @@ class McpPromptCommandTest {
         assertEquals(List.of("first", "second"),
             new McpPromptCommand(DEFINITION, McpPromptPort.none()).argumentNames());
     }
+
+    @Test void fetchingThePromptIsLongRunning() {
+        assertTrue(new McpPromptCommand(DEFINITION, McpPromptPort.none()).isLongRunning());
+    }
 }

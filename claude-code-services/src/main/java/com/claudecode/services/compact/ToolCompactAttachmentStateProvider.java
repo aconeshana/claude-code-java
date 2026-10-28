@@ -21,8 +21,8 @@ import org.apache.commons.lang3.StringUtils;
  */
 final class ToolCompactAttachmentStateProvider implements CompactAttachmentStateProvider {
 
-    private TaskStore tasks;
-    private InvokedSkillRegistry invokedSkills;
+    private final TaskStore tasks;
+    private final InvokedSkillRegistry invokedSkills;
     private final BooleanSupplier planModeActive;
 
     ToolCompactAttachmentStateProvider(TaskStore tasks,
@@ -38,14 +38,6 @@ final class ToolCompactAttachmentStateProvider implements CompactAttachmentState
             TaskRegistry.global().store(),
             InvokedSkillRegistry.global(),
             EnterPlanModeTool::isPlanModeActive);
-    }
-
-    void setTaskStore(TaskStore tasks) {
-        this.tasks = tasks;
-    }
-
-    void setInvokedSkills(InvokedSkillRegistry invokedSkills) {
-        this.invokedSkills = invokedSkills;
     }
 
     @Override

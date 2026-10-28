@@ -7,7 +7,11 @@ import com.claudecode.commands.CommandResult;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.commands.testing.ProviderTestCommandPorts;
+import com.claudecode.core.message.MessageFactory;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -85,4 +89,41 @@ class RenameCommandTest {
         return builder.build();
     }
 
+    /** A bare /rename asks the model for a name, so the REPL must show it as working. */
+    @Test
+    void isLongRunning() {
+        assertTrue(new RenameCommand().isLongRunning());
+    }
+
+    /** 236 aborts generateSessionName on Esc: no name, so the session is not renamed. */
+    @Test
+    void cancellingTheNameGenerationRenamesNothing() throws Exception {
+        RenameCommand cmd = new RenameCommand();
+        CountDownLatch generating = new CountDownLatch(1);
+        CountDownLatch released = new CountDownLatch(1);
+        CommandContext ctx = CommandContext.builder(
+                "test-model", () -> List.of(MessageFactory.createUserMessage("fix the login bug")),
+                () -> {}, _ -> {}, () -> null, _ -> 0.0, ".", false)
+            .currentSessionId(() -> "s1")
+            .toolingCommands(ProviderTestCommandPorts.collaboration(false))
+            .titleGenerator(_ -> {
+                generating.countDown();
+                try {
+                    released.await();
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+                return "fix-login-bug";
+            })
+            .build();
+
+        CompletableFuture<CommandResult> result =
+            CompletableFuture.supplyAsync(() -> cmd.execute(ctx, ""));
+        assertTrue(generating.await(5, TimeUnit.SECONDS));
+        assertTrue(cmd.cancelInFlight());
+
+        assertEquals("Could not generate a name: no conversation context yet. Usage: /rename <name>",
+            result.get(5, TimeUnit.SECONDS).output());
+        assertFalse(cmd.cancelInFlight());
+    }
 }

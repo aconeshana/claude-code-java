@@ -263,6 +263,19 @@ public class LanternaMessageDispatcher {
         users.suppressNextEcho();
     }
 
+    /**
+     * Whether a user text renders in its own layout ({@code /command} echo, {@code !} input,
+     * command output, interruption) rather than as a plain {@code ❯} prompt echo.
+     */
+    public static boolean userTextHasOwnLayout(String text) {
+        return UserMessageRenderer.hasOwnLayout(text);
+    }
+
+    /** The {@code ⎿ Interrupted · What should Claude do instead?} row of a user interruption. */
+    public static void renderInterruptedByUser(MessagePanel panel) {
+        ToolResultLines.renderInterruptedToolResult(panel);
+    }
+
     /** The {@code ⎿ [Image #N]} chip below a prompt echo, hyperlinked to the cached file. */
     public void renderUserImageMessage(Integer imageId, MessagePanel panel) {
         users.renderImage(imageId, panel);

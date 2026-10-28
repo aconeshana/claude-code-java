@@ -229,6 +229,44 @@ class CompactCommandTest {
     }
 
     @Test
+    void cancellingAManualCompactAbortsTheSessionControllerItStreamsOn() {
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(new AbortAwareStreamingClient())
+            .model("test-model")
+            .build());
+        CompactService compactService = new CompactService(
+            TokenEstimator.getInstance(),
+            new LlmCompactSummarizer(new AbortAwareStreamingClient(), () -> engine),
+            true);
+
+        compactService.cancelManualCompact();
+
+        assertTrue(engine.execution().getAbortController().isAborted());
+    }
+
+    @Test
+    void cancelDuringTheSummaryRequestDiscardsTheCompaction() {
+        CompactCommand command = new CompactCommand();
+        boolean[] cancelledMidRequest = {false};
+        CompactService compactService = new CompactService(TokenEstimator.getInstance(),
+            (_, _) -> {
+                // Esc lands while the summary request is in flight; the reply still arrives.
+                cancelledMidRequest[0] = command.cancelInFlight();
+                return "summary";
+            }, true);
+        List<Message> loaded = new ArrayList<>();
+
+        CommandResult result = command.execute(
+            ctx(compactService, new CapturingHooks(), someMessages(), loaded::addAll), "");
+
+        assertTrue(cancelledMidRequest[0]);
+        assertEquals("Compaction canceled.", result.output());
+        assertEquals(CommandOutputChannel.STDERR, result.outputChannel());
+        assertTrue(loaded.isEmpty(), "a cancelled compact must not replace the conversation");
+        assertFalse(command.cancelInFlight(), "nothing is in flight after execute returns");
+    }
+
+    @Test
     void verboseMode_omitsFullSummaryShortcutHint() {
         CapturingSummarizer summarizer = new CapturingSummarizer();
         CompactService compactService = new CompactService(TokenEstimator.getInstance(), summarizer, true);

@@ -95,6 +95,14 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
         if (abortController.isAborted()) abortController.reset();
     }
 
+    /** The cache-sharing fork streams on the session controller, so aborting it ends the call. */
+    @Override
+    public void cancelManualCompact() {
+        QuerySession engine = engineSupplier != null ? engineSupplier.get() : null;
+        if (engine == null) return;
+        engine.execution().getAbortController().abort("user-cancel");
+    }
+
     @Override
     @CacheTier(CacheTier.Tier.FORKED_PREFIX)
     public SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {

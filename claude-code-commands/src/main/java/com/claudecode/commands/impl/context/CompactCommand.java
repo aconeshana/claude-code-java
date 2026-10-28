@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -30,6 +32,9 @@ import java.util.function.Consumer;
     description = "Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]"
 )
 public class CompactCommand implements AnnotatedCommand {
+
+    private final AtomicReference<MessageCompactor> inFlight = new AtomicReference<>();
+    private final AtomicBoolean cancelled = new AtomicBoolean();
 
     @Override
     public String argumentHint() {
@@ -54,6 +59,20 @@ public class CompactCommand implements AnnotatedCommand {
         return true;
     }
 
+
+    /**
+     * Esc / Ctrl+C during {@code /compact}: 236 aborts the REPL controller the compact request
+     * streams on and reports {@code "Compaction canceled."}; a summary that still arrives is
+     * discarded instead of replacing the conversation.
+     */
+    @Override
+    public boolean cancelInFlight() {
+        MessageCompactor compactor = inFlight.get();
+        if (compactor == null) return false;
+        cancelled.set(true);
+        compactor.cancelManualCompact();
+        return true;
+    }
 
     @Override
     public boolean isAvailable(CommandContext context) {
@@ -99,6 +118,20 @@ public class CompactCommand implements AnnotatedCommand {
         // Manual commands start outside submitMessage(), so clear the completed turn's sticky
         // cancellation before hooks or the cache-sharing compact request can observe it.
         compactor.prepareManualCompact();
+        cancelled.set(false);
+        inFlight.set(compactor);
+        try {
+            return compactWith(context, compactor, notify, hooks, messages, userInstructions,
+                customInstructions);
+        } finally {
+            inFlight.set(null);
+        }
+    }
+
+    private CommandResult compactWith(CommandContext context, MessageCompactor compactor,
+                                      Consumer<CompactProgressEvent> notify, HookDispatcher hooks,
+                                      List<Message> messages, String userInstructions,
+                                      String customInstructions) {
 
 // Step 0: microcompact — truncate long tool outputs, BEFORE anything else.
         MessageCompactor.MicrocompactResult microResult = compactor.microcompactMessages(messages);
@@ -170,6 +203,7 @@ public class CompactCommand implements AnnotatedCommand {
             List<Message> postCompact = assembleWithSlashCommandMessages(
                 result, sessionStartOutcome, customInstructions, displayText);
 
+            if (cancelled.get()) return CommandResult.localError("Compaction canceled.");
             Consumer<List<Message>> loader = context.session().loadCompactedMessages() != null
                 ? context.session().loadCompactedMessages()
                 : context.session().loadMessages();
@@ -201,7 +235,7 @@ public class CompactCommand implements AnnotatedCommand {
             return CommandResult.displayOnly(displayText);
         } catch (Exception e) {
             String message = e.getMessage() != null ? e.getMessage() : e.toString();
-            if (Thread.currentThread().isInterrupted()
+            if (cancelled.get() || Thread.currentThread().isInterrupted()
                     || e instanceof CancellationException) {
                 return CommandResult.localError("Compaction canceled.");
             }

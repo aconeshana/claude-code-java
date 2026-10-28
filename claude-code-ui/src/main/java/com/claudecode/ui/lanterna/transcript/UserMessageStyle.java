@@ -1,5 +1,10 @@
 package com.claudecode.ui.lanterna.transcript;
 
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
+
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Layout and truncation constants for the user-prompt message bubble.
  */
@@ -27,6 +32,26 @@ public final class UserMessageStyle {
 
 
     public static final int QUEUED_INDENT = 2;
+
+    /**
+     * Rows of a plain-text prompt echo: a blank margin row, then {@code "❯ "}
+     * on the first line with continuation lines indented beneath it. Empty when
+     * the prompt has no visible text.
+     */
+    public static List<List<MessagePanel.Segment>> promptRows(String text) {
+        String trimmed = truncateForDisplay(text).strip();
+        if (trimmed.isEmpty()) return List.of();
+        List<List<MessagePanel.Segment>> rows = new ArrayList<>();
+        rows.add(List.of());
+        String[] userLines = trimmed.split("\n", -1);
+        for (int i = 0; i < userLines.length; i++) {
+            String prefix = (i == 0) ? "❯ " : "  ";
+            rows.add(List.of(
+                new MessagePanel.Segment(prefix, LanternaTheme.welcomeDim()),
+                new MessagePanel.Segment(userLines[i], LanternaTheme.inputText())));
+        }
+        return List.copyOf(rows);
+    }
 
 
     public static String truncateForDisplay(String text) {

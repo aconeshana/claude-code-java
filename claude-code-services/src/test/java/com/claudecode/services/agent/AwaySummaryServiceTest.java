@@ -1,6 +1,7 @@
 package com.claudecode.services.agent;
 
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.FallbackTriggeredError;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.StreamingClient;
@@ -57,6 +58,8 @@ class AwaySummaryServiceTest {
         volatile String response;
         /** Thrown from the first {@code createStream} only, to model an overloaded primary. */
         private volatile RuntimeException firstFailure;
+        /** Runs just before {@link #firstFailure} is thrown, e.g. to fire an abort. */
+        volatile Runnable beforeFailure = () -> { };
 
         RecordingStreamingClient(String response) {
             this.response = response;
@@ -73,6 +76,7 @@ class AwaySummaryServiceTest {
             RuntimeException failure = firstFailure;
             if (failure != null) {
                 firstFailure = null;
+                beforeFailure.run();
                 throw failure;
             }
             List<StreamingEvent> events = new ArrayList<>();
@@ -186,7 +190,7 @@ class AwaySummaryServiceTest {
         Harness h = harness("Refactoring the parser.");
 
         AwaySummaryService.RecapResult result =
-            h.service().synthesizeRecap(conversationThatCalledATool());
+            h.service().synthesizeRecap(conversationThatCalledATool(), new AbortController());
 
         assertEquals(AwaySummaryService.Kind.OK, result.kind());
         StreamingClient.StreamRequest request = h.client().onlyRequest();
@@ -223,7 +227,7 @@ class AwaySummaryServiceTest {
             null, false, "user", saved.abortController(), saved.thinkingBudgetTokens());
         h.engine().forks().setLastCacheSafeForkRequest(saved);
 
-        h.service().synthesizeRecap(sampleMessages(4));
+        h.service().synthesizeRecap(sampleMessages(4), new AbortController());
 
         StreamingClient.StreamRequest request = h.client().onlyRequest();
         assertEquals("saved-system-prompt", request.systemPrompt(),
@@ -252,9 +256,9 @@ class AwaySummaryServiceTest {
             new UserMessage("m1", MessageContent.ofText("<local-command-stdout>ok</local-command-stdout>")));
 
         assertEquals(AwaySummaryService.Kind.NO_TURN,
-            h.service().synthesizeRecap(nothingToSay).kind());
+            h.service().synthesizeRecap(nothingToSay, new AbortController()).kind());
         assertEquals(AwaySummaryService.Kind.NO_TURN,
-            h.service().synthesizeRecap(List.of()).kind());
+            h.service().synthesizeRecap(List.of(), new AbortController()).kind());
         assertTrue(h.client().requests.isEmpty(), "no request is worth sending");
     }
 
@@ -417,7 +421,7 @@ class AwaySummaryServiceTest {
             (status, retryAfter) -> cooldown.set(status + ":" + retryAfter));
         h.engine().forks().setLastCacheSafeForkRequest(saved);
 
-        h.service().synthesizeRecap(sampleMessages(4));
+        h.service().synthesizeRecap(sampleMessages(4), new AbortController());
 
         StreamingClient.StreamRequest request = h.client().onlyRequest();
         assertTrue(request.fastMode(),
@@ -449,7 +453,7 @@ class AwaySummaryServiceTest {
                 List.of(new UserMessage("s1", MessageContent.ofText("saved turn"))),
                 "saved prompt", "user"));
 
-        AwaySummaryService.RecapResult result = h.service().synthesizeRecap(sampleMessages(4));
+        AwaySummaryService.RecapResult result = h.service().synthesizeRecap(sampleMessages(4), new AbortController());
 
         assertEquals(AwaySummaryService.Kind.OK, result.kind(),
             "a configured fallback must rescue the recap, not fail it");
@@ -471,8 +475,55 @@ class AwaySummaryServiceTest {
         h.client().failFirstWith(new FallbackTriggeredError("claude-sonnet-5", "claude-haiku-5"));
 
         assertEquals(AwaySummaryService.Kind.FAILED,
-            h.service().synthesizeRecap(conversationThatCalledATool()).kind());
+            h.service().synthesizeRecap(conversationThatCalledATool(), new AbortController()).kind());
         assertEquals(1, h.client().requests.size(), "no fallback configured, no retry");
+    }
+
+    /** 236 {@code JXn} returns {@code aborted} before issuing anything once the signal fired. */
+    @Test
+    void abortedBeforeStartReportsAbortedWithoutCallingTheModel() {
+        Harness h = harness("unused");
+        AbortController abort = new AbortController();
+        abort.abort("user-cancel");
+
+        assertEquals(AwaySummaryService.Kind.ABORTED,
+            h.service().synthesizeRecap(conversationThatCalledATool(), abort).kind());
+        assertTrue(h.client().requests.isEmpty());
+    }
+
+    /** A cancelled HTTP call surfaces as an exception; it is the user's abort, not a failure. */
+    @Test
+    void abortDuringTheForkReportsAbortedRatherThanFailed() {
+        Harness h = harness("unused");
+        AbortController abort = new AbortController();
+        h.client().failFirstWith(new IllegalStateException("call cancelled"));
+        h.client().beforeFailure = () -> abort.abort("user-cancel");
+
+        assertEquals(AwaySummaryService.Kind.ABORTED,
+            h.service().synthesizeRecap(conversationThatCalledATool(), abort).kind());
+    }
+
+    /**
+     * The fork carries the caller's signal on both lookup paths; inheriting the
+     * main loop's controller would cancel the recap after an interrupted turn.
+     */
+    @Test
+    void forkCarriesTheCallersAbortSignalNotTheMainLoopController() {
+        Harness h = harness("Recapped.");
+        h.engine().getAbortController().abort("interrupt");
+        AbortController abort = new AbortController();
+
+        assertEquals(AwaySummaryService.Kind.OK,
+            h.service().synthesizeRecap(conversationThatCalledATool(), abort).kind());
+        assertSame(abort, h.client().onlyRequest().abortController());
+
+        StreamingClient.StreamRequest saved = h.engine().forks().buildCacheSharingRequest(
+            List.of(new UserMessage("s1", MessageContent.ofText("saved turn"))),
+            "saved prompt", "user");
+        h.engine().forks().setLastCacheSafeForkRequest(saved);
+        h.client().requests.clear();
+        h.service().synthesizeRecap(sampleMessages(4), abort);
+        assertSame(abort, h.client().onlyRequest().abortController());
     }
 
     @Test

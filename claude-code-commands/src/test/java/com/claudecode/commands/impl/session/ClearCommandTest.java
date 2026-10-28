@@ -55,4 +55,10 @@ class ClearCommandTest {
         assertEquals(CommandResultDisplay.LOCAL, result.display(),
             "TS /clear is a local command, so its input is echoed after the reset");
     }
+
+    /** SessionEnd / SessionStart hooks run inside execute, so the REPL shows it as working. */
+    @Test
+    void isLongRunning() {
+        assertTrue(new ClearCommand().isLongRunning());
+    }
 }

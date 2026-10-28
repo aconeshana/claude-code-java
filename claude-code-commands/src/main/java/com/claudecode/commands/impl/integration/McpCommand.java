@@ -33,6 +33,10 @@ public class McpCommand implements AnnotatedCommand {
     }
 
     @Override public boolean isImmediate() { return true; }
+
+    /** {@code reconnect} / {@code enable} / {@code disable} connect to MCP servers synchronously. */
+    @Override public boolean isLongRunning() { return true; }
+
     @Override public String argumentHint() { return "[enable|disable [server-name]]"; }
 
     public void setDialogLauncher(Runnable launcher) { dialogLauncher = launcher; }

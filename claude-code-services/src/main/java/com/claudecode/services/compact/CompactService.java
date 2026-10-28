@@ -11,8 +11,6 @@ import com.claudecode.core.message.*;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.services.cache.PromptCacheBreakDetection;
 import com.claudecode.session.SessionManager;
-import com.claudecode.tools.skills.InvokedSkillRegistry;
-import com.claudecode.tools.tasks.TaskStore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,10 +91,6 @@ public class CompactService implements MessageCompactor {
     /** Current model-visible tool pool used for compact-time deferred-tool deltas. */
     private Supplier<List<String>> toolNamesSupplier = List::of;
 
-    /**
-     * The sub-agent id this service instance is scoped to, when it backs a sub-agent's {@link
-     * com.claudecode.core.engine.QuerySession}.
-     */
     private String agentId;
 
     /**
@@ -173,23 +167,6 @@ public class CompactService implements MessageCompactor {
         this.agentId = agentId;
     }
 
-    /**
-     * Backward-compatible test/override hook. The default provider keeps the
-     * concrete {@link TaskStore} behind the snapshot boundary.
-     */
-    public void setTaskStore(TaskStore taskStore) {
-        if (attachmentStateProvider instanceof ToolCompactAttachmentStateProvider provider) {
-            provider.setTaskStore(taskStore);
-        }
-    }
-
-    /** Backward-compatible test/override hook for the tool-backed provider. */
-    public void setInvokedSkillRegistry(InvokedSkillRegistry invokedSkills) {
-        if (attachmentStateProvider instanceof ToolCompactAttachmentStateProvider provider) {
-            provider.setInvokedSkills(invokedSkills);
-        }
-    }
-
     /** Replaces the attachment-state adapter, primarily for composition/tests. */
     public void setAttachmentStateProvider(CompactAttachmentStateProvider provider) {
         this.attachmentStateProvider = provider != null
@@ -245,6 +222,13 @@ public class CompactService implements MessageCompactor {
         }
     }
 
+    @Override
+    public void cancelManualCompact() {
+        if (summarizer != null) {
+            summarizer.cancelManualCompact();
+        }
+    }
+
     /**
      * Walk assistant messages and collect tool_use IDs whose tool name is in
      * {@link MicrocompactStrategy#COMPACTABLE_TOOLS}.
@@ -283,11 +267,6 @@ public class CompactService implements MessageCompactor {
     @Override
     public boolean shouldAutoCompact(List<Message> messages, String model, String querySource, long snipTokensFreed) {
         return autoCompact.shouldTrigger(messages, model, querySource, isAutoCompactEnabled(), snipTokensFreed);
-    }
-
-    @Override
-    public boolean isAtBlockingLimit(long tokenUsage, String model) {
-        return autoCompact.isAtBlockingLimit(tokenUsage, model, isAutoCompactEnabled());
     }
 
     @Override
@@ -421,8 +400,8 @@ public class CompactService implements MessageCompactor {
 
 
                 PromptCacheBreakDetection.notifyCompaction("compact", null);
-// A compaction consumed the over-threshold context, so re-arm the token warning
-// (clear any prior suppression).
+                // A compaction consumed the over-threshold context, so re-arm the token warning
+                // (clear any prior suppression).
                 clearCompactWarningSuppression();
                 return new MessageCompactor.CompactionResult(
                         boundary, List.of(), List.of(), List.of(),
@@ -432,17 +411,17 @@ public class CompactService implements MessageCompactor {
         }
         MessageCompactor.CompactionResult result =
                 compactConversation(messages, summarizer, isAutoCompact, customInstructions, model);
-// A completed compaction (manual /compact or auto-compact) shrinks the conversation enough
-// that the thinking-clear latch's "keep only the last turn" state should re-evaluate from
-// scratch.
+        // A completed compaction (manual /compact or auto-compact) shrinks the conversation enough
+        // that the thinking-clear latch's "keep only the last turn" state should re-evaluate from
+        // scratch.
         ThinkingClearLatch.reset();
         // A completed compaction (manual /compact or auto-compact) shrinks the
         // conversation enough that the prompt-cache-break tracker's cached
 
 
         PromptCacheBreakDetection.notifyCompaction("compact", null);
-// A compaction consumed the over-threshold context, so re-arm the token warning (clear any
-// prior suppression).
+        // A compaction consumed the over-threshold context, so re-arm the token warning (clear any
+        // prior suppression).
         clearCompactWarningSuppression();
         return result;
     }
@@ -571,7 +550,7 @@ public class CompactService implements MessageCompactor {
             .sorted().toList();
         if (discovered.isEmpty()) return boundary;
         CompactMetadata base = boundary.compactMetadata() != null
-            ? boundary.compactMetadata() : new CompactMetadata((PreservedSegment) null);
+            ? boundary.compactMetadata() : new CompactMetadata(null);
         return copyBoundaryWithMetadata(
             boundary, base.withPreCompactDiscoveredTools(discovered));
     }
@@ -628,19 +607,6 @@ public class CompactService implements MessageCompactor {
                 null,  // mcpMeta
                 true   // isVisibleInTranscriptOnly
         );
-    }
-
-    // ========== Post-compact attachments ==========
-
-    /**
-     * Generate post-compact attachment messages.
-     * Placeholder: returns empty list. Future implementation will re-read key files
-     * and restore plan state.
-     *
-     * @return list of attachment messages (currently empty)
-     */
-    public List<Message> createPostCompactAttachments() {
-        return List.of();
     }
 
     // ========== Compact prompt ==========

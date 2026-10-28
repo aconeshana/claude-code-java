@@ -2,6 +2,7 @@ package com.claudecode.commands.recap;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.message.Message;
 
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.List;
  * away-summary watcher. A single {@link #synthesize(List)} call returns a
  * structured {@link Outcome} so the command can map each state onto 236's
  * {@code text}-typed command result (ok / api-error / no-turn / aborted /
- * failed).
+ * failed); api-error is folded into {@link Kind#FAILED}.
  */
 @FunctionalInterface
 public interface RecapPort {
@@ -26,7 +27,9 @@ public interface RecapPort {
         /** Nothing to recap: no robust conversation state (mirrors 236 {@code no-turn}). */
         NO_TURN,
         /** The generation could not complete (API error or internal failure). */
-        FAILED
+        FAILED,
+        /** The caller's abort signal fired first (mirrors 236 {@code aborted}). */
+        ABORTED
     }
 
     /**
@@ -54,12 +57,21 @@ public interface RecapPort {
         public static Outcome failed() {
             return new Outcome(Kind.FAILED, null);
         }
+
+        public static Outcome aborted() {
+            return new Outcome(Kind.ABORTED, null);
+        }
     }
 
-    /** Synthesize a recap from the given conversation messages. */
-    Outcome synthesize(List<Message> messages);
+    /**
+     * Synthesize a recap from the given conversation messages.
+     *
+     * @param abort the invocation's cancellation signal; firing it ends the
+     *              generation with {@link Kind#ABORTED}
+     */
+    Outcome synthesize(List<Message> messages, AbortController abort);
 
     static RecapPort none() {
-        return _ -> Outcome.failed();
+        return (_, _) -> Outcome.failed();
     }
 }

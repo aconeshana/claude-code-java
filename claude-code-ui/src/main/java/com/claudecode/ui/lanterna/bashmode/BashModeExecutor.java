@@ -12,17 +12,20 @@ import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.XmlEscaper;
 import com.claudecode.core.message.Message;
-import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageFactory;
+import com.claudecode.core.message.UserMessage;
 import com.claudecode.ui.lanterna.repl.InteractiveSessionPort;
 import com.claudecode.tools.bash.BashTimeouts;
 import com.claudecode.tools.bash.ShellQuoteParse;
 import com.claudecode.tools.bash.ShellWorkingDirectoryTracker;
 import com.claudecode.tools.bash.SudoCommandAdapter;
+import com.claudecode.ui.lanterna.dialog.SudoPasswordDialog;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.claudecode.ui.lanterna.transcript.ShellOutputFormatter;
 import com.googlecode.lanterna.TextColor;
+import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 
 import java.io.BufferedReader;
@@ -37,6 +40,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.apache.commons.lang3.StringUtils;
@@ -45,6 +49,16 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Local shell execution for bash mode (input prefixed with {@code !}).
+ *
+ * <p>TS coverage:
+ * <ul>
+ *   <li>{@code utils/processUserInput/processBashCommand.tsx} — the interrupted outcome keeps
+ *       only the input and the interruption message, and the {@code BashModeProgress} JSX is
+ *       cleared once the command settles (authoritative logic from the 2.1.236 bundle).</li>
+ *   <li>{@code components/messages/UserTextMessage.tsx} — that interruption message renders
+ *       as {@code InterruptedByUser}, the dim {@code Interrupted · What should Claude do
+ *       instead?} row (authoritative logic from the 2.1.236 bundle).</li>
+ * </ul>
  */
 public final class BashModeExecutor {
 
@@ -70,11 +84,8 @@ public final class BashModeExecutor {
     }
 
 /** In-flight process ref for {@link #interrupt} — null when idle. */
-    private final AtomicReference<Process> currentProcess = new AtomicReference<>(null);
-    /** Set once {@link #interrupt} is called for the current execution;
-     *  the executor branch treats stdout/stderr as user-interrupted. */
-    private volatile boolean interrupted = false;
-
+    private final AtomicReference<Run> currentRun = new AtomicReference<>(null);
+    
     public BashModeExecutor(WindowBasedTextGUI gui,
                             MessagePanel messagePanel,
                             QuerySession queryEngine,
@@ -93,19 +104,29 @@ public final class BashModeExecutor {
     }
 
     /** {@code true} between {@link #handle(String)} start and history append. */
-    public boolean isRunning() { return currentProcess.get() != null; }
+    public boolean isRunning() {
+        Run run = currentRun.get();
+        return run != null && run.process != null;
+    }
 
     /**
-     * Cancel the in-flight shell command. Called from the Ctrl+C signal
-     * handler; kills the process. The runner thread's normal completion
-     * path handles the interruption message.
+     * Cancel the in-flight shell command (Esc / Ctrl+C): closes a pending sudo prompt, kills the
+     * process, and withdraws the run's progress rows the way 236 drops the
+     * {@code BashModeProgress} JSX. The runner thread's completion path then records the
+     * interruption, or hands it to the caller to resurrect.
      */
     public void interrupt() {
-        Process p = currentProcess.get();
+        Run run = currentRun.get();
+        if (run == null) return;
+        run.interrupted = true;
+        gui.getGUIThread().invokeLater(() -> {
+            withdrawDisplay(run);
+            if (run.prompting) closeSudoPrompt();
+        });
+        Process p = run.process;
         if (p == null) return;
         try {
             ProcessTreeTerminator.terminate(p, Duration.ofMillis(250));
-            interrupted = true;
         } catch (RuntimeException destroyFailure) {
 
             // was actually delivered to the process.
@@ -118,34 +139,104 @@ public final class BashModeExecutor {
      * @param command shell command text (leading {@code !} already stripped by caller)
      */
     public void handle(String command) {
-        if (StringUtils.isBlank(command)) return;
+        handle(command, () -> { });
+    }
 
-// Render user-visible bash-input pill.
+    /** {@link #handle(String, Runnable, Predicate)} that always appends its result. */
+    public void handle(String command, Runnable onFinished) {
+        handle(command, onFinished, _ -> false);
+    }
+
+    /**
+     * Handle a bash-mode submission and report when it has fully finished.
+     *
+     * @param command    shell command text (leading {@code !} already stripped by caller)
+     * @param onFinished runs once on the GUI thread after every outcome, including failures,
+     *                   so the caller can release the busy state 236 holds for the whole
+     *                   {@code processBashCommand} await
+     * @param divertResult offered the command's transcript messages before they are appended
+     *                     to the conversation; returning {@code true} takes them over instead
+     *                     (236's {@code run} resurrecting a late result into the queue)
+     */
+    public void handle(String command, Runnable onFinished,
+                       Predicate<List<UserMessage>> divertResult) {
+        if (StringUtils.isBlank(command)) {
+            onFinished.run();
+            return;
+        }
+
+        Run run = new Run(divertResult, messagePanel.snapshotLineCount(),
+            messagePanel.contentEpoch());
+        renderInputPill(command);
+        // Registered before the worker starts so an immediate Esc still reaches this run. A
+        // force-ended run can still be winding down when the next command starts, so the
+        // process slot and the interrupt flag belong to this run alone.
+        currentRun.set(run);
+
+        Thread.ofVirtual().name("bash-mode-" + System.currentTimeMillis())
+            .start(() -> {
+                try {
+                    execute(command, run);
+                } finally {
+                    currentRun.compareAndSet(run, null);
+                    gui.getGUIThread().invokeLater(onFinished);
+                }
+            });
+    }
+
+    /** Render the user-visible bash-input pill. */
+    private void renderInputPill(String command) {
         messagePanel.appendLine("", TextColor.ANSI.DEFAULT);
         messagePanel.appendMixed(List.of(
             new MessagePanel.Segment("! ",    LanternaTheme.bashBorder(), LanternaTheme.bashBg()),
             new MessagePanel.Segment(command, LanternaTheme.inputText(),  LanternaTheme.bashBg()),
             new MessagePanel.Segment(" ",     LanternaTheme.inputText(),  LanternaTheme.bashBg())
         ));
-
-        Thread.ofVirtual().name("bash-mode-" + System.currentTimeMillis())
-            .start(() -> execute(command));
     }
 
-    private void execute(String command) {
+    /** Drop the rows this run has rendered so far; later output rows are suppressed. */
+    private void withdrawDisplay(Run run) {
+        if (run.displayWithdrawn) return;
+        run.displayWithdrawn = true;
+        int end = messagePanel.snapshotLineCount();
+        if (messagePanel.contentEpoch() == run.displayEpoch && end >= run.displayStart) {
+            messagePanel.replaceLines(run.displayStart, end - run.displayStart, List.of());
+        }
+    }
+
+    private void closeSudoPrompt() {
+        gui.getWindows().stream()
+            .filter(SudoPasswordDialog.class::isInstance)
+            .toList()
+            .forEach(Window::close);
+    }
+
+    private void execute(String command, Run run) {
 
         String cwd = queryEngine.configuration().getConfig().workingDirectory();
         if (StringUtils.isBlank(cwd)) cwd = System.getProperty("user.dir");
 
         if (isImgcatCommand(command)) {
-            executeImgcatPreview(command, cwd);
+            executeImgcatPreview(command, cwd, run);
             return;
         }
 
-        SudoCommandAdapter.Result sudoResult =
-            prepareSudoCommand(command, sudoPasswordInteraction);
-        if (sudoResult instanceof SudoCommandAdapter.Result.Rejected rejected) {
-            finishRejected(command, rejected.message());
+        run.prompting = true;
+        SudoCommandAdapter.Result sudoResult;
+        try {
+            sudoResult = prepareSudoCommand(command, sudoPasswordInteraction);
+        } finally {
+            run.prompting = false;
+        }
+        if (run.interrupted) {
+            if (sudoResult instanceof SudoCommandAdapter.Result.Prepared prepared) prepared.close();
+            currentRun.compareAndSet(run, null);
+            finish(run, command, "", "", false, null, null);
+            return;
+        }
+        if (sudoResult instanceof SudoCommandAdapter.Result.Rejected(String message)) {
+            currentRun.compareAndSet(run, null);
+            finishRejected(command, message, run);
             return;
         }
         SudoCommandAdapter.Result.Prepared sudoCommand =
@@ -158,11 +249,11 @@ public final class BashModeExecutor {
         Throwable failure = null;
         String cwdResetWarning = null;
         ShellWorkingDirectoryTracker cwdTracker = null;
-        interrupted = false;
 
         try {
+            Path path = Path.of(cwd);
             cwdTracker = ShellWorkingDirectoryTracker.start(
-                Path.of(cwd), queryEngine.configuration().workingDirectoryController(),
+                path, queryEngine.configuration().workingDirectoryController(),
                 SubprocessEnvironment::get);
             ProcessBuilder pb = new ProcessBuilder(
                 ExecutableFinder.bashExecutable(), "-c",
@@ -170,10 +261,12 @@ public final class BashModeExecutor {
             if (Platform.IS_WINDOWS) {
                 pb.environment().put("SHELL", ExecutableFinder.bashExecutable());
             }
-            pb.directory(Path.of(cwd).toFile());
+            pb.directory(path.toFile());
             pb.redirectErrorStream(false);
             Process proc = DetachedSession.apply(pb).start();
-            currentProcess.set(proc);
+            run.process = proc;
+            // An interrupt that ran before the process slot was filled could not kill it.
+            if (run.interrupted) ProcessTreeTerminator.terminate(proc, Duration.ZERO);
             try {
                 if (sudoCommand != null) {
                     sudoCommand.writePasswordTo(proc.getOutputStream());
@@ -187,9 +280,9 @@ public final class BashModeExecutor {
             }
 
             Thread stdoutReader = Thread.ofVirtual().start(
-                () -> streamOutput(proc.getInputStream(), stdout, TextColor.ANSI.DEFAULT));
+                () -> streamOutput(run, proc.getInputStream(), stdout, TextColor.ANSI.DEFAULT));
             Thread stderrReader = Thread.ofVirtual().start(
-                () -> streamOutput(proc.getErrorStream(), stderr, LanternaTheme.toolError()));
+                () -> streamOutput(run, proc.getErrorStream(), stderr, LanternaTheme.toolError()));
 
             long timeoutMs = BashTimeouts.defaultTimeoutMs();
             boolean finished = proc.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
@@ -212,19 +305,35 @@ public final class BashModeExecutor {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
         } finally {
             if (sudoCommand != null) sudoCommand.close();
-            currentProcess.set(null);
+            run.process = null;
+            currentRun.compareAndSet(run, null);
         }
 
-        // Show final UI hints — must happen on GUI thread.
+        finish(run, command, stdout.toString(), stderr.toString(), timedOut, failure,
+            cwdResetWarning);
+    }
+
+    /** Record (or hand over) the run's transcript messages, then post its final UI hints. */
+    private void finish(Run run, String command, String stdout, String stderr,
+                        boolean didTimeOut, Throwable failure, String cwdResetWarning) {
+        boolean diverted = appendHistoryEntries(run, command, stdout, stderr,
+            run.interrupted, didTimeOut, failure);
         final boolean anyOutput = !stdout.isEmpty() || !stderr.isEmpty();
-        final boolean didTimeOut = timedOut;
-        final boolean didInterrupt = interrupted;
+        final boolean didInterrupt = run.interrupted;
         final String finalCwdResetWarning = cwdResetWarning;
         gui.getGUIThread().invokeLater(() -> {
+            if (run.displayWithdrawn) {
+                // 236 appends only the input and the interruption to an idle transcript; a
+                // resurrected result shows in the queue instead.
+                if (!diverted) {
+                    renderInputPill(command);
+                    LanternaMessageDispatcher.renderInterruptedByUser(messagePanel);
+                }
+                return;
+            }
             if (didInterrupt) {
 
-                messagePanel.appendLine("  ⎿  " + MessageConstants.INTERRUPT_MESSAGE,
-                    LanternaTheme.toolError());
+                LanternaMessageDispatcher.renderInterruptedByUser(messagePanel);
             } else if (didTimeOut) {
                 messagePanel.appendLine("  ⎿  Command timed out after "
                     + (BashTimeouts.defaultTimeoutMs() / 1000) + "s",
@@ -238,9 +347,6 @@ public final class BashModeExecutor {
                     LanternaTheme.welcomeDim());
             }
         });
-
-        appendHistoryEntries(command, stdout.toString(), stderr.toString(),
-            interrupted, timedOut, failure);
     }
 
     static SudoCommandAdapter.Result prepareSudoCommand(
@@ -248,15 +354,15 @@ public final class BashModeExecutor {
         return SudoCommandAdapter.prepare(command, interaction);
     }
 
-    private void finishRejected(String command, String message) {
+    private void finishRejected(String command, String message, Run run) {
         gui.getGUIThread().invokeLater(() ->
             messagePanel.appendLine("  ⎿  " + message, LanternaTheme.toolError()));
-        appendHistoryEntries(command, "", message + "\n", false, false, null);
+        appendHistoryEntries(run, command, "", message + "\n", false, false, null);
     }
 
     /** Opens a modal TUI image preview without executing a shell process. */
     @Explanation("Explicit ! imgcat commands preview local images inside the Lanterna alternate screen")
-    private void executeImgcatPreview(String command, String cwd) {
+    private void executeImgcatPreview(String command, String cwd, Run run) {
         try {
             Path image = resolveImgcatPath(command, Path.of(cwd));
             if (!Files.isRegularFile(image)) {
@@ -265,9 +371,9 @@ public final class BashModeExecutor {
             imagePreviewLauncher.show(image, () ->
                 messagePanel.appendLine("  ⎿  Image preview closed",
                     LanternaTheme.welcomeDim()));
-            appendHistoryEntries(command, "", "", false, false, null);
+            appendHistoryEntries(run, command, "", "", false, false, null);
         } catch (IOException | IllegalArgumentException failure) {
-            appendHistoryEntries(command, "", "", false, false, failure);
+            appendHistoryEntries(run, command, "", "", false, false, failure);
             gui.getGUIThread().invokeLater(() -> messagePanel.appendLine(
                 "  ⎿  Failed to preview image: " + failureMessage(failure),
                 LanternaTheme.toolError()));
@@ -282,20 +388,20 @@ public final class BashModeExecutor {
         List<ShellQuoteParse.Token> tokens = ShellQuoteParse.parse(command);
         int index = 0;
         if (tokens.size() > 1 && word(tokens.getFirst(), "command")) index++;
-        if (index >= tokens.size() || !(tokens.get(index) instanceof ShellQuoteParse.Word executable)
-                || !Strings.CS.equals("imgcat", basename(executable.value()))) {
+        if (index >= tokens.size() || !(tokens.get(index) instanceof ShellQuoteParse.Word(
+            String value
+        )) || !Strings.CS.equals("imgcat", basename(value))) {
             throw new IllegalArgumentException("Expected: imgcat <image-path>");
         }
         index++;
         if (index < tokens.size() && word(tokens.get(index), "--")) index++;
-        if (index < tokens.size() && tokens.get(index) instanceof ShellQuoteParse.Op operator
-                && Strings.CS.equals("<", operator.op())) index++;
+        if (index < tokens.size() && tokens.get(index) instanceof ShellQuoteParse.Op(String op)
+                && Strings.CS.equals("<", op)) index++;
         if (index + 1 != tokens.size()
-                || !(tokens.get(index) instanceof ShellQuoteParse.Word imagePath)) {
+                || !(tokens.get(index) instanceof ShellQuoteParse.Word(String raw))) {
             throw new IllegalArgumentException("imgcat preview accepts exactly one image path");
         }
-        String raw = imagePath.value();
-        if (Strings.CS.equals("~", raw)) {
+      if (Strings.CS.equals("~", raw)) {
             raw = System.getProperty("user.home");
         } else if (Strings.CS.startsWith(raw, "~/")) {
             raw = Path.of(System.getProperty("user.home"), raw.substring(2)).toString();
@@ -306,8 +412,8 @@ public final class BashModeExecutor {
     }
 
     private static boolean word(ShellQuoteParse.Token token, String expected) {
-        return token instanceof ShellQuoteParse.Word value
-            && Strings.CS.equals(expected, value.value());
+        return token instanceof ShellQuoteParse.Word(String value1)
+            && Strings.CS.equals(expected, value1);
     }
 
     private static String basename(String executable) {
@@ -320,7 +426,7 @@ public final class BashModeExecutor {
     }
 
 
-    private void streamOutput(InputStream stream, StringBuilder sink, TextColor color) {
+    private void streamOutput(Run run, InputStream stream, StringBuilder sink, TextColor color) {
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
@@ -330,53 +436,81 @@ public final class BashModeExecutor {
                     ShellOutputFormatter.tryFormatJson(line));
                 for (String subLine : formatted.split("\n", -1)) {
                     final String out = subLine;
-                    gui.getGUIThread().invokeLater(() ->
-                        messagePanel.appendLine("    " + out, color));
+                    gui.getGUIThread().invokeLater(() -> {
+                        if (!run.displayWithdrawn) messagePanel.appendLine("    " + out, color);
+                    });
                 }
             }
         } catch (IOException _) {}
     }
 
 
-    private void appendHistoryEntries(String command,
+    /** @return whether the caller took the messages over instead of the conversation */
+    private boolean appendHistoryEntries(Run run, String command,
                                        String stdout, String stderr,
                                        boolean wasInterrupted,
                                        boolean wasTimeout,
                                        Throwable failure) {
+        List<UserMessage> entries = historyEntries(
+            command, stdout, stderr, wasInterrupted, wasTimeout, failure);
+        if (run.divertResult.test(entries)) return true;
         List<Message> history = queryEngine.conversation().getMessages();
+        synchronized (history) {
+            history.addAll(entries);
+        }
+        return false;
+    }
+
+    private List<UserMessage> historyEntries(String command,
+                                             String stdout, String stderr,
+                                             boolean wasInterrupted,
+                                             boolean wasTimeout,
+                                             Throwable failure) {
         String caveat = "<" + XmlConstants.LOCAL_COMMAND_CAVEAT_TAG + ">"
             + "Caveat: The messages below were generated by the user while running local commands. "
             + "DO NOT respond to these messages or otherwise consider them in your response "
             + "unless the user explicitly asks you to."
             + "</" + XmlConstants.LOCAL_COMMAND_CAVEAT_TAG + ">";
+        UserMessage caveatMessage = MessageFactory.createUserMessage(caveat, true);
+        UserMessage input = MessageFactory.createUserMessage(
+            "<bash-input>" + command + "</bash-input>");
 
-        synchronized (history) {
-            history.add(MessageFactory.createUserMessage(caveat, true));
+        if (wasInterrupted) {
+            return List.of(caveatMessage, input, MessageFactory.createUserInterruptionMessage(false));
+        }
+        if (failure != null) {
+            String msg = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+            return List.of(caveatMessage, input, MessageFactory.createUserMessage(
+                "<bash-stderr>Command failed: " + XmlEscaper.escapeText(msg) + "</bash-stderr>"));
+        }
+        // Normal / timeout path: both tags.
+        String stderrEscaped = XmlEscaper.escapeText(
+            wasTimeout ? stderr + "Command timed out after "
+                + (BashTimeouts.defaultTimeoutMs() / 1000) + "s\n"
+                       : stderr);
+        String stdoutForModel = persistIfLarge(stdout);
+        return List.of(caveatMessage, input, MessageFactory.createUserMessage(
+            "<bash-stdout>" + stdoutForModel + "</bash-stdout>"
+                + "<bash-stderr>" + stderrEscaped + "</bash-stderr>"));
+    }
 
-            history.add(MessageFactory.createUserMessage(
-                "<bash-input>" + command + "</bash-input>"));
+    /** One {@link #handle} call: its process, interrupt flag, rendered rows, and result routing. */
+    private static final class Run {
+        private final Predicate<List<UserMessage>> divertResult;
+        /** First message-panel row of this run and the panel epoch it is valid for. */
+        private final int displayStart;
+        private final long displayEpoch;
+        private volatile Process process;
+        private volatile boolean interrupted;
+        private volatile boolean prompting;
+        /** GUI-thread only: the run's rows were removed by {@link #interrupt}. */
+        private boolean displayWithdrawn;
 
-            if (wasInterrupted) {
-
-                history.add(MessageFactory.createUserInterruptionMessage(false));
-                return;
-            }
-            if (failure != null) {
-
-                String msg = failure.getMessage() == null ? failure.toString() : failure.getMessage();
-                history.add(MessageFactory.createUserMessage(
-                    "<bash-stderr>Command failed: " + XmlEscaper.escapeText(msg) + "</bash-stderr>"));
-                return;
-            }
-            // Normal / timeout path: both tags.
-            String stderrEscaped = XmlEscaper.escapeText(
-                wasTimeout ? stderr + "Command timed out after "
-                    + (BashTimeouts.defaultTimeoutMs() / 1000) + "s\n"
-                           : stderr);
-            String stdoutForModel = persistIfLarge(stdout);
-            history.add(MessageFactory.createUserMessage(
-                "<bash-stdout>" + stdoutForModel + "</bash-stdout>"
-                    + "<bash-stderr>" + stderrEscaped + "</bash-stderr>"));
+        private Run(Predicate<List<UserMessage>> divertResult, int displayStart,
+                    long displayEpoch) {
+            this.divertResult = divertResult;
+            this.displayStart = displayStart;
+            this.displayEpoch = displayEpoch;
         }
     }
 

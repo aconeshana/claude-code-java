@@ -28,13 +28,14 @@ class ReplInterruptActionsTest {
 
     private static ReplInterruptActions actions(boolean turnInFlight, FakeTarget target) {
         return new ReplInterruptActions(
-            () -> null,                 // no bash command running
+            () -> false,                // no bash command running
             () -> turnInFlight,
             target,
             null,                       // no interaction coordinator
             () -> null,                 // no input panel
             Runnable::run,
             () -> null,
+            () -> false,
             () -> false);
     }
 
@@ -64,6 +65,32 @@ class ReplInterruptActionsTest {
     }
 
     @Test
+    void withoutATurnTheGestureCancelsARunningLocalCommand() {
+        FakeTarget target = new FakeTarget();
+        int[] cancels = {0};
+        ReplInterruptActions actions = new ReplInterruptActions(
+            () -> false, () -> false, target, null, () -> null, Runnable::run,
+            () -> null, () -> false, () -> ++cancels[0] > 0);
+
+        assertTrue(actions.interruptTurnIfRunning(), "the running /recap accepted the cancel");
+        assertEquals(1, cancels[0]);
+        assertEquals(0, target.interrupts, "no turn exists, so the engine is not aborted");
+    }
+
+    @Test
+    void anActiveTurnIsInterruptedBeforeAnyLocalCommandIsConsulted() {
+        FakeTarget target = new FakeTarget();
+        int[] cancels = {0};
+        ReplInterruptActions actions = new ReplInterruptActions(
+            () -> false, () -> true, target, null, () -> null, Runnable::run,
+            () -> null, () -> false, () -> ++cancels[0] > 0);
+
+        assertTrue(actions.interruptTurnIfRunning());
+        assertEquals(1, target.interrupts);
+        assertEquals(0, cancels[0]);
+    }
+
+    @Test
     void softInterruptSkipsTheInFlightFlagEntirely() {
         // Teardown races: the query iterator can still sit in HTTP after the UI
         // has cleared its busy state, so the soft path must not consult it.
@@ -81,8 +108,8 @@ class ReplInterruptActionsTest {
         InputPanel panel = new InputPanel();
         panel.setText("draft");
         ReplInterruptActions actions = new ReplInterruptActions(
-            () -> null, () -> true, target, null, () -> panel, Runnable::run,
-            () -> null, () -> false);
+            () -> false, () -> true, target, null, () -> panel, Runnable::run,
+            () -> null, () -> false, () -> false);
 
         assertTrue(actions.clearInputIfPresent(), "a draft is present");
         assertEquals("", panel.getText());

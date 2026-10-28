@@ -4,6 +4,7 @@ import com.claudecode.commands.prompt.PromptInvocation;
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.queue.QueuedCommand;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /**
  * The command port {@link SlashCommandDispatcher} talks to its owning REPL through — the
@@ -35,6 +36,16 @@ public interface SlashHost {
     void executePrompt(String displayText, PromptInvocation invocation,
                        Map<Integer, PastedContent> pasted);
 
+    /**
+     * The prompt of a long-running command the interrupt gesture already force-ended: 236's
+     * {@code onQuery} still appends the command's messages and runs the turn, but against the
+     * aborted controller, so it unwinds as user-cancelled before reaching the model.
+     */
+    default void executeInterruptedPrompt(String displayText, PromptInvocation invocation,
+                                          Map<Integer, PastedContent> pasted) {
+        executePrompt(displayText, invocation, pasted);
+    }
+
     void renderAndQueue(QueuedCommand cmd, String displayText);
     void showSessionPicker();
     void toggleFastMode();
@@ -59,26 +70,46 @@ public interface SlashHost {
     /** Live turn state — a genuine query (cannot be a construction-time snapshot). */
     boolean isTurnInFlight();
 
-    /** Whether a manual long-running local command such as {@code /compact} is active. */
+    /** Whether a long-running local command ({@code /compact}, ...) or a {@code !} bash command is active. */
     default boolean isLongRunningCommandInFlight() { return false; }
 
     /**
-     * Marks the start of a background long-running command ({@code Command.isLongRunning}, currently
-     * {@code /compact}).
+     * One long-running command's hold on the REPL's loading state, returned by
+     * {@link #longRunningCommandStarted}.
      */
-    default void longRunningCommandStarted() {}
+    interface LongRunningCommand {
+        LongRunningCommand NONE = new LongRunningCommand() {
+            @Override public boolean interrupted() { return false; }
+            @Override public void finished() { }
+        };
+
+        /**
+         * The interrupt gesture already released the loading state (236's
+         * {@code queryGuard.forceEnd()}); a prompt-type result goes through
+         * {@link #executeInterruptedPrompt}.
+         */
+        boolean interrupted();
+
+        /**
+         * GUI thread, after the command's result is rendered: clears the busy flag and drains
+         * one command queued during it (each drained turn drains the next at its own
+         * completion — same chain as the turn-end drain). A no-op once interrupted.
+         */
+        void finished();
+    }
+
+    /**
+     * Marks the start of a background long-running command ({@code Command.isLongRunning}): the
+     * host shows {@code input} as a processing placeholder with the loading spinner, and routes
+     * the interrupt gesture to {@code cancel} until the returned handle finishes.
+     */
+    default LongRunningCommand longRunningCommandStarted(String input, BooleanSupplier cancel) {
+        return LongRunningCommand.NONE;
+    }
 
     /**
      * Materialize native interactive metadata immediately before a local long-running command writes
      * transcript content.
      */
     default void prepareLongRunningCommandTranscript() {}
-
-    /**
-     * Marks the end of a background long-running command: the host clears the
-     * busy flag and drains one command queued during it (each drained turn
-     * drains the next at its own completion — same chain as the turn-end
-     * drain). Called on the GUI thread after the command's result is rendered.
-     */
-    default void longRunningCommandFinished() {}
 }

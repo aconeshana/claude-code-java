@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.queue.QueuedCommand;
@@ -44,6 +45,19 @@ class InputPanelQueuedEditingTest {
         assertEquals(1, actions.popCalls);
         assertEquals("queued", panel.getText());
         assertEquals(6, panel.caretCol());
+    }
+
+    @Test
+    void poppedBashDraftReturnsThePromptInBashMode() {
+        RecordingActions actions = new RecordingActions();
+        actions.toRestore = new QueuedInputDraft("ls", 2, Map.of(), true);
+        InputPanel panel = new InputPanel();
+        panel.setActions(actions);
+
+        panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_UP));
+
+        assertEquals("ls", panel.getText());
+        assertTrue(panel.isBashMode());
     }
 
     @Test

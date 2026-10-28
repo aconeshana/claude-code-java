@@ -29,6 +29,9 @@ public class ResumeCommand implements AnnotatedCommand {
     @Override
     public boolean isLongRunning() { return true; }
 
+    /** 236 declares {@code /resume} {@code type:"local-jsx"}. */
+    @Override public boolean isLocalJsx() { return true; }
+
     @Override
     public CommandResult execute(CommandContext context, String args) {
         String trimmed = args == null ? "" : args.trim();

@@ -115,11 +115,12 @@ public final class SlashCommandDispatcher {
 
 
 
+        SlashHost.LongRunningCommand longRunning = SlashHost.LongRunningCommand.NONE;
         if (resolved != null && resolved.isLongRunning()) {
             host.prepareLongRunningCommandTranscript();
-            host.longRunningCommandStarted();
+            longRunning = host.longRunningCommandStarted(input, resolved::cancelInFlight);
         }
-        boolean longRunning = resolved != null && resolved.isLongRunning();
+        SlashHost.LongRunningCommand handle = longRunning;
         Thread.ofVirtual().name("slash-cmd-" + cmdName).start(() -> {
             CommandResult result;
             try {
@@ -132,9 +133,16 @@ public final class SlashCommandDispatcher {
             SkillDispatch skillDispatch = prepareSkillDispatch(completed, cmdName, cmdArgs);
             refs.gui().getGUIThread().invokeLater(() -> {
                 try {
-                    handleDispatchResult(completed, input, cmdName, cmdArgs, skillDispatch);
+                    if (interruptedPrompt(handle, completed)) {
+                        synchronizePermissionMode();
+                        host.executeInterruptedPrompt(input, promptInvocation(completed),
+                            refs.inputPanel().getPastedContents());
+                    } else {
+                        handleDispatchResult(completed, input, cmdName, cmdArgs, skillDispatch,
+                            handle.interrupted());
+                    }
                 } finally {
-                    if (longRunning) host.longRunningCommandFinished();
+                    handle.finished();
                 }
             });
         });
@@ -163,7 +171,8 @@ public final class SlashCommandDispatcher {
             String normalizedArgs = args == null ? "" : args.trim();
             String input = normalizedArgs.isEmpty() ? "/compact" : "/compact " + normalizedArgs;
             host.prepareLongRunningCommandTranscript();
-            host.longRunningCommandStarted();
+            SlashHost.LongRunningCommand handle =
+                host.longRunningCommandStarted(input, compact::cancelInFlight);
             Thread.ofVirtual().name("session-host-compact").start(() -> {
                 CommandResult completed;
                 try {
@@ -176,7 +185,8 @@ public final class SlashCommandDispatcher {
                 CommandResult rendered = completed;
                 refs.gui().getGUIThread().invokeLater(() -> {
                     try {
-                        handleDispatchResult(rendered, input, "compact", normalizedArgs, null);
+                        handleDispatchResult(rendered, input, "compact", normalizedArgs, null,
+                            handle.interrupted());
                         if (rendered.outputChannel() == CommandOutputChannel.STDERR) {
                             resultFuture.completeExceptionally(
                                 new IllegalStateException(rendered.output()));
@@ -186,7 +196,7 @@ public final class SlashCommandDispatcher {
                     } catch (RuntimeException failure) {
                         resultFuture.completeExceptionally(failure);
                     } finally {
-                        host.longRunningCommandFinished();
+                        handle.finished();
                     }
                 });
             });
@@ -194,6 +204,43 @@ public final class SlashCommandDispatcher {
         return resultFuture;
     }
 
+
+    /**
+     * A force-ended long-running command that still produced a prompt: 236's {@code onQuery}
+     * runs it against the aborted controller when the guard is free, and resurrects its
+     * messages into the queue when a queued turn already holds it — the latter is
+     * {@link #handleDispatchResult}'s in-flight branch.
+     */
+    private boolean interruptedPrompt(SlashHost.LongRunningCommand handle, CommandResult result) {
+        return handle.interrupted() && result.shouldQuery() && !host.isTurnInFlight();
+    }
+
+    /**
+     * 236's {@code run} when {@code guard.tryStart()} finds a turn already running: every
+     * non-meta user message the command produced is enqueued as a prompt
+     * ({@code admissionExempt:"resurrected"}); the isMeta prompt body is skipped and the command
+     * is not run again.
+     */
+    private void resurrect(PromptInvocation invocation, String cmdName, String cmdArgs) {
+        for (String text : PromptResurrection.visibleTexts(invocation, cmdName, cmdArgs)) {
+            host.renderAndQueue(QueuedCommand.prompt(text), null);
+        }
+        refs.inputPanel().setQueuedHint(true);
+    }
+
+    /**
+     * The late result of a force-ended local command behind a drained turn: 236's {@code run}
+     * re-enqueues its non-meta user messages and drops the rest instead of appending them. The
+     * breadcrumb is the tagged command input, so the drained entry is a prompt and does not run
+     * the command again.
+     */
+    private void resurrectLocalResult(String cmdName, String cmdArgs, CommandResult result) {
+        boolean localJsx = commandRegistry.find(cmdName).map(Command::isLocalJsx).orElse(false);
+        List<String> texts =
+            PromptResurrection.localResultTexts(localJsx, cmdName, cmdArgs, result);
+        texts.forEach(text -> host.renderAndQueue(QueuedCommand.prompt(text), null));
+        if (!texts.isEmpty()) refs.inputPanel().setQueuedHint(true);
+    }
 
     private boolean openNativeDialogDirectly(Command resolved, String cmdArgs) {
         if (resolved instanceof ModelCommand
@@ -218,7 +265,7 @@ public final class SlashCommandDispatcher {
      * on a background thread.
      */
     private void handleDispatchResult(CommandResult result, String input, String cmdName, String cmdArgs,
-                                      SkillDispatch skillDispatch) {
+                                      SkillDispatch skillDispatch, boolean forceEnded) {
         synchronizePermissionMode();
         if (result.shouldQuery()) {
 
@@ -228,12 +275,10 @@ public final class SlashCommandDispatcher {
             // the skill path below uses; a prior version routed the prompt
             // through handleQuery, echoing the entire prompt text into the
             // message area as if the user had typed it.
-            var pasted = refs.inputPanel().getPastedContents();
             if (host.isTurnInFlight()) {
-                host.renderAndQueue(new QueuedCommand(input, pasted), input);
-                refs.inputPanel().setQueuedHint(true);
+                resurrect(promptInvocation(result), cmdName, cmdArgs);
             } else {
-                submitPromptResult(host, input, result, pasted);
+                submitPromptResult(host, input, result, refs.inputPanel().getPastedContents());
             }
             return;
         }
@@ -264,11 +309,15 @@ public final class SlashCommandDispatcher {
             }
             return;
         }
-        for (SDKMessage message : LocalCommandCompletionAdapter.toMessages(
-                cmdName, cmdArgs, result)) {
-            refs.dispatcher().dispatch(message, refs.messagePanel());
-            if (result.persist()) {
-                refs.messageHistory().record(message);
+        if (forceEnded && host.isTurnInFlight()) {
+            resurrectLocalResult(cmdName, cmdArgs, result);
+        } else {
+            for (SDKMessage message : LocalCommandCompletionAdapter.toMessages(
+                    cmdName, cmdArgs, result)) {
+                refs.dispatcher().dispatch(message, refs.messagePanel());
+                if (result.persist()) {
+                    refs.messageHistory().record(message);
+                }
             }
         }
         if (result.shouldExit()) {
@@ -294,10 +343,13 @@ public final class SlashCommandDispatcher {
     static void submitPromptResult(SlashHost host, String displayText,
                                    CommandResult result,
                                    Map<Integer, PastedContent> pasted) {
-        PromptInvocation invocation = result.promptInvocation() != null
+        host.executePrompt(displayText, promptInvocation(result), pasted);
+    }
+
+    private static PromptInvocation promptInvocation(CommandResult result) {
+        return result.promptInvocation() != null
             ? result.promptInvocation()
             : PromptInvocation.text(result.output());
-        host.executePrompt(displayText, invocation, pasted);
     }
 
     /**

@@ -243,14 +243,15 @@ final class ReplComposer {
             terminalRows,
             keybindings);
         ReplInterruptActions interrupt = new ReplInterruptActions(
-            () -> bashMode,
+            () -> submission != null && submission.interruptBash(),
             this::hasActiveTurn,
             new QuerySessionAbortTarget(queryEngine),
             interactionCoordinator,
             () -> inputPanel,
             guiInvoker,
             ctx.lastSubmittedInput()::get,
-            () -> submission != null && submission.lastSubmittedInputWasInteractiveStartupPrompt());
+            () -> submission != null && submission.lastSubmittedInputWasInteractiveStartupPrompt(),
+            () -> submission != null && submission.cancelLongRunning());
         ReplExitController exit = ReplExitController.standard(
             application.shutdown(),
             interrupt,
@@ -447,7 +448,8 @@ final class ReplComposer {
                 queryEngine, turnEngine, turnView, topicTitles,
                 runtime.invokedSkills(), transcript::system, guiInvoker),
             new ReplSubmissionCoordinator.PlanContinuation(
-                session, permissionGate, interactiveSessions));
+                session, permissionGate, interactiveSessions),
+            new LongRunningCommandPresenter(spinnerComponent, messagePanel, inputPanel, guiInvoker));
         // Session Host publication needs the event hub + native submission path; both exist now.
         ctx.sessionHostPublisher().bind(new SessionHostPublisher.Bindings(
             sessionEvents, submission, slashDispatcher, session));
@@ -499,7 +501,7 @@ final class ReplComposer {
         // queue as <task-notification> messages (see TaskNotificationBridge).
         new TaskNotificationBridge(queryEngine.conversation().getMessageQueue()).register();
         // …and let any such arrival wake an idle REPL.
-        turnEngine.bindIdleQueueWakeup(() -> submission.longRunningInFlight());
+        turnEngine.bindIdleQueueWakeup(() -> submission.externallyBusy());
         // Expose the session queue to background bash tasks so the stall watchdog can enqueue an
         // interactive-prompt notification; matches the HookEngine.setMessageQueue wiring at the
         // CLI root.

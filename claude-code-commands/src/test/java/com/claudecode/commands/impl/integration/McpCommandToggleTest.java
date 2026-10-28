@@ -55,4 +55,8 @@ class McpCommandToggleTest {
             return "ok";
         }
     }
+
+    @Test void serverActionsAreLongRunning() {
+        assertTrue(new McpCommand(new FakeMcp(List.of())).isLongRunning());
+    }
 }

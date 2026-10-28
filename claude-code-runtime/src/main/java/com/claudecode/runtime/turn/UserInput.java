@@ -30,7 +30,9 @@ public record UserInput(
         String querySource,
         @Explanation("Session Host endpoint provenance prevents remote input from being mirrored back to the same IM thread")
         String inputOrigin,
-        String planContent) {
+        String planContent,
+        @Explanation("236 runs a force-ended local command's late prompt through onQuery with the already-aborted controller")
+        boolean startAborted) {
 
     public UserInput {
         pasted = pasted == null ? Map.of() : Map.copyOf(pasted);
@@ -119,6 +121,14 @@ public record UserInput(
         return toBuilder().planContent(plan).build();
     }
 
+    /**
+     * The turn records its input and then unwinds at once as user-cancelled — the prompt of a
+     * local command whose loading state the interrupt gesture already ended.
+     */
+    public UserInput asStartAborted() {
+        return toBuilder().startAborted(true).build();
+    }
+
     /** Builder with the same neutral defaults as an ordinary TUI submission. */
     public static final class Builder {
         private String displayText;
@@ -139,6 +149,7 @@ public record UserInput(
         private String querySource = "user";
         private String inputOrigin = "tui";
         private String planContent;
+        private boolean startAborted;
 
         private Builder(String displayText, Object queryContent) {
             this.displayText = displayText;
@@ -164,6 +175,7 @@ public record UserInput(
             querySource = source.querySource;
             inputOrigin = source.inputOrigin;
             planContent = source.planContent;
+            startAborted = source.startAborted;
         }
 
         public Builder displayText(String value) { displayText = value; return this; }
@@ -184,13 +196,14 @@ public record UserInput(
         public Builder querySource(String value) { querySource = value; return this; }
         public Builder inputOrigin(String value) { inputOrigin = value; return this; }
         public Builder planContent(String value) { planContent = value; return this; }
+        public Builder startAborted(boolean value) { startAborted = value; return this; }
 
         public UserInput build() {
             return new UserInput(displayText, queryContent, pasted, permissionMode,
                 slashCommand, meta, progressMessage, allowedTools, modelOverride,
                 effortOverride, precedingUserMessages, additionalUserMessages,
                 suppressInitialAttachments, suppressCommandPermissions,
-                interactiveStartupPrompt, querySource, inputOrigin, planContent);
+                interactiveStartupPrompt, querySource, inputOrigin, planContent, startAborted);
         }
     }
 }
