@@ -83,6 +83,24 @@ class ContextTimelineLedgerTest {
         ledger.close();
     }
 
+    @Test
+    void hubEventsFoldRowsWithoutAskingForTheCountTokensBreakdown() {
+        MultiPort port = new MultiPort();
+        port.rows.put("tui-a", List.of(user("a")));
+        ContextTimelineLedger ledger = new ContextTimelineLedger(registry, port);
+        SessionHostSession a = session("tui-a");
+        registry.activateLocal(a);
+        ledger.activated(a);
+
+        a.events().onTurnStart(UserInput.builder("a", "a").build());
+        a.events().onTurnComplete(null);
+        assertThat(port.breakdownCalls).isZero();
+
+        assertThat(ledger.timeline("tui-a")).isPresent();
+        assertThat(port.breakdownCalls).isEqualTo(1);
+        ledger.close();
+    }
+
     private static UserMessage user(String text) {
         return new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText(text), false,
             false, null, null, null, Instant.now(), null, null);
@@ -103,13 +121,15 @@ class ContextTimelineLedgerTest {
     /** A port double whose live set is exactly the ids it holds rows for. */
     private static final class MultiPort implements GatewaySessionContextPort {
         final Map<String, List<Message>> rows = new HashMap<>();
+        int breakdownCalls;
+
+        @Override public Optional<ContextBreakdown> breakdown(String sessionId) {
+            breakdownCalls++;
+            return Optional.empty();
+        }
 
         @Override public Optional<List<Message>> messages(String sessionId) {
             return Optional.ofNullable(rows.get(sessionId));
-        }
-
-        @Override public Optional<SessionMetricsSnapshot> metrics(String sessionId) {
-            return Optional.empty();
         }
 
         @Override public List<LiveSession> liveSessions() {

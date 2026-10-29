@@ -65,7 +65,6 @@ public final class ContextTimelineLedger {
         volatile long updatedAt = System.currentTimeMillis();
         GatewaySessionContextPort.HeaderContent headers;
         long headersAt;
-        long headersSeq;
         int headersEpoch;
     }
 
@@ -115,7 +114,7 @@ public final class ContextTimelineLedger {
         detach(sessionId);
         Entry entry = entries.computeIfAbsent(sessionId, _ -> new Entry());
         subscriptions.put(sessionId, session.events().subscribe(sink(sessionId)));
-        sync(sessionId, entry);
+        syncRows(sessionId, entry);
     }
 
     /** Drops one session's hub subscription; the ledger entry stays (see {@link #forget}). */
@@ -309,6 +308,22 @@ public final class ContextTimelineLedger {
      * while an entry is held (engine → entry vs entry → engine).
      */
     private void sync(String id, Entry entry) {
+        sync(id, entry, true);
+    }
+
+    /**
+     * Hub-driven re-fold: rows and route only. The envelope comes from the
+     * port's {@code /context} breakdown, whose refresh issues a count-tokens
+     * call per system-prompt section, tool and memory file; firing it on
+     * every hub event would put that burst on the wire of every TUI session,
+     * webui or not. A gateway read ({@link #timeline}, {@link #detail},
+     * {@link #content}, {@link #overview}) still refreshes it.
+     */
+    private void syncRows(String id, Entry entry) {
+        sync(id, entry, false);
+    }
+
+    private void sync(String id, Entry entry, boolean withBreakdown) {
         List<Message> rows;
         Optional<GatewaySessionContextPort.ContextBreakdown> breakdown;
         Optional<String> model;
@@ -320,7 +335,7 @@ public final class ContextTimelineLedger {
             // engine thread, re-folds from the settled list.
             List<Message> live = port.messages(id).orElse(null);
             rows = live == null ? null : List.copyOf(live);
-            breakdown = port.breakdown(id);
+            breakdown = withBreakdown ? port.breakdown(id) : Optional.empty();
             model = port.selection(id).map(GatewaySessionContextPort.ModelSelection::current);
         } catch (RuntimeException _) {
             return;
@@ -424,7 +439,7 @@ public final class ContextTimelineLedger {
                 if (entry == null) return;
                 entry.running = true;
                 entry.updatedAt = System.currentTimeMillis();
-                sync(sessionId, entry);
+                syncRows(sessionId, entry);
             }
             @Override public void onMessage(SDKMessage msg) {
                 // Only rows that change the conversation list re-fold; stream
@@ -437,7 +452,7 @@ public final class ContextTimelineLedger {
                     return;
                 }
                 Entry entry = entries.get(sessionId);
-                if (entry != null) sync(sessionId, entry);
+                if (entry != null) syncRows(sessionId, entry);
             }
             @Override public void onError(Throwable error, boolean userCancel) {
                 Entry entry = entries.get(sessionId);
@@ -447,7 +462,7 @@ public final class ContextTimelineLedger {
                 Entry entry = entries.get(sessionId);
                 if (entry == null) return;
                 entry.running = false;
-                sync(sessionId, entry);
+                syncRows(sessionId, entry);
             }
             @Override public void onIdle() {
                 Entry entry = entries.get(sessionId);
