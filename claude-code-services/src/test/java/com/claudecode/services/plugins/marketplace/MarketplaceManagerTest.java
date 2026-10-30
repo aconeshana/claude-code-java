@@ -259,7 +259,11 @@ class MarketplaceManagerTest {
         Files.writeString(userSettings, """
             {
               "enabledPlugins": {"hello@test-mkt": true, "other@other-mkt": true},
-              "extraKnownMarketplaces": {"test-mkt": {"source": {"source": "directory", "path": "%s"}}}
+              "extraKnownMarketplaces": {"test-mkt": {"source": {"source": "directory", "path": "%s"}}},
+              "pluginConfigs": {
+                "hello@test-mkt": {"apiKey": "secret", "mcpServers": {"x": {}}},
+                "other@other-mkt": {"apiKey": "keep-me"}
+              }
             }
             """.formatted(mkt.toString().replace("\\", "\\\\")));
         new InstalledPluginsStore(pluginsRoot.resolve("installed_plugins.json"))
@@ -274,10 +278,39 @@ class MarketplaceManagerTest {
         assertFalse(settingsJson.get("enabledPlugins").has("hello@test-mkt"));
         assertTrue(settingsJson.get("enabledPlugins").has("other@other-mkt"));
         assertFalse(settingsJson.get("extraKnownMarketplaces").has("test-mkt"));
+        // No installation of hello@test-mkt survives, so its stored options go
+        // too — the same "last scope gone" rule uninstall applies. A surviving
+        // marketplace's config must not be collateral damage.
+        assertFalse(settingsJson.get("pluginConfigs").has("hello@test-mkt"));
+        assertTrue(settingsJson.get("pluginConfigs").has("other@other-mkt"));
         assertTrue(new InstalledPluginsStore(pluginsRoot.resolve("installed_plugins.json"))
             .load().plugins().isEmpty());
         // User-owned directory itself is untouched.
         assertTrue(Files.exists(mkt.resolve(".claude-plugin/marketplace.json")));
+    }
+
+    @Test
+    void removingMarketplaceWithoutStoredOptionsDoesNotCreatePluginConfigs() throws Exception {
+        Path mkt = createMarketplaceDir("test-mkt");
+        manager.add(new MarketplaceSource.Directory(mkt.toString()));
+        Files.createDirectories(userSettings.getParent());
+        Files.writeString(userSettings, """
+            {
+              "enabledPlugins": {"hello@test-mkt": true},
+              "extraKnownMarketplaces": {"test-mkt": {"source": {"source": "directory", "path": "%s"}}}
+            }
+            """.formatted(mkt.toString().replace("\\", "\\\\")));
+        new InstalledPluginsStore(pluginsRoot.resolve("installed_plugins.json"))
+            .save(InstalledPlugins.empty().withInstallation("hello@test-mkt",
+                new InstalledPlugins.InstallationEntry(PluginScope.USER, null,
+                    "/cache/x", "1.0.0", "t", "t", null)));
+
+        manager.remove("test-mkt");
+
+        JsonNode settingsJson = JsonUtils.getMapper().readTree(userSettings.toFile());
+        assertFalse(settingsJson.get("enabledPlugins").has("hello@test-mkt"));
+        assertFalse(settingsJson.get("extraKnownMarketplaces").has("test-mkt"));
+        assertFalse(settingsJson.has("pluginConfigs"));
     }
 
     @Test

@@ -98,6 +98,17 @@ public final class ClaudePaths {
             Path.of(System.getProperty("user.home")));
     }
 
+    /**
+     * The user's home directory as of this call, rather than the snapshot taken
+     * when this class was loaded. Callers that place files outside the Claude
+     * configuration tree — the global git ignore, for one — use this so a
+     * substituted home is honored by both the writer and any child process that
+     * is told where {@code HOME} is.
+     */
+    public static Path currentUserHome() {
+        return Path.of(System.getProperty("user.home"));
+    }
+
 
     public static Path managedRoot() {
         return SettingsPathResolver.policySettingsDirectory();

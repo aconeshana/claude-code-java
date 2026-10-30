@@ -24,15 +24,24 @@ public final class GitignoreHelper {
     private GitignoreHelper() {}
 
     /**
-     * Ensures {@code relativePath} (e.g.
+     * Ensures {@code relativePath} is covered by the global gitignore belonging
+     * to {@code home}.
+     *
+     * <p>The home directory is a parameter rather than a hidden read of
+     * {@code user.home} so the write target and the {@code HOME} handed to git
+     * are provably the same value: the reader and writer of the global ignore
+     * file cannot drift apart, and a caller with an authoritative home (for
+     * example a session that resolved its configuration directory explicitly)
+     * does not have to mutate a global system property to be honored.
      */
-    public static void addFileGlobRuleToGitignore(String relativePath, String cwd) {
+    public static void addFileGlobRuleToGitignore(String relativePath, String cwd, Path home) {
         try {
-            if (!isInsideGitRepo(cwd)) return;
-            if (isPathGitignored(relativePath, cwd)) return;
+            if (home == null) return;
+            if (!isInsideGitRepo(cwd, home)) return;
+            if (isPathGitignored(relativePath, cwd, home)) return;
 
             String entry = "**/" + relativePath;
-            Path globalGitignore = Path.of(System.getProperty("user.home"), ".config", "git", "ignore");
+            Path globalGitignore = home.resolve(".config").resolve("git").resolve("ignore");
             Files.createDirectories(globalGitignore.getParent());
             if (Files.isReadable(globalGitignore)) {
                 String content = Files.readString(globalGitignore);
@@ -46,22 +55,23 @@ public final class GitignoreHelper {
         }
     }
 
-    private static boolean isInsideGitRepo(String cwd) {
-        return runGitCheck(cwd, "rev-parse", "--is-inside-work-tree");
+    private static boolean isInsideGitRepo(String cwd, Path home) {
+        return runGitCheck(cwd, home, "rev-parse", "--is-inside-work-tree");
     }
 
-    private static boolean isPathGitignored(String relativePath, String cwd) {
-        return runGitCheck(cwd, "check-ignore", relativePath);
+    private static boolean isPathGitignored(String relativePath, String cwd, Path home) {
+        return runGitCheck(cwd, home, "check-ignore", relativePath);
     }
 
     /**
      * Runs a git subcommand and returns whether it exited 0, degrading to false
-     * on any error/timeout. {@code HOME} is pinned to {@code user.home} so
+     * on any error/timeout. {@code HOME} is pinned to {@code home} so
      * {@code git check-ignore} consults the same global gitignore this class
-     * writes to (matters for test isolation; in real usage {@code user.home}
-     * already equals {@code $HOME}).
+     * writes to; without the pin, git would resolve the global ignore from the
+     * inherited {@code HOME}, and a caller running with a substituted home would
+     * read a different file than it writes.
      */
-    private static boolean runGitCheck(String cwd, String... args) {
+    private static boolean runGitCheck(String cwd, Path home, String... args) {
         try {
             String[] cmd = new String[args.length + 1];
             cmd[0] = "git";
@@ -69,7 +79,7 @@ public final class GitignoreHelper {
             ProcessBuilder pb = new ProcessBuilder(cmd)
                 .directory(new File(cwd))
                 .redirectErrorStream(true);
-            pb.environment().put("HOME", System.getProperty("user.home"));
+            pb.environment().put("HOME", home.toString());
             Process process = pb.start();
             process.getInputStream().readAllBytes(); // drain to avoid blocking on full pipe buffer
             boolean finished = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);

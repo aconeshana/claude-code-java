@@ -8,6 +8,7 @@ import com.claudecode.services.config.SettingsSnapshots;
 import com.claudecode.services.config.SettingsSources;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.services.git.GitignoreHelper;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -109,20 +110,6 @@ public final class PluginSettingsStore {
             plugins.put(pluginId, enabled);
             root.set("enabledPlugins", plugins);
         });
-    }
-
-    /** Removes {@code enabledPlugins[pluginId]} from every editable tier. */
-    public void removeEnabledPlugin(String pluginId) {
-        for (Path tier : editableTiers()) {
-            mutateIfExists(tier, root -> {
-                JsonNode plugins = root.get("enabledPlugins");
-                if (plugins instanceof ObjectNode obj && obj.has(pluginId)) {
-                    obj.remove(pluginId);
-                    return true;
-                }
-                return false;
-            });
-        }
     }
 
     /** Removes one scope's {@code enabledPlugins[pluginId]} entry. */
@@ -325,7 +312,8 @@ public final class PluginSettingsStore {
         if (canonicalCwd != null && settingsPath.toAbsolutePath().normalize()
                 .equals(localPath.toAbsolutePath().normalize())) {
             GitignoreHelper.addFileGlobRuleToGitignore(
-                ".claude/settings.local.json", currentSettingsCwd());
+                ".claude/settings.local.json", currentSettingsCwd(),
+                ClaudePaths.currentUserHome());
         }
     }
 

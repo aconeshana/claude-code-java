@@ -5,16 +5,43 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.state.CwdState;
 import com.claudecode.services.config.GlobalConfigStore;
 import com.claudecode.services.config.InternalWrites;
 import com.claudecode.services.config.SettingsPaths;
 import com.claudecode.core.serialization.JsonUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CliSettingsManagementAdapterTest {
+
+    /**
+     * The adapter resolves project-local settings through
+     * {@link SettingsPaths#sessionProjectRoot}, which prefers the process-wide
+     * session cwd ({@link CwdState#getOriginalCwd()}) over the cwd it is handed.
+     * That makes every case here depend on whichever test ran before it in the
+     * same JVM: a neighbor that set a session cwd but did not restore it turned
+     * the gitignore case into a no-op. Pin the state to empty for the duration
+     * so each case drives the fallback path it actually asserts on.
+     */
+    private Path savedOriginalCwd;
+
+    @BeforeEach
+    void pinTheSessionCwd() {
+        savedOriginalCwd = CwdState.getOriginalCwd();
+        CwdState.clearForTesting();
+    }
+
+    @AfterEach
+    void restoreTheSessionCwd() {
+        if (savedOriginalCwd == null) CwdState.clearForTesting();
+        else CwdState.setOriginalCwd(savedOriginalCwd);
+    }
+
     @Test void typedPreferencesDelegateToExistingStores(@TempDir Path dir) {
         Path global = dir.resolve("claude.json");
         Path settings = dir.resolve("settings.json");

@@ -2,8 +2,10 @@ package com.claudecode.services.config;
 
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.services.git.GitignoreHelper;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
+import java.nio.file.Path;
 
 /**
  * Resolves git-related behavior that depends on settings without coupling the git helpers back to
@@ -42,10 +44,15 @@ public final class GitSettings {
      * blocking the settings write that triggered it.
      */
     static void ensureLocalSettingsIgnored(String cwd, RuleSource tier) {
-        if (tier == RuleSource.LOCAL_SETTINGS) {
-            Thread.startVirtualThread(() ->
-                GitignoreHelper.addFileGlobRuleToGitignore(LOCAL_SETTINGS_PATH,
-                    SettingsPaths.sessionProjectRoot(cwd).toString()));
-        }
+        if (tier != RuleSource.LOCAL_SETTINGS) return;
+        // Resolve the home directory on the calling thread: the write is
+        // deferred to a virtual thread, and reading user.home inside that
+        // deferred work would observe whatever home the process has *by then*
+        // rather than the one this call was made under.
+        Path home = ClaudePaths.currentUserHome();
+        String projectRoot = SettingsPaths.sessionProjectRoot(cwd).toString();
+        Thread.startVirtualThread(() ->
+            GitignoreHelper.addFileGlobRuleToGitignore(
+                LOCAL_SETTINGS_PATH, projectRoot, home));
     }
 }

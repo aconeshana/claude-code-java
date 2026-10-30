@@ -165,7 +165,15 @@ public final class MarketplaceManager {
         if (!removedIds.isEmpty()) {
             installedStore.save(installed.withoutMarketplace(name));
 
-            removedIds.forEach(id -> deleteRecursively(directories.pluginDataDir(id)));
+            for (String id : removedIds) {
+                deleteRecursively(directories.pluginDataDir(id));
+                // No installation remains for this plugin afterwards — the same
+                // "last scope gone" condition PluginInstaller.uninstall uses to
+                // justify dropping its stored options. Leaving them behind keeps
+                // orphaned (possibly credentialed) config in the user tier, and
+                // re-adding the marketplace would read them back.
+                settings.removePluginConfig(id);
+            }
         }
     }
 

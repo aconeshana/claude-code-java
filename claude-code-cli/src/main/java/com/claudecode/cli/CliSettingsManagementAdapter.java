@@ -254,7 +254,9 @@ final class CliSettingsManagementAdapter implements SettingsManagementPort {
         Path path = SettingsPaths.sessionLocalSettingsPath(cwd);
         mutate(path, edit);
         GitignoreHelper.addFileGlobRuleToGitignore(
-            ".claude/settings.local.json", SettingsPaths.sessionProjectRoot(cwd).toString());
+            ".claude/settings.local.json",
+            SettingsPaths.sessionProjectRoot(cwd).toString(),
+            ClaudePaths.currentUserHome());
     }
 
     private static void mutate(Path path, Consumer<ObjectNode> edit) {
