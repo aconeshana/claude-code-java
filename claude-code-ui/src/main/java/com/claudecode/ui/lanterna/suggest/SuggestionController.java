@@ -26,6 +26,12 @@ import java.util.regex.Pattern;
  * Drives the input typeahead: on every keystroke it decides whether to show slash-command
  * suggestions, {@code @}-file / directory completions, or a progressive argument hint, and pushes
  * the result into {@link InputPanel}.
+ *
+ * <p>Slash-command suggestions mirror 2.1.236's gate: they appear only when the caret is on the
+ * active command token — a column-zero command the caret has not moved past, or a command whose
+ * trailing space the caret sits on. Parking the caret inside a leading command that already has
+ * arguments suppresses the dropdown rather than offering a completion that would replace the whole
+ * input.
  */
 public final class SuggestionController implements AutoCloseable {
 
@@ -195,6 +201,27 @@ public final class SuggestionController implements AutoCloseable {
         if (Strings.CS.startsWith(beforeCursor, "/")) {
             if (Strings.CS.equals("file", lastSuggestionKind)) cancelPathSuggestions();
             // ── Slash commands ────────────────────────────────────────
+            // 2.1.236 gates the whole slash branch on the FULL input: the
+            // command name is taken from the input, and the branch is skipped
+            // when a space follows the command while the caret is not parked on
+            // a trailing space (`!$Ag(Ve, Ft)`). Without that guard, parking the
+            // caret inside a leading command that has trailing text keeps the
+            // dropdown open, and accepting it replaces the whole input — losing
+            // the tail the user typed.
+            int fullSpaceIdx = query.indexOf(' ');
+            boolean caretOnTrailingSpace =
+                cursorOffset > 0 && cursorOffset == query.length()
+                    && query.charAt(cursorOffset - 1) == ' ';
+            boolean trailingArgsWithCaretInside =
+                !caretOnTrailingSpace && fullSpaceIdx >= 0 && !Strings.CS.endsWith(query, " ");
+            if (trailingArgsWithCaretInside) {
+                if (Strings.CS.equals("command", lastSuggestionKind)) {
+                    inputPanel.hideSuggestions();
+                    inputPanel.setArgumentHint(null);
+                    lastSuggestionKind = "none";
+                }
+                return;
+            }
             ensureMetadataLoading();
             lastSuggestionKind = "command";
             String afterSlash = beforeCursor.substring(1);

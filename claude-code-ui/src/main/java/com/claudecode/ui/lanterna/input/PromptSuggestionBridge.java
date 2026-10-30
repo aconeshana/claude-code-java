@@ -13,8 +13,9 @@ import org.apache.commons.lang3.Strings;
  * Binds the slash/@/bash-path suggestion dropdown to the prompt text: owns the
  * {@link SuggestionPanel}, remembers which kind of completion is showing, routes
  * navigation/accept/dismiss keys, and rewrites the prompt when a suggestion is
- * accepted (whole-input replacement for commands, {@code @token} splice for
- * files, last-shell-token splice for bash paths).
+ * accepted (whole-input replacement for a column-zero command, {@code /command}
+ * token splice for a mid-input command, {@code @token} splice for files,
+ * last-shell-token splice for bash paths).
  *
  * <p>Text rewriting is expressed as pure {@link Edit}s over the current text and
  * caret so the splice rules can be reasoned about without a live text box; the
@@ -30,6 +31,12 @@ import org.apache.commons.lang3.Strings;
  *       {@code formatReplacementValue}: locating the {@code @token} around the
  *       caret, extending it over trailing path characters, quoting values with
  *       spaces and appending a trailing space.</li>
+ *   <li>2.1.236 bundle — the command-token splice rules in {@link #standardEdit}
+ *       and {@link #midInputSlashStart} follow {@code kms(input, cursorOffset)},
+ *       {@code Rwr(input)} and {@code Rms(...)}: a mid-input {@code /command}
+ *       token (a {@code /} preceded by whitespace with the caret inside the
+ *       command name) is spliced in place, while a column-zero command replaces
+ *       the whole input.</li>
  * </ul>
  */
 final class PromptSuggestionBridge {
@@ -53,6 +60,10 @@ final class PromptSuggestionBridge {
     /** Leading path characters after the caret that belong to the {@code @token}. */
     private static final Pattern PATH_CHAR_HEAD =
         Pattern.compile("^[\\w\\p{L}\\p{N}\\p{M}_\\-./\\\\()\\[\\]~:]+");
+
+    /** Command-name characters; 2.1.236's {@code kms} uses {@code [a-zA-Z0-9._:-]}. */
+    private static final Pattern COMMAND_CHAR_HEAD =
+        Pattern.compile("^[a-zA-Z0-9._:-]*");
 
     private final Host host;
     private final SuggestionPanel panel = new SuggestionPanel();
@@ -169,19 +180,30 @@ final class PromptSuggestionBridge {
     }
 
     /**
-     * Command suggestions replace the whole input; file suggestions splice over
-     * the {@code @token} around the caret (quoted when the value has spaces);
-     * anything else replaces the input with the value.
+     * Command suggestions replace the whole input when the command token sits at
+     * column zero; when the caret is inside a <em>mid-input</em> slash token (a
+     * {@code /} preceded by whitespace) only that token is spliced, matching
+     * 2.1.236's ghost-text accept and leaving the surrounding text intact.
+     * File suggestions splice over the {@code @token} around the caret (quoted
+     * when the value has spaces); anything else replaces the input with the
+     * value.
      */
     static Edit standardEdit(String text, int caret, String primary) {
         // "* " marks skills in the dropdown and is not part of the value.
         String clean = Strings.CS.startsWith(primary, "* ") ? primary.substring(2) : primary;
+        int cursor = Math.min(caret, text.length());
         if (Strings.CS.startsWith(clean, "/")) {
             String filled = clean + " ";
+            int slash = midInputSlashStart(text, cursor);
+            if (slash >= 0) {
+                // Replace only the /command token; keep the prefix and tail.
+                Matcher tail = COMMAND_CHAR_HEAD.matcher(text.substring(cursor));
+                int tokenEnd = cursor + (tail.find() ? tail.group().length() : 0);
+                String spliced = text.substring(0, slash) + filled + text.substring(tokenEnd);
+                return new Edit(spliced, slash + filled.length());
+            }
             return new Edit(filled, filled.length());
         }
-
-        int cursor = Math.min(caret, text.length());
         String before = text.substring(0, cursor);
         String after = text.substring(cursor);
 
@@ -198,6 +220,27 @@ final class PromptSuggestionBridge {
             : "@" + clean + " ";
         String updated = text.substring(0, atIdx) + replacement + text.substring(atIdx + tokenLen);
         return new Edit(updated, atIdx + replacement.length());
+    }
+
+    /**
+     * Start index of the {@code /} that opens a mid-input slash token whose
+     * command part still contains the caret, or -1. Mirrors 2.1.236's
+     * {@code kms}: the slash must be preceded by whitespace (so a column-zero
+     * command is not mid-input) and the caret may not sit past the command name.
+     */
+    private static int midInputSlashStart(String text, int cursor) {
+        String before = text.substring(0, cursor);
+        for (int i = before.length() - 1; i >= 0; i--) {
+            char c = before.charAt(i);
+            if (c == '/') {
+                if (i == 0 || !Character.isWhitespace(before.charAt(i - 1))) return -1;
+                Matcher head = COMMAND_CHAR_HEAD.matcher(text.substring(i + 1));
+                int nameLen = head.find() ? head.group().length() : 0;
+                return cursor <= i + 1 + nameLen ? i : -1;
+            }
+            if (Character.isWhitespace(c)) return -1;
+        }
+        return -1;
     }
 
     /** Index of the last {@code @} before the caret that starts a token, or -1. */

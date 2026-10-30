@@ -289,6 +289,52 @@ class SuggestionControllerTest {
     }
 
     @Test
+    void leadingSlashPopulatesTheCommandDropdown() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/cl", 3);
+
+        assertTrue(input.suggestions.stream()
+            .anyMatch(s -> Strings.CS.equals(s.primary(), "/clear")),
+            "a column-zero command must show its candidates, as 2.1.236's Rwr gate allows");
+        controller.close();
+    }
+
+    @Test
+    void midInputSlashDoesNotPopulateTheCommandDropdown() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("see /cl here", "see /cl".length());
+
+        assertTrue(input.suggestions.isEmpty(),
+            "2.1.236's Rwr gate requires the full input to start with '/', so a mid-input "
+                + "command shows inline ghost text instead of the dropdown");
+        controller.close();
+    }
+
+    @Test
+    void caretInsideLeadingCommandTokenWithTrailingTextClosesTheDropdown() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/cl please review", "/cl".length());
+
+        assertTrue(input.suggestions.isEmpty(),
+            "2.1.236 skips its slash branch when a space follows the command and the caret is "
+                + "not on a trailing space, so parking the caret inside the command must not "
+                + "leave a dropdown that would replace the whole input on accept");
+        controller.close();
+    }
+
+    @Test
     void ordinaryTypingDoesNotInvalidateTheFileSuggestionGeneration() {
         CommandRegistry registry = new CommandRegistry();
         CapturingInputPanel input = new CapturingInputPanel();

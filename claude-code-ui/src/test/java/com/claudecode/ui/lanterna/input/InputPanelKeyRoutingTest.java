@@ -156,6 +156,40 @@ class InputPanelKeyRoutingTest {
     }
 
     @Test
+    void tabOnLeadingCommandSuggestionReplacesTheWholeInputLike236() {
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = panel(actions);
+        panel.setText("/comp please review this");
+        panel.setCaretOffsetForTest("/comp".length());
+        panel.showSuggestions(
+            List.of(new SuggestionPanel.Suggestion("/compact", "Compact")), 100);
+
+        assertEquals(TextBox.Result.HANDLED,
+            panel.handleKeyForTest(new KeyStroke(KeyType.TAB)));
+
+        assertEquals("/compact ", panel.getText(),
+            "2.1.236 has no mid-input slash here, so its list path replaces the whole input");
+        assertTrue(actions.submissions.isEmpty());
+    }
+
+    @Test
+    void tabOnMidInputCommandSuggestionKeepsTextBeforeAndAfterTheToken() {
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = panel(actions);
+        panel.setText("see /comp for details");
+        panel.setCaretOffsetForTest("see /comp".length());
+        panel.showSuggestions(
+            List.of(new SuggestionPanel.Suggestion("/compact", "Compact")), 100);
+
+        assertEquals(TextBox.Result.HANDLED,
+            panel.handleKeyForTest(new KeyStroke(KeyType.TAB)));
+
+        assertEquals("see /compact  for details", panel.getText(),
+            "2.1.236 replaces only the mid-input /command token");
+        assertTrue(actions.submissions.isEmpty());
+    }
+
+    @Test
     void tabOnBashPathSuggestionReplacesOnlyTheCurrentToken() {
         RecordingActions actions = new RecordingActions();
         InputPanel panel = panel(actions);
