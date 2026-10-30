@@ -21,9 +21,9 @@ public final class Selection {
     private Point focus;
     private boolean isDragging;
 
-// ── Phase 3: scrolled-off accumulators ───────────────────────────── When the selection's
-// anchor or focus scrolls off-screen during a viewport scroll, the underlying screen buffer
-// loses the original row text.
+    // ── Phase 3: scrolled-off accumulators ───────────────────────────── When the selection's
+    // anchor or focus scrolls off-screen during a viewport scroll, the underlying screen buffer
+    // loses the original row text.
 
     // Above: newest entries at END (closest to on-screen).
     // Below: newest entries at FRONT.
@@ -112,8 +112,8 @@ public final class Selection {
         Bounds b = getSelectionBounds();
         if (b == null) return "";
         StringBuilder out = new StringBuilder();
-// Prepend rows that scrolled off the top — they're the upper part of the original
-// selection.
+        // Prepend rows that scrolled off the top — they're the upper part of the original
+        // selection.
         for (String r : scrolledOffAbove) {
             out.append(r).append('\n');
         }
@@ -122,16 +122,13 @@ public final class Selection {
             if (full == null) full = "";
             int startCell = (row == b.start.row) ? b.start.col : 0;
             int endCell   = (row == b.end.row)   ? b.end.col  : Integer.MAX_VALUE;
-            int startChar = cellToChar(full, startCell);
-
-            // EXCLUSIVE char index for substring. Add 1 to the cell
-            // position, then map back; if the next cell is the spacer-tail
-            // of a CJK char, getStringCharacterIndex still returns the
-            // CJK char index (same value as startChar+1) which is correct.
-            // MAX_VALUE marks "to end of row" — adding 1 would overflow to
-            // negative and silently empty the slice.
+            // Cell edges resolve through the char that owns each cell, not
+            // through a cell→char index lookup: mapping the cell after a wide
+            // glyph's leading cell lands back on that glyph, which collapsed the
+            // slice to empty and dropped the character (2.1.236 includes it).
+            int startChar = charIndexOwningCell(full, startCell);
             int endCharExclusive = endCell == Integer.MAX_VALUE
-                ? full.length() : cellToChar(full, endCell + 1);
+                ? full.length() : charIndexAfterCell(full, endCell);
             // Clamp so we never index past String end (rowText may be
             // shorter than (endCell+1) cells if the row is sparse).
             if (endCharExclusive < startChar) endCharExclusive = startChar;
@@ -141,20 +138,12 @@ public final class Selection {
             }
             if (row != b.end.row) out.append('\n');
         }
-// Append rows that scrolled off the bottom — they're the lower part of the original
-// selection.
+        // Append rows that scrolled off the bottom — they're the lower part of the original
+        // selection.
         for (String r : scrolledOffBelow) {
             out.append('\n').append(r);
         }
         return out.toString();
-    }
-
-    /**
-     * Convenience overload — takes a {@link List<String>} of row texts.
-     * Equivalent to {@code getSelectedText(row -> row < rows.size() ? rows.get(row) : null)}.
-     */
-    public String getSelectedText(List<String> rows) {
-        return getSelectedText(row -> row >= 0 && row < rows.size() ? rows.get(row) : null);
     }
 
     // ── Phase 2: word/line selection + Shift+Click extend ──────────────
@@ -238,22 +227,31 @@ public final class Selection {
      * High-level convenience: shift focus by one step in {@code dir}.
      * Looks up the current row width via {@code rowText.apply(row)} for
      * LINE_END / clamping at horizontal edges.
+     *
+     * <p>Left/right mirror 2.1.236's {@code moveSelectionFocus}: the row edge is
+     * the terminal's last column ({@code width - 1}), not the row's text length,
+     * and stepping past either edge wraps to the adjacent row. Sticking to the
+     * text length instead would stall the caret at the last glyph, so dragging
+     * across a full-width line would silently drop the wrap-around cells.
      */
-    public void moveFocus(FocusDir dir, Function<Integer, String> rowText) {
+    public void moveFocus(FocusDir dir, Function<Integer, String> rowText, int termWidth) {
         Point f = getFocusOrAnchor();
         if (f == null) return;
         int col = f.col, row = f.row;
+        int lastCol = Math.max(0, termWidth - 1);
         switch (dir) {
-            case LEFT       -> col = Math.max(0, col - 1);
-            case RIGHT      -> col = col + 1;
+            case LEFT       -> {
+                if (col > 0) col--;
+                else if (row > 0) { col = lastCol; row--; }
+            }
+            case RIGHT      -> {
+                if (col < lastCol) col++;
+                else { col = 0; row++; }
+            }
             case UP         -> row = Math.max(0, row - 1);
             case DOWN       -> row = row + 1;
             case LINE_START -> col = 0;
-            case LINE_END   -> {
-                String t = rowText.apply(row);
-                col = (StringUtils.isEmpty(t)) ? 0
-                    : Math.max(0, TerminalTextUtils.getColumnWidth(t) - 1);
-            }
+            case LINE_END   -> col = lastCol;
             case WORD_LEFT  -> {
                 String t = rowText.apply(row);
                 if (StringUtils.isNotEmpty(t)) {
@@ -337,7 +335,7 @@ public final class Selection {
         while (scrolledOffBelow.size() > newBelowDebt) {
             scrolledOffBelow.removeLast();  // below: keep FRONT
         }
-// Commit shifted points with edge clamp.
+        // Commit shifted points with edge clamp.
         this.anchor = new Point(anchor.col, clamp(vAnchor, maxRow));
         this.focus  = new Point(focus.col,  clamp(vFocus,  maxRow));
         this.virtualAnchorRow = (vAnchor < 0 || vAnchor > maxRow) ? vAnchor : null;
@@ -395,6 +393,49 @@ public final class Selection {
         if (cellCol >= totalCells) return s.length();
         if (cellCol <= 0) return 0;
         return TerminalTextUtils.getStringCharacterIndex(s, cellCol);
+    }
+
+    /**
+     * Start char index of the character <em>occupying</em> {@code cellCol} — the
+     * cell-boundary rule 2.1.236 applies when a selection begins. A wide glyph
+     * owns its leading cell and the padding cell to its right; a start landing
+     * on the padding owns no character, so the selection begins at the next one
+     * ({@code 14-15} on {@code 中文} yields {@code 文}, not {@code 中文}).
+     *
+     * <p>{@link TerminalTextUtils#getStringCharacterIndex} cannot express this:
+     * it maps the padding cell back onto the wide glyph itself (its own examples
+     * note {@code getStringCharacterIndex("英", 0)} and {@code (…, 1)} both
+     * return 0), which is why taking a substring from it silently drops a wide
+     * character whenever the selection edge lands on a leading cell.
+     */
+    private static int charIndexOwningCell(String s, int cellCol) {
+        if (StringUtils.isEmpty(s) || cellCol <= 0) return 0;
+        int cell = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (cell >= cellCol) return i;
+            cell += cellWidth(s.charAt(i));
+        }
+        return s.length();
+    }
+
+    /**
+     * Exclusive end char index for a selection ending at {@code cellCol} — the
+     * cell after the last one the selection covers, so a wide glyph whose
+     * leading cell is selected is included whole.
+     */
+    private static int charIndexAfterCell(String s, int cellCol) {
+        if (StringUtils.isEmpty(s) || cellCol < 0) return 0;
+        int cell = 0;
+        for (int i = 0; i < s.length(); i++) {
+            cell += cellWidth(s.charAt(i));
+            if (cell > cellCol) return i + 1;
+        }
+        return s.length();
+    }
+
+    /** Screen cells occupied by one char, matching Lanterna's width rules. */
+    private static int cellWidth(char c) {
+        return TerminalTextUtils.isCharCJK(c) ? 2 : 1;
     }
 
     /**

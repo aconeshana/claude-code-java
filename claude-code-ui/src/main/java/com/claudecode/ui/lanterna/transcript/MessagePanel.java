@@ -8,6 +8,7 @@ import com.claudecode.ui.MarkdownRenderer;
 import com.claudecode.ui.lanterna.components.AnsiToSegments;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.SGR;
+import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TerminalTextUtils;
 import com.googlecode.lanterna.TextCharacter;
@@ -236,6 +237,34 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
      * Snapshot of the last frame's display rows (post wordWrap).
      */
     private volatile List<String> lastFrameRowTexts = List.of();
+
+    /**
+     * Indices into {@link #lastFrameRowTexts} whose row continues the logical line
+     * above it, matching the released build's per-row wrap metadata. Selection
+     * needs this to decide whether a row's trailing spaces are content.
+     */
+    private volatile List<Boolean> lastFrameRowContinued = List.of();
+
+    /**
+     * Whether the given screen row is a soft-wrap continuation. Selection uses
+     * this the way the released build's cell buffer uses its per-row wrap
+     * metadata: a continuation row ends a logical line, so its trailing spaces
+     * are filler and get trimmed; a row that ends a hard break may have had a
+     * run split across the fold, so its trailing spaces are kept.
+     *
+     * <p>Screen coordinates are converted to viewport rows here, the same way
+     * {@link #toggleExpandableLogicalMessageAt} does, so the row identity agrees
+     * with what the mouse actually reports.
+     */
+    public boolean isContinuationScreenRow(int screenRow) {
+        TerminalPosition origin = getGlobalPosition();
+        TerminalSize size = getSize();
+        List<Boolean> snapshot = lastFrameRowContinued;
+        if (origin == null || size == null || snapshot.isEmpty()) return false;
+        int viewportRow = screenRow - origin.getRow();
+        if (viewportRow < 0 || viewportRow >= snapshot.size()) return false;
+        return snapshot.get(viewportRow);
+    }
 
     public void setSelection(Selection sel) {
         this.selection = sel;
@@ -1388,29 +1417,43 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
 
     public record StyledLine(List<Segment> segments, boolean isDivider, int wrapWidthInset,
                              ToolOutputProjection toolOutput,
-                             MarkdownProjection markdownProjection) {
+                             MarkdownProjection markdownProjection,
+                             boolean continued) {
         public StyledLine(List<Segment> segments, boolean isDivider) {
-            this(segments, isDivider, 0, null, null);
+            this(segments, isDivider, 0, null, null, false);
         }
         public StyledLine(List<Segment> segments, boolean isDivider, int wrapWidthInset) {
-            this(segments, isDivider, wrapWidthInset, null, null);
+            this(segments, isDivider, wrapWidthInset, null, null, false);
         }
         public StyledLine(String text, TextColor color, boolean isDivider) {
-            this(List.of(new Segment(text, color)), isDivider, 0, null, null);
+            this(List.of(new Segment(text, color)), isDivider, 0, null, null, false);
+        }
+
+        /**
+         * Whether this display row is the continuation of the logical line above
+         * it rather than the start of a new one. The released 2.1.236 cell buffer
+         * carries the same distinction in its per-row wrap metadata, and it is
+         * what decides whether a row's trailing spaces are content: a continuation
+         * row's padding is filler, but a hard-wrapped row's is preserved because a
+         * soft wrap may have split mid-run.
+         */
+        public StyledLine asContinuation() {
+            return new StyledLine(segments, isDivider, wrapWidthInset, toolOutput,
+                markdownProjection, true);
         }
         private static StyledLine toolOutput(String content, TextColor color, boolean showAll,
                                              String expandHint) {
             ToolOutputProjection projection =
                 new ToolOutputProjection(content, color, showAll, expandHint);
             return new StyledLine(List.of(new Segment(projection.content(), projection.color())),
-                false, 0, projection, null);
+                false, 0, projection, null, false);
         }
         private static StyledLine markdown(String markdown, MarkdownRenderer renderer,
                                            boolean showBullet) {
             MarkdownProjection projection = new MarkdownProjection(markdown, renderer, showBullet);
-            return new StyledLine(List.of(), false, 0, null, projection);
+            return new StyledLine(List.of(), false, 0, null, projection, false);
         }
-        static final StyledLine DIVIDER = new StyledLine(List.of(), true, 0, null, null);
+        static final StyledLine DIVIDER = new StyledLine(List.of(), true, 0, null, null, false);
 
         /** Plain text concatenation (for word-wrap width calculation). */
         public String text() {
@@ -1467,7 +1510,8 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
                 int charWidth = TerminalTextUtils.isCharDoubleWidth(c) ? 2 : 1;
                 if (columns > 0 && columns + charWidth > width) {
                     appendStyledChunk(row, chunk, source);
-                    rows.add(new StyledLine(List.copyOf(row), false));
+                    rows.add(new StyledLine(List.copyOf(row), false)
+                        .asContinuation());
                     row.clear();
                     columns = 0;
                     if (hangingIndent != null) {
@@ -1519,10 +1563,11 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
                 : new Segment(" ".repeat(prefixWidth), segments.getFirst().color(),
                     segments.getFirst().bgColor(), segments.getFirst().hyperlinkUrl(),
                     segments.getFirst().modifiers());
-            rows.add(new StyledLine(List.of(
+            StyledLine row = new StyledLine(List.of(
                 prefix,
                 new Segment(wrapped.get(i), bodyStyle.color(), bodyStyle.bgColor(),
-                    bodyStyle.hyperlinkUrl(), bodyStyle.modifiers())), false));
+                    bodyStyle.hyperlinkUrl(), bodyStyle.modifiers())), false);
+            rows.add(i == 0 ? row : row.asContinuation());
         }
         return rows;
     }
@@ -1556,10 +1601,11 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
                 : new Segment(Figures.RESULT_INDENT, segments.getFirst().color(),
                     segments.getFirst().bgColor(), segments.getFirst().hyperlinkUrl(),
                     segments.getFirst().modifiers());
-            rows.add(new StyledLine(List.of(
+            StyledLine row = new StyledLine(List.of(
                 prefix,
                 new Segment(wrapped.get(i), style.color(), style.bgColor(), style.hyperlinkUrl(),
-                    style.modifiers())), false));
+                    style.modifiers())), false);
+            rows.add(i == 0 ? row : row.asContinuation());
         }
         return rows;
     }
@@ -2057,10 +2103,13 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             // Done BEFORE the per-row draw loop so empty rows in [endRow, height)
             // map to "" through the snapshotVisibleRows.get(y) null guard.
             List<String> frameRows = new ArrayList<>(visibleRows.size());
+            List<Boolean> frameContinued = new ArrayList<>(visibleRows.size());
             for (StyledLine row : visibleRows) {
                 frameRows.add(row.isDivider() ? "" : row.text());
+                frameContinued.add(row.continued());
             }
             lastFrameRowTexts = frameRows;
+            lastFrameRowContinued = frameContinued;
 
             for (int y = 0; y < visibleRows.size(); y++) {
                 StyledLine row = visibleRows.get(y);

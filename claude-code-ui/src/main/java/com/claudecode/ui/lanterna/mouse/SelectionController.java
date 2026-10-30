@@ -89,9 +89,25 @@ public final class SelectionController {
      * Text of one screen row from the back buffer — the data source for
      * word/line select, Shift+arrow row math and clipboard copy. Public so
      * {@code WindowInputRouter}'s keyboard selection handlers share it.
+     *
+     * <p>The row's soft-wrap status comes from the panel because the back buffer
+     * does not record it: the released build trims trailing whitespace only on a
+     * row that ends a logical line, and keeps it on the row that continues into
+     * the next one.
      */
     public String screenRowText(int row) {
-        return SelectionAwareTextGUI.rowText(gui.getScreen(), row);
+        boolean continuation = messagePanel.isContinuationScreenRow(row);
+        return SelectionAwareTextGUI.rowText(gui.getScreen(), row, continuation);
+    }
+
+    /**
+     * Terminal width in columns — the row edge for Shift+Left/Right focus
+     * motion. 2.1.236's {@code moveSelectionFocus} wraps at {@code width - 1}
+     * rather than at the row's text length, so a selection can be dragged
+     * across a full-width line without the caret stalling on the last glyph.
+     */
+    public int screenWidth() {
+        return gui.getScreen().getTerminalSize().getColumns();
     }
 
     /**

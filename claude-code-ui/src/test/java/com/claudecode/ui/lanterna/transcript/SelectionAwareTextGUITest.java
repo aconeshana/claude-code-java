@@ -84,6 +84,39 @@ class SelectionAwareTextGUITest {
     }
 
     @Test
+    void aContinuationRowKeepsItsTrailingWhitespaceLikeTheReleasedBuild() throws Exception {
+        // 2.1.236 trims a row's trailing whitespace only when the next row is not
+        // a continuation of the same paragraph: a run may have been split across
+        // the fold, so those spaces belong to the text. The row here is narrower
+        // than the terminal, so the trimmed read stops at the last glyph and the
+        // continuation read carries the spaces past it.
+        Env e = env(20, 4);
+        put(e.screen, 0, 0, "AAAA    ");
+
+        String trimmed = SelectionAwareTextGUI.rowText(e.screen, 0, false);
+        String continued = SelectionAwareTextGUI.rowText(e.screen, 0, true);
+
+        assertEquals("AAAA", trimmed, "a row that ends the paragraph is trimmed");
+        assertEquals(trimmed, continued.stripTrailing(),
+            "the two reads differ only in trailing whitespace");
+        assertEquals(20, continued.length(),
+            "the continuation read keeps the row's cells, spaces included");
+        assertTrue(Strings.CS.startsWith(continued, trimmed),
+            "the continuation read keeps everything the trimmed read kept");
+    }
+
+    @Test
+    void theSingleArgumentOverloadStillTrimsTrailingPadding() throws Exception {
+        // Callers without wrap metadata keep the pre-existing behaviour, so the
+        // continuation rule can only ever be applied by a caller that knows the
+        // row's wrap status.
+        Env e = env(20, 4);
+        put(e.screen, 0, 0, "AAAA    ");
+
+        assertEquals("AAAA", SelectionAwareTextGUI.rowText(e.screen, 0));
+    }
+
+    @Test
     void selectedTextAcrossRowsUsesScreenRows() throws Exception {
         Env e = env(20, 4);
         put(e.screen, 0, 0, "first row");
@@ -93,6 +126,77 @@ class SelectionAwareTextGUITest {
         sel.updateSelection(5, 1);          // focus past "second"
         String text = sel.getSelectedText(r -> SelectionAwareTextGUI.rowText(e.screen, r));
         assertEquals("row\nsecond", text);
+    }
+
+    // ── shift-arrow focus motion across rows ────────────────────────────────
+
+    @Test
+    void shiftRightWrapsToTheNextRowSoNoCellIsDropped() throws Exception {
+        Env e = env(10, 4);
+        put(e.screen, 0, 0, "ab");            // row 0 holds "ab", edge is col 9
+        put(e.screen, 0, 1, "cd");
+        Selection sel = new Selection();
+        e.gui.wireSelection(sel, _ -> {});
+        sel.startSelection(8, 0);
+        sel.updateSelection(8, 0);
+
+        sel.moveFocus(Selection.FocusDir.RIGHT, r -> SelectionAwareTextGUI.rowText(e.screen, r),
+            e.screen.getTerminalSize().getColumns());
+
+        assertEquals(new Selection.Point(9, 0), sel.getFocusOrAnchor(),
+            "inside the row the caret advances by one column");
+        sel.moveFocus(Selection.FocusDir.RIGHT, r -> SelectionAwareTextGUI.rowText(e.screen, r),
+            e.screen.getTerminalSize().getColumns());
+        assertEquals(new Selection.Point(0, 1), sel.getFocusOrAnchor(),
+            "at the terminal edge the caret wraps to the next row instead of stalling");
+
+        Selection.Bounds b = sel.getSelectionBounds();
+        assertEquals(0, b.start().row(), "the selection still starts on the anchor's row");
+        assertEquals(1, b.end().row(), "the wrapped focus reached the second row");
+        assertEquals(0, b.end().col());
+        // The anchor sits at cell 8 of a row whose text is only "ab", so the
+        // first selected row contributes nothing; the wrapped focus lands on
+        // cell 0 of row 1, which is inclusive — hence just "c".
+        assertEquals("\nc", sel.getSelectedText(
+            r -> SelectionAwareTextGUI.rowText(e.screen, r)));
+    }
+
+    @Test
+    void shiftLeftWrapsToThePreviousRowLastColumn() throws Exception {
+        Env e = env(10, 4);
+        put(e.screen, 0, 1, "cd");
+        Selection sel = new Selection();
+        e.gui.wireSelection(sel, _ -> {});
+        sel.startSelection(0, 1);
+        sel.updateSelection(0, 1);
+
+        sel.moveFocus(Selection.FocusDir.LEFT, r -> SelectionAwareTextGUI.rowText(e.screen, r),
+            e.screen.getTerminalSize().getColumns());
+
+        assertEquals(new Selection.Point(9, 0), sel.getFocusOrAnchor(),
+            "column zero wraps back to the previous row's last column");
+    }
+
+    @Test
+    void aWrappedRowSelectionHighlightsTheWholeRowIncludingTheEdge() throws Exception {
+        Env e = env(10, 4);
+        put(e.screen, 0, 0, "abcdefghij");    // a full-width row
+        Selection sel = new Selection();
+        e.gui.wireSelection(sel, _ -> {});
+        sel.startSelection(7, 0);
+        sel.updateSelection(7, 0);
+        sel.moveFocus(Selection.FocusDir.LINE_END, r -> SelectionAwareTextGUI.rowText(e.screen, r),
+            e.screen.getTerminalSize().getColumns());
+        e.gui.updateScreen();
+
+        // Every cell from the anchor through the terminal's last column must be
+        // highlighted; before the wrap fix the caret stalled at the text length.
+        for (int col = 7; col < 10; col++) {
+            assertTrue(e.term.getBufferCharacter(col, 0).getModifiers().contains(SGR.REVERSE),
+                "cell " + col + " of the anchored row must be inside the highlight");
+        }
+        assertFalse(e.term.getBufferCharacter(6, 0).getModifiers().contains(SGR.REVERSE),
+            "a cell before the anchor must stay unhighlighted");
     }
 
     // ── mouse interception ──────────────────────────────────────────────────

@@ -353,9 +353,30 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
     }
 
     /**
-     * Extract one display row's text from the screen back buffer.
+     * Extract one display row's text from the screen back buffer, trimming
+     * trailing whitespace.
+     *
+     * <p>This overload keeps the trimming behaviour callers had before wrap
+     * metadata was available. Callers that can tell a hard-wrapped row from a
+     * soft-wrap continuation should use {@link #rowText(Screen, int, boolean)}
+     * instead: a row that continues into the next one keeps its trailing
+     * whitespace in the released build.
      */
     public static String rowText(Screen screen, int row) {
+        return rowText(screen, row, false);
+    }
+
+    /**
+     * Extract one display row's text from the screen back buffer.
+     *
+     * <p>{@code isContinuation} mirrors the released 2.1.236 rule: trailing
+     * whitespace is stripped only on a row that ends a logical line. A row whose
+     * content continues into the next one may have had a run split across the
+     * fold by the wrapper, so its trailing spaces are part of that run and must
+     * survive. The back buffer alone cannot tell the two apart — it carries no
+     * wrap metadata — which is why the caller supplies the fact.
+     */
+    public static String rowText(Screen screen, int row, boolean isContinuation) {
         TerminalSize size = screen.getTerminalSize();
         if (row < 0 || row >= size.getRows()) return "";
         StringBuilder sb = new StringBuilder(size.getColumns());
@@ -365,6 +386,7 @@ public class SelectionAwareTextGUI extends MultiWindowTextGUI {
             sb.append(tc.getCharacterString());
             if (tc.isDoubleWidth()) col++;   // skip the padding cell
         }
-        return sb.toString().stripTrailing();
+        String text = sb.toString();
+        return isContinuation ? text : text.stripTrailing();
     }
 }

@@ -5,7 +5,6 @@ import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.gui2.WindowListener;
 import com.googlecode.lanterna.input.KeyStroke;
-import com.googlecode.lanterna.input.KeyType;
 import com.claudecode.keybindings.KeybindingResolver;
 import com.claudecode.keybindings.KeystrokeParser;
 import com.claudecode.keybindings.UserKeybindingsStore;
@@ -88,8 +87,12 @@ public final class WindowInputRouter implements WindowListener {
                 KeybindingResolver.ResolveResult r =
                     keybindingsStore.currentResolver().resolve(List.of("Scroll"), ks);
                 if (r instanceof KeybindingResolver.ResolveResult.Match(String action)) {
-                    if (dispatchScroll(action)) deliver.set(false);
-                    return; // consume the matched key either way
+                    // A Scroll-context match owns the key whether or not this
+                    // build knows the action name, so it is consumed here and
+                    // never reaches the hardcoded switch below.
+                    dispatchScroll(action);
+                    deliver.set(false);
+                    return;
                 }
                 if (r instanceof KeybindingResolver.ResolveResult.Unbound) {
                     deliver.set(false); // user explicitly disabled this binding
@@ -104,7 +107,7 @@ public final class WindowInputRouter implements WindowListener {
             case HOME       -> {
                 if (key.isShiftDown() && selection.hasSelection()) {
                     selection.moveFocus(Selection.FocusDir.LINE_START,
-                        selectionController::screenRowText);
+                        selectionController::screenRowText, selectionController.screenWidth());
                     messagePanel.invalidate();
                     selectionController.autoCopyIfEnabled();
                     deliver.set(false);
@@ -116,7 +119,7 @@ public final class WindowInputRouter implements WindowListener {
             case END        -> {
                 if (key.isShiftDown() && selection.hasSelection()) {
                     selection.moveFocus(Selection.FocusDir.LINE_END,
-                        selectionController::screenRowText);
+                        selectionController::screenRowText, selectionController.screenWidth());
                     messagePanel.invalidate();
                     selectionController.autoCopyIfEnabled();
                     deliver.set(false);
@@ -171,29 +174,14 @@ public final class WindowInputRouter implements WindowListener {
                 }
             }
             case ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ARROW_DOWN -> {
-// Shift+Arrow extends the selection focus by one cell/row.
-
-                // when a selection is already active — otherwise
-                // arrows fall through to InputPanel (history nav,
-                // cursor move, vim hjkl, etc).
+                // Shift+Arrow extends the selection focus by one cell/row when a
+                // selection is already active — otherwise arrows fall through to
+                // InputPanel (history nav, cursor move, vim hjkl, etc).
                 if (key.isShiftDown() && selection.hasSelection()) {
-// Shift+Alt+Left/Right = word-jump extension.
-                    boolean wordJump = key.isAltDown()
-                        && (key.getKeyType() == KeyType.ARROW_LEFT
-                         || key.getKeyType() == KeyType.ARROW_RIGHT);
-                    Selection.FocusDir dir = switch (key.getKeyType()) {
-                        case ARROW_LEFT  -> wordJump
-                            ? Selection.FocusDir.WORD_LEFT
-                            : Selection.FocusDir.LEFT;
-                        case ARROW_RIGHT -> wordJump
-                            ? Selection.FocusDir.WORD_RIGHT
-                            : Selection.FocusDir.RIGHT;
-                        case ARROW_UP    -> Selection.FocusDir.UP;
-                        case ARROW_DOWN  -> Selection.FocusDir.DOWN;
-                        default          -> null;
-                    };
+                    Selection.FocusDir dir = arrowFocusDir(key);
                     if (dir != null) {
-                        selection.moveFocus(dir, selectionController::screenRowText);
+                        selection.moveFocus(dir, selectionController::screenRowText,
+                            selectionController.screenWidth());
                         messagePanel.invalidate();
                         selectionController.autoCopyIfEnabled();
                         deliver.set(false);
@@ -205,27 +193,41 @@ public final class WindowInputRouter implements WindowListener {
     }
 
     /**
-     * Fire a resolved Scroll-context action. Returns {@code true} when the key
-     * was consumed. Every known action routes to the same call the hardcoded
-     * switch would have made, so default behaviour is unchanged; unsupported
-     * actions are consumed (no-op) so they don't leak into the focused panel.
+     * Maps a shift-arrow to the selection direction it extends, or {@code null}
+     * when the key is not an arrow.
+     *
+     * <p>Shift+Alt+Left/Right is a word jump; Alt is ignored for Up/Down.
      */
-    private boolean dispatchScroll(String action) {
+    private static Selection.FocusDir arrowFocusDir(KeyStroke key) {
+        boolean wordJump = key.isAltDown();
+        return switch (key.getKeyType()) {
+            case ARROW_LEFT  -> wordJump ? Selection.FocusDir.WORD_LEFT : Selection.FocusDir.LEFT;
+            case ARROW_RIGHT -> wordJump ? Selection.FocusDir.WORD_RIGHT : Selection.FocusDir.RIGHT;
+            case ARROW_UP    -> Selection.FocusDir.UP;
+            case ARROW_DOWN  -> Selection.FocusDir.DOWN;
+            default          -> null;
+        };
+    }
+
+    /**
+     * Fire a resolved Scroll-context action. The caller already owns the key —
+     * any Scroll-context match consumes it — so this is called for its effect
+     * only. Every known action routes to the same call the hardcoded switch
+     * would have made, so default behaviour is unchanged; an unsupported action
+     * name logs and does nothing rather than leaking into the focused panel.
+     */
+    private void dispatchScroll(String action) {
         switch (action) {
-            case "scroll:pageUp"   -> { messagePanel.pageUp(); return true; }
-            case "scroll:pageDown" -> { messagePanel.pageDown(); return true; }
-            case "scroll:lineUp"   -> { messagePanel.scrollUp(1); return true; }
-            case "scroll:lineDown" -> { messagePanel.scrollDown(1); return true; }
-            case "scroll:top"      -> { messagePanel.scrollToTop(); return true; }
-            case "scroll:bottom"   -> { messagePanel.scrollToBottom(); return true; }
+            case "scroll:pageUp"   -> messagePanel.pageUp();
+            case "scroll:pageDown" -> messagePanel.pageDown();
+            case "scroll:lineUp"   -> messagePanel.scrollUp(1);
+            case "scroll:lineDown" -> messagePanel.scrollDown(1);
+            case "scroll:top"      -> messagePanel.scrollToTop();
+            case "scroll:bottom"   -> messagePanel.scrollToBottom();
             case "selection:copy"  -> {
                 if (selection.hasSelection()) selectionController.copyToClipboard();
-                return true;
             }
-            default -> {
-                log.debug("[keybindings] unsupported scroll action: {}", action);
-                return true;
-            }
+            default -> log.debug("[keybindings] unsupported scroll action: {}", action);
         }
     }
 }
