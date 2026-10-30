@@ -24,6 +24,24 @@ group = "com.claudecode"
 // every other build derives it from `git describe` (see buildSrc ProjectVersion.kt).
 version = providers.projectVersion().get()
 
+/**
+ * A set of test classes that must run in their own JVM.
+ *
+ * @param taskName the Test task to register
+ * @param description what the group needs isolating for
+ * @param classNames fully-qualified test class names in the group
+ * @param configHome when set, a build-directory name whose path is exported as
+ *   CLAUDE_CONFIG_DIR for the group, so providers bound at class-load time
+ *   (notably ClaudePaths) resolve against an empty configuration tree instead
+ *   of the developer's real one
+ */
+data class IsolatedGroup(
+    val taskName: String,
+    val description: String,
+    val classNames: List<String>,
+    val configHome: String? = null,
+)
+
 subprojects {
     group = rootProject.group
     version = rootProject.version
@@ -227,33 +245,74 @@ subprojects {
         environment("ANTHROPIC_DEFAULT_HAIKU_MODEL", "")
     }
 
-    val isolatedTestClasses = when (name) {
-        "claude-code-runtime" -> listOf("com.claudecode.runtime.query.QueryEngineGitStatus197Test")
+    // Each entry becomes its own Test task in a fresh JVM, so classes that mutate
+// process-wide state (System.in/out, system properties, ClaudePaths' class-load
+// snapshots) never observe one another. A group that also needs a hermetic
+// configuration home declares one via `configHome`.
+    val isolatedGroups = when (name) {
+        "claude-code-runtime" -> listOf(
+            IsolatedGroup("isolatedStatefulTest",
+                "Tests that own process-wide mutable state.",
+                listOf("com.claudecode.runtime.query.QueryEngineGitStatus197Test")),
+            // ClaudePaths binds CLAUDE_CONFIG_DIR into static finals at class-load
+            // time, so reading a user-scoped agent/skill registry can only be made
+            // hermetic by giving the whole JVM an empty configuration home.
+            IsolatedGroup("isolatedUserConfigTest",
+                "Tests that read user-scoped configuration.",
+                listOf("com.claudecode.runtime.sessionlink.GoJavaSessionLinkInteropTest"),
+                configHome = "isolated-claude-config-runtime"),
+        )
         "claude-code-cli" -> listOf(
-            "com.claudecode.cli.SdkControlBrokerTest",
-            "com.claudecode.commands.impl.context.CompactCommandTest",
+            IsolatedGroup("isolatedStatefulTest",
+                "Tests that own process-wide mutable state.",
+                listOf(
+                    "com.claudecode.cli.SdkControlBrokerTest",
+                    "com.claudecode.commands.impl.context.CompactCommandTest",
+                )),
+            // Reports the loaded skills/slash-commands/agents in its init frame, so
+            // a developer's real ~/.claude content leaks into the assertions unless
+            // the JVM is given an empty configuration home. It also restores
+            // System.in/System.property state, which is why it must not share a JVM
+            // with the group above.
+            IsolatedGroup("isolatedUserConfigTest",
+                "Tests that read user-scoped configuration.",
+                listOf("com.claudecode.cli.ClaudeCodeCliTest"),
+                configHome = "isolated-claude-config-cli"),
         )
         "claude-code-tools" -> listOf(
-            "com.claudecode.tools.tasks.teammate.TeammateLeaderCoordinatorTest",
+            IsolatedGroup("isolatedStatefulTest",
+                "Tests that own process-wide mutable state.",
+                listOf("com.claudecode.tools.tasks.teammate.TeammateLeaderCoordinatorTest")),
         )
         else -> emptyList()
     }
     val mainTest = tasks.named<Test>("test") {
         include("**/*Test.class", "**/*Tests.class", "**/*Properties.class")
-        isolatedTestClasses.forEach { exclude("${it.replace('.', '/')}.class") }
+        isolatedGroups.flatMap { it.classNames }
+            .forEach { exclude("${it.replace('.', '/')}.class") }
     }
-    if (isolatedTestClasses.isNotEmpty()) {
+    if (isolatedGroups.isNotEmpty()) {
         val sourceSets = extensions.getByType<SourceSetContainer>()
-        val isolatedStatefulTest = tasks.register<Test>("isolatedStatefulTest") {
-            description = "Runs tests that own process-wide mutable state in a fresh JVM."
-            group = "verification"
-            testClassesDirs = sourceSets.named("test").get().output.classesDirs
-            classpath = sourceSets.named("test").get().runtimeClasspath
-            isolatedTestClasses.forEach { include("${it.replace('.', '/')}.class") }
-            filter.isFailOnNoMatchingTests = false
-            shouldRunAfter(mainTest)
+        isolatedGroups.forEach { isolated ->
+            val groupTask = tasks.register<Test>(isolated.taskName) {
+                description = "${isolated.description} Runs in a fresh JVM."
+                group = "verification"
+                testClassesDirs = sourceSets.named("test").get().output.classesDirs
+                classpath = sourceSets.named("test").get().runtimeClasspath
+                isolated.classNames.forEach { include("${it.replace('.', '/')}.class") }
+                filter.isFailOnNoMatchingTests = false
+                shouldRunAfter(mainTest)
+                isolated.configHome?.let { homeName ->
+                    val home = layout.buildDirectory.dir(homeName).get().asFile
+                    // Without this, the ~/.claude skills, agents and slash commands
+                    // of whoever runs the build leak into the assertions: a machine
+                    // with none of them passes while a real one fails.
+                    environment("CLAUDE_CONFIG_DIR", home.absolutePath)
+                    doFirst { home.mkdirs() }
+                }
+            }
+            mainTest.configure { finalizedBy(groupTask) }
         }
-        mainTest.configure { finalizedBy(isolatedStatefulTest) }
     }
 
     tasks.withType<Jar>().configureEach {

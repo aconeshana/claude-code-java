@@ -6,7 +6,6 @@ import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.UserMessage;
-import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;

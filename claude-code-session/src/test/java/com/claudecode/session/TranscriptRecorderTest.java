@@ -72,8 +72,7 @@ class TranscriptRecorderTest {
 
         recorder.recordTranscript(sessionId, msg);
 
-        // Give the virtual thread time to complete
-        Thread.sleep(500);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         Path sessionFile = sessionManager.getSessionFile(sessionId);
         List<Message> messages = storage.readMessages(sessionFile);
@@ -273,8 +272,7 @@ class TranscriptRecorderTest {
             String sessionId = "nonexistent-" + UUID.randomUUID();
             UserMessage msg = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("test"));
             recorder.recordTranscript(sessionId, msg);
-            // Give time for async write
-            Thread.sleep(500);
+            assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
         });
     }
 
@@ -437,8 +435,7 @@ class TranscriptRecorderTest {
             recorder.recordTranscript(sessionId, msg);
         }
 
-        // Wait for all virtual threads to complete
-        Thread.sleep(2000);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         Path sessionFile = sessionManager.getSessionFile(sessionId);
         List<Message> messages = storage.readMessages(sessionFile);
@@ -606,9 +603,9 @@ class TranscriptRecorderTest {
         String sessionId = sessionManager.createSession();
         recorder.recordTranscript(sessionId,
             new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("hi")));
-        Thread.sleep(100);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
         recorder.recordTranscript(sessionId, MessageFactory.createCompactBoundaryMessage("manual", 100));
-        Thread.sleep(200);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         Path sessionFile = sessionManager.getSessionFile(sessionId);
         List<Message> messages = storage.readMessages(sessionFile);
@@ -623,9 +620,9 @@ class TranscriptRecorderTest {
         String sessionId = sessionManager.createSession();
         UserMessage msg = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("once"));
         recorder.recordTranscript(sessionId, msg);
-        Thread.sleep(100);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
         recorder.recordTranscript(sessionId, msg); // identical uuid
-        Thread.sleep(200);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         Path sessionFile = sessionManager.getSessionFile(sessionId);
         assertEquals(1, storage.readMessages(sessionFile).size());
@@ -672,7 +669,7 @@ class TranscriptRecorderTest {
         // Only the boundary is recorded async (like compact's new marker).
         recorder.recordTranscript(sessionId,
             new SystemMessage(UUID.randomUUID().toString(), "compact_boundary", "info", "compacted"));
-        Thread.sleep(300);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         List<String> lines = Files.readAllLines(sessionFile);
         assertEquals(3, lines.size());
@@ -872,7 +869,7 @@ class TranscriptRecorderTest {
             new AssistantMessage(assistantUuid,
                 AssistantContent.of(List.of(new TextBlock("OK")))));
         recorder.recordLastPrompt(sessionId, "hello");
-        Thread.sleep(500);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         List<String> lines = Files.readAllLines(sessionManager.getSessionFile(sessionId));
         assertEquals(5, lines.size());
@@ -1313,7 +1310,7 @@ class TranscriptRecorderTest {
 
         recorder.recordLastPrompt(sessionId, "resume prompt");
         recorder.recordMode(sessionId, "normal");
-        Thread.sleep(500);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         List<String> lines = Files.readAllLines(sessionManager.getSessionFile(sessionId));
         // seed user row + last-prompt + mode
