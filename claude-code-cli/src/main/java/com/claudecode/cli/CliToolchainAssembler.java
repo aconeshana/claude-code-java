@@ -354,6 +354,12 @@ final class CliToolchainAssembler {
                 agent.setSubagentMaxDepthSupplier(RuntimeSettings::loadSubagentMaxDepth);
                 agent.setTeammateHookDispatcher(hookEngine);
                 hookEngine.llm().bindAgentFactory(agent.subAgentFactory());
+                // --unrestricted: the Agent tool's factory drives every delegated turn, so the
+                // contract must reach it here; workflowSubAgents has its own setter call above.
+                if (agent.subAgentFactory() instanceof DefaultSubAgentFactory defaultSubAgentFactory) {
+                    defaultSubAgentFactory.setUnrestricted(
+                        workspace.launch().request().model().unrestricted());
+                }
             });
         // QuerySessionSpec snapshots the model-visible tool definitions during
         // construction, before CliEngineAssembler can bind its live model
@@ -396,6 +402,9 @@ final class CliToolchainAssembler {
             () -> CliPromptInventoryAssembler.guideSettings(System.getProperty("user.dir")));
         workflowSubAgents.setSubAgentModelPolicy(subAgentModelPolicy);
         workflowSubAgents.setQuerySessionFactory(querySessionFactory);
+        // --unrestricted: sub-agents inherit the parent's delivery contract so a delegated turn
+        // does not fall back to the restricted prompt mid-task.
+        workflowSubAgents.setUnrestricted(workspace.launch().request().model().unrestricted());
         WorkflowRuntime workflowRuntime = new WorkflowRuntime(
             new SubAgentWorkflowExecutor(workflowSubAgents, permissionGate), workflowCatalog);
         toolRegistry.register(new WorkflowTool(workflowRuntime, workflowCatalog, TaskRegistry.global(),

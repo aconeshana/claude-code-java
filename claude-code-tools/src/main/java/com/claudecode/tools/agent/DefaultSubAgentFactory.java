@@ -41,6 +41,7 @@ import com.claudecode.tools.tasks.teammate.TeammateContextHolder;
 import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.prompt.SystemPromptRuntime;
+import com.claudecode.core.prompt.UnrestrictedPrompt;
 import com.claudecode.core.prompt.EnvInfoSection;
 import com.claudecode.core.util.AgentId;
 import com.claudecode.core.message.SkillListingEntry;
@@ -100,6 +101,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     private volatile boolean usingThirdPartyServices;
     private volatile Supplier<JsonNode> effectiveSettingsSupplier;
     private volatile SubAgentModelPolicy modelPolicy = SubAgentModelPolicy.permissive();
+    private volatile boolean unrestricted;
 
     @Override
     public boolean supportsFirstModelRequestSignal() {
@@ -290,6 +292,18 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     /** Installs the shared session policy used by Agent and Workflow entry points. */
     public void setSubAgentModelPolicy(SubAgentModelPolicy policy) {
         modelPolicy = policy != null ? policy : SubAgentModelPolicy.permissive();
+    }
+
+    /**
+     * Inheritance for {@code --unrestricted}. A delegated turn must keep the parent's delivery
+     * contract: a sub-agent that silently falls back to the restricted prompt would refuse
+     * mid-task, after the parent has already committed to the work. Sub-agent prompts are
+     * synthesized here rather than assembled by {@code SystemPromptService}, so the contract
+     * block is appended directly in {@link #buildSystemPrompt}. Sub-agent prompts never carried
+     * the cyber-risk instruction, so there is nothing to omit on this path.
+     */
+    public void setUnrestricted(boolean unrestricted) {
+        this.unrestricted = unrestricted;
     }
 
     /**
@@ -1459,6 +1473,11 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             String cwd = resolveWorkingDirectory(request);
             StringBuilder guide = new StringBuilder(ClaudeCodeGuideAgentPrompt.build(
                 usingThirdPartyServices, buildClaudeCodeGuideContext(request)));
+            // --unrestricted: same inheritance as the generic path below — the guide agent's
+            // dedicated body is its persona, so the contract goes directly behind it.
+            if (unrestricted) {
+                guide.append("\n\n").append(UnrestrictedPrompt.contractBlock());
+            }
             // getSystemPrompt supplies the guide-specific body; runAgent then
             // applies the same notes/environment enhancement as every other
             // sub-agent. Returning early here used to drop that shared tail.
@@ -1503,6 +1522,13 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                 sb.append(resolved.whenToUse()).append("\n\n");
             }
             sb.append(SystemPromptConstants.DEFAULT_AGENT_PROMPT);
+        }
+
+        // --unrestricted: append the delivery contract directly behind the persona, matching the
+        // main loop's placement in SystemPromptService. Sub-agent prompts are synthesized here
+        // rather than assembled by SystemPromptService, so this is the only injection point.
+        if (unrestricted) {
+            sb.append("\n\n").append(UnrestrictedPrompt.contractBlock());
         }
 
         if (resolved != null && resolved.memory() != null && !StringUtils.isBlank(resolved.memory())) {

@@ -93,6 +93,10 @@
     },
 
     { "entry": "model" },
+    {
+      "entry": "unrestricted",
+      "note": "Java-only flag. Startup must load the bundled unrestricted prompt resources; a packaging fault would surface as a missing-resource abort before the first turn, which is exactly what this process-level run proves."
+    },
     { "entry": "model-m-opus" },
     { "entry": "effort" },
     { "entry": "thinking" },

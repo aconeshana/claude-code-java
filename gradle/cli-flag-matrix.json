@@ -261,6 +261,26 @@
       "note": null
     },
     {
+      "id": "unrestricted",
+      "axis": "H",
+      "axisName": "system prompt assembly",
+      "officialSpec": null,
+      "officialVisibility": "java-only",
+      "officialArity": "none",
+      "javaOption": "--unrestricted",
+      "argv": [
+        "--unrestricted"
+      ],
+      "expect": {
+        "model.unrestricted": true
+      },
+      "expectResidual": [],
+      "expectThrows": null,
+      "expectParseFlag": null,
+      "status": "ALIGNED",
+      "note": "Java-only addition with no 2.1.197 counterpart: swaps the security-testing instruction for the unrestricted delivery contract. Prompt-shaping only; it is orthogonal to PermissionOptions."
+    },
+    {
       "id": "max-tokens",
       "axis": "G",
       "axisName": "budget & limits",

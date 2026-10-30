@@ -38,7 +38,14 @@ public record SystemPromptConfig(
     
 
 
-    List<String> simpleSystemPromptModelPatterns
+    List<String> simpleSystemPromptModelPatterns,
+
+    /**
+     * Unrestricted prompt mode ({@code --unrestricted}): omit the cyber-risk instruction and
+     * append the delivery contract from {@link UnrestrictedPrompt}. Defaults to false, which
+     * reproduces the official prompt byte-for-byte.
+     */
+    boolean unrestricted
 ) {
 
     public SystemPromptConfig {
@@ -75,6 +82,7 @@ public record SystemPromptConfig(
         private String claudeMdContent;
         private Path memoryDir;
         private List<String> simpleSystemPromptModelPatterns;
+        private boolean unrestricted;
 
         private Builder() {}
 
@@ -100,13 +108,15 @@ public record SystemPromptConfig(
             return this;
         }
 
+        public Builder unrestricted(boolean v) { this.unrestricted = v; return this; }
+
         public SystemPromptConfig build() {
             return new SystemPromptConfig(
                 modelId, apiProvider, workingDirectory, isGitRepo, isWorktree,
                 additionalWorkingDirectories, enabledTools, mcpInstructions,
                 outputStyle, languagePreference, scratchpadDir,
                 isNonInteractiveSession, hasSkills, claudeMdPaths, customOverride,
-                claudeMdContent, memoryDir, simpleSystemPromptModelPatterns);
+                claudeMdContent, memoryDir, simpleSystemPromptModelPatterns, unrestricted);
         }
     }
 }

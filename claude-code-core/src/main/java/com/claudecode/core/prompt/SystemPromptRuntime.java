@@ -28,7 +28,13 @@ public record SystemPromptRuntime(
      */
     String agentListingMessage,
     /** Model substrings forced onto the Harness profile by rollout state. */
-    List<String> simpleSystemPromptModelPatterns
+    List<String> simpleSystemPromptModelPatterns,
+    /**
+     * Unrestricted prompt mode ({@code --unrestricted}): omit the cyber-risk instruction and
+     * append the delivery contract from {@link UnrestrictedPrompt}. Inherited by sub-agents so
+     * a delegated turn does not fall back to the restricted prompt mid-task.
+     */
+    boolean unrestricted
 ) {
     public SystemPromptRuntime {
         mcpInstructions = mcpInstructions != null ? List.copyOf(mcpInstructions) : List.of();
@@ -44,7 +50,7 @@ public record SystemPromptRuntime(
                                List<McpInstructionEntry> mcpInstructions,
                                List<String> additionalWorkingDirectories, boolean isWorktree) {
         this(languagePreference, hasSkills, outputStyle, isNonInteractiveSession,
-            mcpInstructions, additionalWorkingDirectories, isWorktree, null, null, List.of());
+            mcpInstructions, additionalWorkingDirectories, isWorktree, null, null, List.of(), false);
     }
 
     /** Pre-profile-rollout shape retained for existing callers. */
@@ -55,12 +61,26 @@ public record SystemPromptRuntime(
                                Path memoryDir, String agentListingMessage) {
         this(languagePreference, hasSkills, outputStyle, isNonInteractiveSession,
             mcpInstructions, additionalWorkingDirectories, isWorktree, memoryDir,
-            agentListingMessage, List.of());
+            agentListingMessage, List.of(), false);
+    }
+
+    /**
+     * Pre-unrestricted shape retained for existing callers.
+     */
+    public SystemPromptRuntime(String languagePreference, boolean hasSkills,
+                               OutputStyleConfig outputStyle, boolean isNonInteractiveSession,
+                               List<McpInstructionEntry> mcpInstructions,
+                               List<String> additionalWorkingDirectories, boolean isWorktree,
+                               Path memoryDir, String agentListingMessage,
+                               List<String> simpleSystemPromptModelPatterns) {
+        this(languagePreference, hasSkills, outputStyle, isNonInteractiveSession,
+            mcpInstructions, additionalWorkingDirectories, isWorktree, memoryDir,
+            agentListingMessage, simpleSystemPromptModelPatterns, false);
     }
 
     /** All-defaults instance — engines wired without a supplier (tests, workers). */
     public static SystemPromptRuntime empty() {
         return new SystemPromptRuntime(null, false, null, false, List.of(), List.of(),
-            false, null, null, List.of());
+            false, null, null, List.of(), false);
     }
 }

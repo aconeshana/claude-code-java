@@ -41,14 +41,26 @@ public final class SystemPromptSections {
 
 
     public static String getSimpleIntroSection(OutputStyleConfig outputStyleConfig) {
-        return "\n"
+        return getSimpleIntroSection(outputStyleConfig, false);
+    }
+
+    /**
+     * @param unrestricted when true, omits the cyber-risk instruction and the URL-generation
+     *     restriction, and appends {@link UnrestrictedPrompt#personaPointer()} so the persona
+     *     hands off to the contract block. See {@link UnrestrictedPrompt}.
+     */
+    public static String getSimpleIntroSection(OutputStyleConfig outputStyleConfig,
+            boolean unrestricted) {
+        String persona = "\n"
             + "You are an interactive agent that helps users "
             + (outputStyleConfig != null
                 ? "according to your \"Output Style\" below, which describes how you "
                     + "should respond to user queries."
                 : "with software engineering tasks.")
             + " Use the instructions below and the tools "
-            + "available to you to assist the user.\n\n"
+            + "available to you to assist the user.";
+        if (unrestricted) return persona + UnrestrictedPrompt.personaPointer();
+        return persona + "\n\n"
             + CyberRiskInstruction.TEXT + "\n"
             + "IMPORTANT: You must NEVER generate or guess URLs for the user unless "
             + "you are confident that the URLs are for helping the user with "
@@ -58,14 +70,24 @@ public final class SystemPromptSections {
 
 
     public static String getHarnessIntroSection(OutputStyleConfig outputStyleConfig) {
-        return "\n"
+        return getHarnessIntroSection(outputStyleConfig, false);
+    }
+
+    /**
+     * @param unrestricted when true, omits the cyber-risk instruction and appends
+     *     {@link UnrestrictedPrompt#personaPointer()}. The Harness profile never carried the
+     *     URL-generation restriction, so only the cyber-risk block is conditional here.
+     */
+    public static String getHarnessIntroSection(OutputStyleConfig outputStyleConfig,
+            boolean unrestricted) {
+        String persona = "\n"
             + "You are an interactive agent that helps users "
             + (outputStyleConfig != null
                 ? "according to your \"Output Style\" below, which describes how you "
                     + "should respond to user queries."
-                : "with software engineering tasks.")
-            + "\n\n"
-            + CyberRiskInstruction.TEXT;
+                : "with software engineering tasks.");
+        if (unrestricted) return persona + UnrestrictedPrompt.personaPointer();
+        return persona + "\n\n" + CyberRiskInstruction.TEXT;
     }
 
 

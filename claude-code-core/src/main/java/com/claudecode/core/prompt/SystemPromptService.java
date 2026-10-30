@@ -40,6 +40,7 @@ public class SystemPromptService {
         SystemPromptProfileResolver.Profile profile =
             SystemPromptProfileResolver.resolve(config);
         boolean harnessProfile = profile == SystemPromptProfileResolver.Profile.HARNESS;
+        boolean unrestricted = config.unrestricted();
 
 
         // Harness: lean intro → Harness → [boundary] → Session guidance →
@@ -48,16 +49,23 @@ public class SystemPromptService {
         //          tools → Tone → Text output → [boundary] → Session guidance
         //          → auto memory → Environment → Language → MCP/Scratchpad →
         //          Context management.
+        //
+        // Unrestricted mode appends the delivery contract directly behind the persona section
+        // (the Harness section, or the Long intro), so the contract reads as the persona's
+        // continuation; see UnrestrictedPrompt. It lands before the dynamic boundary marker so
+        // it stays in the cacheable static block.
 
 
 
 
         List<String> parts = new ArrayList<>();
         if (harnessProfile) {
-            addIfNotNull(parts, SystemPromptSections.getHarnessIntroSection(config.outputStyle()));
+            addIfNotNull(parts, SystemPromptSections.getHarnessIntroSection(config.outputStyle(), unrestricted));
             addIfNotNull(parts, SystemPromptSections.getHarnessSection(config.modelId()));
+            if (unrestricted) addIfNotNull(parts, UnrestrictedPrompt.contractBlock());
         } else {
-            addIfNotNull(parts, SystemPromptSections.getSimpleIntroSection(config.outputStyle()));
+            addIfNotNull(parts, SystemPromptSections.getSimpleIntroSection(config.outputStyle(), unrestricted));
+            if (unrestricted) addIfNotNull(parts, UnrestrictedPrompt.contractBlock());
             addIfNotNull(parts, SystemPromptSections.getSimpleSystemSection());
             if (config.outputStyle() == null || config.outputStyle().keepCodingInstructions()) {
                 addIfNotNull(parts, SystemPromptSections.getReleased197DoingTasksSection());

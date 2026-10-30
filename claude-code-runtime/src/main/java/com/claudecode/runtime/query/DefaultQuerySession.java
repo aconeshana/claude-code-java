@@ -547,6 +547,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
                 .isWorktree(runtime.isWorktree())
                 .memoryDir(runtime.memoryDir())
                 .simpleSystemPromptModelPatterns(runtime.simpleSystemPromptModelPatterns())
+                .unrestricted(runtime.unrestricted())
                 .build();
 
         String append = config.appendSystemPrompt();
@@ -619,6 +620,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
             .isWorktree(runtime.isWorktree())
             .memoryDir(runtime.memoryDir())
             .simpleSystemPromptModelPatterns(runtime.simpleSystemPromptModelPatterns())
+            .unrestricted(runtime.unrestricted())
             .build();
         String append = config.appendSystemPrompt();
         List<String> parts = new ArrayList<>();

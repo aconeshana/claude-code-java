@@ -321,7 +321,8 @@ final class CliEngineAssembler {
 
                     sdkCliSession, List.of(), addDirs,
                     WorktreeService.getCurrentWorktreeSession() != null,
-                    promptMemoryDir, agentListing, simpleSystemPromptModelPatterns);
+                    promptMemoryDir, agentListing, simpleSystemPromptModelPatterns,
+                    workspace.launch().request().model().unrestricted());
             };
 
             // @Explanation extractMemoriesEnabled (default false) — background

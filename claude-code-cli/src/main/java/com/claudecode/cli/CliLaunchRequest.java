@@ -57,14 +57,20 @@ record CliLaunchRequest(
             int maxTurns,
             double maxBudgetUsd,
             String jsonSchemaRaw,
-            String baseUrl) {
+            String baseUrl,
+            /**
+             * {@code --unrestricted}: use the unrestricted system prompt (see
+             * {@code UnrestrictedPrompt}). Prompt-shaping only — it does not affect the
+             * permission system, so it is orthogonal to {@link PermissionOptions}.
+             */
+            boolean unrestricted) {
         ModelOptions {
             betas = immutableCopy(betas);
         }
 
         static final ModelOptions EMPTY = new ModelOptions(
             null, null, null, null, null, List.of(), null, null, null, null, null, null,
-            null, null, null, 0, 0.0, null, null);
+            null, null, null, 0, 0.0, null, null, false);
     }
 
     record OutputOptions(

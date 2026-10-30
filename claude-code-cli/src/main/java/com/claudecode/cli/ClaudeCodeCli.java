@@ -260,6 +260,11 @@ public class ClaudeCodeCli implements Callable<Integer> {
         description = "Allow SDK control to enter bypass-permissions mode")
     private boolean allowDangerouslySkipPermissions;
 
+    @Option(names = {"--unrestricted"},
+        description = "Use the unrestricted prompt: drop the security-testing instruction and "
+            + "inject the workspace delivery contract")
+    private boolean unrestricted;
+
     // Public Agent SDK transport flags.
     private Integer taskBudget;
 
@@ -416,7 +421,8 @@ public class ClaudeCodeCli implements Callable<Integer> {
                 fallbackModel, model, apiKey,
                 systemPrompt, systemPromptFile, appendSystemPrompt, appendSystemPromptFile,
                 planModeInstructions,
-                maxTokens, maxTurns, maxBudgetUsd, jsonSchemaRaw, baseUrl),
+                maxTokens, maxTurns, maxBudgetUsd, jsonSchemaRaw, baseUrl,
+                unrestricted),
             output,
             session,
             new CliLaunchRequest.WorkspaceOptions(
