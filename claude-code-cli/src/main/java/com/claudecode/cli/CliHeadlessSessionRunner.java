@@ -174,6 +174,30 @@ final class CliHeadlessSessionRunner {
     }
 
     /**
+     * Builds the {@code /insights} pipeline supplier for a headless run, or a
+     * supplier yielding {@code null} when the run has no LLM client (offline or
+     * credential-less) — {@code /insights} is then unavailable rather than
+     * failing at invocation time.
+     *
+     * <p>The model is re-resolved on every call, so a runtime override or
+     * {@code ANTHROPIC_DEFAULT_OPUS_MODEL} wins over the session's configured
+     * model without a restart.
+     */
+    private static Supplier<InsightsPort> insightsPipelineSupplier(
+            Request request, CommandRegistry registry) {
+        LlmClient client = request.llmClient();
+        QuerySessionSpec config = request.config();
+        return () -> client == null ? null
+            : insightsAdapter(new InsightsPipeline(client, () -> {
+                String override = RuntimeSettings.loadInsightsModel();
+                if (override != null) return override;
+                String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
+                return StringUtils.isNotBlank(env) ? env
+                    : ModelNames.parseUserSpecifiedModel(config.model());
+            }, registry::isBuiltInCommandName));
+    }
+
+    /**
      * Reuses the live Bash/PowerShell tool path for markdown prompt shell
      * interpolation, including command-scoped allow rules, permission asks,
      * sandboxing and session-scoped output persistence.
@@ -274,17 +298,12 @@ final class CliHeadlessSessionRunner {
         syncWorkflowCommands(registry, Path.of(System.getProperty("user.dir")),
             request.pluginRuntime());
 
-        LlmClient insightsClient = request.llmClient();
-        QuerySessionSpec insightsConfig = request.config();
-        Supplier<InsightsPort> insightsPipelineSupplier = () ->
-            insightsClient == null ? null
-                : insightsAdapter(new InsightsPipeline(insightsClient, () -> {
-                    String override = RuntimeSettings.loadInsightsModel();
-                    if (override != null) return override;
-                    String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
-                    return StringUtils.isNotBlank(env) ? env
-                        : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
-                }, registry::isBuiltInCommandName));
+        Supplier<InsightsPort> insightsPipelineSupplier =
+            insightsPipelineSupplier(request, registry);
+        // Unlike CliInteractiveSessionRunner's post-compact metadata repair, this
+        // one flushes and awaits the transcript sink first: a headless process
+        // may exit immediately after the turn, so a last-prompt still sitting in
+        // the sink's write cache would be lost with the process.
         Runnable reAppendMetadata = () -> {
             String sid = request.engine().conversation().getSessionId();
             if (StringUtils.isBlank(sid)) return;

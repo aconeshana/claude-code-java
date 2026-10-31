@@ -130,6 +130,66 @@ class MarketplaceManagerTest {
             error.getMessage());
     }
 
+    /**
+     * The name guard in the cache-target derivation is unreachable through the add
+     * path — {@code MarketplaceNames.validate} rejects separators and {@code ..}
+     * before the manifest is ever cached — so it is exercised directly here. It is
+     * the last line of defense for the recursive delete that follows: a name that
+     * resolves outside the cache directory would let that delete reach beyond it.
+     */
+    @Test
+    void cacheTargetRejectsANameThatEscapesTheCacheDirectory() {
+        Path cacheDir = tempDir.resolve("plugins-root/marketplaces");
+        MarketplaceSource source =
+            new MarketplaceSource.Directory(tempDir.resolve("fixtures/whatever").toString());
+
+        // A leading separator makes Path.resolve discard the cache directory, so
+        // the result is an absolute path outside it. Name validation rejects "/",
+        // which is exactly why this guard is the backstop rather than a duplicate.
+        PluginOperationException error = assertThrows(PluginOperationException.class,
+            () -> MarketplaceManager.resolveCacheTarget(source,
+                new MarketplaceManifest("/etc/evil", null, List.of(), null, null, null), cacheDir));
+        assertTrue(Strings.CS.contains(error.getMessage(), "resolves to a path outside the cache directory"),
+            error.getMessage());
+    }
+
+    @Test
+    void cacheTargetRejectsANameThatResolvesToTheCacheDirectoryItself() {
+        Path cacheDir = tempDir.resolve("plugins-root/marketplaces");
+        MarketplaceSource source =
+            new MarketplaceSource.Directory(tempDir.resolve("fixtures/whatever").toString());
+
+        // An empty name resolves to the cache directory, and the later recursive
+        // delete would remove every marketplace in it rather than one entry.
+        PluginOperationException error = assertThrows(PluginOperationException.class,
+            () -> MarketplaceManager.resolveCacheTarget(source,
+                new MarketplaceManifest("", null, List.of(), null, null, null), cacheDir));
+        assertTrue(Strings.CS.contains(error.getMessage(), "resolves to a path outside the cache directory"),
+            error.getMessage());
+    }
+
+    @Test
+    void cacheTargetPlacesADeclaredNameInsideTheCacheDirectory() {
+        Path cacheDir = tempDir.resolve("plugins-root/marketplaces");
+        MarketplaceSource source =
+            new MarketplaceSource.Directory(tempDir.resolve("fixtures/whatever").toString());
+
+        assertEquals(cacheDir.resolve("my-marketplace"),
+            MarketplaceManager.resolveCacheTarget(source,
+                new MarketplaceManifest("my-marketplace", null, List.of(), null, null, null), cacheDir));
+    }
+
+    @Test
+    void cacheTargetCachesUrlSourcesAsAFlatJsonFile() {
+        Path cacheDir = tempDir.resolve("plugins-root/marketplaces");
+
+        // URL sources replace the directory with a sibling <name>.json, which the
+        // guard must still have vetted — the suffix is applied to the same name.
+        assertEquals(cacheDir.resolve("my-marketplace.json"),
+            MarketplaceManager.resolveCacheTarget(new MarketplaceSource.Url("https://example.test/m.json"),
+                new MarketplaceManifest("my-marketplace", null, List.of(), null, null, null), cacheDir));
+    }
+
     @Test
     void addRejectsReservedOfficialNameFromUnofficialSource() throws Exception {
         Path mkt = tempDir.resolve("fixtures/impostor");

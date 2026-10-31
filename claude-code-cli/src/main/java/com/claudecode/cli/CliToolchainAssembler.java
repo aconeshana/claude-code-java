@@ -289,24 +289,7 @@ final class CliToolchainAssembler {
 
         AgentSummaryService agentSummaryService = RuntimeSettings.loadAgentProgressSummariesEnabled()
             ? new AgentSummaryService(llmClient) : null;
-        PromptCacheBreakCleanup promptCacheBreakCleanup = new PromptCacheBreakCleanup();
-        SubAgentLifecycleListener subAgentLifecycle = new SubAgentLifecycleListener() {
-            @Override
-            public HookDispatcher.HookOutcome onSubAgentStart(String agentId, String agentType) {
-                return hookEngine.dispatchSubAgentStartWithOutcome(agentId, agentType);
-            }
-
-            @Override
-            public HookDispatcher createSubAgentHookDispatcher(SubAgentHookContext context) {
-                return hookEngine.createSubAgentDispatcher(context);
-            }
-
-            @Override
-            public void onSubAgentComplete(String agentId) {
-                promptCacheBreakCleanup.onSubAgentComplete(agentId);
-                TaskRegistry.global().killShellAndMonitorTasksForAgent(agentId);
-            }
-        };
+        SubAgentLifecycleListener subAgentLifecycle = subAgentLifecycleListener(hookEngine);
         SubAgentCompactServiceImpl subAgentCompactFactory = new SubAgentCompactServiceImpl(
             client, RuntimeSettings.loadAutoCompactEnabled());
         SkillLoader sessionSkillLoader = new SkillLoader();
@@ -482,6 +465,37 @@ final class CliToolchainAssembler {
             taskToolProvider.taskReminders(), lspIntegration, structuredOutputSchema,
             agentSummaryService, customModelCatalog, dynamicSkillDirTriggers, inlinePluginPaths,
             inlinePluginPathsWithoutMcp, workflowsEnabled);
+    }
+
+    /**
+     * The sub-agent lifecycle listener. Start and dispatcher creation forward
+     * straight to the hook engine; completion additionally releases the agent's
+     * prompt-cache break record and kills any shell/monitor tasks it left behind,
+     * since a finished agent can no longer consume their output.
+     *
+     * <p>The completion sink is constructed here rather than hoisted beside the
+     * listener, because this listener's {@code onSubAgentComplete} is its only
+     * consumer.
+     */
+    private static SubAgentLifecycleListener subAgentLifecycleListener(HookEngine hookEngine) {
+        PromptCacheBreakCleanup promptCacheBreakCleanup = new PromptCacheBreakCleanup();
+        return new SubAgentLifecycleListener() {
+            @Override
+            public HookDispatcher.HookOutcome onSubAgentStart(String agentId, String agentType) {
+                return hookEngine.dispatchSubAgentStartWithOutcome(agentId, agentType);
+            }
+
+            @Override
+            public HookDispatcher createSubAgentHookDispatcher(SubAgentHookContext context) {
+                return hookEngine.createSubAgentDispatcher(context);
+            }
+
+            @Override
+            public void onSubAgentComplete(String agentId) {
+                promptCacheBreakCleanup.onSubAgentComplete(agentId);
+                TaskRegistry.global().killShellAndMonitorTasksForAgent(agentId);
+            }
+        };
     }
 
     /**

@@ -199,21 +199,7 @@ public final class MarketplaceManager {
             Path installLocation = Path.of(entry.installLocation());
             MarketplaceSource source = entry.source();
 
-            // A corrupted installLocation (cross-platform path writes, manual
-            // edits) could point at the user's project — refuse rather than
-            // running git ops / rm there. (gh-32793, gh-32661)
-            if (!source.isLocal()) {
-                Path cacheDir = directories.marketplacesCacheDir().toAbsolutePath().normalize();
-                Path resolved = installLocation.toAbsolutePath().normalize();
-                if (!resolved.equals(cacheDir) && !resolved.startsWith(cacheDir)) {
-                    throw new PluginOperationException("Marketplace '" + name
-                        + "' has a corrupted installLocation (" + entry.installLocation()
-                        + ") — expected a path inside " + cacheDir
-                        + ". This can happen after cross-platform path writes or manual edits "
-                        + "to known_marketplaces.json. "
-                        + "Run: claude plugin marketplace remove \"" + name + "\" and re-add it.");
-                }
-            }
+            requireCachedInstallLocation(name, entry, source, installLocation);
 
             switch (source) {
                 case MarketplaceSource.Github github -> {
@@ -233,11 +219,11 @@ public final class MarketplaceManager {
                 }
                 case MarketplaceSource.Url url ->
                     cacheFromUrl(url.url(), installLocation, url.headers(), onProgress);
-                case MarketplaceSource.File _ -> {
-                    onProgress.accept("Validating local marketplace");
-                    readCachedMarketplace(installLocation);
-                }
-                case MarketplaceSource.Directory _ -> {
+                // Local sources are the user's own files: refresh re-validates the
+                // existing cache instead of re-fetching it. File and Directory are
+                // both local and differ only in how they were added, so they share
+                // one branch.
+                case MarketplaceSource.File _, MarketplaceSource.Directory _ -> {
                     onProgress.accept("Validating local marketplace");
                     readCachedMarketplace(installLocation);
                 }
@@ -252,6 +238,34 @@ public final class MarketplaceManager {
             throw new PluginOperationException(
                 "Failed to refresh marketplace '" + name + "': " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Refuses a refresh whose recorded install location falls outside the cache
+     * directory.
+     *
+     * <p>Unlike a freshly derived target, this path comes back from
+     * {@code known_marketplaces.json}, so it may have been written by another
+     * platform or edited by hand and can point at the user's own project. The
+     * refresh is about to run git operations and, on some paths, a recursive
+     * delete there, so a location that is not the cache directory itself or
+     * inside it is rejected rather than acted on. (gh-32793, gh-32661)
+     *
+     * <p>Local sources are exempt: their install location is the user's own
+     * directory by design.
+     */
+    private void requireCachedInstallLocation(String name, KnownMarketplaces.Entry entry,
+                                              MarketplaceSource source, Path installLocation) {
+        if (source.isLocal()) return;
+        Path cacheDir = directories.marketplacesCacheDir().toAbsolutePath().normalize();
+        Path resolved = installLocation.toAbsolutePath().normalize();
+        if (resolved.equals(cacheDir) || resolved.startsWith(cacheDir)) return;
+        throw new PluginOperationException("Marketplace '" + name
+            + "' has a corrupted installLocation (" + entry.installLocation()
+            + ") — expected a path inside " + cacheDir
+            + ". This can happen after cross-platform path writes or manual edits "
+            + "to known_marketplaces.json. "
+            + "Run: claude plugin marketplace remove \"" + name + "\" and re-add it.");
     }
 
 
@@ -381,20 +395,7 @@ public final class MarketplaceManager {
                     + marketplacePath + ": " + e.getMessage(), e);
             }
 
-            // Rename cache to the marketplace's declared name. Defense-in-depth:
-            // even though the name validation rejects separators/"..", verify the
-            // computed path stays strictly inside the cache dir before any rm.
-            Path finalCachePath = cacheDir.resolve(manifest.name());
-            Path resolvedFinal = finalCachePath.toAbsolutePath().normalize();
-            Path resolvedCacheDir = cacheDir.toAbsolutePath().normalize();
-            if (!resolvedFinal.startsWith(resolvedCacheDir) || resolvedFinal.equals(resolvedCacheDir)) {
-                throw new PluginOperationException("Marketplace name '" + manifest.name()
-                    + "' resolves to a path outside the cache directory");
-            }
-            // URL sources cache as flat <name>.json files, not directories.
-            Path target = source instanceof MarketplaceSource.Url
-                ? cacheDir.resolve(manifest.name() + ".json")
-                : finalCachePath;
+            Path target = resolveCacheTarget(source, manifest, cacheDir);
             if (!temporaryCachePath.equals(target) && !source.isLocal()) {
                 try {
                     onProgress.accept("Cleaning up old marketplace cache…");
@@ -420,6 +421,32 @@ public final class MarketplaceManager {
             }
             throw e;
         }
+    }
+
+    /**
+     * The cache path the fetched marketplace is finalized into, keyed by its
+     * declared name.
+     *
+     * <p>Renaming into the declared name is why the guard exists: the name comes
+     * from the fetched manifest, not from us, and a name that escaped the cache
+     * directory would make the caller's later recursive delete reach outside it.
+     * Name validation already rejects separators and {@code ..}, so the check is
+     * defense-in-depth — and it is kept beside the derivation it protects rather
+     * than at the delete site, because the guarantee is about this path.
+     */
+    static Path resolveCacheTarget(MarketplaceSource source, MarketplaceManifest manifest,
+                                   Path cacheDir) {
+        Path finalCachePath = cacheDir.resolve(manifest.name());
+        Path resolvedFinal = finalCachePath.toAbsolutePath().normalize();
+        Path resolvedCacheDir = cacheDir.toAbsolutePath().normalize();
+        if (!resolvedFinal.startsWith(resolvedCacheDir) || resolvedFinal.equals(resolvedCacheDir)) {
+            throw new PluginOperationException("Marketplace name '" + manifest.name()
+                + "' resolves to a path outside the cache directory");
+        }
+        // URL sources cache as flat <name>.json files, not directories.
+        return source instanceof MarketplaceSource.Url
+            ? cacheDir.resolve(manifest.name() + ".json")
+            : finalCachePath;
     }
 
 

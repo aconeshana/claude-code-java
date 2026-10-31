@@ -437,7 +437,7 @@ public final class GatewayServer implements AutoCloseable {
     }
 
     private void route(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath();
+        String targetPath = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
         boolean get = Strings.CS.equals("GET", method);
         boolean post = Strings.CS.equals("POST", method);
@@ -452,7 +452,7 @@ public final class GatewayServer implements AutoCloseable {
         // Long-lived SSE exchanges and the async sessions listing keep their
         // exchange open past this handler's return; every other exchange is
         // closed here.
-        if (get && Strings.CS.equals("/api/events", path)) {
+        if (get && Strings.CS.equals("/api/events", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -463,7 +463,7 @@ public final class GatewayServer implements AutoCloseable {
             streamMirror(exchange);
             return;
         }
-        if (post && Strings.CS.equals("/v1/messages", path)) {
+        if (post && Strings.CS.equals("/v1/messages", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -474,7 +474,7 @@ public final class GatewayServer implements AutoCloseable {
             messages.handle(exchange);
             return;
         }
-        if (post && Strings.CS.equals("/v1/chat/completions", path)) {
+        if (post && Strings.CS.equals("/v1/chat/completions", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -485,7 +485,7 @@ public final class GatewayServer implements AutoCloseable {
             chat.handle(exchange);
             return;
         }
-        if (post && Strings.CS.equals("/v1/responses", path)) {
+        if (post && Strings.CS.equals("/v1/responses", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -496,7 +496,7 @@ public final class GatewayServer implements AutoCloseable {
             responses.handle(exchange);
             return;
         }
-        if (get && Strings.CS.equals("/api/sessions", path)) {
+        if (get && Strings.CS.equals("/api/sessions", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -509,8 +509,8 @@ public final class GatewayServer implements AutoCloseable {
             listSessions(exchange);
             return;
         }
-        if (post && (Strings.CS.equals("/api/sessions/open", path)
-                || Strings.CS.equals("/api/sessions/close", path))) {
+        if (post && (Strings.CS.equals("/api/sessions/open", targetPath)
+                || Strings.CS.equals("/api/sessions/close", targetPath))) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -519,13 +519,12 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             // The open path assembles an engine (slow I/O) off the exchange thread.
-            String targetPath = path;
             serveAsync(exchange, () -> sessionsApi.handle(exchange,
                 Strings.CS.equals("/api/sessions/open", targetPath)));
             return;
         }
-        if (get && Strings.CS.startsWith(path, "/api/sessions/")
-                && Strings.CS.endsWith(path, "/messages")) {
+        if (get && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && Strings.CS.endsWith(targetPath, "/messages")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -534,8 +533,8 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             String sessionId = URLDecoder.decode(
-                path.substring("/api/sessions/".length(),
-                    path.length() - "/messages".length()), StandardCharsets.UTF_8);
+                targetPath.substring("/api/sessions/".length(),
+                    targetPath.length() - "/messages".length()), StandardCharsets.UTF_8);
             if (sessionId.isEmpty()) {
                 try (exchange) {
                     respondJson(exchange, 400, errorBody("invalid_request",
@@ -546,8 +545,9 @@ public final class GatewayServer implements AutoCloseable {
             messagesSnapshotApi.handle(exchange, sessionId);
             return;
         }
-        if (post && Strings.CS.startsWith(path, "/api/sessions/") && (Strings.CS.endsWith(path, "/rename")
-                || Strings.CS.endsWith(path, "/fork") || Strings.CS.endsWith(path, "/archive"))) {
+        if (post && Strings.CS.startsWith(targetPath, "/api/sessions/") && (Strings.CS.endsWith(
+            targetPath, "/rename")
+                || Strings.CS.endsWith(targetPath, "/fork") || Strings.CS.endsWith(targetPath, "/archive"))) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -555,10 +555,10 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            String suffix = Strings.CS.endsWith(path, "/rename") ? "/rename"
-                : Strings.CS.endsWith(path, "/fork") ? "/fork" : "/archive";
+            String suffix = Strings.CS.endsWith(targetPath, "/rename") ? "/rename"
+                : Strings.CS.endsWith(targetPath, "/fork") ? "/fork" : "/archive";
             String sessionId = URLDecoder.decode(
-                path.substring("/api/sessions/".length(), path.length() - suffix.length()),
+                targetPath.substring("/api/sessions/".length(), targetPath.length() - suffix.length()),
                 StandardCharsets.UTF_8);
             if (sessionId.isEmpty()) {
                 try (exchange) {
@@ -578,8 +578,8 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if (delete && Strings.CS.startsWith(path, "/api/sessions/") && !Strings.CS.contains(
-                path.substring("/api/sessions/".length()), "/")) {
+        if (delete && Strings.CS.startsWith(targetPath, "/api/sessions/") && !Strings.CS.contains(
+                targetPath.substring("/api/sessions/".length()), "/")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -588,7 +588,7 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             String sessionId = URLDecoder.decode(
-                path.substring("/api/sessions/".length()), StandardCharsets.UTF_8);
+                targetPath.substring("/api/sessions/".length()), StandardCharsets.UTF_8);
             if (sessionId.isEmpty()) {
                 try (exchange) {
                     respondJson(exchange, 400, errorBody("invalid_request",
@@ -601,7 +601,7 @@ public final class GatewayServer implements AutoCloseable {
             serveAsync(exchange, () -> sessionActionsApi.handleDelete(exchange, sessionId));
             return;
         }
-        if (post && Strings.CS.equals("/api/permissions/respond", path)) {
+        if (post && Strings.CS.equals("/api/permissions/respond", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -619,7 +619,7 @@ public final class GatewayServer implements AutoCloseable {
             permissionsApi.handle(exchange);
             return;
         }
-        if ((get || post) && Strings.CS.equals("/api/settings", path)) {
+        if ((get || post) && Strings.CS.equals("/api/settings", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -636,7 +636,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if ((get || post) && Strings.CS.equals("/api/schedule", path)) {
+        if ((get || post) && Strings.CS.equals("/api/schedule", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -653,7 +653,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if (delete && Strings.CS.startsWith(path, "/api/schedule/")) {
+        if (delete && Strings.CS.startsWith(targetPath, "/api/schedule/")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -662,11 +662,11 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             String taskId = URLDecoder.decode(
-                path.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
+                targetPath.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
             serve(exchange, () -> scheduleApi.handleDelete(exchange, taskId));
             return;
         }
-        if (get && Strings.CS.equals("/api/commands", path)) {
+        if (get && Strings.CS.equals("/api/commands", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -677,7 +677,7 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> commandsApi.handleGet(exchange));
             return;
         }
-        if (get && Strings.CS.startsWith(path, "/api/session/context/")) {
+        if (get && Strings.CS.startsWith(targetPath, "/api/session/context/")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -685,7 +685,7 @@ public final class GatewayServer implements AutoCloseable {
                 }
                 return;
             }
-            String face = path.substring("/api/session/context/".length());
+            String face = targetPath.substring("/api/session/context/".length());
             serve(exchange, () -> {
                 switch (face) {
                     case "timeline" -> contextTimelineApi.handleTimeline(exchange);
@@ -698,7 +698,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if ((get || post) && Strings.CS.equals("/api/session/context", path)) {
+        if ((get || post) && Strings.CS.equals("/api/session/context", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -715,7 +715,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if ((get || post) && Strings.CS.equals("/api/session/permission-mode", path)) {
+        if ((get || post) && Strings.CS.equals("/api/session/permission-mode", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -732,7 +732,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if ((get || post) && Strings.CS.equals("/api/models", path)) {
+        if ((get || post) && Strings.CS.equals("/api/models", targetPath)) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -749,7 +749,7 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
-        if (delete && Strings.CS.startsWith(path, "/api/models/")) {
+        if (delete && Strings.CS.startsWith(targetPath, "/api/models/")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
                     respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
@@ -758,7 +758,7 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             String modelName = URLDecoder.decode(
-                path.substring("/api/models/".length()), StandardCharsets.UTF_8);
+                targetPath.substring("/api/models/".length()), StandardCharsets.UTF_8);
             serve(exchange, () -> modelsApi.handleDelete(exchange, modelName));
             return;
         }

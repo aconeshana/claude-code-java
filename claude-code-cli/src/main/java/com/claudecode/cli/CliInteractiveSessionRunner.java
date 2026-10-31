@@ -324,27 +324,18 @@ final class CliInteractiveSessionRunner {
                     return result;
                 };
             }
-            // Shared post-compact durability hook: after any compact (manual /compact via
-            // CommandContext, or auto-compact via QuerySession.postCompactCallback) re-append
-            // session metadata to JSONL EOF so customTitle/agentName/agentColor/tag stay within
-            // the 64KB tail-scan window used by readLiteMetadata.
-            Runnable reAppendMetadata = () -> {
-                String sid = engine.conversation().getSessionId();
-                if (StringUtils.isBlank(sid)) {
-                    return;
-                }
-                try {
-
-                    new SessionManager(
-                        System.getProperty("user.dir"))
-                        .reAppendSessionMetadata(sid);
-                } catch (Exception _) { /* best-effort */ }
-            };
+            // Two distinct post-compact durability paths. Auto-compact
+            // (QuerySession.postCompactCallback) re-appends session metadata to
+            // JSONL EOF so customTitle/agentName/agentColor/tag stay within the
+            // 64KB tail-scan window used by readLiteMetadata. Manual /compact
+            // (CommandContext) instead records the command message's uuid through
+            // the transcript sink, which is what makes that compaction
+            // recoverable; it does not re-append metadata.
             Runnable postCompact = () -> {
                 LoopPromptResolver.global().resetDeliveredState();
                 transcriptRecorder.clearCompactionCaches(engine.conversation().getSessionId(),
                     2_000);
-                reAppendMetadata.run();
+                reAppendSessionMetadata(engine);
             };
             Runnable manualPostCompact = () -> {
                 LoopPromptResolver.global().resetDeliveredState();
@@ -668,6 +659,25 @@ final class CliInteractiveSessionRunner {
             finalizeInteractiveSession(agentSummaryService, hookEngine);
         }
 
+    }
+
+    /**
+     * Re-appends session metadata to the transcript's JSONL EOF after an
+     * auto-compact.
+     *
+     * <p>Compaction rewrites the head of the transcript, which can push
+     * {@code customTitle}/{@code agentName}/{@code agentColor}/{@code tag} out of
+     * the 64KB tail-scan window {@code readLiteMetadata} reads, so the session
+     * would resume without its title. Appending the metadata record again puts
+     * those fields back inside the window. Best-effort: a session that cannot be
+     * written stays usable, only its title lookup degrades.
+     */
+    private static void reAppendSessionMetadata(QuerySession engine) {
+        String sid = engine.conversation().getSessionId();
+        if (StringUtils.isBlank(sid)) return;
+        try {
+            new SessionManager(System.getProperty("user.dir")).reAppendSessionMetadata(sid);
+        } catch (Exception _) { /* best-effort */ }
     }
 
     private static OptionalInteractiveSettings loadOptionalInteractiveSettings() {

@@ -346,6 +346,55 @@ class AttachmentRendererTest {
             text);
     }
 
+    /**
+     * The status classifiers are null-safe ({@code Strings.CS.equals}), so a null status is not
+     * "killed" and not "running" and falls through to the finished-task form — where it is
+     * printed verbatim as the display status. Pinned because a status switch rewritten without
+     * the null-safe comparison would NPE here.
+     */
+    @Test
+    void taskStatusNullFallsThroughToFinishedFormWithNullStatusText() {
+        TaskStatusAttachment payload = new TaskStatusAttachment(
+            "t1", "local_agent", null, "Refactor auth", null, null);
+        String text = AttachmentRenderer.render(payload).getFirst().message().text();
+        assertEquals(
+            """
+            <system-reminder>
+            Task t1 (type: local_agent) (status: null) (description: Refactor auth) \
+            You can check its output using the TaskOutput tool.
+            </system-reminder>""",
+            text);
+    }
+
+    @Test
+    void taskStatusRunningWithDeltaButNoOutputFileKeepsProgressBeforeFallback() {
+        TaskStatusAttachment payload = new TaskStatusAttachment(
+            "t1", "local_agent", "running", "Refactor auth", "half done", null);
+        String text = AttachmentRenderer.render(payload).getFirst().message().text();
+        assertEquals(
+            """
+            <system-reminder>
+            Background agent "Refactor auth" (t1) is still running. Progress: half done \
+            Do NOT spawn a duplicate. You will be notified when it completes. You can check its \
+            progress with the TaskOutput tool or send it a message with SendMessage.
+            </system-reminder>""",
+            text);
+    }
+
+    @Test
+    void taskStatusFinishedWithDeltaButNoOutputFileOmitsOutputSentence() {
+        TaskStatusAttachment payload = new TaskStatusAttachment(
+            "t1", "local_agent", "completed", "Refactor auth", "3 files changed", null);
+        String text = AttachmentRenderer.render(payload).getFirst().message().text();
+        assertEquals(
+            """
+            <system-reminder>
+            Task t1 (type: local_agent) (status: completed) (description: Refactor auth) \
+            Delta: 3 files changed You can check its output using the TaskOutput tool.
+            </system-reminder>""",
+            text);
+    }
+
     @Test
     void nestedMemoryRenderAllProducesSingleSystemReminderBlock() {
         String out = AttachmentRenderer.renderAll(List.of(

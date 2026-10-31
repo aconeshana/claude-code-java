@@ -552,9 +552,30 @@ public final class TurnEngine {
             log.warn("Session sink failed while completing a turn; continuing cleanup", e);
         }
 
-        AtomicBoolean continuationRan = new AtomicBoolean(false);
-        Runnable continuation = () -> {
-            if (!continuationRan.compareAndSet(false, true)) return;
+        Runnable continuation = postTurnCleanup();
+        try {
+            onUi.accept(continuation);
+        } catch (RuntimeException e) {
+            log.warn("Turn continuation publisher failed; running cleanup inline", e);
+            continuation.run();
+        }
+    }
+
+    /**
+     * The post-turn cleanup sequence: release the awake guard, drop turn-scoped
+     * permission rules and hooks, then hand the session to the next deferred idle
+     * operation.
+     *
+     * <p>Idempotent by construction. The publisher below may hand the runnable to
+     * an asynchronous UI while the catch path runs it inline on failure, so the
+     * guard collapses those paths to a single execution. A fresh guard is created
+     * per call, which keeps consecutive turns independent — reusing one flag across
+     * turns would let the first turn suppress every later one.
+     */
+    private Runnable postTurnCleanup() {
+        AtomicBoolean ran = new AtomicBoolean(false);
+        return () -> {
+            if (!ran.compareAndSet(false, true)) return;
 
             // Finish all old-turn cleanup before releasing the guard, so another submitting
             // thread cannot install new turn-scoped state that this continuation then removes.
@@ -572,13 +593,6 @@ public final class TurnEngine {
             // final idle operation releases it immediately before queue drain.
             runNextIdleOperation();
         };
-
-        try {
-            onUi.accept(continuation);
-        } catch (RuntimeException e) {
-            log.warn("Turn continuation publisher failed; running cleanup inline", e);
-            continuation.run();
-        }
     }
 
     private void startIdleOperationsIfIdle() {

@@ -217,49 +217,8 @@ final class ToolExecution {
 
         // Per-call execution context, honoring the engine's configured
         // workingDirectory (NOT the process cwd) — ToolRunnerWorkingDirectoryTest.
-        // Progress sink is wrapped to:
-
-        // onProgress({toolUseID,...}) identity injection; (2) emit SDKMessage.Progress into the
-        // message stream for structured progress.
-
-        ToolExecutionContext.ProgressSink parentSink = engine.getConfig().progressSink();
-        ToolExecutionContext.ProgressSink stampedSink =
-            (parentSink == ToolExecutionContext.ProgressSink.NOOP && emit == null)
-                ? ToolExecutionContext.ProgressSink.NOOP
-                : update -> {
-                    ToolExecutionContext.ProgressUpdate stamped = update.withIdentity(tub.id(), null);
-                    // (1) side-channel: status line
-                    if (parentSink != ToolExecutionContext.ProgressSink.NOOP) {
-                        parentSink.accept(stamped);
-                    }
-
-                    if (stamped.dataType() != null
-                            && !stamped.uiAffordanceOnly()
-                            && emit != null) {
-                        emit.accept(new SDKMessage.Progress(
-                            MessageFactory.createProgressMessage(
-                                stamped.toolUseId(), stamped.parentToolUseId(),
-                                new ProgressMessage.ProgressData(
-                                    stamped.dataType(),
-                                    stamped.output(),
-                                    stamped.fullOutput(),
-                                    stamped.elapsedSeconds(),
-                                    stamped.totalLines(),
-                                    stamped.totalBytes(),
-                                    stamped.timeoutMs(),
-                                    null,
-                                    !stamped.complete(),
-                                    stamped.agentMessage(),
-                                    stamped.prompt(),
-                                    stamped.agentId(),
-                                    stamped.progressValue(),
-                                    stamped.total(),
-                                    stamped.progressMessage(),
-                                    stamped.query(),
-                                    stamped.resultCount(),
-                                    stamped.resolvedModel()))));
-                    }
-                };
+        ToolExecutionContext.ProgressSink stampedSink = buildProgressSink(
+            engine.getConfig().progressSink(), emit, tub.id());
         PermissionModeKind currentPermissionMode = null;
         var permissionModeSupplier = engine.getConfig().permissionModeSupplier();
         if (permissionModeSupplier != null) {
@@ -479,6 +438,88 @@ final class ToolExecution {
         List<Message> newMessages = mergeMessages(result.newMessages(), hookContextMessages);
         return new ToolStep(tub, resultMsg, structuredOutput, result.isError(), null,
             preventContinuation, stopReason, newMessages, result.afterResultEmitted());
+    }
+
+    /**
+     * Wraps the engine's progress sink for one tool call, adding the tool-use identity
+     * the tool itself does not know and fanning each update out to two consumers.
+     *
+     * <p>The update is stamped with {@code toolUseId} first because a progress event is
+     * minted deep inside a tool that has no idea which call it belongs to, and the
+     * status line needs that identity to attach the text to the right row.
+     *
+     * <p>Fan-out is not unconditional. The engine sink is the status-line side channel
+     * and receives <em>every</em> stamped update, including ones carrying no structured
+     * payload. The {@code emit} consumer is the streamed {@code SDKMessage.Progress}
+     * path and is stricter — it is skipped for updates with no {@code dataType} (nothing
+     * for the client to dispatch on) and for UI affordance hints, which exist purely to
+     * draw a control and would otherwise be replayed to the model as tool output.
+     *
+     * <p>Returns {@link ToolExecutionContext.ProgressSink#NOOP} when there is nothing
+     * downstream to notify, so the common no-listener case allocates no closure.
+     *
+     * @param parentSink the engine's configured sink; {@code NOOP} when unset
+     * @param emit       the message-stream consumer, or {@code null} when unset
+     * @param toolUseId  the id of the tool call these updates belong to
+     */
+    private static ToolExecutionContext.ProgressSink buildProgressSink(
+            ToolExecutionContext.ProgressSink parentSink,
+            Consumer<SDKMessage> emit,
+            String toolUseId) {
+        if (parentSink == ToolExecutionContext.ProgressSink.NOOP && emit == null) {
+            return ToolExecutionContext.ProgressSink.NOOP;
+        }
+        return update -> {
+            ToolExecutionContext.ProgressUpdate stamped = update.withIdentity(toolUseId, null);
+            if (parentSink != ToolExecutionContext.ProgressSink.NOOP) {
+                parentSink.accept(stamped);
+            }
+            if (stamped.dataType() != null && !stamped.uiAffordanceOnly() && emit != null) {
+                emit.accept(new SDKMessage.Progress(
+                    MessageFactory.createProgressMessage(
+                        stamped.toolUseId(), stamped.parentToolUseId(),
+                        toProgressData(stamped))));
+            }
+        };
+    }
+
+    /**
+     * Projects a stamped tool progress update onto the payload streamed to the client.
+     *
+     * <p>The transfer is positional and cross-record: {@code ProgressData} takes
+     * eighteen arguments and the two records do not name their slots the same way. Two
+     * differences are deliberate and easy to misread as bugs. The {@code taskId} slot
+     * is passed a literal {@code null} because {@code ProgressUpdate} has no such field
+     * — it is an engine-side concept, not something a tool reports. And
+     * {@code ProgressData.message} is the agent child {@link Message}, a different thing
+     * from {@code ProgressUpdate.message} (the status string, which the payload has no
+     * slot for and therefore drops); only the {@code agent_progress} path populates the
+     * {@code prompt}/{@code agentId} pair that the payload does carry.
+     *
+     * <p>Adjacent same-typed slots make a reordering compile cleanly, so the mapping is
+     * pinned field-by-field by {@code ToolExecutionProgressSinkTest}.
+     */
+    private static ProgressMessage.ProgressData toProgressData(
+            ToolExecutionContext.ProgressUpdate stamped) {
+        return new ProgressMessage.ProgressData(
+            stamped.dataType(),
+            stamped.output(),
+            stamped.fullOutput(),
+            stamped.elapsedSeconds(),
+            stamped.totalLines(),
+            stamped.totalBytes(),
+            stamped.timeoutMs(),
+            null,
+            !stamped.complete(),
+            stamped.agentMessage(),
+            stamped.prompt(),
+            stamped.agentId(),
+            stamped.progressValue(),
+            stamped.total(),
+            stamped.progressMessage(),
+            stamped.query(),
+            stamped.resultCount(),
+            stamped.resolvedModel());
     }
 
     /**

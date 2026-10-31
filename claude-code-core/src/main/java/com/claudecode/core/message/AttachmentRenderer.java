@@ -427,40 +427,53 @@ public final class AttachmentRenderer {
             + skillsContent;
     }
 
+    /**
+     * Three mutually exclusive forms, selected by status. The comparisons stay null-safe
+     * ({@code Strings.CS.equals}) rather than becoming a status switch: a null status is
+     * neither "killed" nor "running", so it renders the finished-task form with a literal
+     * {@code null} for the status — a bare switch would NPE instead.
+     */
     private static String renderTaskStatus(TaskStatusAttachment a) {
         if (Strings.CS.equals("killed", a.status())) {
             return "Task \"" + a.description() + "\" (" + a.taskId() + ") was stopped by the user.";
         }
-        if (Strings.CS.equals("running", a.status())) {
-            List<String> parts = new ArrayList<>();
-            parts.add("Background agent \"" + a.description() + "\" (" + a.taskId() + ") is still running.");
-            if (a.deltaSummary() != null) {
-                parts.add("Progress: " + a.deltaSummary());
-            }
-            if (a.outputFilePath() != null) {
-                parts.add("Do NOT spawn a duplicate. You will be notified when it completes. "
-                    + "You can read partial output at " + a.outputFilePath() + " or send it a message with SendMessage.");
-            } else {
-                parts.add("Do NOT spawn a duplicate. You will be notified when it completes. "
-                    + "You can check its progress with the TaskOutput tool or send it a message with SendMessage.");
-            }
-            return String.join(" ", parts);
-        }
+        return Strings.CS.equals("running", a.status())
+            ? renderRunningTaskStatus(a)
+            : renderFinishedTaskStatus(a);
+    }
 
-        String displayStatus = a.status();
+    /**
+     * A background agent still running: its progress delta when one is available, then either
+     * the partial-output path or the TaskOutput fallback.
+     */
+    private static String renderRunningTaskStatus(TaskStatusAttachment a) {
+        List<String> parts = new ArrayList<>();
+        parts.add("Background agent \"" + a.description() + "\" (" + a.taskId() + ") is still running.");
+        if (a.deltaSummary() != null) {
+            parts.add("Progress: " + a.deltaSummary());
+        }
+        parts.add("Do NOT spawn a duplicate. You will be notified when it completes. "
+            + (a.outputFilePath() != null
+                ? "You can read partial output at " + a.outputFilePath()
+                    + " or send it a message with SendMessage."
+                : "You can check its progress with the TaskOutput tool or send it a message "
+                    + "with SendMessage."));
+        return String.join(" ", parts);
+    }
+
+    /** A task that finished (or has no recognized status), reported as a field list. */
+    private static String renderFinishedTaskStatus(TaskStatusAttachment a) {
         List<String> parts = new ArrayList<>();
         parts.add("Task " + a.taskId());
         parts.add("(type: " + a.taskType() + ")");
-        parts.add("(status: " + displayStatus + ")");
+        parts.add("(status: " + a.status() + ")");
         parts.add("(description: " + a.description() + ")");
         if (a.deltaSummary() != null) {
             parts.add("Delta: " + a.deltaSummary());
         }
-        if (a.outputFilePath() != null) {
-            parts.add("Read the output file to retrieve the result: " + a.outputFilePath());
-        } else {
-            parts.add("You can check its output using the TaskOutput tool.");
-        }
+        parts.add(a.outputFilePath() != null
+            ? "Read the output file to retrieve the result: " + a.outputFilePath()
+            : "You can check its output using the TaskOutput tool.");
         return String.join(" ", parts);
     }
 

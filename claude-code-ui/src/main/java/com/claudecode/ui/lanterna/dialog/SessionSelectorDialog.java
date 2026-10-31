@@ -679,14 +679,26 @@ public class SessionSelectorDialog extends BasicWindow {
         hints.add("Type to search");
         hints.add("Esc to cancel");
 
-        if (!flatList.isEmpty() && selectedIndex >= 0 && selectedIndex < flatList.size()) {
-            FlatItem fi = flatList.get(selectedIndex);
-            if (fi.isHeader() && fi.group() != null && !fi.group().children().isEmpty()) {
-                hints.add(fi.group().expanded() ? "← to collapse" : "→ to expand");
-            }
-        }
+        String toggleHint = selectedGroupToggleHint();
+        if (toggleHint != null) hints.add(toggleHint);
         footer.append(String.join(" · ", hints));
         setFooter(FormatUtils.truncate(footer.toString(), termWidth));
+    }
+
+    /**
+     * The expand/collapse hint for the selected row, or {@code null} when there is
+     * none to give. Only a group header with children has something to toggle — a
+     * leaf row would get a hint pointing at an action that does nothing.
+     */
+    private String selectedGroupToggleHint() {
+        if (flatList.isEmpty() || selectedIndex < 0 || selectedIndex >= flatList.size()) {
+            return null;
+        }
+        FlatItem fi = flatList.get(selectedIndex);
+        if (!fi.isHeader() || fi.group() == null || fi.group().children().isEmpty()) {
+            return null;
+        }
+        return fi.group().expanded() ? "← to collapse" : "→ to expand";
     }
 
 

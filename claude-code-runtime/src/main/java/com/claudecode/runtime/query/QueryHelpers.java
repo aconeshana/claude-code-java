@@ -303,23 +303,7 @@ final class QueryHelpers {
         if (queue == null || !queue.hasCommands()) return;
 
         String myAgentId = engine.getConfig().agentId();
-        boolean isMain = (myAgentId == null);
-
-        Predicate<QueuedCommand> filter = isMain
-            ? cmd -> (cmd.priority() != null ? cmd.priority() : QueuePriority.NEXT).order()
-                        <= QueuePriority.NEXT.order()
-                    && (!Strings.CS.startsWith(cmd.text(), "/") || cmd.skipSlashCommands())
-                    && cmd.agentId() == null
-                    && (Strings.CS.equals("prompt", cmd.mode())
-                        || Strings.CS.equals("task-notification", cmd.mode())
-                        // SDK orphaned-permission replay — mode carries a payload (see Task #31).
-                        || (Strings.CS.equals("orphaned-permission", cmd.mode()) && cmd.orphanedPermission() != null))
-
-            // no priority ceiling (so LATER is reachable), never user prompts.
-            : cmd -> Strings.CS.equals("task-notification", cmd.mode())
-                    && Objects.equals(cmd.agentId(), myAgentId);
-
-        List<QueuedCommand> drained = queue.dequeueAllMatching(filter);
+        List<QueuedCommand> drained = queue.dequeueAllMatching(midTurnDrainFilter(myAgentId));
         if (!drained.isEmpty()) {
             log.info("Mid-turn queue drain agentId={} took={} remaining={} modes={}",
                 myAgentId, drained.size(), queue.snapshot().size(),
@@ -369,6 +353,48 @@ final class QueryHelpers {
             emit.accept(new SDKMessage.User(displayMsg));
             recordTranscript(engine, displayMsg);
         }
+    }
+
+    /**
+     * The mid-turn drain filter for this session's role: main agents drain the
+     * broad next-priority queue, sub-agents drain only notifications addressed to
+     * them. The two branches are kept as separate methods rather than folded into
+     * one predicate because they select on disjoint criteria — see each for why.
+     *
+     * @param myAgentId this session's agent id; {@code null} means the main agent
+     */
+    private static Predicate<QueuedCommand> midTurnDrainFilter(String myAgentId) {
+        return myAgentId == null ? mainAgentDrainFilter() : subAgentDrainFilter(myAgentId);
+    }
+
+    /**
+     * Main agent: next-priority work, either non-slash user prompts or notifications.
+     *
+     * <p>The {@code cmd.agentId() == null} test here is the same nullness the
+     * caller's own id carries, but the two are independent facts, not one condition
+     * stated twice — a sub-agent whose id were ever absent must not fall into the
+     * main branch. That is why role dispatch lives in {@link #midTurnDrainFilter}
+     * rather than being merged into this test.
+     */
+    private static Predicate<QueuedCommand> mainAgentDrainFilter() {
+        return cmd -> (cmd.priority() != null ? cmd.priority() : QueuePriority.NEXT).order()
+                    <= QueuePriority.NEXT.order()
+                && (!Strings.CS.startsWith(cmd.text(), "/") || cmd.skipSlashCommands())
+                && cmd.agentId() == null
+                && (Strings.CS.equals("prompt", cmd.mode())
+                    || Strings.CS.equals("task-notification", cmd.mode())
+                    // SDK orphaned-permission replay — mode carries a payload (see Task #31).
+                    || (Strings.CS.equals("orphaned-permission", cmd.mode())
+                        && cmd.orphanedPermission() != null));
+    }
+
+    /**
+     * Sub-agent: only task notifications addressed to this agent. No priority
+     * ceiling (so LATER is reachable), and never user prompts.
+     */
+    private static Predicate<QueuedCommand> subAgentDrainFilter(String myAgentId) {
+        return cmd -> Strings.CS.equals("task-notification", cmd.mode())
+            && Objects.equals(cmd.agentId(), myAgentId);
     }
 
 

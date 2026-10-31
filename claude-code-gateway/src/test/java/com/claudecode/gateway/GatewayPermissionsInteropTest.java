@@ -29,8 +29,10 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -75,6 +77,13 @@ class GatewayPermissionsInteropTest {
     private final OkHttpClient client = new OkHttpClient.Builder()
         .readTimeout(Duration.ofSeconds(30)).build();
 
+    /**
+     * Fires when the mirror's SSE handshake completes. Replaced per connection
+     * by {@link #openMirror}, since each test opens its own lane.
+     */
+    private final AtomicReference<CountDownLatch> mirrorOpened =
+        new AtomicReference<>(new CountDownLatch(1));
+
     @AfterEach
     void tearDown() {
         if (server != null) server.close();
@@ -89,7 +98,7 @@ class GatewayPermissionsInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(events);
-        awaitMirrorReady(events);
+        awaitMirrorReady();
 
         // One ask raised on a virtual thread, like a blocked tool turn.
         CompletableFuture<PermissionAskCallback.Result> ask = new CompletableFuture<>();
@@ -133,7 +142,7 @@ class GatewayPermissionsInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(events);
-        awaitMirrorReady(events);
+        awaitMirrorReady();
 
         CompletableFuture<PermissionAskCallback.Result> ask = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> ask.complete(interactions.ask(
@@ -171,7 +180,7 @@ class GatewayPermissionsInteropTest {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
         EventSource source = openMirror(events);
-        awaitMirrorReady(events);
+        awaitMirrorReady();
 
         // An AskUserQuestion ask: the questions array must reach the web view.
         ObjectNode input = JSON.createObjectNode();
@@ -252,7 +261,7 @@ class GatewayPermissionsInteropTest {
 
             LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
             EventSource source = openMirror(events);
-            awaitMirrorReady(events);
+            awaitMirrorReady();
             CompletableFuture<PermissionAskCallback.Result> ask = new CompletableFuture<>();
             Thread.ofVirtual().start(() -> ask.complete(interactions.ask(
                 PermissionAskContext.simple("Bash", null, "toolu_broadcast"))));
@@ -325,18 +334,25 @@ class GatewayPermissionsInteropTest {
     }
 
     /**
-     * Waits until the mirror connection is live: the session-activation frame
-     * (or any first frame) proves the SSE lane is subscribed, so a promptly
-     * raised ask cannot race ahead of the subscription.
+     * Waits until the mirror connection is live, so a promptly raised ask
+     * cannot race ahead of the subscription.
+     *
+     * <p>Readiness is proven by {@code onOpen}, not by waiting for a frame. The
+     * activation frame is published by {@code startServer} before this call
+     * subscribes, and the hub only replays frames after the subscriber's
+     * {@code Last-Event-ID} — a fresh subscriber starts at the journal tip and
+     * therefore receives no semantic frame until the first real event, which
+     * under load arrives long after the lane is usable. Waiting on a frame
+     * conflated "subscribed" with "something was published" and timed out
+     * whenever the activation frame was missed, so the failure surfaced later as
+     * a missing {@code permission.asked}. {@code
+     * MirrorLivenessLatchTest} pins both halves of this: the marker arrives with
+     * nothing published, and the activation frame is not replayed.
      */
-    private void awaitMirrorReady(LinkedBlockingQueue<String> events)
+    private void awaitMirrorReady()
             throws InterruptedException {
-        String frame = events.poll(5, TimeUnit.SECONDS);
-        assertThat(frame).as("mirror connection ready").isNotNull();
-        if (!Strings.CS.contains(frame, "session.activated")) {
-            // Any warm-up frame proves liveness; keep it for later matching.
-            // (The activation frame may have been consumed before connect.)
-        }
+        assertThat(mirrorOpened.get().await(5, TimeUnit.SECONDS))
+            .as("mirror connection ready").isTrue();
     }
 
     private static String requestIdOf(String askedFrame) {
@@ -347,10 +363,17 @@ class GatewayPermissionsInteropTest {
     }
 
     private EventSource openMirror(LinkedBlockingQueue<String> events) {
+        // A fresh latch per connection: the mirror lane is live once the SSE
+        // handshake completes, which is what later polls depend on.
+        mirrorOpened.set(new CountDownLatch(1));
         Request.Builder builder = new Request.Builder()
             .url(url("/api/events?token=" + TOKEN + "&session_id=" + sessionId));
         return EventSources.createFactory(client).newEventSource(builder.build(),
             new EventSourceListener() {
+                @Override public void onOpen(EventSource source, Response response) {
+                    mirrorOpened.get().countDown();
+                }
+
                 @Override public void onEvent(EventSource source, String id, String type,
                         String data) {
                     events.add((type == null ? "" : type) + "|" + data);

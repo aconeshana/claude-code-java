@@ -1556,13 +1556,22 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         int prefixWidth = FormatUtils.displayWidth(prefixText);
         int bodyWidth = Math.max(1, width - wrapWidthInset);
         List<String> wrapped = wordWrapAtBoundaries(body.toString(), bodyWidth);
+        return layOutWrappedBody(wrapped, segments.getFirst(), " ".repeat(prefixWidth), bodyStyle);
+    }
+
+    /**
+     * Lay out an already-wrapped body under a two-segment gutter: the first row
+     * carries {@code firstPrefix} and every following row is indented by
+     * {@code continuationPrefix} in the same style, marked as a soft-wrap
+     * continuation so selection keeps its trailing spaces.
+     */
+    private static List<StyledLine> layOutWrappedBody(List<String> wrapped, Segment firstPrefix,
+                                                      String continuationPrefix, Segment bodyStyle) {
         List<StyledLine> rows = new ArrayList<>(wrapped.size());
         for (int i = 0; i < wrapped.size(); i++) {
-            Segment prefix = i == 0
-                ? segments.getFirst()
-                : new Segment(" ".repeat(prefixWidth), segments.getFirst().color(),
-                    segments.getFirst().bgColor(), segments.getFirst().hyperlinkUrl(),
-                    segments.getFirst().modifiers());
+            Segment prefix = i == 0 ? firstPrefix
+                : new Segment(continuationPrefix, firstPrefix.color(), firstPrefix.bgColor(),
+                    firstPrefix.hyperlinkUrl(), firstPrefix.modifiers());
             StyledLine row = new StyledLine(List.of(
                 prefix,
                 new Segment(wrapped.get(i), bodyStyle.color(), bodyStyle.bgColor(),
@@ -1594,20 +1603,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             if (text != null) body.append(text.replaceAll("\\[[;\\d]*m", ""));
         }
         List<String> wrapped = wordWrapAtBoundaries(body.toString(), width - Figures.INDENT_COLS);
-        List<StyledLine> rows = new ArrayList<>();
-        for (int i = 0; i < wrapped.size(); i++) {
-            Segment prefix = i == 0
-                ? segments.getFirst()
-                : new Segment(Figures.RESULT_INDENT, segments.getFirst().color(),
-                    segments.getFirst().bgColor(), segments.getFirst().hyperlinkUrl(),
-                    segments.getFirst().modifiers());
-            StyledLine row = new StyledLine(List.of(
-                prefix,
-                new Segment(wrapped.get(i), style.color(), style.bgColor(), style.hyperlinkUrl(),
-                    style.modifiers())), false);
-            rows.add(i == 0 ? row : row.asContinuation());
-        }
-        return rows;
+        return layOutWrappedBody(wrapped, segments.getFirst(), Figures.RESULT_INDENT, style);
     }
 
     static List<String> wordWrapAtBoundaries(String text, int width) {
