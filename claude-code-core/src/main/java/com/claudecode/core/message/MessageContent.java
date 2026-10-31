@@ -24,7 +24,7 @@ public record MessageContent(
     public static MessageContent fromJson(JsonNode node) {
         if (node == null || node.isNull()) return new MessageContent(null, null);
 
-// Java-native shape wins if either declared field is present — this preserves round-trip.
+        // Java-native shape wins if either declared field is present — this preserves round-trip.
         if (node.has("text") || node.has("blocks")) {
             String text = node.hasNonNull("text") ? node.get("text").asText() : null;
             List<ContentBlock> blocks = null;

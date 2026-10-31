@@ -1,11 +1,10 @@
 package com.claudecode.services.config;
 
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionEngine;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
-import com.claudecode.core.serialization.JsonUtils;
-import org.apache.commons.lang3.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -13,6 +12,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -379,7 +379,7 @@ public final class SettingsEditor {
         return new RuntimeException("Failed to " + action + " " + tier.displayName(), cause);
     }
 
-/** matches {@code updateSettingsForSource}: local writes keep the file gitignored. */
+    /** matches {@code updateSettingsForSource}: local writes keep the file gitignored. */
     private static void scheduleLocalSettingsGitignore(String cwd, RuleSource tier) {
         GitSettings.ensureLocalSettingsIgnored(cwd, tier);
     }

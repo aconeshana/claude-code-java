@@ -4,11 +4,11 @@ package com.claudecode.permissions;
  * Source of a permission rule, indicating where the rule was defined.
  */
 public enum RuleSource {
-/** Rule from user-level settings (~/on). */
+    /** Rule from user-level settings (~/on). */
     USER_SETTINGS,
-/** Rule from project-level settings (on). */
+    /** Rule from project-level settings (on). */
     PROJECT_SETTINGS,
-/** Rule from local settings (on). */
+    /** Rule from local settings (on). */
     LOCAL_SETTINGS,
     /** Rule from feature flags. */
     FLAG_SETTINGS,

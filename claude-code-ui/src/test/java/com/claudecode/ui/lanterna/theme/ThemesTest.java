@@ -110,7 +110,7 @@ class ThemesTest {
 
     @Test
     void get_resolvesEachThemeName() {
-// Built-in palettes — all 6 now implemented.
+        // Built-in palettes — all 6 now implemented.
         assertSame(Themes.DARK,             Themes.get(Themes.DARK_NAME));
         assertSame(Themes.LIGHT,            Themes.get(Themes.LIGHT_NAME));
         assertSame(Themes.DARK_DALTONIZED,  Themes.get(Themes.DARK_DALTONIZED_NAME));

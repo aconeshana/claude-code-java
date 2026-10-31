@@ -1,10 +1,10 @@
 package com.claudecode.tools.tasks;
 
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.io.FileUtils;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Process-wide registry mapping a team id to its shared task list, so that multiple in-process
@@ -45,7 +45,7 @@ public final class TeamTaskListRegistry {
         stores.put(teamId, store);
     }
 
-/** Removes the shared list and icompatibility baseline-compatible on-disk directory. */
+    /** Removes the shared list and icompatibility baseline-compatible on-disk directory. */
     public void removeAndDelete(String teamId) {
         stores.remove(teamId);
         FileUtils.deleteRecursively(TeamPaths.taskListDirectory(teamId));

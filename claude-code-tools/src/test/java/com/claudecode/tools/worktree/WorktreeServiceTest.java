@@ -438,7 +438,7 @@ class WorktreeServiceTest {
 
         assertTrue(Files.isDirectory(Path.of(wt.worktreePath())));
         assertEquals("worktree-agent-abc123", wt.worktreeBranch());
-// macOS: gitRoot is canonical (/private/var/...), @TempDir repo is /var/...
+        // macOS: gitRoot is canonical (/private/var/...), @TempDir repo is /var/...
         assertEquals(repo.toRealPath().toString(), wt.gitRoot());
         // Must NOT touch the session-level singleton or the process cwd.
         assertNull(WorktreeService.getCurrentWorktreeSession(),
@@ -694,7 +694,7 @@ class WorktreeServiceTest {
         assertEquals(session.originalHeadCommit(), restored.originalHeadCommit());
         assertEquals(session.sessionId(), restored.sessionId());
         assertEquals(session.tmuxSessionName(), restored.tmuxSessionName());
-// Ephemeral fields are intentionally stripped.
+        // Ephemeral fields are intentionally stripped.
         assertEquals(0L, restored.creationDurationMs());
     }
 

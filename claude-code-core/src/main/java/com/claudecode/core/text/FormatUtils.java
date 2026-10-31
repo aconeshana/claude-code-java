@@ -169,7 +169,7 @@ public final class FormatUtils {
         PARENTHESIZED,
     }
 
-/** matches {@code Intl.RelativeTimeFormat}'s numeric option. */
+    /** matches {@code Intl.RelativeTimeFormat}'s numeric option. */
     public enum RelativeTimeNumeric {
         ALWAYS,
         AUTO,
@@ -593,7 +593,7 @@ public final class FormatUtils {
         return EXPORT_TS_FMT.format(when);
     }
 
-/** ISO-8601 millis UTC, e.g. "2026-07-20T14:30:15.123Z"; matches {@code Date#toISOString}. */
+    /** ISO-8601 millis UTC, e.g. "2026-07-20T14:30:15.123Z"; matches {@code Date#toISOString}. */
     public static String formatInstantIso(Instant when) {
         return ISO_MILLIS_FMT.format(when);
     }

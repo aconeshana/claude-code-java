@@ -240,8 +240,8 @@ public final class FileSuggestionService {
                 if (currentGitMtime >= 0) {
                     lastGitMtime.set(currentGitMtime);
                 }
-// Re-fire query change on the GUI thread so the current live @-token is
-// re-evaluated with fresh cache.
+                // Re-fire query change on the GUI thread so the current live @-token is
+                // re-evaluated with fresh cache.
                 if (gui != null && inputPanel != null) {
                     gui.getGUIThread().invokeLater(inputPanel::triggerQueryChange);
                 }

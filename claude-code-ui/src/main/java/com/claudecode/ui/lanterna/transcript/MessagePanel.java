@@ -148,7 +148,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         renderRevision.incrementAndGet();
     }
 
-// ── Blink state (for pending tool-use lines) ────────────────────────────.
+    // ── Blink state (for pending tool-use lines) ────────────────────────────.
     private static final long BLINK_INTERVAL_MS = 600;
     private static final ScheduledExecutorService BLINK_SCHEDULER =
         Executors.newSingleThreadScheduledExecutor(r -> {
@@ -1237,14 +1237,14 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             scrollOffset = Math.max(0, scrollOffset - delta);
         }
         autoScroll = (scrollOffset == 0);
-// When the viewport moves, an active selection must follow the content.
+        // When the viewport moves, an active selection must follow the content.
         Selection sel = this.selection;
         if (sel != null && sel.hasSelection()) {
             int dRow = scrollOffset - oldOffset;
             if (dRow != 0) {
                 int maxRow = Math.max(0, visibleRows - 1);
-// Capture rows that are about to scroll off so getSelectedText still returns the
-// original text.
+                // Capture rows that are about to scroll off so getSelectedText still returns the
+                // original text.
                 Selection.Bounds b = sel.getSelectionBounds();
                 if (b != null) {
                     List<String> snap = this.lastFrameRowTexts;
@@ -2201,8 +2201,8 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
 
         private void drawSegments(TextGUIGraphics g, int y, List<Segment> segments, int width) {
             int x = 0;
-// Determine row background: if any segment specifies one, fill the whole row with it
-// (so trailing whitespace also gets highlighted).
+            // Determine row background: if any segment specifies one, fill the whole row with it
+            // (so trailing whitespace also gets highlighted).
             TextColor rowBg = null;
             for (Segment s : segments) {
                 if (s.bgColor() != null) { rowBg = s.bgColor(); break; }

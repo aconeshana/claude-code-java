@@ -43,7 +43,7 @@ public record Skill(
             || booleanFrontmatter("disable-model-invocation");
     }
 
-/** Aliases on the established prompt-command surface, such as {@code proactive} for /loop. */
+    /** Aliases on the established prompt-command surface, such as {@code proactive} for /loop. */
     public List<String> aliases() {
         if (frontmatter == null) return List.of();
         Object value = frontmatter.get("aliases");

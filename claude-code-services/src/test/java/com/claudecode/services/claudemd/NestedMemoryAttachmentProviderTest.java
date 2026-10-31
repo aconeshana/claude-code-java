@@ -94,7 +94,7 @@ class NestedMemoryAttachmentProviderTest {
         Set<String> triggers = ConcurrentHashMap.newKeySet();
         triggers.add(target.toString());
 
-// guards against re-injection via readFileState.has.
+        // guards against re-injection via readFileState.has.
         FileStateCache cache = new FileStateCache();
         cache.set(nested.toString(),
             new FileStateCache.FileState("rules", System.currentTimeMillis(), null, null, false));

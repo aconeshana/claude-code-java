@@ -13,21 +13,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 final class SmokeLaunch {
 
     /** Generous on purpose: a cold start on a loaded machine is slow, whereas a hang is not. */

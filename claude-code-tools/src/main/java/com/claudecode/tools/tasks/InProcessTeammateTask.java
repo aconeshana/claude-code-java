@@ -1125,7 +1125,7 @@ public class InProcessTeammateTask {
         }
     }
 
-/** Kill entry point used by {@link TaskRegistry#killTeammate} — matches {@link LocalAgentTask#kill}. */
+    /** Kill entry point used by {@link TaskRegistry#killTeammate} — matches {@link LocalAgentTask#kill}. */
     public boolean kill() {
         if (taskStore == null) {
             return false;

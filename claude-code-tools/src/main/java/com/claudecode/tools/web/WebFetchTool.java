@@ -282,7 +282,10 @@ public class WebFetchTool extends AnnotatedTool<JsonNode, String> {
 
         if (Strings.CS.startsWith(url, "http://")) url = "https://" + url.substring(7);
 
-        int timeoutSeconds = input.has("timeout") ? input.get("timeout").asInt(60) : 60;
+        int defaultTimeoutSeconds = (int) DEFAULT_TIMEOUT.toSeconds();
+        int timeoutSeconds = input.has("timeout")
+                ? input.get("timeout").asInt(defaultTimeoutSeconds)
+                : defaultTimeoutSeconds;
 
         try {
             URI uri = URI.create(url);
@@ -321,8 +324,8 @@ public class WebFetchTool extends AnnotatedTool<JsonNode, String> {
             capture.fetchResult = result;
 
 
-// against the new URL (re-running checkPermissions on the new host); it does NOT
-// silently follow cross-host redirects.
+            // against the new URL (re-running checkPermissions on the new host); it does NOT
+            // silently follow cross-host redirects.
             if (result.isRedirect()) {
                 return redirectDetectedMessage(url, result.redirectUrl(), result.statusCode(), prompt);
             }

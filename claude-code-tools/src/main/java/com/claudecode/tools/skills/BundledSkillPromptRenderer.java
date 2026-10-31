@@ -17,9 +17,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
-
-
 public final class BundledSkillPromptRenderer {
 
     private static final Pattern INTERVAL_ONLY = Pattern.compile("^\\d+[smhd]$");

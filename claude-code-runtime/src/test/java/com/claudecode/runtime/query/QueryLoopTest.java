@@ -1934,8 +1934,8 @@ class QueryLoopTest {
         assertInstanceOf(SDKMessage.Result.class, last);
         assertEquals(SDKMessage.Result.ERROR_DURING_EXECUTION,
             ((SDKMessage.Result) last).resultType());
-// On error, dispatchStopFailure runs but Stop hooks must not; result is a terminal
-// execution error.
+        // On error, dispatchStopFailure runs but Stop hooks must not; result is a terminal
+        // execution error.
         assertNotNull(last);
     }
 

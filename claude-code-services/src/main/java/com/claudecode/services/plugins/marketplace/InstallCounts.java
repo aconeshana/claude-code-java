@@ -1,21 +1,14 @@
 package com.claudecode.services.plugins.marketplace;
 
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.text.FormatUtils;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.claudecode.http.HttpCalls;
 import com.claudecode.services.http.ServiceHttpClient;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -27,6 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Plugin install-counts data layer: fetches per-plugin unique-install counts from the official
@@ -111,8 +108,6 @@ public final class InstallCounts {
         String content;
         try {
             content = Files.readString(cachePath);
-        } catch (NoSuchFileException _) {
-            return null;
         } catch (IOException _) {
             return null;
         }
@@ -178,7 +173,7 @@ public final class InstallCounts {
         }
     }
 
-/** Emits the shared, two-space-indented JSON cache format. */
+    /** Emits the shared, two-space-indented JSON cache format. */
     private String serializeCache(List<CountEntry> counts) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n  \"version\": ").append(CACHE_VERSION)

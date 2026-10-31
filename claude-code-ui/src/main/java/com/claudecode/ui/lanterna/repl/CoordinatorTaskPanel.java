@@ -200,22 +200,21 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             }
         }
         int anchor = s.selectedIndex() >= 1 ? s.selectedIndex() - 1 : viewedAgent;
-        anchor = Math.max(0, Math.min(anchor, Math.max(0, agents.size() - 1)));
-        int windowStart = Math.max(0,
-            Math.min(anchor - AGENT_VIEWPORT + 1, Math.max(0, agents.size() - AGENT_VIEWPORT)));
+        anchor = Math.clamp(anchor, 0, Math.max(0, agents.size() - 1));
+        int windowStart = Math.clamp(anchor - AGENT_VIEWPORT + 1, 0,
+            Math.max(0, agents.size() - AGENT_VIEWPORT));
         int windowEnd = Math.min(windowStart + AGENT_VIEWPORT, agents.size());
-        int moreAbove = windowStart;
         int moreBelow = agents.size() - windowEnd;
 
         if (!s.agents().isEmpty()) {
             boolean mainViewed = s.viewingTaskId() == null;
             boolean mainSelected = s.selectedIndex() == 0;
-            boolean mainHighlighted = mainSelected || hoveredContentRow == rows.size();
+            boolean mainHighlighted = mainSelected || hoveredContentRow == 0;
             String mainPrefix = mainHighlighted ? Figures.POINTER + " " : "  ";
             String mainBullet = mainViewed ? Figures.BLACK_CIRCLE : Figures.CIRCLE;
             String mainText = mainPrefix + mainBullet + " " + MAIN_LABEL;
-            if (moreAbove > 0) {
-                String more = "↑ " + moreAbove + " more";
+            if (windowStart > 0) {
+                String more = "↑ " + windowStart + " more";
                 mainText += " ".repeat(Math.max(1, columns
                     - FormatUtils.displayWidth(mainText) - FormatUtils.displayWidth(more))) + more;
             }
@@ -318,7 +317,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
         int actualLabelWidth = Math.min(labelWidth, available);
         String labelCell = padRight(FormatUtils.truncate(label, actualLabelWidth), actualLabelWidth);
         available -= actualLabelWidth;
-        int actualStatusWidth = Math.min(statusWidth, Math.max(0, available - 1));
+        int actualStatusWidth = Math.clamp(available - 1, 0, statusWidth);
         int descriptionWidth = Math.max(0, available - actualStatusWidth - (actualStatusWidth > 0 ? 1 : 0));
         String descriptionText = descriptionWidth >= 2 && StringUtils.isNotEmpty(description)
             ? "  " + FormatUtils.truncate(description, descriptionWidth - 2) : "";
@@ -382,7 +381,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             if (!c.isVisible()) return TerminalSize.of(0, 0);
             Snapshot s = snapshot;
             if (s.agents().isEmpty() && s.workflows().isEmpty()) return TerminalSize.of(0, 0);
-// 1 leading margin + optional main/agents +.
+            // 1 leading margin + optional main/agents +.
             int visibleAgents = Math.min(AGENT_VIEWPORT, s.agents().size());
             int rows = 1 + (s.agents().isEmpty() ? 0 : 1 + visibleAgents
                 + (s.agents().size() > AGENT_VIEWPORT ? 1 : 0))
@@ -395,7 +394,7 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             int naturalWidth = projectRows(s, 80).stream()
                 .mapToInt(row -> FormatUtils.displayWidth(row.text()))
                 .max().orElse(40);
-            return new TerminalSize(Math.max(40, Math.min(80, naturalWidth)), rows);
+            return new TerminalSize(Math.clamp(naturalWidth, 40, 80), rows);
         }
 
         @Override

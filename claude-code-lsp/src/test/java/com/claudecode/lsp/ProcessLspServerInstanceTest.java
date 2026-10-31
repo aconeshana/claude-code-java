@@ -118,7 +118,7 @@ class ProcessLspServerInstanceTest {
         org.eclipse.lsp4j.Diagnostic diag = new org.eclipse.lsp4j.Diagnostic();
         diag.setRange(new Range(new Position(1, 2), new Position(1, 7)));
         diag.setMessage("untyped error");
-// deliberately no setSeverity -> null
+        // deliberately no setSeverity -> null
 
         server.onPublishDiagnostics(publish(uri, diag));
 

@@ -18,9 +18,6 @@ public final class AutoDreamFeatureGate {
     private static final double DEFAULT_MIN_HOURS = 24.0;
     private static final int DEFAULT_MIN_SESSIONS = 5;
 
-
-
-
     public record Schedule(double minHours, double minSessions) {}
 
     private AutoDreamFeatureGate() {}
@@ -71,7 +68,7 @@ public final class AutoDreamFeatureGate {
 
     private static boolean rolloutAvailable(JsonNode value) {
         if (value == null) return false;
-// Some cache generations store a bare boolean.
+        // Some cache generations store a bare boolean.
         if (value.isBoolean()) return value.asBoolean();
         return value.isObject()
             && (value.path("enabled").asBoolean(false)

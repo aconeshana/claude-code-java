@@ -1,21 +1,18 @@
 package com.claudecode.session;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.error.ErrorUtils;
-import com.claudecode.core.metrics.SessionMetricsEvent;
-import com.claudecode.core.engine.ToolResultBudget;
+import com.claudecode.core.git.GitUtils;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.metrics.SessionMetricsEvent;
 import com.claudecode.core.plan.PlanSlugRegistry;
 import com.claudecode.core.serialization.JsonUtils;
-import com.claudecode.core.git.GitUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -27,17 +24,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Function;
-import java.util.function.BiConsumer;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1176,8 +1175,8 @@ public class TranscriptRecorder implements TranscriptSink {
                     latest = emptyFileHistorySnapshot(commandMessageId);
                 }
                 if (latest != null) {
-// A restored local /compact can materialize its initial mode immediately before
-// this queued transaction.
+                    // A restored local /compact can materialize its initial mode immediately before
+                    // this queued transaction.
                     if (latestIndex >= 0 && !hasChainEntryAfter(lines, latestIndex)) {
                         continue;
                     }
@@ -1369,7 +1368,7 @@ public class TranscriptRecorder implements TranscriptSink {
         return text != null && Strings.CS.startsWith(text, "<command-message>");
     }
 
-/** Installs the SDK session-match observer without changing persistence ordering. */
+    /** Installs the SDK session-match observer without changing persistence ordering. */
     public void setAppendListener(BiConsumer<Path, ObjectNode> listener) {
         sessionStorage.setAppendListener(listener);
     }

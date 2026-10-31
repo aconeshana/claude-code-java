@@ -1,16 +1,15 @@
 package com.claudecode.tools.workflows;
 
-import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
+import org.apache.commons.lang3.StringUtils;
 
 public final class WorkflowScriptParser {
 
-/** established wire schema {@code script.maxLength}; enforced as UTF-8 bytes for files too. */
+    /** established wire schema {@code script.maxLength}; enforced as UTF-8 bytes for files too. */
     public static final int MAX_SCRIPT_BYTES = 524_288;
     public static final String FIRST_STATEMENT_ERROR =
         "`export const meta = { name, description, phases }` must be the FIRST statement in the script";

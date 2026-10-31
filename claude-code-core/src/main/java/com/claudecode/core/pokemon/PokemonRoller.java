@@ -5,9 +5,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.random.RandomGenerator;
 
-
-
-
 @Explanation("Adds UI-only Pokémon hatching with resource-backed rarity and stats.")
 public final class PokemonRoller {
 

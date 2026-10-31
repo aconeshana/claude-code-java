@@ -215,7 +215,7 @@ public final class MessageConstants {
         return message;
     }
 
-// ── From  ─────────────────────────────────────
+    // ── From  ─────────────────────────────────────
 
 
     public static final String NO_CONTENT_MESSAGE = "(no content)";

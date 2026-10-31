@@ -1045,7 +1045,7 @@ final class CliHeadlessOutput {
         if (!cfg.enabled()) {
             return;
         }
-// WSL1 has no real Linux kernel — bubblewrap/seccomp cannot run.
+        // WSL1 has no real Linux kernel — bubblewrap/seccomp cannot run.
         if (Platform.IS_WSL && Platform.WSL_VERSION < 2) {
             errorOutput.println("""
 

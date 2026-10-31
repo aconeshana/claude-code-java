@@ -1,10 +1,5 @@
 package com.claudecode.tools.workflows;
 
-import org.apache.commons.lang3.Strings;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,9 +13,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-
-
-
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class WorkflowCatalog {
 

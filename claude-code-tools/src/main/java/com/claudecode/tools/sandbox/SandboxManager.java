@@ -368,8 +368,8 @@ public abstract class SandboxManager {
         if (Strings.CS.contains(pattern, "*") || Strings.CS.contains(pattern, "?") || Strings.CS.contains(pattern, "[")) {
             return globMatches(pattern, candidate);
         }
-// Prefix match (covers both bare tokens like `rm` and space-containing patterns like `git
-// commit`).
+        // Prefix match (covers both bare tokens like `rm` and space-containing patterns like `git
+        // commit`).
         return candidate.equals(pattern) || Strings.CS.startsWith(candidate, pattern + " ");
     }
 

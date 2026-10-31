@@ -108,7 +108,7 @@ public class FileWriteTool extends AnnotatedTool<JsonNode, Object> {
         }
 
 
-// teamMemoryEnabled settings key).
+        // teamMemoryEnabled settings key).
 
         // to the team-memory directory contains a high-confidence secret, since
         // team memory is synced to all repository collaborators. Must run BEFORE
@@ -160,8 +160,8 @@ public class FileWriteTool extends AnnotatedTool<JsonNode, Object> {
             // Task 57.6: Encoding detection and preservation
             Charset writeCharset = detectAndPreserveEncoding(path);
 
-// /rewind "Restore code" checkpoint — must run before the write so the backup captures
-// pre-edit content (or records "file didn't exist" for brand-new files).
+            // /rewind "Restore code" checkpoint — must run before the write so the backup captures
+            // pre-edit content (or records "file didn't exist" for brand-new files).
             if (context.fileHistoryManager() != null) {
                 context.fileHistoryManager().trackEdit(
                     absolutePath, context.currentUserMessageId());

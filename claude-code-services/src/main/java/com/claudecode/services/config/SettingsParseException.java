@@ -2,16 +2,6 @@ package com.claudecode.services.config;
 
 import java.nio.file.Path;
 
-
-
-
-
-
-
-
-
-
-
 public final class SettingsParseException extends RuntimeException {
 
     private final Path path;

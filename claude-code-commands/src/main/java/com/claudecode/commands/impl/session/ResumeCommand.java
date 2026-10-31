@@ -1,17 +1,16 @@
 package com.claudecode.commands.impl.session;
 
 import com.claudecode.commands.AnnotatedCommand;
-import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
+import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.session.ResumeRequest;
 import com.claudecode.commands.session.SessionCommandPort;
 import com.claudecode.core.message.Message;
+import com.claudecode.core.util.UuidUtils;
 import com.claudecode.runtime.session.MessagesDeserializer;
-
 import java.util.List;
 import java.util.Optional;
-import com.claudecode.core.util.UuidUtils;
 
 @SlashCommand(
     name = "resume",
@@ -60,7 +59,7 @@ public class ResumeCommand implements AnnotatedCommand {
         ResumeRequest.Entrypoint entrypoint = ResumeRequest.Entrypoint.SLASH_COMMAND_SESSION_ID;
 
 
-// — /resume <title-set-via-/rename>. Gated by isCustomTitleEnabled
+        // — /resume <title-set-via-/rename>. Gated by isCustomTitleEnabled
 
         if (match.isEmpty() && isCustomTitleEnabled()) {
             List<SessionCommandPort.LocatedSession> titleMatches =

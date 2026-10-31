@@ -2,10 +2,6 @@ package com.claudecode.runtime.query;
 
 import com.claudecode.core.engine.OrphanedPermission;
 import com.claudecode.core.engine.PermissionAskCallback;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
@@ -15,6 +11,8 @@ import com.claudecode.core.message.Usage;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Optional;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Replays a single tool_use whose permission decision arrived "orphaned" — the original SDK {@code
@@ -54,7 +52,7 @@ final class OrphanedPermissionExecutor {
         // rejection tool_result is emitted. Capture it here and honor it post-step.
         boolean interrupt = permissionResult.path("interrupt").asBoolean(false);
 
-// Apply updatedInput up-front (allow only).
+        // Apply updatedInput up-front (allow only).
         ToolUseBlock finalBlock = toolUseBlock;
         JsonNode updatedInput = permissionResult.path("updatedInput");
 

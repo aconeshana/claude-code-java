@@ -60,7 +60,7 @@ class AgentToolAsyncTest {
         }
     }
 
-/** A factory whose runSubAgent blocks until the test releases it. */
+    /** A factory whose runSubAgent blocks until the test releases it. */
     private static class BlockingFactory implements SubAgentFactory {
         final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);

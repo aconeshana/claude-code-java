@@ -25,11 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-
-
-
-
-
 public final class PluginSettingsStore {
 
     /** Provenance used to make Errors-tab remediation safe. */

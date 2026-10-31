@@ -117,7 +117,7 @@ class InitCommandTest {
 
     @Test
     void commandResultForQuery_factory() {
-// Regression guard: forQuery must set shouldQuery=true, shouldExit=false.
+        // Regression guard: forQuery must set shouldQuery=true, shouldExit=false.
         CommandResult r = CommandResult.forQuery("some prompt");
         assertTrue(r.shouldQuery());
         assertFalse(r.shouldExit());

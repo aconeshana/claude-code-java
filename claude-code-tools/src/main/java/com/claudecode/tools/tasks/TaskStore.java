@@ -1,17 +1,17 @@
 package com.claudecode.tools.tasks;
 
-import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.annotation.Explanation;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.claudecode.core.config.ClaudePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -19,6 +19,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Task store, either file-backed (task-list tooling) or purely in-memory (background tasks — see
@@ -273,7 +276,7 @@ public class TaskStore {
             if (newStatus.isTerminal()) {
                 completeTerminalWaiters(taskId, transitioned[0]);
             }
-// Only an outcome is announced.
+            // Only an outcome is announced.
             if (newStatus.hasResult()) {
                 notifyCompletion(transitioned[0]);
             }

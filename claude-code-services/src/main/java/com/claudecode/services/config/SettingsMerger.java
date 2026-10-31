@@ -1,11 +1,11 @@
 package com.claudecode.services.config;
 
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Immutable low-level merge operations for layered settings JSON trees.
@@ -32,7 +32,7 @@ final class SettingsMerger {
         return result;
     }
 
-/** matches lodash's default deep merge when an existing array meets an object source. */
+    /** matches lodash's default deep merge when an existing array meets an object source. */
     private static JsonNode mergeValue(JsonNode base, JsonNode override) {
         JsonNode customized = customize(base, override);
         if (customized != null) return customized;

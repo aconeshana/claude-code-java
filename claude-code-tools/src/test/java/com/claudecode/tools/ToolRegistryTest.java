@@ -1538,7 +1538,7 @@ class ToolRegistryTest {
     @Test
     void powershellDestructiveWarningSurfaced() {
 
-// distinct from Bash.
+        // distinct from Bash.
         ObjectNode input = mapper.createObjectNode();
         input.put("command", "Remove-Item ./build -Recurse -Force");
         PermissionDecisionResult result = new PermissionDecisionResult(
@@ -1630,12 +1630,12 @@ class ToolRegistryTest {
         assertTrue(reg.get("Grep").isPresent(), "Grep must be registered");
         assertTrue(reg.get("Grep").get().isEnabled(), "Grep must be enabled");
 
-// TodoWrite is registered unconditionally.
+        // TodoWrite is registered unconditionally.
         assertTrue(reg.get("TodoWrite").isPresent(), "TodoWrite must be registered");
         assertFalse(reg.get("TodoWrite").get().isEnabled(),
             "TodoWrite is gated off at the v2 default (mutually exclusive with Task* tools)");
 
-// Enabled-tool set must reflect the gating: Glob/Grep exposed, dormant TodoWrite
+        // Enabled-tool set must reflect the gating: Glob/Grep exposed, dormant TodoWrite
 
         var enabledNames = reg.getToolDefinitions().stream()
             .map(StreamingClient.StreamRequest.ToolDef::name).toList();

@@ -1,18 +1,16 @@
 package com.claudecode.tools.tasks.teammate;
 
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
 import com.claudecode.core.engine.PermissionUpdateJsonCodec;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.tools.tasks.InProcessTeammateTask;
 import com.claudecode.tools.tasks.TaskRegistry;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Leader-side consumer of the in-process teammate mailbox (the {@code team-lead} inbox).
@@ -158,8 +156,8 @@ public final class TeammateLeaderCoordinator {
             JsonNode input = n.has("input") ? n.get("input") : null;
             String toolUseId = n.has("toolUseId") ? n.get("toolUseId").asText() : null;
             String workerId = n.has("workerId") ? n.get("workerId").asText() : null;
-// Forward the rich permission hints so the leader's dialog can show the "why ASK" line,
-// the "allow [pattern]" suggestion, and the destructive warning.
+            // Forward the rich permission hints so the leader's dialog can show the "why ASK" line,
+            // the "allow [pattern]" suggestion, and the destructive warning.
             String decisionReasonType = n.has("decisionReasonType") ? n.get("decisionReasonType").asText() : null;
             String decisionReasonDetail = n.has("decisionReasonDetail") ? n.get("decisionReasonDetail").asText() : null;
             String suggestionRuleContent = n.has("suggestionRuleContent") ? n.get("suggestionRuleContent").asText() : null;

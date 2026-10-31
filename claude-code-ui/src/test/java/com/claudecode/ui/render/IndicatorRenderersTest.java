@@ -124,7 +124,7 @@ class IndicatorRenderersTest {
 
         List<MessagePanel.StyledLine> lines = linesOf(panel);
         TextColor color = lines.getFirst().segments().getFirst().color();
-// dim color must equal LanternaTheme.welcomeDim which is inactive
+        // dim color must equal LanternaTheme.welcomeDim which is inactive
         assertNotNull(color);
         assertNotEquals(TextColor.ANSI.DEFAULT, color,
             "dot segment must not use terminal-default color (must be dim)");

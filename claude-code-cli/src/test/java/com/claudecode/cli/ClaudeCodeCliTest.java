@@ -136,9 +136,7 @@ class ClaudeCodeCliTest {
 
     @Test
     void restoredPrintModeIsMaterializedOnlyWhenTheTranscriptDoesNotAlreadyHaveOne() {
-        TranscriptSink missing = new TranscriptSink() {
-            @Override public void record(String sessionId, Message message) { }
-        };
+        TranscriptSink missing = (_, _) -> { };
         TranscriptSink persisted = new TranscriptSink() {
             @Override public void record(String sessionId, Message message) { }
             @Override public boolean hasPersistedMode(String sessionId) { return true; }
@@ -555,7 +553,7 @@ class ClaudeCodeCliTest {
         // literal — a version bump must not break this check.
         assertTrue(Strings.CS.contains(sw.toString(),
                 "claude-code-java " + VersionInfo.version()),
-            "Version output should contain version string, got: " + sw.toString());
+            "Version output should contain version string, got: " + sw);
     }
 
     @Test
@@ -818,7 +816,7 @@ class ClaudeCodeCliTest {
 
         assertEquals(0, exitCode);
         assertTrue(Strings.CS.contains(sw.toString(), "Hello! I'm Claude."),
-            "Output should contain mock response, got: " + sw.toString());
+            "Output should contain mock response, got: " + sw);
     }
 
     @Test

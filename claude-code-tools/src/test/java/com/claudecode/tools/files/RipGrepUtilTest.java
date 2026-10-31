@@ -83,7 +83,7 @@ class RipGrepUtilTest {
         assertTrue(lines.isEmpty());
     }
 
-/** Verifies recursive {@code *.md} discovery through ripgrep. */
+    /** Verifies recursive {@code *.md} discovery through ripgrep. */
     @Test
     void listMarkdownFiles_returnsMarkdownRecursively(@TempDir Path dir) throws Exception {
         Assumptions.assumeTrue(RipGrepUtil.isAvailable());
@@ -127,7 +127,7 @@ class RipGrepUtilTest {
         }
     }
 
-/** Forces {@link RipGrepUtil#isAvailable} to return false (matches GrepToolTest helper). */
+    /** Forces {@link RipGrepUtil#isAvailable} to return false (matches GrepToolTest helper). */
     private static void forceRipgrepUnavailable() throws Exception {
         var field = RipGrepUtil.class.getDeclaredField("availableCache");
         field.setAccessible(true);

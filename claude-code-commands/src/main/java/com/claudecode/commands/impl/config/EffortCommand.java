@@ -91,7 +91,7 @@ public class EffortCommand implements AnnotatedCommand {
 
     private String showCurrent(CommandContext context) {
         String envOverride = getEffortEnvOverride();
-// Prefer the live AppState getter.
+        // Prefer the live AppState getter.
         String appStateEffort = context.session().effortValueSupplier() != null
             ? context.session().effortValueSupplier().get()
             : context.application().settings().preferences().effortLevel();

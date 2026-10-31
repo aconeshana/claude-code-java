@@ -335,10 +335,10 @@ class HookEngineTest {
             new HooksSettings(Map.of(HookEvent.PRE_COMPACT, List.of(matcher))), "/tmp");
 
         assertFalse(engine.executeHooks(HookEvent.PRE_COMPACT,
-            HookInput.forPreCompact("manual", null, 1000L, null, null)).isEmpty(),
+            HookInput.forPreCompact("manual", null, null, null)).isEmpty(),
             "matcher=\"manual\" must match trigger=\"manual\"");
         assertTrue(engine.executeHooks(HookEvent.PRE_COMPACT,
-            HookInput.forPreCompact("auto", null, 1000L, null, null)).isEmpty(),
+            HookInput.forPreCompact("auto", null, null, null)).isEmpty(),
             "matcher=\"manual\" must not match trigger=\"auto\"");
     }
 
@@ -350,10 +350,10 @@ class HookEngineTest {
             new HooksSettings(Map.of(HookEvent.POST_COMPACT, List.of(matcher))), "/tmp");
 
         assertFalse(engine.executeHooks(HookEvent.POST_COMPACT,
-            HookInput.forPostCompact("auto", null, 500L, null, null)).isEmpty(),
+            HookInput.forPostCompact("auto", null, null, null)).isEmpty(),
             "matcher=\"auto\" must match trigger=\"auto\"");
         assertTrue(engine.executeHooks(HookEvent.POST_COMPACT,
-            HookInput.forPostCompact("manual", null, 500L, null, null)).isEmpty(),
+            HookInput.forPostCompact("manual", null, null, null)).isEmpty(),
             "matcher=\"auto\" must not match trigger=\"manual\"");
     }
 
@@ -367,7 +367,7 @@ class HookEngineTest {
         HookEngine engine = new HookEngine(
             new HooksSettings(Map.of(HookEvent.PRE_COMPACT, List.of(matcher))), "/tmp");
 
-        HookDispatcher.HookOutcome outcome = engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
+        HookDispatcher.HookOutcome outcome = engine.dispatchPreCompactWithOutcome("manual", null);
 
         assertEquals("focus on the auth bug", outcome.additionalContext());
         assertEquals("PreCompact [echo '{\"decision\":\"allow\",\"additionalContext\":\"focus on the auth bug\"}'] "
@@ -383,7 +383,7 @@ class HookEngineTest {
             List.of(new HookMatcher(Optional.empty(), List.of(hook))))), "/tmp");
 
         HookDispatcher.HookOutcome outcome =
-            engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
+            engine.dispatchPreCompactWithOutcome("manual", null);
 
         assertNull(outcome.additionalContext());
         assertEquals("PreCompact [true] completed successfully", outcome.userDisplayMessage());
@@ -400,7 +400,7 @@ class HookEngineTest {
             List.of(new HookMatcher(Optional.empty(), List.of(hook))))), "/tmp");
 
         HookDispatcher.HookOutcome outcome =
-            engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
+            engine.dispatchPreCompactWithOutcome("manual", null);
 
         assertEquals("PreCompact [cat >/dev/null; sleep 0.1; exit 0] completed successfully",
             outcome.userDisplayMessage());
@@ -415,7 +415,7 @@ class HookEngineTest {
             List.of(new HookMatcher(Optional.empty(), List.of(hook))))), "/tmp");
 
         HookDispatcher.HookOutcome outcome =
-            engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
+            engine.dispatchPreCompactWithOutcome("manual", null);
 
         assertEquals("{\"async\":true}", outcome.additionalContext(),
             "2.1.197 preserves the output-driven async control line as compact instructions");
@@ -434,7 +434,7 @@ class HookEngineTest {
         engine.context().bindPromptId(() -> "prompt-197");
 
         HookDispatcher.HookOutcome outcome =
-            engine.dispatchPreCompactWithOutcome("manual", null, 1000L);
+            engine.dispatchPreCompactWithOutcome("manual", null);
 
         assertEquals("matched", outcome.additionalContext());
     }
@@ -442,7 +442,7 @@ class HookEngineTest {
     @Test
     void dispatchPreCompactWithOutcome_nullContextWhenNoHooksConfigured() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        HookDispatcher.HookOutcome outcome = engine.dispatchPreCompactWithOutcome("manual", "user text", 1000L);
+        HookDispatcher.HookOutcome outcome = engine.dispatchPreCompactWithOutcome("manual", "user text");
         assertNull(outcome.additionalContext());
     }
 
@@ -457,10 +457,10 @@ class HookEngineTest {
         HookEngine engine = new HookEngine(
             new HooksSettings(Map.of(HookEvent.PRE_COMPACT, List.of(matcher))), "/tmp");
 
-        engine.dispatchPreCompact("manual", null, 1000L);
+        engine.dispatchPreCompact("manual", null);
 
         List<HookResult> results = engine.executeHooks(HookEvent.PRE_COMPACT,
-            HookInput.forPreCompact("manual", null, 1000L, null, null));
+            HookInput.forPreCompact("manual", null, null, null));
         assertTrue(results.isEmpty(), "dispatchPreCompact should have already consumed the once-guard");
     }
 
@@ -472,7 +472,7 @@ class HookEngineTest {
         HookEngine engine = new HookEngine(
             new HooksSettings(Map.of(HookEvent.POST_COMPACT, List.of(matcher))), "/tmp");
 
-        HookDispatcher.HookOutcome outcome = engine.dispatchPostCompactWithOutcome("manual", "the summary", 500L);
+        HookDispatcher.HookOutcome outcome = engine.dispatchPostCompactWithOutcome("manual", "the summary");
 
         assertEquals("post-compact cleanup ran", outcome.additionalContext());
         assertEquals("PostCompact [echo '{\"decision\":\"allow\",\"additionalContext\":\"post-compact cleanup ran\"}'] "
@@ -488,7 +488,7 @@ class HookEngineTest {
             List.of(new HookMatcher(Optional.empty(), List.of(hook))))), "/tmp");
 
         HookDispatcher.HookOutcome outcome =
-            engine.dispatchPostCompactWithOutcome("manual", "summary", 500L);
+            engine.dispatchPostCompactWithOutcome("manual", "summary");
 
         assertEquals("PostCompact [exit 1] failed", outcome.userDisplayMessage());
     }
@@ -496,7 +496,7 @@ class HookEngineTest {
     @Test
     void dispatchPostCompactWithOutcome_nullContextWhenNoHooksConfigured() {
         HookEngine engine = new HookEngine(HooksSettings.EMPTY, "/tmp");
-        HookDispatcher.HookOutcome outcome = engine.dispatchPostCompactWithOutcome("manual", "the summary", 500L);
+        HookDispatcher.HookOutcome outcome = engine.dispatchPostCompactWithOutcome("manual", "the summary");
         assertNull(outcome.additionalContext());
     }
 
@@ -615,7 +615,7 @@ class HookEngineTest {
             ((HookResult.Allow) result).additionalContext().orElse(""));
     }
 
-// ---- Bash hook exit-code contract.
+    // ---- Bash hook exit-code contract.
 
     @Test
     void bashHookExitCode2YieldsBlockingErrorFromStderr() {
@@ -675,8 +675,8 @@ class HookEngineTest {
             "cat >/dev/null; echo blocking failure >&2; exit 2",
             Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
             false, false, true);
-// PreToolUse:Bash — verifies the blocking-error message names the hook as
-// `event:matchQuery`.
+        // PreToolUse:Bash — verifies the blocking-error message names the hook as
+        // `event:matchQuery`.
         HookResult result = engine.executeBashHook(
             hook, HookInput.forPreToolUse("Bash", MAPPER.createObjectNode(), "tu-1"), 10);
 
@@ -969,7 +969,7 @@ class HookEngineTest {
             List.of(new HookMatcher(Optional.empty(), List.of(first, second))))), "/tmp");
 
         HookDispatcher.HookOutcome outcome = engine.dispatchPostCompactWithOutcome(
-            "manual", "summary", 100);
+            "manual", "summary");
 
         assertEquals("""
             {"async":true,"source":"first"}
@@ -1170,7 +1170,7 @@ class HookEngineTest {
         assertEquals("ok", ((HookResult.Allow) result).additionalContext().orElse(""));
     }
 
-// ---- AsyncHookRegistry: deferred response re-injection.
+    // ---- AsyncHookRegistry: deferred response re-injection.
 
     @Test
     void outputDrivenAsyncHookRegistersAndReinjectsFirstNonAsyncResponse() throws IOException {

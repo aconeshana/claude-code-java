@@ -15,17 +15,17 @@ import com.claudecode.core.engine.RefusalFallbackPrompt;
 import com.claudecode.core.engine.SdkEventSequencedIterator;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.StreamingClient;
-import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.engine.ToolCallInfo;
+import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.imagestore.ImageResizer;
 import com.claudecode.core.imagestore.ImageStore;
-import com.claudecode.core.message.ApiErrorMessages;
 import com.claudecode.core.message.AgentListingDeltaAttachment;
+import com.claudecode.core.message.ApiErrorMessages;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
@@ -49,19 +49,18 @@ import com.claudecode.core.message.RefusalFallbackDecision;
 import com.claudecode.core.message.RefusalFallbackFeature;
 import com.claudecode.core.message.RefusalFallbackPromptCopy;
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.StopDetails;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.TokenEstimator;
-import com.claudecode.core.message.StopDetails;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.ToolUseSummaryMessage;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.WireMessages;
-import com.claudecode.core.paste.ImagePaste;
-import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.model.ApiProviderScope;
 import com.claudecode.core.model.RefusalFallbackTarget;
+import com.claudecode.core.paste.ImagePaste;
+import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.core.serialization.JsonUtils;
@@ -69,7 +68,6 @@ import com.claudecode.core.text.FormatUtils;
 import com.claudecode.runtime.metrics.SessionMetricsTracker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -453,12 +451,12 @@ class QueryLoop implements SdkEventSequencedIterator {
                     && compactService.isAtBlockingLimit(
                         engine.getMutableMessages(), config.model())) {
 
-// when reactiveCompact.isReactiveCompactEnabled &&
-// isAutoCompactEnabled so the real API call can happen and the
-// reactive-compact catch path (below, and in
-// runAutoCompactPhase(..., reactive=true)) gets a chance to react
-// to a genuine provider 413 instead of the turn dying on a local
-// estimate before the call is even made.
+                // when reactiveCompact.isReactiveCompactEnabled &&
+                // isAutoCompactEnabled so the real API call can happen and the
+                // reactive-compact catch path (below, and in
+                // runAutoCompactPhase(..., reactive=true)) gets a chance to react
+                // to a genuine provider 413 instead of the turn dying on a local
+                // estimate before the call is even made.
 
                 // unported feature and plays no part in this condition.
                 // When auto-compact is off, keep the old behavior: reserve
@@ -710,7 +708,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 return;
             }
 
-// ── A refused turn replays itself on another model ────────────────.
+            // ── A refused turn replays itself on another model ────────────────.
             if (Strings.CS.equals("refusal", lastStopReason)) {
                 boolean firstPartyLike =
                     ApiProviderScope.usesFirstPartyModelIds(config.llmClient().provider());
@@ -719,7 +717,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 String refusalTarget =
                     RefusalFallbackTarget.resolve(currentModel, targetInputs);
                 if (refusalTarget == null) {
-// Nothing to offer, so nothing to ask about.
+                    // Nothing to offer, so nothing to ask about.
                     if (config.agentId() == null) {
                         announceNoRefusalFallback(engine, params, currentModel,
                             sr.stopDetails(), sr.requestId());
@@ -752,7 +750,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                         }
                         continue;
                     }
-// The user was asked and declined the switch.
+                    // The user was asked and declined the switch.
                     retraction.retractAll(engine, this::emit);
                     if (choice == RefusalFallbackDecision.Choice.EDIT_PROMPT) {
                         engine.getAbortController().abort(REFUSAL_FALLBACK_EDIT);
@@ -770,7 +768,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                         return;
                     }
                 }
-// A target existed but CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK is set.
+                        // A target existed but CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK is set.
             }
 
             if (state.pendingToolUseSummary() != null) {
@@ -946,8 +944,8 @@ class QueryLoop implements SdkEventSequencedIterator {
                     continue;
                 }
 
-// Recovery exhausted — surface the withheld API error once and take
-// the StopFailure path.
+                // Recovery exhausted — surface the withheld API error once and take
+                // the StopFailure path.
                 engine.getMutableMessages().add(apiErrorMessage);
                 emit(new SDKMessage.Assistant(apiErrorMessage, turnUsage));
                 QueryHelpers.recordTranscript(engine, apiErrorMessage);
@@ -959,7 +957,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 return;
             }
 
-// Stop hooks run on EVERY natural turn end (matches
+            // Stop hooks run on EVERY natural turn end (matches
 
 
             // enforcement flow.
@@ -1283,8 +1281,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         if (notify != null) notify.accept(new CompactProgressEvent.HooksStart("pre_compact"));
         String hookInstructions = null;
         if (hooks != null) {
-            hookInstructions = hooks.dispatchPreCompactWithOutcome(
-                "auto", null, compact.estimateTokenCount(engine.getMutableMessages())).additionalContext();
+            hookInstructions = hooks.dispatchPreCompactWithOutcome("auto", null).additionalContext();
         }
         if (notify != null) notify.accept(new CompactProgressEvent.CompactStart());
 
@@ -1332,9 +1329,9 @@ class QueryLoop implements SdkEventSequencedIterator {
                 engine.setTotalUsage(engine.getTotalUsage().add(compactionUsage));
             }
 
-// Persist the compacted view to the transcript (boundary + summary + kept segment +
-// attachments + hooks) so a later --resume reloads the summary instead of the full
-// pre-compact history.
+            // Persist the compacted view to the transcript (boundary + summary + kept segment +
+            // attachments + hooks) so a later --resume reloads the summary instead of the full
+            // pre-compact history.
 
             // recorded immediately, so no separate flush-before-boundary is needed
 
@@ -1349,11 +1346,7 @@ class QueryLoop implements SdkEventSequencedIterator {
 
             if (notify != null) notify.accept(new CompactProgressEvent.HooksStart("post_compact"));
             if (hooks != null) {
-                Usage cu = cr.compactionUsage();
-                long postTokens = (cu != null && (cu.inputTokens() > 0 || cu.outputTokens() > 0))
-                    ? TokenEstimator.contextTokens(cu, params.model())
-                    : compact.estimateTokenCount(post);
-                hooks.dispatchPostCompact("auto", cr.summaryText(), postTokens);
+                hooks.dispatchPostCompact("auto", cr.summaryText());
             }
 
             Runnable postCompact = engine.getPostCompactCallback();
@@ -1538,9 +1531,9 @@ class QueryLoop implements SdkEventSequencedIterator {
                             warning.content(), warning.apiError(), warning.error());
                     case StreamingClient.StreamingEvent.ErrorEvent ee -> {
                         if (engine.getAbortController().isAborted()) {
-// OkHttp cancellation is delivered as an
-// ErrorEvent even though the semantic cause
-// is the already-recorded user interrupt.
+                            // OkHttp cancellation is delivered as an
+                            // ErrorEvent even though the semantic cause
+                            // is the already-recorded user interrupt.
                             abortedDuringStream = true;
                         } else {
                             lastError = ee.exception();
@@ -1612,7 +1605,7 @@ class QueryLoop implements SdkEventSequencedIterator {
             lastError, lastStopReason, null, stopDetails, requestId);
     }
 
-/** matches SendMessageTool.backfillObservableInput before SDK/transcript emission. */
+    /** matches SendMessageTool.backfillObservableInput before SDK/transcript emission. */
     private static ContentBlock backfillObservableToolInput(ContentBlock block) {
         if (!(block instanceof ToolUseBlock toolUse)
                 || !Strings.CS.equals("SendMessage", toolUse.name())
@@ -1925,8 +1918,8 @@ class QueryLoop implements SdkEventSequencedIterator {
             String cmdResult = processed.localCommandResult().orElse("");
             SystemMessage localCmdMsg = MessageFactory.createCommandInputMessage(cmdResult);
 
-// converts them to a user turn so the model can reference previous command output in
-// later turns — must land in history, not just the SDK/UI stream.
+            // converts them to a user turn so the model can reference previous command output in
+            // later turns — must land in history, not just the SDK/UI stream.
             engine.getMutableMessages().add(localCmdMsg);
             emit(new SDKMessage.System(localCmdMsg));
             QueryHelpers.recordTranscript(engine, localCmdMsg);

@@ -1,35 +1,47 @@
 package com.claudecode.tools.mcp;
 
-
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.claudecode.mcp.McpClientRuntime;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.mcp.McpClientManager;
-import com.claudecode.mcp.McpFailures;
-import com.claudecode.mcp.McpTimeouts;
+import com.claudecode.mcp.McpClientRuntime;
 import com.claudecode.mcp.McpConfig;
 import com.claudecode.mcp.McpConfigLoader;
 import com.claudecode.mcp.McpConfigWriter;
 import com.claudecode.mcp.McpConnectionView;
-import com.claudecode.mcp.McpServerScope;
-import com.claudecode.mcp.oauth.McpOAuthProvider;
+import com.claudecode.mcp.McpFailures;
 import com.claudecode.mcp.McpPromptInfo;
 import com.claudecode.mcp.McpServerConfig;
+import com.claudecode.mcp.McpServerScope;
+import com.claudecode.mcp.McpTimeouts;
 import com.claudecode.mcp.McpToolInfo;
+import com.claudecode.mcp.oauth.McpOAuthProvider;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.skills.McpSkillDiscovery;
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.tools.skills.SkillLoader;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -799,7 +811,7 @@ public class McpToolProvider implements ManagedMcpRuntime, WaitForMcpServersTool
         }
 
         clientManager.connect(config);
-// listTools connects and discovers tools
+        // listTools connects and discovers tools
         List<McpToolInfo> tools = clientManager.listToolsForServer(config.name());
         cacheToolDisplays(config.name(), tools);
 

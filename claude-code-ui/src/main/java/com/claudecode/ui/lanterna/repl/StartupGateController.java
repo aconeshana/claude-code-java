@@ -80,8 +80,8 @@ final class StartupGateController {
 
     private void continueAfterTrust(Path cwd, Runnable onReady,
                                     BiConsumer<String, Integer> onExit) {
-        boolean decided = trust.hasExternalIncludesApproved(cwd)
-            || trust.hasExternalIncludesWarningShown(cwd);
+        boolean decided = trust.hasExternalIncludesApproved()
+            || trust.hasExternalIncludesWarningShown();
         if (decided) {
             showManagedSettings(cwd, onReady, onExit);
             return;
@@ -93,11 +93,11 @@ final class StartupGateController {
         }
         view.promptExternalIncludes(cwd, externals,
             () -> {
-                trust.saveExternalIncludesDecision(cwd, true);
+                trust.saveExternalIncludesDecision(true);
                 showManagedSettings(cwd, onReady, onExit);
             },
             () -> {
-                trust.saveExternalIncludesDecision(cwd, false);
+                trust.saveExternalIncludesDecision(false);
                 showManagedSettings(cwd, onReady, onExit);
             },
             () -> onExit.accept("External includes dialog aborted by user", 1));

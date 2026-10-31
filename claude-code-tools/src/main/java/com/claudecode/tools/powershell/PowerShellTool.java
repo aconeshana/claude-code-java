@@ -1,31 +1,37 @@
 package com.claudecode.tools.powershell;
 
 
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.SandboxConfig;
 import com.claudecode.core.engine.SandboxDecision;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
+import com.claudecode.core.imagestore.ImageResizer;
 import com.claudecode.core.message.ImageBlock;
+import com.claudecode.core.platform.Platform;
+import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.text.StringUtils;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.session.SessionManager;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.bash.BashTimeouts;
+import com.claudecode.tools.bash.CommandSemantics;
+import com.claudecode.tools.bash.ShellQuoteParse;
+import com.claudecode.tools.monitor.MonitorFeatureGate;
+import com.claudecode.tools.sandbox.PlatformSandboxManager;
+import com.claudecode.tools.sandbox.SandboxManager;
+import com.claudecode.tools.tasks.BackgroundTaskGate;
 import com.claudecode.tools.tasks.LocalShellTask;
+import com.claudecode.tools.tasks.TaskIdGenerator;
 import com.claudecode.tools.tasks.TaskOutputPaths;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
-import com.claudecode.tools.tasks.TaskIdGenerator;
 import com.claudecode.tools.tasks.TaskType;
-import com.claudecode.core.imagestore.ImageResizer;
-import com.claudecode.core.platform.Platform;
-import com.claudecode.core.text.StringUtils;
-import com.claudecode.core.process.SubprocessEnvironment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -41,15 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.claudecode.tools.bash.BashTimeouts;
-import com.claudecode.tools.bash.CommandSemantics;
-import com.claudecode.tools.bash.ShellQuoteParse;
-import com.claudecode.tools.monitor.MonitorFeatureGate;
-import com.claudecode.tools.sandbox.PlatformSandboxManager;
-import com.claudecode.tools.sandbox.SandboxManager;
-import com.claudecode.tools.tasks.BackgroundTaskGate;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
+import org.apache.commons.lang3.Strings;
 
 /**
  * PowerShellTool — execute PowerShell commands (Windows / cross-platform pwsh).
@@ -107,7 +105,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
     }
 
     @Override public String description() {
-// Implements  (canonical default branch).
+        // Implements  (canonical default branch).
         return PowerShellToolPrompt.getPrompt(envLookup);
     }
 
@@ -296,7 +294,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
 
         int exitCode = process.exitValue();
 
-// F7: image data-URI detection (matches BashTool.tryImageResult).
+        // F7: image data-URI detection (matches BashTool.tryImageResult).
         String rawStdout = stdout.toString();
         ToolResult imageResult = tryImageResult(rawStdout);
         if (imageResult != null) {
@@ -306,7 +304,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
         String out = truncate(rawStdout, MAX_RESULT_CHARS);
         String err = truncate(stderr.toString(), MAX_RESULT_CHARS);
 
-// F7: persist large output to disk (matches BashTool's large-output path).
+        // F7: persist large output to disk (matches BashTool's large-output path).
         long rawTotal = rawStdout.length() + stderr.length();
         if (rawTotal > MAX_RESULT_CHARS) {
             Path toolResultsDir = new SessionManager(context.workingDirectory())
@@ -499,7 +497,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
         return Base64.getEncoder().encodeToString(command.getBytes(StandardCharsets.UTF_16LE));
     }
 
-/** stdout image data-URI detector (matches BashTool DATA_URI_RE). */
+    /** stdout image data-URI detector (matches BashTool DATA_URI_RE). */
     private static final Pattern DATA_URI_RE =
         Pattern.compile("^data:([^;]+);base64,(.+)$", Pattern.DOTALL);
 
@@ -516,29 +514,28 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
         StringBuilder rest = new StringBuilder();
         boolean afterSep = false;
         for (ShellQuoteParse.Token t : ShellQuoteParse.parse(command)) {
-            if (t instanceof ShellQuoteParse.Op op) {
-                String o = op.op();
-                if (Strings.CS.equals(o, "|") || Strings.CS.equals(o, ";") || Strings.CS.equals(o, "&&") || Strings.CS.equals(o, "||")) {
+            if (t instanceof ShellQuoteParse.Op(String o)) {
+              if (Strings.CS.equals(o, "|") || Strings.CS.equals(o, ";") || Strings.CS.equals(o, "&&") || Strings.CS.equals(o, "||")) {
                     if (afterSep && !rest.isEmpty()) rest.append(' ');
                     afterSep = true;
                     continue;
                 }
                 continue;
-            } else if (t instanceof ShellQuoteParse.Word w) {
+            } else if (t instanceof ShellQuoteParse.Word(String value)) {
                 if (afterSep) {
                     if (!rest.isEmpty()) rest.append(' ');
-                    rest.append(w.value());
+                    rest.append(value);
                 } else {
                     if (!first.isEmpty()) first.append(' ');
-                    first.append(w.value());
+                    first.append(value);
                 }
-            } else if (t instanceof ShellQuoteParse.Glob g) {
+            } else if (t instanceof ShellQuoteParse.Glob(String pattern)) {
                 if (afterSep) {
                     if (!rest.isEmpty()) rest.append(' ');
-                    rest.append(g.pattern());
+                    rest.append(pattern);
                 } else {
                     if (!first.isEmpty()) first.append(' ');
-                    first.append(g.pattern());
+                    first.append(pattern);
                 }
             }
         }
@@ -551,7 +548,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
         return restText.isEmpty() ? "standalone sleep " + secs : "sleep " + secs + " followed by: " + restText;
     }
 
-/** Input-aware concurrency check: only read-only commands may run concurrently. */
+    /** Input-aware concurrency check: only read-only commands may run concurrently. */
     @Override
     public boolean isConcurrencySafe(JsonNode input) {
         if (input == null || !input.has("command")) return false;

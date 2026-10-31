@@ -1,10 +1,5 @@
 package com.claudecode.ui.lanterna.features.settings;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.commands.CommandResult;
@@ -13,39 +8,42 @@ import com.claudecode.commands.impl.config.ConfigCommand;
 import com.claudecode.commands.impl.info.StatusCommand;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.effort.EffortHelpers;
-import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.keybindings.UserKeybindingsStore;
-import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
 import com.claudecode.runtime.doctor.DoctorPort;
-import com.claudecode.ui.lanterna.dialog.EffortSliderDialog;
+import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
+import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.ui.lanterna.dialog.CustomModelDialog;
+import com.claudecode.ui.lanterna.dialog.EffortSliderDialog;
 import com.claudecode.ui.lanterna.dialog.ModelPickerDialog;
 import com.claudecode.ui.lanterna.dialog.ThemePickerDialog;
+import com.claudecode.ui.lanterna.features.ReplFeature;
+import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
+import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
+import com.claudecode.ui.lanterna.status.StatusDiagnostics;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
-import java.util.concurrent.atomic.AtomicLong;
-import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.features.ReplFeature;
-import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.repl.ReplCommandUiBridge;
-import com.claudecode.ui.lanterna.repl.ReplTranscriptSink;
-import com.claudecode.ui.lanterna.status.StatusDiagnostics;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Cohesive preferences feature for model, effort, theme, and the shared settings tabs.
@@ -406,8 +404,8 @@ public final class PreferencesFeature implements ReplCommandUiBridge.Preferences
         boolean resetEffortToAuto = Strings.CS.equals("auto", result.effort());
         if (gui != null && !resetEffortToAuto
                 && (StringUtils.isBlank(result.effort()))) {
-// A plain model pick mutates session state in memory and queues its settings write
-// asynchronously.
+            // A plain model pick mutates session state in memory and queues its settings write
+            // asynchronously.
             CommandResult commandResult = commandContext.presentation().modelApplyFromDialog() != null
                 ? commandContext.presentation().modelApplyFromDialog().apply(
                     commandContext, result.model(), null)

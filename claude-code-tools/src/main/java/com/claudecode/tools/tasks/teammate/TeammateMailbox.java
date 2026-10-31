@@ -1,14 +1,13 @@
 package com.claudecode.tools.tasks.teammate;
 
-import java.util.Map;
-import java.util.List;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import org.apache.commons.lang3.StringUtils;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-
+import org.apache.commons.lang3.StringUtils;
 
 public final class TeammateMailbox {
 
@@ -124,7 +123,7 @@ public final class TeammateMailbox {
     public void broadcast(Mail mail) {
         for (Map.Entry<String, BlockingQueue<Mail>> e : boxes.entrySet()) {
             if (!e.getKey().equals(mail.from())) {
-// Unbounded queue: add always succeeds (see send for rationale).
+                // Unbounded queue: add always succeeds (see send for rationale).
                 e.getValue().add(mail);
             }
         }

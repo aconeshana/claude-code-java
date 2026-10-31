@@ -350,7 +350,7 @@ class PromptCacheSerializationTest {
 
     @Test
     void nestedObjectSchemasAlsoGetAdditionalPropertiesFalse() throws Exception {
-// Regression: the normalization used to only patch the top-level schema.
+        // Regression: the normalization used to only patch the top-level schema.
         var mapper = JsonUtils.getMapper();
         ObjectNode optionsItems = mapper.createObjectNode();
         optionsItems.put("type", "object");

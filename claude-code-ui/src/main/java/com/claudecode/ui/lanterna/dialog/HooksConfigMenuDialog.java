@@ -367,7 +367,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
             HookEventMetadata evMeta = metadata.get(selectedEvent);
             boolean hasMatcher = evMeta != null && evMeta.matcherMetadata() != null;
             if (hasMatcher) {
-// Event supports matchers → show matcher selection.
+                // Event supports matchers → show matcher selection.
                 matchers   = snapshot.sortedMatchers(selectedEvent);
                 matcherIdx = 0;
                 navState   = NavState.SELECT_MATCHER;
@@ -514,7 +514,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
 
             int x = LEFT_PAD + pointer.length() + number.length() + name.length();
 
-// count badge in suggestion (green) when > 0.
+            // count badge in suggestion (green) when > 0.
             if (count > 0) {
                 String badge = " (" + count + ")";
                 g.setForegroundColor(LanternaTheme.suggestion());
@@ -556,7 +556,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
         LanternaDraw.divider(g, cols, 0);
         LanternaDraw.title(g, (selectedEvent != null ? selectedEvent.displayName() : "") + " - Matchers");
 
-// Row 2: event description subtitle.
+        // Row 2: event description subtitle.
         if (selectedEvent != null) {
             HookEventMetadata evMeta = metadata.get(selectedEvent);
             if (evMeta != null && !StringUtils.isBlank(evMeta.description())) {
@@ -633,7 +633,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
         }
         LanternaDraw.title(g, title);
 
-// Row 2: event description subtitle.
+        // Row 2: event description subtitle.
         if (evMeta != null && !StringUtils.isBlank(evMeta.description())) {
             g.setForegroundColor(LanternaTheme.welcomeDim());
             String sub = evMeta.description();
@@ -662,7 +662,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
             boolean sel           = hi == hookIdx;
 
             String tag    = "[" + c.kind().typeName() + "]";
-// #5/#25: use headerDisplay() (Title Case, no brackets).
+            // #5/#25: use headerDisplay() (Title Case, no brackets).
             String srcTag = c.sourceHeader();
             int maxTxt    = Math.max(4, cols - LEFT_PAD - 4 - tag.length() - 2 - srcTag.length() - 2);
             String disp   = c.displayText().length() <= maxTxt
@@ -696,7 +696,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
         // #19: Event/Matcher/Type values → bold; Source value → dim
         putFieldBold(g, row++, cols, "Event", selectedHook.event().displayName());
 
-// Matcher — only shown when event supports matchers.
+        // Matcher — only shown when event supports matchers.
         HookEventMetadata meta = metadata.get(selectedHook.event());
         boolean eventSupportsMatcher = meta != null && meta.matcherMetadata() != null;
         if (eventSupportsMatcher) {
@@ -738,7 +738,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
         g.putString(LEFT_PAD, row++, "╰" + "─".repeat(boxWidth - 2) + "╯");
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
 
-// "To modify or remove..." guidance.
+        // "To modify or remove..." guidance.
         g.setForegroundColor(LanternaTheme.welcomeDim());
         String guide = "To modify or remove this hook, edit settings.json directly or ask Claude to help.";
         int avail = cols - LEFT_PAD;

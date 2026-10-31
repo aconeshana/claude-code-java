@@ -126,7 +126,7 @@ class AgentToolTeammateTest {
         // Give the test a private global singleton so we don't pollute the real one.
         TaskRegistry.setGlobalForTest(new TaskRegistry(TaskStore.inMemory()));
 
-// No explicit registry → AgentTool falls back to TaskRegistry.global.
+        // No explicit registry → AgentTool falls back to TaskRegistry.global.
         AgentTool tool = new AgentTool(new NoOpSubAgentFactory(), null, null);
         String result = text(tool.call(teammateInput(), context()));
 

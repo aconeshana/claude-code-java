@@ -6,19 +6,11 @@ import com.claudecode.core.engine.SubAgentCompactServiceFactory;
 import com.claudecode.core.engine.SubAgentLifecycleListener;
 import com.claudecode.core.engine.SubAgentProgressSummarizer;
 import com.claudecode.core.engine.ToolExecutor;
-import com.claudecode.core.message.SkillListingEntry;
 import com.claudecode.core.feature.FeatureGate;
-import com.claudecode.tools.tasks.TeamCreateTool;
-import com.claudecode.tools.tasks.TeamDeleteTool;
-import com.claudecode.tools.skills.DynamicSkillDiscovery;
-import com.claudecode.tools.skills.Skill;
+import com.claudecode.core.message.SkillListingEntry;
 import com.claudecode.core.process.SubprocessEnvironment;
-import java.nio.file.Path;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.List;
-import com.claudecode.tools.agent.AgentTool;
 import com.claudecode.runtime.query.QuerySessionFactory;
+import com.claudecode.tools.agent.AgentTool;
 import com.claudecode.tools.agent.DefaultSubAgentFactory;
 import com.claudecode.tools.agent.SubAgentFactory;
 import com.claudecode.tools.bash.BashTool;
@@ -33,11 +25,19 @@ import com.claudecode.tools.messaging.SendMessageTool;
 import com.claudecode.tools.monitor.MonitorTool;
 import com.claudecode.tools.questions.AskUserQuestionTool;
 import com.claudecode.tools.sandbox.PlatformSandboxManager;
+import com.claudecode.tools.skills.DynamicSkillDiscovery;
+import com.claudecode.tools.skills.Skill;
+import com.claudecode.tools.tasks.TeamCreateTool;
+import com.claudecode.tools.tasks.TeamDeleteTool;
 import com.claudecode.tools.tasks.TodoWriteTool;
 import com.claudecode.tools.web.WebBrowserTool;
 import com.claudecode.tools.web.WebFetchTool;
 import com.claudecode.tools.web.WebSearchTool;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Single source of truth for registering the built-in tool implementations onto a {@link
@@ -282,8 +282,8 @@ public final class ToolBootstrap {
         registry.register(new GlobTool());
         registry.register(new GrepTool());
 
-// client is the same authenticated StreamingClient the main loop uses — required
-// for the secondary LLM summary pass.
+        // client is the same authenticated StreamingClient the main loop uses — required
+        // for the secondary LLM summary pass.
         registry.register(new WebFetchTool(client, ToolHttpClient.webFetch(),
             skipWebFetchPreflightSupplier));
         registry.register(new WebSearchTool(client));
@@ -330,7 +330,7 @@ public final class ToolBootstrap {
 
 
 
-// coverage.yml.
+        // coverage.yml.
         if (FeatureGate.isEnabled(FeatureGate.Flag.WEB_BROWSER_TOOL)) {
             registry.register(new WebBrowserTool());
         }

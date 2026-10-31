@@ -8,10 +8,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-
-
-
-
 class ArgumentSubstitutorTest {
 
     // =========================================================================
@@ -522,7 +518,7 @@ class ArgumentSubstitutorTest {
     // =========================================================================
     // args_007: Unterminated quotes fail open to a lossless whitespace fallback
 
-// tryParseShellTokens returns null on an unterminated quote.
+    // tryParseShellTokens returns null on an unterminated quote.
 
     @Test
     void tryParseShellTokens_unterminatedDoubleQuote_returnsNull() {
@@ -545,8 +541,8 @@ class ArgumentSubstitutorTest {
 
     @Test
     void parseArguments_unterminatedDoubleQuote_fallsBackToWhitespaceSplit() {
-// 'foo "bar baz' -> ['foo', '"bar', 'baz']: the stray quote is preserved verbatim rather
-// than silently dropped/merged.
+        // 'foo "bar baz' -> ['foo', '"bar', 'baz']: the stray quote is preserved verbatim rather
+        // than silently dropped/merged.
         assertEquals(List.of("foo", "\"bar", "baz"),
                 ArgumentSubstitutor.parseArguments("foo \"bar baz"));
     }

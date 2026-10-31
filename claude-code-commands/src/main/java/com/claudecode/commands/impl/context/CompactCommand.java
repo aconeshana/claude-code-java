@@ -82,8 +82,8 @@ public class CompactCommand implements AnnotatedCommand {
 
     @Override
     public CommandResult execute(CommandContext context, String args) {
-// REPL keeps snipped messages for UI scrollback — project so the compact model doesn't
-// summarize content that was intentionally removed.
+        // REPL keeps snipped messages for UI scrollback — project so the compact model doesn't
+        // summarize content that was intentionally removed.
         List<Message> allMessages = context.session().messagesSupplier().get();
         List<Message> messages = MessageConstants.getMessagesAfterCompactBoundary(allMessages);
 
@@ -133,7 +133,7 @@ public class CompactCommand implements AnnotatedCommand {
                                       List<Message> messages, String userInstructions,
                                       String customInstructions) {
 
-// Step 0: microcompact — truncate long tool outputs, BEFORE anything else.
+        // Step 0: microcompact — truncate long tool outputs, BEFORE anything else.
         MessageCompactor.MicrocompactResult microResult = compactor.microcompactMessages(messages);
         List<Message> microMessages = microResult.messages();
         long fullPreCompactTokenCount = compactor.contextTokenCount(microMessages, context.session().model());
@@ -146,11 +146,10 @@ public class CompactCommand implements AnnotatedCommand {
         // Step 1: hooks_start(pre_compact) → run PreCompact hooks against the
         // post-microcompact message set. The hook's additionalContext doubles
 
-// <instructions> (user text first.
+        // <instructions> (user text first.
         if (notify != null) notify.accept(new CompactProgressEvent.HooksStart("pre_compact"));
         HookDispatcher.HookOutcome preOutcome = hooks != null
-            ? hooks.dispatchPreCompactWithOutcome(
-                "manual", userInstructions, fullPreCompactTokenCount)
+            ? hooks.dispatchPreCompactWithOutcome("manual", userInstructions)
             : HookDispatcher.HookOutcome.PROCEED;
         String mergedInstructions = MessageCompactor.mergeHookInstructions(
             userInstructions, preOutcome.additionalContext());
@@ -159,8 +158,8 @@ public class CompactCommand implements AnnotatedCommand {
         if (notify != null) notify.accept(new CompactProgressEvent.CompactStart());
 
         try {
-// Step 3: full compaction — LLM-based summarization, steered by the merged user+hook
-// instructions.
+            // Step 3: full compaction — LLM-based summarization, steered by the merged user+hook
+            // instructions.
             MessageCompactor.CompactionResult result = withPreservedTail(
                 compactor.compactConversation(
                     messagesToSummarize, false, mergedInstructions),
@@ -181,8 +180,7 @@ public class CompactCommand implements AnnotatedCommand {
 
             if (notify != null) notify.accept(new CompactProgressEvent.HooksStart("post_compact"));
             HookDispatcher.HookOutcome postOutcome = hooks != null
-                ? hooks.dispatchPostCompactWithOutcome("manual", result.summaryText(),
-                    postTokenCount(result, compactor, context.session().model()))
+                ? hooks.dispatchPostCompactWithOutcome("manual", result.summaryText())
                 : HookDispatcher.HookOutcome.PROCEED;
 
             String preDisplay = preOutcome.hasUserDisplayMessage()
@@ -367,18 +365,6 @@ public class CompactCommand implements AnnotatedCommand {
             if (recoverySentinel) return assistant.uuid();
         }
         return null;
-    }
-
-    /**
-     * Real API usage of the summarization call when available (four-field sum.
-     */
-    private static long postTokenCount(MessageCompactor.CompactionResult result,
-                                       MessageCompactor compactor, String model) {
-        Usage usage = result.compactionUsage();
-        if (usage != null && (usage.inputTokens() > 0 || usage.outputTokens() > 0)) {
-            return TokenEstimator.contextTokens(usage, model);
-        }
-        return compactor.estimateTokenCount(result.buildPostCompactMessages());
     }
 
     /**

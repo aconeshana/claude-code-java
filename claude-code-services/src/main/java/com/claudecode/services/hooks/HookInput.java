@@ -204,7 +204,7 @@ public record HookInput(
         return forSessionEnd(reason, null, null);
     }
 
-/** matches the CwdChanged payload: base cwd is the new cwd plus old_cwd/new_cwd. */
+    /** matches the CwdChanged payload: base cwd is the new cwd plus old_cwd/new_cwd. */
     public static HookInput forCwdChanged(String oldCwd, String newCwd, String sessionId) {
         Map<String, Object> extra = baseFields(sessionId, newCwd, null);
         extra.put("old_cwd", oldCwd);
@@ -289,14 +289,13 @@ public record HookInput(
 
 
     public static HookInput forPreCompact(String trigger, String customInstructions,
-                                           long preTokenCount, String sessionId, String cwd) {
-        return forPreCompact(trigger, customInstructions, preTokenCount,
-            sessionId, cwd, null);
+                                           String sessionId, String cwd) {
+        return forPreCompact(trigger, customInstructions, sessionId, cwd, null);
     }
 
 
     public static HookInput forPreCompact(String trigger, String customInstructions,
-                                           long preTokenCount, String sessionId, String cwd,
+                                           String sessionId, String cwd,
                                            String promptId) {
         Map<String, Object> extra = baseFields(sessionId, cwd, null);
         extra.put("trigger", trigger);
@@ -311,7 +310,7 @@ public record HookInput(
 
 
     public static HookInput forPostCompact(String trigger, String compactSummary,
-                                            long postTokenCount, String sessionId, String cwd) {
+                                            String sessionId, String cwd) {
         Map<String, Object> extra = baseFields(sessionId, cwd, null);
         extra.put("trigger", trigger);
         if (StringUtils.isNotBlank(compactSummary)) {
@@ -341,10 +340,6 @@ public record HookInput(
         Map<String, Object> base = baseFields(sessionId, cwd, permissionMode);
         return new HookInput(HookEvent.PERMISSION_REQUEST, Optional.of(toolName),
             Optional.ofNullable(input), Optional.empty(), Optional.of(toolUseId), base);
-    }
-
-    public static HookInput forPermissionRequest(String toolName, JsonNode input, String toolUseId) {
-        return forPermissionRequest(toolName, input, toolUseId, null, null, null);
     }
 
     public static HookInput forPermissionDenied(

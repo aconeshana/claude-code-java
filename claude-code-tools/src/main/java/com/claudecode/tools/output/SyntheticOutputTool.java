@@ -4,9 +4,11 @@ import com.claudecode.core.engine.StructuredToolOutput;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolTexts;
 import com.claudecode.tools.validation.SchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -14,9 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.ToolTexts;
 
 /**
  * StructuredOutput tool — lets the model return its final answer as JSON validated against a
@@ -256,7 +255,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
             }
         }
 
-// schemaWellFormedError, which iterates props.fields).
+        // schemaWellFormedError, which iterates props.fields).
         JsonNode props = schema.get("properties");
         if (props != null && props.isObject()) {
             var pit = props.fields();

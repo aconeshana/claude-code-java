@@ -4,6 +4,8 @@ import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
+import com.claudecode.runtime.turn.SessionEventHub;
+import com.claudecode.runtime.turn.TurnEngine;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.ToolUseRenderContext;
@@ -61,8 +63,6 @@ import com.claudecode.ui.lanterna.transcript.ToolApprovalInteraction;
 import com.claudecode.ui.lanterna.transcript.ToolInlineHeaderResolver;
 import com.claudecode.ui.lanterna.transcript.TranscriptController;
 import com.claudecode.ui.lanterna.transcript.ViewedTeammateHolder;
-import com.claudecode.runtime.turn.SessionEventHub;
-import com.claudecode.runtime.turn.TurnEngine;
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
@@ -517,16 +517,7 @@ final class ReplComposer {
             hooks, mcp, pokemon, btw, exit, compactProgress, webGateway);
         ReplSceneLayout.install(scene, widgets, features);
 
-        var dispatcher = ctx.dispatcher();
-        dispatcher.setToolTagLookup(request -> toolRegistry.resolveToolUseTag(
-            request.toolName(), request.inputJson(), new ToolUseRenderContext(
-                request.toolUseId(), request.toolUseResult(), request.progressMessages(),
-                queryEngine.configuration().getConfig().model())));
-        dispatcher.setInlineHeaderLookup(ToolInlineHeaderResolver::resolve);
-        // Resolved lazily via ToolRegistry so dynamically-registered (MCP) tools are honored;
-        // drives LanternaMessageDispatcher's transparent header suppression.
-        dispatcher.setTransparentWrapperLookup(
-            name -> toolRegistry.get(name).map(Tool::isTransparentWrapper).orElse(false));
+        configureDispatcherLookups(toolRegistry);
 
         // ── Main window ──────────────────────────────────────────────────────
         // Scroll keys, mouse selection, Ctrl+Shift+C copy and Ctrl+C interrupt are handled at
@@ -617,7 +608,7 @@ final class ReplComposer {
 
         if (CronFeatureGate.system().cronEnabled()) {
             LeadScheduledTaskPresenter leadTasks = new LeadScheduledTaskPresenter(
-                guiInvoker, queryEngine, dispatcher, messagePanel, turnEngine);
+                guiInvoker, queryEngine, ctx.dispatcher(), messagePanel, turnEngine);
             ScheduledTaskInteractionRouter scheduledTaskRouter =
                 new ScheduledTaskInteractionRouter(
                     runtime.taskRegistry()::injectUserMessageToActiveTeammate,
@@ -644,6 +635,19 @@ final class ReplComposer {
                 turnView, sessionEvents, turnEngine, submission, slashDispatcher, bashMode,
                 hotUiReadiness),
             mainWindow);
+    }
+
+    private void configureDispatcherLookups(ToolRegistry toolRegistry) {
+        var dispatcher = ctx.dispatcher();
+        dispatcher.setToolTagLookup(request -> toolRegistry.resolveToolUseTag(
+            request.toolName(), request.inputJson(), new ToolUseRenderContext(
+                request.toolUseId(), request.toolUseResult(), request.progressMessages(),
+                ctx.queryEngine().configuration().getConfig().model())));
+        dispatcher.setInlineHeaderLookup(ToolInlineHeaderResolver::resolve);
+        // Resolved lazily via ToolRegistry so dynamically-registered (MCP) tools are honored;
+        // drives LanternaMessageDispatcher's transparent header suppression.
+        dispatcher.setTransparentWrapperLookup(
+            name -> toolRegistry.get(name).map(Tool::isTransparentWrapper).orElse(false));
     }
 
     private boolean turnInFlight() {

@@ -1,9 +1,7 @@
 package com.claudecode.services.config;
 
-import org.apache.commons.lang3.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -12,7 +10,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
+import org.apache.commons.lang3.StringUtils;
 
 public final class SettingsSchema {
 
@@ -561,7 +559,7 @@ public final class SettingsSchema {
         }
     }
 
-// ── sandbox () ────────────────────────────────
+    // ── sandbox () ────────────────────────────────
 
 
     private static void validateSandbox(JsonNode node, List<FieldError> errors) {

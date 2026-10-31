@@ -42,7 +42,7 @@ class SpinnerCompactProgressTest {
 
     @Test
     void negativeElapsedClampsToZero() {
-// Clamp elapsed time at zero so clock skew cannot produce a negative percent.
+        // Clamp elapsed time at zero so clock skew cannot produce a negative percent.
         assertEquals(0, SpinnerComponent.compactPercent(-5_000));
     }
 
@@ -75,7 +75,7 @@ class SpinnerCompactProgressTest {
         spinner.setCompacting(true);
         assertTrue(spinner.isCompacting());
         Thread.sleep(20);
-// A second compact_start must not reset an existing clock.
+        // A second compact_start must not reset an existing clock.
         spinner.setCompacting(true);
         assertTrue(spinner.isCompacting());
         spinner.setCompacting(false);

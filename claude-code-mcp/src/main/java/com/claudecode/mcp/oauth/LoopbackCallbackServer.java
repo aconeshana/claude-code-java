@@ -145,7 +145,7 @@ public final class LoopbackCallbackServer implements AutoCloseable {
                 int port = Integer.parseInt(configured);
                 if (port > 0) return port;
             } catch (NumberFormatException _) {
-// Invalid values are treated as unset, matching the compatibility helper.
+            // Invalid values are treated as unset, matching the compatibility helper.
             }
         }
         for (int attempt = 0; attempt < 100; attempt++) {

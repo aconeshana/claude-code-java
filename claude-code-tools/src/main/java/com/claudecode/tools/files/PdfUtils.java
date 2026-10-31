@@ -33,7 +33,7 @@ import java.util.stream.Stream;
  */
 final class PdfUtils {
 
-/** Max pages per explicit Read request. */
+    /** Max pages per explicit Read request. */
     static final int PDF_MAX_PAGES_PER_READ = 20;
     /** Full reads above this page count require an explicit range. */
     static final int PDF_AT_MENTION_INLINE_THRESHOLD = 10;

@@ -1,26 +1,25 @@
 package com.claudecode.tools.tasks;
 
-import com.claudecode.tools.ToolTexts;
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.util.WordSlugGenerator;
 import com.claudecode.permissions.PermissionDecision;
-import com.claudecode.tools.ValidationResult;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.tools.AnnotatedTool;
 import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.ValidationResult;
 import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
 import com.claudecode.tools.tasks.teammate.TeammateMailbox;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * TeamCreate — provisions a shared task list for a team so that in-process teammates spawned under
@@ -90,7 +89,7 @@ public class TeamCreateTool extends AnnotatedTool<JsonNode, String> {
                 + e.getMessage(), e);
         }
 
-// Register in-memory team state (AppState): lead is the first member and an active agent.
+        // Register in-memory team state (AppState): lead is the first member and an active agent.
         TeamRegistry.instance().create(teamName, description, leadAgentId, leadSessionId);
         TeamTaskListRegistry.instance().bindSession(leadSessionId, teamName);
         TeammateMailbox.instance().registerName(TEAM_LEAD_NAME, leadAgentId);

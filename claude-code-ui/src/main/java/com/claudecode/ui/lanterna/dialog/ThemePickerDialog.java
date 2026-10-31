@@ -233,7 +233,7 @@ public final class ThemePickerDialog extends Panel implements InlineOverlay {
         for (int i = 0; i < OPTIONS.size(); i++) {
             if (OPTIONS.get(i).value().equals(name)) return i;
         }
-// Unmatched name (e.g.
+        // Unmatched name (e.g.
         return 0;
     }
 

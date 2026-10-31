@@ -133,7 +133,7 @@ final class SystemMessageRenderer {
         if (Strings.CS.equals("thinking", subtype)) {
             return;
         }
-// A refusal the CLI could not retry on a fallback model is silent.
+        // A refusal the CLI could not retry on a fallback model is silent.
         if (Strings.CS.equals("model_refusal_no_fallback", subtype)) {
             return;
         }
@@ -234,7 +234,7 @@ final class SystemMessageRenderer {
                 panel.appendLine("  ✻ Conversation compacted (ctrl+o for history)",
                     LanternaTheme.welcomeDim());
 
-// local_command system messages carry one of: (1) <command-name>...
+            // local_command system messages carry one of: (1) <command-name>...
             case "local_command" -> host.renderLocalCommand(content, panel);
 
             // The announcement that a refused turn was retried on a fallback
@@ -557,7 +557,7 @@ final class SystemMessageRenderer {
                     "Credit balance too low · Add funds: https://platform.claude.com/settings/billing", err);
                 return true;
             }
-// INVALID_API_KEY (both variants).
+            // INVALID_API_KEY (both variants).
             case "Not logged in · Please run /login",
                  "Invalid API key · Fix external API key" -> {
                 panel.appendLine(text, err);

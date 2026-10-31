@@ -2,7 +2,6 @@ package com.claudecode.ui.lanterna.plugin;
 
 import com.googlecode.lanterna.TextColor;
 
-
 interface PluginPanelHost {
 
     /** Appends one line to the change log flushed on close (PermissionsPanel pattern). */
@@ -26,6 +25,6 @@ interface PluginPanelHost {
     /** Requests a repaint after a state change (possibly from a background thread). */
     void refresh();
 
-/** Publishes state changes onto Lanterna's GUI thread. */
+    /** Publishes state changes onto Lanterna's GUI thread. */
     default void postToGui(Runnable action) { action.run(); }
 }

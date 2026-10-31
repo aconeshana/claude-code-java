@@ -192,7 +192,7 @@ public class FileReadTool extends AnnotatedTool<JsonNode, Object> {
     private static final Set<String> IMAGE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg");
     private static final Set<String> NOTEBOOK_EXTENSIONS = Set.of(".ipynb");
 
-// Binary file extensions that cannot be meaningfully read as text. implemented
+    // Binary file extensions that cannot be meaningfully read as text. implemented
 
 
     // explicit `!isPDFExtension && !IMAGE_EXTENSIONS` exclusion is redundant
@@ -342,8 +342,8 @@ public class FileReadTool extends AnnotatedTool<JsonNode, Object> {
                 dynamicSkillDiscovery.discover(path, context.workingDirectory());
             }
 
-// Attachment auto-inject: register this read path as a nested-memory trigger so the
-// next request build can attach the CLAUDE.md files in scope for what was just read.
+            // Attachment auto-inject: register this read path as a nested-memory trigger so the
+            // next request build can attach the CLAUDE.md files in scope for what was just read.
             var triggers = context.nestedMemoryAttachmentTriggers();
             if (triggers != null) {
                 triggers.add(absolutePath);
@@ -454,8 +454,8 @@ public class FileReadTool extends AnnotatedTool<JsonNode, Object> {
 
             String content = FileTextUtils.addLineNumbers(windowContent, effectiveOffset);
 
-// Task 57.5: Register file as read for FileWrite/FileEdit's read-before-write
-// validation.
+            // Task 57.5: Register file as read for FileWrite/FileEdit's read-before-write
+            // validation.
             String cacheContent = offset <= 0 && limit <= 0 && read.fullContent() != null
                 ? read.fullContent() : windowContent;
             context.fileStateCache().set(absolutePath, new FileStateCache.FileState(

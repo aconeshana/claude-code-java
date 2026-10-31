@@ -1,26 +1,24 @@
 package com.claudecode.tools.tasks;
 
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolCallResult;
+import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.ValidationResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.ToolTexts;
-import com.claudecode.tools.ToolCallResult;
-import com.claudecode.tools.ValidationResult;
+import org.apache.commons.lang3.Strings;
 
 /**
  * TodoWriteTool — replaces the full session todo list.
@@ -136,7 +134,7 @@ public class TodoWriteTool extends AnnotatedTool<JsonNode, String> {
                 String content    = item.path("content").asText("");
                 String status     = item.path("status").asText("");
                 String activeForm = item.path("activeForm").asText("");
-// Empty content is rejected by validateInput.
+                // Empty content is rejected by validateInput.
                 if (content.isEmpty()) continue;
                 newTodos.add(new TodoItem(content, status, activeForm));
             }

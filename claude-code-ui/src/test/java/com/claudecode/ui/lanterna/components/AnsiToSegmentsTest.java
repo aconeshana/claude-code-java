@@ -73,7 +73,7 @@ class AnsiToSegmentsTest {
         List<List<MessagePanel.Segment>> lines = AnsiToSegments.ansiToLines(in, DIM);
         assertEquals(1, lines.size());
         List<MessagePanel.Segment> segs = lines.getFirst();
-// No raw ESC/control bytes compatibility baselineinto any segment text.
+        // No raw ESC/control bytes compatibility baselineinto any segment text.
         assertTrue(segs.stream().noneMatch(AnsiToSegmentsTest::hasControlChar),
             "no control chars should leak into segments");
         // The link text renders yellow (SGR 33) and keeps the URL.

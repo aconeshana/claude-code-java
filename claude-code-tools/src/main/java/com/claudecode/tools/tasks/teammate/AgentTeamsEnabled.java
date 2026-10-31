@@ -68,7 +68,7 @@ public final class AgentTeamsEnabled {
         return true;
     }
 
-/** Test seam: force {@link #isEnabled} to a fixed value. Pass {@code null} to restore env-var behavior. */
+    /** Test seam: force {@link #isEnabled} to a fixed value. Pass {@code null} to restore env-var behavior. */
     public static void setEnabledForTest(Boolean value) {
         testOverride = value;
     }

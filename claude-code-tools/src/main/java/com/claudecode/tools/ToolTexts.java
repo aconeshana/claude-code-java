@@ -1,8 +1,5 @@
 package com.claudecode.tools;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +11,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Loads the immutable text channels for built-in tool definitions.
@@ -146,8 +145,8 @@ public final class ToolTexts {
             if (PRESERVE_TRAILING_NEWLINE.contains(relativePath)) {
                 return Optional.of(text);
             }
-// For the other tools, the source file's final LF is formatting only and
-// was absent from the captured.
+            // For the other tools, the source file's final LF is formatting only and
+            // was absent from the captured.
             return Optional.of(Strings.CS.endsWith(text, "\n")
                 ? text.substring(0, text.length() - 1) : text);
         } catch (IOException e) {

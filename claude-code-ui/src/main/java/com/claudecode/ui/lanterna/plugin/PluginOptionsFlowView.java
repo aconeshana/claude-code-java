@@ -1,26 +1,24 @@
 package com.claudecode.ui.lanterna.plugin;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.claudecode.core.config.EnvUtils;
-import com.claudecode.runtime.plugins.PluginMarketplacePort.ConfigOption;
-import com.claudecode.ui.lanterna.input.TextInputs;
-import com.googlecode.lanterna.input.KeyStroke;
-import com.googlecode.lanterna.input.KeyType;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
 import static com.claudecode.ui.lanterna.components.StyledText.blank;
 import static com.claudecode.ui.lanterna.components.StyledText.bold;
 import static com.claudecode.ui.lanterna.components.StyledText.boldLine;
 import static com.claudecode.ui.lanterna.components.StyledText.line;
 import static com.claudecode.ui.lanterna.components.StyledText.seg;
+
+import com.claudecode.core.config.EnvUtils;
+import com.claudecode.runtime.plugins.PluginMarketplacePort.ConfigOption;
 import com.claudecode.ui.lanterna.components.StyledText;
+import com.claudecode.ui.lanterna.input.TextInputs;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Sequential per-field config prompt walked after install/enable or from the "Configure options"
@@ -29,7 +27,7 @@ import com.claudecode.ui.lanterna.theme.LanternaTheme;
  */
 final class PluginOptionsFlowView {
 
-/** Outcome callbacks — matches {@code PluginOptionsDialog} onSave/onCancel. */
+    /** Outcome callbacks — matches {@code PluginOptionsDialog} onSave/onCancel. */
     interface Listener {
 
         /** All fields collected; values are String / Boolean / Double per schema type. */

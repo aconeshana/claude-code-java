@@ -8,16 +8,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import org.apache.commons.lang3.Strings;
 
-
-
-
-
-
-
-
-
-
-
 class InputPasteTruncationTest {
 
     /** Local stand-in so the round-trip test doesn't drag in core's PastedContent. */

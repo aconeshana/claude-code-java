@@ -1,14 +1,12 @@
 package com.claudecode.runtime.query;
 
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.claudecode.core.engine.RequestMessageNormalizer;
+import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.ApiMessageFormatter;
 import com.claudecode.core.engine.FallbackTriggeredError;
 import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.MidConversationSystemSupport;
+import com.claudecode.core.engine.RequestMessageNormalizer;
 import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.ToolBatchSummarizer;
@@ -17,22 +15,21 @@ import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.memdir.AutoMemoryPrompt;
 import com.claudecode.core.message.AgentListingDeltaAttachment;
-import com.claudecode.core.message.AutoModeReminderAttachment;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.AttachmentRenderer;
+import com.claudecode.core.message.AutoModeReminderAttachment;
 import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.HookAdditionalContextAttachment;
+import com.claudecode.core.message.McpInstructionsDeltaAttachment;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.MessageFactory;
 import com.claudecode.core.message.MessageOrigin;
-import com.claudecode.core.message.HookAdditionalContextAttachment;
-import com.claudecode.core.message.McpInstructionsDeltaAttachment;
-import com.claudecode.core.message.PlanModeReminderAttachment;
 import com.claudecode.core.message.OutputStyleAttachment;
+import com.claudecode.core.message.PlanModeReminderAttachment;
 import com.claudecode.core.message.SDKMessage;
-import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.message.ServerToolUseBlock;
 import com.claudecode.core.message.SkillListingAttachment;
 import com.claudecode.core.message.SystemMessage;
@@ -41,17 +38,13 @@ import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.TokenEstimator;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
-import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.model.PermissionModeKind;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.queue.QueuePriority;
 import com.claudecode.core.queue.QueuedCommand;
-
-import java.util.Objects;
-import java.util.function.Predicate;
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.File;
@@ -64,12 +57,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -678,7 +675,7 @@ final class QueryHelpers {
             case PlanModeReminderAttachment _ -> true;
             case AutoModeReminderAttachment _ -> true;
             case HookAdditionalContextAttachment _ -> true;
-// The initial output-style reminder is part of the same leading user turn
+            // The initial output-style reminder is part of the same leading user turn
 
             case OutputStyleAttachment _ -> true;
             default -> false;

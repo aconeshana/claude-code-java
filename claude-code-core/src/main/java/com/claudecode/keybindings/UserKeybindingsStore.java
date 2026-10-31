@@ -1,16 +1,14 @@
 package com.claudecode.keybindings;
 
-
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
-import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
@@ -40,7 +38,7 @@ public final class UserKeybindingsStore {
         List<KeybindingValidator.KeybindingWarning> warnings
     ) {}
 
-/** Subscription handle returned by {@link #subscribe}; call {@link #close} to unsubscribe. */
+    /** Subscription handle returned by {@link #subscribe}; call {@link #close} to unsubscribe. */
     public interface Subscription extends AutoCloseable {
         @Override void close();
     }
@@ -61,7 +59,7 @@ public final class UserKeybindingsStore {
 
     // ── construction ─────────────────────────────────────────────────────────
 
-/** Build the released store over the user's keybindings file. */
+    /** Build the released store over the user's keybindings file. */
     @Explanation("Claude Code 2.1.197 enables keybinding customization without the former preview gate")
     public static UserKeybindingsStore create() {
         return create(ClaudePaths.KEYBINDINGS_JSON, true);
@@ -109,7 +107,7 @@ public final class UserKeybindingsStore {
         return enabled;
     }
 
-/** Subscribe to keybinding changes. Returns a handle whose {@link #close} unsubscribes. */
+    /** Subscribe to keybinding changes. Returns a handle whose {@link #close} unsubscribes. */
     public Subscription subscribe(Consumer<KeybindingsLoadResult> listener) {
         listeners.add(listener);
         return () -> listeners.remove(listener);

@@ -65,7 +65,7 @@ class StatsScreenshotTest {
         var lines = StatsScreenshot.renderStats(stats(true), true, ZoneOffset.UTC);
         var last = lines.getLast();
         assertEquals("/stats", last.getLast().text());
-// Right-aligned at content width 70 (label ends at or before col 70, padding ≥ 2.
+        // Right-aligned at content width 70 (label ends at or before col 70, padding ≥ 2.
         int width = last.stream().mapToInt(s -> s.text().length()).sum();
         assertTrue(width >= "Stats from the last 30 days".length() + 2 + 6, "padded: " + width);
     }

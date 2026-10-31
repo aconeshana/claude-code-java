@@ -125,7 +125,7 @@ final class CronUtils {
         if (Strings.CS.equals("*", dayOfMonth) && Strings.CS.equals("*", month)
                 && SINGLE_DIGIT.matcher(dayOfWeek).matches()) {
             int dayIdx = Integer.parseInt(dayOfWeek) % 7; // normalize 7→0 (Sunday alias)
-// dayOfWeek is a single digit (\\d → 0-9), so % 7 yields 0-6.
+            // dayOfWeek is a single digit (\\d → 0-9), so % 7 yields 0-6.
             return "Every " + DAY_NAMES[dayIdx] + " at " + fmtTime;
         }
 

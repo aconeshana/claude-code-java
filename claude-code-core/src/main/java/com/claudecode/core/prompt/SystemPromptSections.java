@@ -12,7 +12,7 @@ public final class SystemPromptSections {
 
     private SystemPromptSections() {}
 
-// ── Tool-name constants (local; kept in sync with Java tool.name returns) ──
+    // ── Tool-name constants (local; kept in sync with Java tool.name returns) ──
 
 
     static final String AGENT_TOOL_NAME = "Agent";
@@ -585,7 +585,7 @@ public final class SystemPromptSections {
             enabledTools, hasSkills, isNonInteractiveSession, false);
     }
 
-/** established profile-aware session guidance ({@code nlf(..., lean,...)}). */
+    /** established profile-aware session guidance ({@code nlf(..., lean,...)}). */
     public static String getSessionSpecificGuidanceSection(
             Set<String> enabledTools,
             boolean hasSkills,

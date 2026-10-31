@@ -1,30 +1,28 @@
 package com.claudecode.ui.lanterna.features.settings;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.claudecode.core.engine.SandboxConfig;
-import com.claudecode.core.effort.EffortHelpers;
-import com.claudecode.core.process.SubprocessEnvironment;
-import com.claudecode.core.config.SettingsPathResolver;
-import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.SettingsPathResolver;
+import com.claudecode.core.effort.EffortHelpers;
+import com.claudecode.core.engine.PermissionUpdate;
+import com.claudecode.core.engine.SandboxConfig;
+import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.RuleSource;
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Accessors and application-owned write ports for the handful of (and policy-managed fields the
@@ -55,7 +53,7 @@ public final class UiSettings {
 
         int globalInt(String key, int defaultValue);
 
-/** Returns a structured value from, or {@code null}. */
+        /** Returns a structured value from, or {@code null}. */
         default JsonNode globalNode(String key) { return null; }
 
         /** Returns a value from the effective merged settings snapshot, or {@code null}. */
@@ -66,7 +64,7 @@ public final class UiSettings {
 
         void setGlobal(String key, Object value);
 
-/** Writes a top-level value to. */
+        /** Writes a top-level value to. */
         default void setUserSetting(String key, Object value) { }
 
         /** Returns the global, time-decayed skill usage ranking. */
@@ -205,7 +203,7 @@ public final class UiSettings {
             }
             effectiveLevel = lower;
         } else {
-// Read effortLevel from ~/on
+            // Read effortLevel from ~/on
             effectiveLevel = readStringFromSettings("effortLevel");
             if (effectiveLevel == null) return "";
         }
@@ -252,7 +250,7 @@ public final class UiSettings {
         return backend.spinnerTipsEnabled();
     }
 
-/** Reads {@code disableAllHooks} from  top-level field. */
+    /** Reads {@code disableAllHooks} from  top-level field. */
     static boolean readDisableAllHooks() {
         JsonNode node = backend.effectiveSetting("disableAllHooks");
         return node != null && node.isBoolean() && node.booleanValue();
@@ -332,11 +330,6 @@ public final class UiSettings {
         }, USER_SETTINGS_WRITER);
     }
 
-/** Writes a preference to the user settings tier, not. */
-    public static void writeUserSetting(String key, Object value) {
-        backend.setUserSetting(key, value);
-    }
-
     /**
      * Serializes a user-setting write away from Lanterna's GUI thread.
      * Capturing the backend at submission time keeps tests and startup wiring
@@ -396,22 +389,12 @@ public final class UiSettings {
             allowUnsandboxedCommands);
     }
 
-    static void addPermissionRule(String cwd, PermissionBehavior behavior,
-                                  String ruleString, RuleSource tier) {
-        backend.addPermissionRule(cwd, behavior, ruleString, tier);
-    }
-
     static CompletableFuture<Void> addPermissionRuleAsync(String cwd,
             PermissionBehavior behavior, String ruleString, RuleSource tier) {
         Backend target = backend;
         return CompletableFuture.runAsync(
             () -> target.addPermissionRule(cwd, behavior, ruleString, tier),
             USER_SETTINGS_WRITER);
-    }
-
-    static void removePermissionRule(String cwd, PermissionBehavior behavior,
-                                     String ruleString, RuleSource tier) {
-        backend.removePermissionRule(cwd, behavior, ruleString, tier);
     }
 
     static CompletableFuture<Void> removePermissionRuleAsync(String cwd,

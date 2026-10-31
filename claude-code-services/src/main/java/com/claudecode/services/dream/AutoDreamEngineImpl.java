@@ -162,7 +162,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
         store.initializeDream(task.id(), sessionIds.size());
         store.updateStatus(task.id(), TaskStatus.RUNNING);
 
-// Wire the live handle for /tasks kill.
+        // Wire the live handle for /tasks kill.
         AbortController controller = new AbortController();
         DreamRun run = new DreamRun(controller, lock, priorMtime, store, Thread.currentThread());
         running.put(task.id(), run);
@@ -178,7 +178,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
             List<String> touched = runForkedDream(prompt, engine, memoryRoot, task.id(), store, controller);
 
             if (run.aborted.get()) {
-// Killed mid-run: killDream already set KILLED + rolled back
+                // Killed mid-run: killDream already set KILLED + rolled back
 
                 // runAutoDream catch on abortController.signal.aborted).
                 return;
@@ -247,7 +247,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
 
     private List<String> listSessionsTouchedSince(Path workingDir, long sinceMs) {
 
-// not the user-facing listSessionsImpl sort.
+        // not the user-facing listSessionsImpl sort.
         SessionManager sessionManager = new SessionManager(workingDir.toString());
         Path projectDir = sessionManager.getProjectDir();
         try (Stream<Path> entries = Files.list(projectDir)) {
@@ -286,9 +286,9 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
     private List<String> runForkedDream(String prompt, QuerySession parentEngine, Path memoryRoot,
             String taskId, TaskStore store, AbortController controller) {
         QuerySessionSpec parentConfig = parentEngine.configuration().getConfig();
-// Inherit the parent's cache-safe fork params (system prompt, model, output-token limit,
-// tool catalogue, and every system-prompt input) so the first request hits the parent's
-// prompt cache.
+        // Inherit the parent's cache-safe fork params (system prompt, model, output-token limit,
+        // tool catalogue, and every system-prompt input) so the first request hits the parent's
+        // prompt cache.
         QuerySessionSpec subConfig = parentConfig.cacheSafeForkBuilder()
             .llmClient(llmClient)
             .maxTurns(100)
@@ -297,7 +297,7 @@ public final class AutoDreamEngineImpl implements AutoDreamEngine {
             .initialMessages(new ArrayList<>(parentEngine.conversation().getMessages()))
             .toolExecutor(new MemoryExtractionToolExecutor(realToolExecutor, memoryRoot))
             .agentId(AgentId.create())
-// #1: wired so /tasks kill can abort the fork.
+            // #1: wired so /tasks kill can abort the fork.
             .abortController(controller)
             .build();
         QuerySession subEngine = Objects.requireNonNull(

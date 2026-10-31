@@ -96,7 +96,7 @@ public final class HooksController implements ReplCommandUiBridge.Hooks, ReplFea
                     closeReloadSubscription();
                     sink.breadcrumb("/hooks");
                 });
-// Subscribe to settings hot-reload so external edits repaint the dialog live.
+                // Subscribe to settings hot-reload so external edits repaint the dialog live.
                 closeReloadSubscription();  // paranoia: cancel any leftover
                 try {
                     reloadSubscription = hookConfiguration.subscribeReload(() -> refresh(workingDir));

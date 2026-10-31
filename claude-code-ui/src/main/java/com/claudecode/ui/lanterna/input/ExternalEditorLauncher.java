@@ -41,7 +41,7 @@ public final class ExternalEditorLauncher {
         }
 
 
-// selection order.
+        // selection order.
         String editor = SubprocessEnvironment.get("VISUAL");
         String source = "$VISUAL";
         if (isBlank(editor)) {

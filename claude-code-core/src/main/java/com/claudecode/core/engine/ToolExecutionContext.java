@@ -1,5 +1,9 @@
 package com.claudecode.core.engine;
 
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.model.PermissionModeKind;
+import com.claudecode.core.queue.MessageQueueManager;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -8,13 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
-
 import org.apache.commons.lang3.Strings;
-
-import com.claudecode.core.message.SDKMessage;
-import com.claudecode.core.message.Message;
-import com.claudecode.core.model.PermissionModeKind;
-import com.claudecode.core.queue.MessageQueueManager;
 
 /**
  * Context provided to tool executors during execution.
@@ -493,17 +491,17 @@ public record ToolExecutionContext(
             return Strings.CS.equals(BACKGROUND_HINT, dataType);
         }
 
-/** Raw MCP progress payload consumed by x. */
+        /** Raw MCP progress payload consumed by x. */
         public static ProgressUpdate mcp(double current, Double total,
                 String progressMessage, boolean complete) {
             double ratio = total != null && total > 0
-                ? Math.max(0.0, Math.min(1.0, current / total)) : 0.0;
+                ? Math.clamp(current / total, 0.0, 1.0) : 0.0;
             return builder().progress(ratio).message(progressMessage)
                 .dataType("mcp_progress").complete(complete).progressValue(current)
                 .total(total).progressMessage(progressMessage).build();
         }
 
-/** Raw WebSearch progress payload consumed by x. */
+        /** Raw WebSearch progress payload consumed by x. */
         public static ProgressUpdate webSearch(String type, String query,
                 Long resultCount, String message) {
             return builder().message(message).dataType(type).query(query)

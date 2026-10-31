@@ -71,7 +71,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
     private static final String LEFT_DOUBLE_CURLY = "“"; // \u201C
     private static final String RIGHT_DOUBLE_CURLY = "”"; // \u201D
 
-// Task 57.7c: Team-memory secret guard only.
+    // Task 57.7c: Team-memory secret guard only.
 
 
     // the team-memory directory is gated, and that lives in TeamMemSecretGuard).
@@ -136,7 +136,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
         }
 
 
-// teamMemoryEnabled settings key).
+        // teamMemoryEnabled settings key).
 
 
 
@@ -165,8 +165,8 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                     path, Path.of(context.workingDirectory()));
             }
 
-// Task 57.7b: Read-before-write validation — skipped when old_string is empty (new-file
-// creation needs no prior read).
+            // Task 57.7b: Read-before-write validation — skipped when old_string is empty (new-file
+            // creation needs no prior read).
 
             if (!oldStr.isEmpty()) {
                 String readCheckError = validateReadBeforeWrite(context, path, absolutePath);
@@ -211,8 +211,8 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
             String newContent = preview.newContent();
             String actualOldStr = preview.actualOldString();
 
-// /rewind "Restore code" checkpoint — must run before the write so the backup captures
-// pre-edit content.
+            // /rewind "Restore code" checkpoint — must run before the write so the backup captures
+            // pre-edit content.
 
             if (context.fileHistoryManager() != null) {
                 context.fileHistoryManager().trackEdit(
@@ -279,7 +279,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                 "No changes to make: old_string and new_string are exactly the same.");
         }
         if (oldValue.isEmpty()) {
-            if (!source.strip().isEmpty()) {
+            if (!source.isBlank()) {
                 return EditPreview.error(source, "Cannot create new file - file already exists.");
             }
             return EditPreview.success(oldValue, newValue, newValue,

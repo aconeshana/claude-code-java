@@ -340,9 +340,9 @@ public class LocalShellTask {
             TaskRegistry.global() == null ? null : TaskRegistry.global().messageQueue();
         if (queue == null) return; // not wired (e.g. tests) — no-op
         String body = TaskNotificationBuilder.buildStallNotification(taskState, tail);
-// Route the stall warning to the owning agent (a sub-agent's background bash carries its
-// agentId) so only that agent's engine loop drains it; a main-thread bash has agentId null
-// → drained by the coordinator.
+        // Route the stall warning to the owning agent (a sub-agent's background bash carries its
+        // agentId) so only that agent's engine loop drains it; a main-thread bash has agentId null
+        // → drained by the coordinator.
         queue.enqueuePendingNotification(new QueuedCommand(
             body, null, "task-notification", QueuePriority.NEXT,
             true, null, false, false, null, null, taskState.agentId().orElse(null)));

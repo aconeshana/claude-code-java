@@ -17,7 +17,7 @@ public final class AgentId {
         return create(null);
     }
 
-/** matches the optional label form: {@code "a<label>-" + 16 hex chars}. */
+    /** matches the optional label form: {@code "a<label>-" + 16 hex chars}. */
     public static String create(String label) {
         byte[] bytes = new byte[8];
         RANDOM.nextBytes(bytes);

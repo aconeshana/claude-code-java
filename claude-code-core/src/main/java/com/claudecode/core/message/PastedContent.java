@@ -11,13 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-
-
-
-
-
-
-
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PastedContent(
     @JsonProperty("id")          int     id,

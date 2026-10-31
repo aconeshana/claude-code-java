@@ -75,7 +75,7 @@ public class LocalAgentTask {
         return thread != null && thread.isAlive();
     }
 
-/** Wires the sub-engine's AbortController so {@link #kill} truly cancels. */
+    /** Wires the sub-engine's AbortController so {@link #kill} truly cancels. */
     public void setAbortController(AbortController controller) {
         this.abortController = controller;
     }

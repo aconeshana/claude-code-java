@@ -1,11 +1,8 @@
 package com.claudecode.core.paste;
 
-import com.claudecode.core.imagestore.ImageResizer;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.claudecode.core.imagestore.ImageResizer;
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -22,18 +19,8 @@ import java.util.UUID;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
-
-
-
-
-
-
-
-
-
-
-
-
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 public final class ImagePaste {
 
@@ -115,7 +102,7 @@ public final class ImagePaste {
      */
     public static ImageWithDimensions getImageFromClipboard() {
         ClipboardReadResult result = CLIPBOARD_IMAGES.read();
-        return result instanceof ClipboardReadResult.Image image ? image.image() : null;
+        return result instanceof ClipboardReadResult.Image(ImageWithDimensions image1) ? image1 : null;
     }
 
     private static ClipboardImageService clipboardImageService() {
@@ -129,7 +116,6 @@ public final class ImagePaste {
         };
         return new ClipboardImageService(backends);
     }
-
 
 
     /**
@@ -163,8 +149,8 @@ public final class ImagePaste {
             if (Path.of(cleaned).isAbsolute()) {
                 bytes = Files.readAllBytes(Path.of(cleaned));
             } else {
-// VSCode Terminal pastes just the filename; check if clipboard holds a full path
-// whose basename matches.
+                // VSCode Terminal pastes just the filename; check if clipboard holds a full path
+                // whose basename matches.
                 String clipPath = getImagePathFromClipboard();
                 if (clipPath == null) return null;
                 Path clipP = Path.of(clipPath);

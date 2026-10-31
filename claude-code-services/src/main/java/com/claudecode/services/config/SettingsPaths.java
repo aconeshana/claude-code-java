@@ -1,9 +1,9 @@
 package com.claudecode.services.config;
 
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.config.SettingsPathResolver;
 import com.claudecode.core.state.CwdState;
 import java.nio.file.Path;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Resolves the filesystem locations for the file-backed settings sources.
@@ -12,18 +12,18 @@ public final class SettingsPaths {
 
     private SettingsPaths() {}
 
-/**, or the cowork variant when enabled. */
+    /**, or the cowork variant when enabled. */
     public static Path userSettingsPath() {
         return SettingsPathResolver.userSettingsPath();
     }
 
-/** {@code on}. */
+    /** {@code on}. */
     public static Path projectSettingsPath(String cwd) {
         return Path.of(cwd).toAbsolutePath().normalize()
             .resolve(".claude").resolve("settings.json");
     }
 
-/** {@code on}. */
+    /** {@code on}. */
     public static Path localSettingsPath(String cwd) {
         return Path.of(cwd).toAbsolutePath().normalize()
             .resolve(".claude").resolve("settings.local.json");

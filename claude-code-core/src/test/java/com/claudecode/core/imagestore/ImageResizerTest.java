@@ -25,9 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.NodeList;
 
-
-
-
 class ImageResizerTest {
 
     @TempDir

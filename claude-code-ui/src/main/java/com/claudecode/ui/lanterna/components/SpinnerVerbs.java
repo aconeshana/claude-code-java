@@ -1,9 +1,7 @@
 package com.claudecode.ui.lanterna.components;
 
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
-import com.claudecode.ui.lanterna.features.settings.UiSettings;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Spinner verb selection — data + selection functions used by the streaming status line ({@code "✻
@@ -93,7 +91,7 @@ public final class SpinnerVerbs {
             return user.isEmpty() ? builtIn : List.copyOf(user);
         }
 
-// unknown or missing, so we match that (permissive) behaviour.
+        // unknown or missing, so we match that (permissive) behaviour.
         List<String> merged = new ArrayList<>(builtIn.size() + user.size());
         merged.addAll(builtIn);
         merged.addAll(user);

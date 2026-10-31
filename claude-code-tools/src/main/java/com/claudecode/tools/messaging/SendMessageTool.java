@@ -1,36 +1,33 @@
 package com.claudecode.tools.messaging;
 
-import com.claudecode.tools.tasks.TaskState;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.engine.ToolResultContentForm;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.ValidationResult;
+import com.claudecode.tools.agent.AgentContinuationService;
+import com.claudecode.tools.agent.SubAgentFactory;
+import com.claudecode.tools.tasks.TaskRegistry;
+import com.claudecode.tools.tasks.TaskState;
+import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.teammate.Mail;
 import com.claudecode.tools.tasks.teammate.MailTypes;
 import com.claudecode.tools.tasks.teammate.TeammateContext;
 import com.claudecode.tools.tasks.teammate.TeammateContextHolder;
 import com.claudecode.tools.tasks.teammate.TeammateMailbox;
-import com.claudecode.tools.ToolTexts;
-import com.claudecode.tools.tasks.TaskRegistry;
-import com.claudecode.tools.tasks.TaskStatus;
-import com.claudecode.tools.agent.AgentContinuationService;
-import com.claudecode.tools.agent.SubAgentFactory;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Locale;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.claudecode.tools.AnnotatedTool;
-
-import java.util.Locale;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.ValidationResult;
-
 
 /**
  * SendMessageTool — send a message to another agent.
@@ -66,8 +63,8 @@ public class SendMessageTool extends AnnotatedTool<JsonNode, String> {
 
     @Override
     public String prompt(ToolExecutionContext context) {
-// Single source of truth: the wire tool catalogue is built from prompt(null), and
-// it must equal the permission-UI description (ToolDescriptionWireParityTest).
+        // Single source of truth: the wire tool catalogue is built from prompt(null), and
+        // it must equal the permission-UI description (ToolDescriptionWireParityTest).
         return description();
     }
 
@@ -243,14 +240,14 @@ public class SendMessageTool extends AnnotatedTool<JsonNode, String> {
             }
         }
 
-// In-process teammate context: route teammate-bound messages through the in-JVM mailbox.
+        // In-process teammate context: route teammate-bound messages through the in-JVM mailbox.
         TeammateContext tc = TeammateContextHolder.get();
         if (tc != null) {
             return sendToTeammate(tc, to, message, summary);
         }
 
-// Leader (main thread) → teammate dispatch: route the message through the in-JVM mailbox so
-// the teammate's run loop receives it as the next turn's prompt.
+        // Leader (main thread) → teammate dispatch: route the message through the in-JVM mailbox so
+        // the teammate's run loop receives it as the next turn's prompt.
         String inbox = TeammateMailbox.instance().resolveToInbox(to);
         if (!inbox.equals(TeammateMailbox.TEAM_LEAD) && TeammateMailbox.instance().hasInbox(inbox)) {
             Mail mail = buildProtocolMail(TeammateMailbox.TEAM_LEAD, inbox, message);
@@ -266,8 +263,8 @@ public class SendMessageTool extends AnnotatedTool<JsonNode, String> {
                 TeammateMailbox.TEAM_LEAD, "@" + to, summary, message);
         }
 
-// Terminal and evicted local agents are resumed from their persisted sidechain
-// transcript under the same id.
+        // Terminal and evicted local agents are resumed from their persisted sidechain
+        // transcript under the same id.
         if (looksLikeAgentId(resolvedAgentId)) {
             if (continuationService == null) {
                 return error("agent '" + to + "' cannot be continued — sub-agent "
@@ -368,8 +365,8 @@ public class SendMessageTool extends AnnotatedTool<JsonNode, String> {
      */
     private String sendToTeammate(TeammateContext tc, String recipient, String content, String summary) {
         String from = tc.agentId();
-// Resolve the recipient to its inbox key: "team-lead" and raw task ids pass through; a
-// registered teammate name maps to its task id.
+        // Resolve the recipient to its inbox key: "team-lead" and raw task ids pass through; a
+        // registered teammate name maps to its task id.
         String to = TeammateMailbox.instance().resolveToInbox(recipient);
         Mail mail = buildProtocolMail(from, to, content);
         TeammateMailbox.instance().send(mail);

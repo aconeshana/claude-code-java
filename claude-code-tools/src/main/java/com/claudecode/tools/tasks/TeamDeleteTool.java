@@ -1,22 +1,20 @@
 package com.claudecode.tools.tasks;
 
-import com.claudecode.tools.ToolTexts;
 import com.claudecode.core.engine.ToolExecutionContext;
-import com.claudecode.permissions.PermissionDecision;
-import com.claudecode.permissions.ToolPermissionContext;
-import com.claudecode.core.state.AgentColorStore;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
-import com.claudecode.tools.tasks.teammate.TeammateMailbox;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.io.FileUtils;
+import com.claudecode.core.state.AgentColorStore;
+import com.claudecode.permissions.PermissionDecision;
+import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
+import com.claudecode.tools.tasks.teammate.TeammateMailbox;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.util.List;
 import java.util.Optional;
-
 
 @BuiltInTool(
     name = "TeamDelete",
@@ -60,7 +58,7 @@ public class TeamDeleteTool extends AnnotatedTool<JsonNode, String> {
             return resultJson(true, "No team name found, nothing to clean up", null);
         }
 
-// B.2 — active non-lead member guard.
+        // B.2 — active non-lead member guard.
         List<String> active = TeamRegistry.instance().activeNonLeadAgents(teamName);
         if (!active.isEmpty()) {
             String memberNames = String.join(", ", active);
@@ -74,8 +72,8 @@ public class TeamDeleteTool extends AnnotatedTool<JsonNode, String> {
         TeamRegistry.instance().remove(teamName);
         TeamTaskListRegistry.instance().removeAndDelete(teamName);
         TeamSessionCleanup.unregister(teamName);
-// teamName was derived from led and the null case already returned above ("nothing to clean
-// up"), so led is provably present here.
+        // teamName was derived from led and the null case already returned above ("nothing to clean
+        // up"), so led is provably present here.
         TeammateMailbox.instance().clearTeam(led.orElseThrow().members());
         TeammateMailbox.instance().clear(TeammateMailbox.TEAM_LEAD);
 

@@ -1,8 +1,5 @@
 package com.claudecode.services.hooks;
 
-
-
-
 public enum HookSource {
     USER_SETTINGS,
     PROJECT_SETTINGS,

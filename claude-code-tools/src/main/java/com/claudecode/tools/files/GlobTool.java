@@ -84,10 +84,10 @@ public class GlobTool extends AnnotatedTool<JsonNode, String> {
         String exclude = input.has("exclude") ? input.get("exclude").asText("") : "";
         String path = input.has("path") ? input.get("path").asText("") : "";
 
-// this as a tool input — it comes from server config `globLimits?.maxResults ?? 100`.
+        // this as a tool input — it comes from server config `globLimits?.maxResults ?? 100`.
         int maxResults = input.has("max_results") ? input.get("max_results").asInt(DEFAULT_MAX_RESULTS) : DEFAULT_MAX_RESULTS;
 
-// derived solely from the CLAUDE_CODE_GLOB_HIDDEN env (, default
+        // derived solely from the CLAUDE_CODE_GLOB_HIDDEN env (, default
 
         // and includeHidden is true unless the input explicitly sets it false.
         boolean includeHidden = !input.has("include_hidden") || input.get("include_hidden").asBoolean(true);
@@ -195,9 +195,9 @@ public class GlobTool extends AnnotatedTool<JsonNode, String> {
             args.add("!" + exclude);
         }
 
-// INTENTIONAL DIVERGENCE from the compatibility baselinecompatibility contract build (
-// calls ripGrep(args, searchDir) →: fullArgs=[...args, target], spawn with NO cwd override,
-// so rg runs with the REAL cwd and searchDir is only a positional PATH).
+        // INTENTIONAL DIVERGENCE from the compatibility baselinecompatibility contract build (
+        // calls ripGrep(args, searchDir) →: fullArgs=[...args, target], spawn with NO cwd override,
+        // so rg runs with the REAL cwd and searchDir is only a positional PATH).
         List<String> lines = RipGrepUtil.run(args, searchDir);
         // rg rooted at searchDir always emits searchDir-relative paths; make them absolute under
 
@@ -312,7 +312,7 @@ public class GlobTool extends AnnotatedTool<JsonNode, String> {
      * is not under {@code cwd} (e.g.
      */
     static String safeRelativize(Path cwd, Path file) {
-// Normalize to absolute so prefix comparisons are exact.
+        // Normalize to absolute so prefix comparisons are exact.
         return PathUtils.toRelativePath(cwd, file);
     }
 
@@ -384,7 +384,7 @@ public class GlobTool extends AnnotatedTool<JsonNode, String> {
         patternProp.put("description", "The glob pattern to match files against");
 
 
-// directory other than cwd (call resolves it via PathUtils.expandPath).
+        // directory other than cwd (call resolves it via PathUtils.expandPath).
         ObjectNode pathProp = properties.putObject("path");
         pathProp.put("type", "string");
         pathProp.put("description",

@@ -26,7 +26,7 @@ class ToolSearchToolTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-/** A fake deferred tool — shouldDefer true, real description for scoring. */
+    /** A fake deferred tool — shouldDefer true, real description for scoring. */
     private static Tool<Object, String> fakeDeferredTool(String name, String description) {
         return new Tool<>() {
             @Override public ToolIdentity identity() { return new ToolIdentity(name); }

@@ -1011,8 +1011,8 @@ class InProcessTeammateTaskTest {
         teammate.start();
 
         mailbox.receive(TeammateMailbox.TEAM_LEAD); // consume idle after turn 1
-// A shutdown_request is handed to the model as a wrapped message, not an immediate
-// abort.
+        // A shutdown_request is handed to the model as a wrapped message, not an immediate
+        // abort.
         mailbox.send(Mail.of(MailTypes.SHUTDOWN_REQUEST, TeammateMailbox.TEAM_LEAD, task.id(), "please stop"));
 
         Mail idle2 = mailbox.receive(TeammateMailbox.TEAM_LEAD);

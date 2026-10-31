@@ -8,11 +8,6 @@ import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
-
-
-
-
 public final class MarketplaceInput {
 
     /** Outcome of parsing: a source, a user-facing error, or unrecognized input. */

@@ -546,7 +546,7 @@ class SdkControlBrokerTest {
         assertEquals("setMode", mode.path("type").asText());
         assertEquals("acceptEdits", mode.path("mode").asText());
         assertEquals("session", mode.path("destination").asText());
-// decision_reason must be absent for the simple (null) decision type.
+        // decision_reason must be absent for the simple (null) decision type.
         assertTrue(request.path("decision_reason").isMissingNode());
         assertTrue(request.path("title").isMissingNode());
 

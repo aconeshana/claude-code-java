@@ -1,8 +1,5 @@
 package com.claudecode.core.engine;
 
-
-
-
 /**
  * Progress events emitted by the compact flow (manual /compact and auto-compact).
  */

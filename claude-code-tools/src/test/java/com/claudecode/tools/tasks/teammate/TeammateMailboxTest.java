@@ -37,7 +37,7 @@ class TeammateMailboxTest {
         try {
             Future<?> sent = ex.submit(() ->
                 mailbox.send(Mail.of(MailTypes.USER_MESSAGE, "agent-a", "blocked", "ping")));
-// receive should block until the sender offers the message.
+            // receive should block until the sender offers the message.
             Mail m = mailbox.receive("blocked");
             sent.get(2, TimeUnit.SECONDS);
             assertEquals("ping", m.payload());

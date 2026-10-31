@@ -1,30 +1,23 @@
 package com.claudecode.runtime.query;
 
 import com.claudecode.core.engine.AbortController;
-import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.engine.HookDispatcher;
-import com.claudecode.core.queue.InterruptBehavior;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.MessageFactory;
 import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.ToolResultBlock;
-import com.claudecode.core.message.MessageFactory;
+import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.serialization.JsonUtils;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +28,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Concurrent implementation of {@link ToolRunner}.
@@ -95,7 +92,7 @@ final class ConcurrentToolRunner implements ToolRunner {
         String sourceAssistantUuid,
         InterruptibleToolTracker tracker
     ) {
-// Partition into ordered batches.
+        // Partition into ordered batches.
         List<List<ToolUseBlock>> batches = partition(toolUseBlocks, engine.getConfig().toolExecutor());
 
         boolean errorDuringExecution = false;

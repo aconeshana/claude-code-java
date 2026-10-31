@@ -71,7 +71,7 @@ class StatsCacheStoreTest {
 
     @Test
     void officialV4CacheLoadsAsIs() throws Exception {
-// Version-4 fixture using the same keys as version 3.
+        // Version-4 fixture using the same keys as version 3.
         Files.writeString(tmp.resolve("stats-cache.json"), """
             {"version":4,"lastComputedDate":"2026-07-09",
              "dailyActivity":[{"date":"2025-12-24","messageCount":732,"sessionCount":3,"toolCallCount":221}],

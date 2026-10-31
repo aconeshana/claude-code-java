@@ -623,9 +623,9 @@ class BashToolTest {
 
     @Test
     void backgroundCommand_tagsAgentId_forSubAgentContext() {
-// (agentId routing): a sub-agent's background bash must stamp the task with the
-// sub-agent id so its completion notification routes back to that agent, not the
-// coordinator.
+        // (agentId routing): a sub-agent's background bash must stamp the task with the
+        // sub-agent id so its completion notification routes back to that agent, not the
+        // coordinator.
         var registry = new TaskRegistry(TaskStore.inMemory());
         TaskRegistry.setGlobalForTest(registry);
         try {

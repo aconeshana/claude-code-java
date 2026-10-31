@@ -1462,8 +1462,8 @@ class DefaultSubAgentFactoryTest {
 
     @Test
     void restrictedExecutor_blocksAgentDisallowedTools() {
-// Defense-in-depth: even if a disallowed tool reaches the sub-agent's tool list,
-// the RestrictedToolExecutor must refuse it and hide it from the model.
+        // Defense-in-depth: even if a disallowed tool reaches the sub-agent's tool list,
+        // the RestrictedToolExecutor must refuse it and hide it from the model.
         AtomicReference<ToolExecutionContext> definitionContext = new AtomicReference<>();
         ToolExecutor delegate = new ToolExecutor() {
             @Override

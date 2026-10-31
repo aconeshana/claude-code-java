@@ -222,7 +222,7 @@ class CompleteQueryEngineTest {
 
     @Test
     void fetchSystemPromptParts_doesNotPlaintextDumpArbitraryToolNames() {
-// getSystemPrompt never emits an "Available tools:" plaintext dump of config.tools.
+        // getSystemPrompt never emits an "Available tools:" plaintext dump of config.tools.
         var engine = new DefaultQuerySession(QuerySessionSpec.builder()
             .llmClient(mockClient(List.of()))
             .tools(List.of("FileRead", "Grep"))

@@ -1,6 +1,5 @@
 package com.claudecode.ui.lanterna.transcript;
 
-
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,8 +14,8 @@ public final class ShellOutputFormatter {
 
     private static final int MAX_JSON_FORMAT_LENGTH = 10_000;
 
-// Match http(s) URLs — conservative: no whitespace, no quotes, no XML/JSON structural
-// characters.
+    // Match http(s) URLs — conservative: no whitespace, no quotes, no XML/JSON structural
+    // characters.
     private static final Pattern URL_PATTERN =
         Pattern.compile("https?://[^\\s\"'<>\\\\]+");
 

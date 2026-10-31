@@ -38,7 +38,7 @@ class TrustConfigStoreTest {
         TrustConfigStore.setConfigPathForTesting(configFile());
     }
 
-/** Redirects config + anchors the trust key to {@code cwd} (matches compatibility baselineCwd). */
+    /** Redirects config + anchors the trust key to {@code cwd} (matches compatibility baselineCwd). */
     private void setup(Path cwd) {
         redirect();
         TrustConfigStore.setOriginalCwd(cwd);
@@ -162,18 +162,17 @@ class TrustConfigStoreTest {
     @Test
     void externalIncludes_initiallyNotDecided() {
         setup(projectCwd());
-        Path cwd = projectCwd();
-        assertFalse(TrustConfigStore.hasExternalIncludesApproved(cwd));
-        assertFalse(TrustConfigStore.hasExternalIncludesWarningShown(cwd));
+        assertFalse(TrustConfigStore.hasExternalIncludesApproved());
+        assertFalse(TrustConfigStore.hasExternalIncludesWarningShown());
     }
 
     @Test
     void externalIncludes_approve_marksBothFlags() throws Exception {
         setup(projectCwd());
         Path cwd = projectCwd();
-        TrustConfigStore.saveExternalIncludesDecision(cwd, true);
-        assertTrue(TrustConfigStore.hasExternalIncludesApproved(cwd));
-        assertTrue(TrustConfigStore.hasExternalIncludesWarningShown(cwd));
+        TrustConfigStore.saveExternalIncludesDecision(true);
+        assertTrue(TrustConfigStore.hasExternalIncludesApproved());
+        assertTrue(TrustConfigStore.hasExternalIncludesWarningShown());
         String key = TrustConfigStore.getProjectPathForConfig(cwd);
         JsonNode entry = JsonUtils.readJson(configFile()).get("projects").get(key);
         assertTrue(entry.get("hasClaudeMdExternalIncludesApproved").asBoolean());
@@ -183,11 +182,10 @@ class TrustConfigStoreTest {
     @Test
     void externalIncludes_decline_marksWarningShownOnly() {
         setup(projectCwd());
-        Path cwd = projectCwd();
-        TrustConfigStore.saveExternalIncludesDecision(cwd, false);
-        assertFalse(TrustConfigStore.hasExternalIncludesApproved(cwd),
+        TrustConfigStore.saveExternalIncludesDecision(false);
+        assertFalse(TrustConfigStore.hasExternalIncludesApproved(),
             "decline must NOT approve");
-        assertTrue(TrustConfigStore.hasExternalIncludesWarningShown(cwd),
+        assertTrue(TrustConfigStore.hasExternalIncludesWarningShown(),
             "decline still marks the warning shown so it is not re-prompted");
     }
 
@@ -199,7 +197,7 @@ class TrustConfigStoreTest {
         // Pre-existing trust entry for the same project must survive an includes decision.
         Files.writeString(configFile(),
             "{\"projects\":{\"" + key + "\":{\"hasTrustDialogAccepted\":true}}}");
-        TrustConfigStore.saveExternalIncludesDecision(cwd, true);
+        TrustConfigStore.saveExternalIncludesDecision(true);
         JsonNode entry = JsonUtils.readJson(configFile()).get("projects").get(key);
         assertTrue(entry.get("hasTrustDialogAccepted").asBoolean(),
             "prior trust entry must be preserved (deep merge, not overwrite)");
@@ -256,7 +254,7 @@ class TrustConfigStoreTest {
             final int idx = i;
             futures.add(ex.submit(() -> {
                 TrustConfigStore.acceptTrust(cwd);
-                TrustConfigStore.saveExternalIncludesDecision(cwd, idx % 2 == 0);
+                TrustConfigStore.saveExternalIncludesDecision(idx % 2 == 0);
                 assertTrue(TrustConfigStore.isTrustAccepted(cwd), "trust must be readable under concurrency");
                 return null;
             }));

@@ -58,7 +58,7 @@ class CostCommandTest {
             "expected 2-decimal cost; got: " + out);
         assertTrue(Strings.CS.contains(out, "Total duration (API):  5s"), out);
         assertTrue(Strings.CS.contains(out, "Total code changes:    42 lines added, 7 lines removed"), out);
-// Per-model line grouped under the display name, using.
+        // Per-model line grouped under the display name, using.
         assertTrue(Strings.CS.contains(out, "Usage by model:"), out);
         assertTrue(Strings.CS.contains(out, "Opus 4.8:"), out);
         assertTrue(Strings.CS.contains(out, "1.0m input"), out);

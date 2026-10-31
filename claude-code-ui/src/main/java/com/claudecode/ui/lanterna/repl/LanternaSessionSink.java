@@ -367,8 +367,8 @@ public final class LanternaSessionSink implements SessionSink {
      */
     private void renderEcho(String displayText, Map<Integer, PastedContent> pasted) {
         messagePanel.appendLine("", TextColor.ANSI.DEFAULT); // spacer
-// Expand `[Pasted text #N...]` placeholders back to the original pasted text before
-// echoing.
+        // Expand `[Pasted text #N...]` placeholders back to the original pasted text before
+        // echoing.
 
         // the already-expanded finalInput, not the raw chip-bearing input).
         // `[Image #N]` refs are deliberately left alone by expandPastedTextRefs
@@ -473,7 +473,7 @@ public final class LanternaSessionSink implements SessionSink {
             }
         }
 
-// ── Ephemeral progress collapse ────────────────────────────────────.
+        // ── Ephemeral progress collapse ────────────────────────────────────.
 
 
 

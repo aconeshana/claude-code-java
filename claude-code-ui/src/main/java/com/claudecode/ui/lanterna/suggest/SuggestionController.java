@@ -167,7 +167,7 @@ public final class SuggestionController implements AutoCloseable {
                 && query.indexOf('@') < 0) {
             return;
         }
-// Work on the text before the cursor.
+        // Work on the text before the cursor.
         String beforeCursor = cursorOffset <= query.length()
             ? query.substring(0, cursorOffset)
             : query;

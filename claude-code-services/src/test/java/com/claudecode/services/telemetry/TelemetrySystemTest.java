@@ -121,8 +121,8 @@ class TelemetrySystemTest {
 
     @Test
     void otelProviderStripsConsoleWhenDisallowed() {
-// allowConsole=false strips console exporters → no exporter wired, but emitting
-// must still not throw.
+        // allowConsole=false strips console exporters → no exporter wired, but emitting
+        // must still not throw.
         Telemetry.initialize(Map.of(
             "CLAUDE_CODE_ENABLE_TELEMETRY", "true",
             "OTEL_METRICS_EXPORTER", "console"), false);

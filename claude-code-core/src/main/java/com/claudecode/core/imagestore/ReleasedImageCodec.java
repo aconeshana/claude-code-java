@@ -4,9 +4,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
-
-
-
 final class ReleasedImageCodec {
 
     private static final int[] LUMA_Q = {

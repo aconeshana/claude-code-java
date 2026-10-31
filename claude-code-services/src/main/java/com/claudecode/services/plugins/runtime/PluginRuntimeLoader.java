@@ -1,35 +1,30 @@
 package com.claudecode.services.plugins.runtime;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.core.agent.AgentSource;
+import com.claudecode.core.agent.BuiltInAgentDefinitions;
+import com.claudecode.core.io.FileUtils;
+import com.claudecode.core.prompt.ArgumentSubstitutor;
+import com.claudecode.core.prompt.OutputStyleConfig;
+import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.FrontmatterParser;
 import com.claudecode.mcp.McpServerConfig;
 import com.claudecode.mcp.oauth.SecureStorage;
 import com.claudecode.mcp.oauth.SecureStorageData;
 import com.claudecode.mcp.oauth.SecureStorageFactory;
+import com.claudecode.runtime.plugins.PluginCommandDefinition;
+import com.claudecode.services.config.SettingsSources;
 import com.claudecode.services.hooks.HookEvent;
 import com.claudecode.services.hooks.HookMatcher;
 import com.claudecode.services.hooks.HooksSettings;
-import com.claudecode.services.config.SettingsSources;
 import com.claudecode.services.plugins.marketplace.InstalledPlugins;
 import com.claudecode.services.plugins.marketplace.InstalledPluginsStore;
+import com.claudecode.services.plugins.marketplace.PluginChannel;
 import com.claudecode.services.plugins.marketplace.PluginDirectories;
 import com.claudecode.services.plugins.marketplace.PluginError;
-import com.claudecode.services.plugins.marketplace.PluginChannel;
 import com.claudecode.services.plugins.marketplace.PluginManifest;
 import com.claudecode.services.plugins.marketplace.PluginSettingsStore;
 import com.claudecode.services.plugins.marketplace.UserConfigOption;
-import com.claudecode.runtime.plugins.PluginCommandDefinition;
 import com.claudecode.services.plugins.runtime.PluginRuntimeSnapshot.PluginSkillDir;
-import com.claudecode.core.agent.AgentSource;
-import com.claudecode.core.agent.BuiltInAgentDefinitions;
-import com.claudecode.core.prompt.OutputStyleConfig;
-import com.claudecode.core.util.FrontmatterParser;
-import com.claudecode.core.prompt.ArgumentSubstitutor;
-import com.claudecode.core.io.FileUtils;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.tools.workflows.ParsedWorkflowScript;
 import com.claudecode.tools.workflows.WorkflowDefinition;
 import com.claudecode.tools.workflows.WorkflowMetadata;
@@ -38,9 +33,6 @@ import com.claudecode.tools.workflows.WorkflowSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,11 +44,16 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Enumerates the enabled plugins ({@code enabledPlugins} settings ∩ and loads every runtime
@@ -349,7 +346,7 @@ public final class PluginRuntimeLoader {
                                         List<PluginError> errors) {
         Path manifestPath = root.resolve(".claude-plugin").resolve("plugin.json");
         if (!Files.isRegularFile(manifestPath)) {
-// Minimal plugin without a manifest — defaults.
+            // Minimal plugin without a manifest — defaults.
             return PluginManifest.builder(pluginName).build();
         }
         try {
@@ -1196,7 +1193,7 @@ public final class PluginRuntimeLoader {
 
     private JsonNode resolveLspConfig(PluginContext ctx, JsonNode node) {
         List<String> missingVars = new ArrayList<>();
-        ObjectNode resolved = (ObjectNode) node.deepCopy();
+        ObjectNode resolved = node.deepCopy();
 
         if (resolved.has("command") && !resolved.get("command").isNull()) {
             resolved.put("command", resolveLspValue(ctx, resolved.get("command").asText(), missingVars));
@@ -1213,8 +1210,8 @@ public final class PluginRuntimeLoader {
                 resolveLspValue(ctx, resolved.get("workspaceFolder").asText(), missingVars));
         }
 
-// CLAUDE_PLUGIN_ROOT / CLAUDE_PLUGIN_DATA are injected first and cannot be overridden by a
-// declared env var.
+        // CLAUDE_PLUGIN_ROOT / CLAUDE_PLUGIN_DATA are injected first and cannot be overridden by a
+        // declared env var.
         ObjectNode env = resolved.has("env") && resolved.get("env").isObject()
             ? (ObjectNode) resolved.get("env") : resolved.putObject("env");
         env.put("CLAUDE_PLUGIN_ROOT", ctx.root().toString());

@@ -1,8 +1,5 @@
 package com.claudecode.ui;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.constants.AnsiColor;
 import com.claudecode.core.constants.AnsiStyle;
@@ -14,12 +11,19 @@ import com.claudecode.ui.lanterna.theme.RgbColor;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.ibm.icu.text.BreakIterator;
-
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.commonmark.Extension;
 import org.commonmark.ext.gfm.tables.TableBlock;
 import org.commonmark.ext.gfm.tables.TableBody;
@@ -51,8 +55,8 @@ import org.commonmark.node.SourceSpan;
 import org.commonmark.node.StrongEmphasis;
 import org.commonmark.node.Text;
 import org.commonmark.node.ThematicBreak;
-import org.commonmark.parser.Parser;
 import org.commonmark.parser.IncludeSourceSpans;
+import org.commonmark.parser.Parser;
 
 /**
  * Renders Markdown text to ANSI-styled terminal output using commonmark-java.
@@ -769,7 +773,7 @@ public class MarkdownRenderer {
             visitChildren(customBlock);
         }
 
-// Responsive table layout matching Claude Code.
+        // Responsive table layout matching Claude Code.
         public void visit(TableBlock tableBlock) {
             List<List<Cell>> rows = new ArrayList<>();
             Node tableChild = tableBlock.getFirstChild();

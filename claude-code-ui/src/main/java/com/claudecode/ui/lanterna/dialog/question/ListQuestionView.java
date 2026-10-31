@@ -105,8 +105,7 @@ public final class ListQuestionView {
         boolean anyDescription = question.options().stream()
             .anyMatch(option -> StringUtils.isNotEmpty(option.description()));
         int perItem = !question.multiSelect() || anyDescription ? 2 : 1;
-        return Math.min(MAX_VISIBLE_ITEMS,
-            Math.max(1, Math.floorDiv(rows - RESERVED_ROWS, perItem)));
+        return Math.clamp(Math.floorDiv(rows - RESERVED_ROWS, perItem), 1, MAX_VISIBLE_ITEMS);
     }
 
     /**
@@ -338,8 +337,8 @@ public final class ListQuestionView {
      * {@code OjE}: the rule, the numbered {@code Chat about this} row, a blank line, and the chord
      * hint. Only the list branch draws this; the design card carries its own footer.
      */
-    private static int drawFooter(TextGUIGraphics g, Context context, QuestionState state,
-                                  int width, int y) {
+    private static void drawFooter(TextGUIGraphics g, Context context, QuestionState state,
+                                   int width, int y) {
         boolean chatFocused = state.chatFocused();
         g.setForegroundColor(LanternaTheme.ghostText());
         putRow(g, 1, y, String.valueOf(TableBorders.HORIZONTAL).repeat(Math.max(0, width - 2)));
@@ -353,7 +352,6 @@ public final class ListQuestionView {
 
         g.setForegroundColor(LanternaTheme.ghostText());
         putRow(g, 1, y, InlineOverlay.clip(hint(context), width - 2));
-        return y + 1;
     }
 
     /** {@code Smn} — the chat row's visible index, one past the Other option's. */

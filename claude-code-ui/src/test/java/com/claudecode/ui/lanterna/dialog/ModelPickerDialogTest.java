@@ -52,7 +52,7 @@ class ModelPickerDialogTest {
 
     private static KeyStroke k(KeyType t) { return new KeyStroke(t); }
 
-/** Deterministic show — empty env, independent of the real process environment. */
+    /** Deterministic show — empty env, independent of the real process environment. */
     private static void show(ModelPickerDialog d, String currentModel, String currentEffort,
                              Consumer<ModelPickResult> onResult) {
         d.show(currentModel, currentEffort, onResult, _ -> null);

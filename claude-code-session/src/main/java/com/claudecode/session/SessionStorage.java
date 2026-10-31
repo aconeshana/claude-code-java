@@ -1,44 +1,37 @@
 package com.claudecode.session;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.config.VersionInfo;
-
-import com.claudecode.core.message.Message;
-import com.claudecode.core.metrics.SessionMetricsEvent;
-import com.claudecode.core.message.MessageConstants;
-import com.claudecode.core.message.MessageOrigin;
-import com.claudecode.core.message.AttachmentMessage;
+import com.claudecode.core.engine.ToolResultBudget;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.AutoModeReminderAttachment;
 import com.claudecode.core.message.FileContentAttachment;
 import com.claudecode.core.message.ImageFileAttachment;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageConstants;
+import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolResultBlock;
-import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.Usage;
-import com.claudecode.core.engine.ToolResultBudget;
-import com.claudecode.core.error.ErrorUtils;
+import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.metrics.SessionMetricsEvent;
+import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystemException;
 import java.nio.file.FileSystemLoopException;
 import java.nio.file.Files;
@@ -54,9 +47,14 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * JSONL-based session storage for messages.
@@ -557,8 +555,8 @@ public class SessionStorage {
                                                         boolean preserveContentBlocks) {
         if (content == null || !content.isArray()) return;
         if (preserveContentBlocks) return;
-// MCPTool.mapToolResultToToolResultBlockParam receives the protocol's content-block array
-// directly.
+        // MCPTool.mapToolResultToToolResultBlockParam receives the protocol's content-block array
+        // directly.
         if (isContentBlockArrayToolUseResult(toolUseResult)) return;
         for (JsonNode block : content) {
             if (!(block instanceof ObjectNode object)
@@ -1507,7 +1505,7 @@ public class SessionStorage {
      * Message}.
      */
     static boolean isMetadataEntry(String line) {
-// Fast string check before JSON parse.
+        // Fast string check before JSON parse.
         return Strings.CS.contains(line, "\"type\":\"custom-title\"")
             || Strings.CS.contains(line, "\"type\":\"ai-title\"")
             || Strings.CS.contains(line, "\"type\":\"last-prompt\"")

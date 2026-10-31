@@ -657,7 +657,7 @@ public class AnthropicSdkClient implements LlmClient {
         normalizeServerToolResultBlocks(root);
 
 
-// assistantMessageToMessageParam's exclusion).
+        // assistantMessageToMessageParam's exclusion).
         JsonNode messagesNode = root.get("messages");
         if (request.promptCachingEnabled()
                 && messagesNode != null && messagesNode.isArray() && !messagesNode.isEmpty()) {

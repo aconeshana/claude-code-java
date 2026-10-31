@@ -747,7 +747,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
         String cwdResetWarning = cwdTracker.finish();
 
 
-// URI, return a real image block so the model sees the image — not a text note.
+        // URI, return a real image block so the model sees the image — not a text note.
         ToolResult imageResult = tryImageResult(rawOutput);
         if (imageResult != null) {
             return imageResult;
@@ -919,8 +919,8 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
                                              ToolExecutionContext context,
                                              SandboxDecision decision) throws IOException {
         TaskRegistry registry = TaskRegistry.global();
-// Stamp the task with the current agent id (null on the main thread) so its
-// completion/stall notifications are routed to the owning agent instead of the coordinator.
+        // Stamp the task with the current agent id (null on the main thread) so its
+        // completion/stall notifications are routed to the owning agent instead of the coordinator.
         TaskState task = registry.store().create(TaskType.LOCAL_BASH, command, context.agentId());
         LocalShellTask handle = new LocalShellTask(task, command, registry.store(),
             TaskOutputPaths.outputPath(task.id(), context), sandboxManager, decision, context.sandboxConfig(),
@@ -990,7 +990,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
         }
     }
 
-/* Live-progress tail helper shared with {@code LocalShellTask} lives in StringUtils.progressTail(String). */
+    /* Live-progress tail helper shared with {@code LocalShellTask} lives in StringUtils.progressTail(String). */
 
     @Override
     public PermissionDecision checkPermissions(JsonNode input, ToolPermissionContext permCtx) {

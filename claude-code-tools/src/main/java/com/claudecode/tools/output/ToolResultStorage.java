@@ -1,18 +1,18 @@
 package com.claudecode.tools.output;
 
+import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.engine.ToolResultContentForm;
-import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.process.SubprocessEnvironment;
-import com.claudecode.session.SessionManager;
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.session.SessionManager;
+import com.claudecode.tools.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
@@ -25,12 +25,10 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.function.BiFunction;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import com.claudecode.tools.Tool;
-
 
 public final class ToolResultStorage {
 
@@ -228,7 +226,7 @@ public final class ToolResultStorage {
 
     private static boolean isEffectivelyEmpty(List<ContentBlock> blocks) {
         if (blocks == null || blocks.isEmpty()) return true;
-// A non-text block is meaningful even if adjacent text is blank; this.
+        // A non-text block is meaningful even if adjacent text is blank; this.
         for (ContentBlock block : blocks) {
             if (!(block instanceof TextBlock(String text1))) return false;
             if (text1 != null && !text1.trim().isEmpty()) return false;

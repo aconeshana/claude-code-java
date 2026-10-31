@@ -13,7 +13,7 @@ class RemainingPromptPortsTest {
     void syntheticOutputTool_descriptionPorted() {
 
 
-// does not surface as description.
+        // does not surface as description.
         String d = new SyntheticOutputTool(JsonUtils.getMapper().createObjectNode().put("type", "object"))
             .description();
         assertTrue(Strings.CS.contains(d, "Return structured output in the requested format"),

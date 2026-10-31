@@ -32,7 +32,7 @@ public final class ViewedTeammateHolder {
     }
 
     private final AtomicReference<Mode> mode = new AtomicReference<>(Mode.NONE);
-// -1 = leader, 0..n-1 = teammates.
+    // -1 = leader, 0..n-1 = teammates.
     private final AtomicInteger selectedIndex = new AtomicInteger(-1);
     private final AtomicReference<String> viewingTaskId = new AtomicReference<>();
     private final AtomicReference<ViewKind> viewKind = new AtomicReference<>(ViewKind.NONE);

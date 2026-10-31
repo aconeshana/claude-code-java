@@ -496,7 +496,7 @@ class AgentDefinitionLoaderTest {
         assertTrue(AgentDefinitionLoader.getParseErrors(tmp.toString()).stream()
             .anyMatch(e -> e.path().equals(bad.toString())), "cached errors follow getAll's cache");
 
-//...and clearCache must drop it, same lifecycle as the agent list.
+        //...and clearCache must drop it, same lifecycle as the agent list.
         AgentDefinitionLoader.clearCache();
         assertTrue(AgentDefinitionLoader.getParseErrors(tmp.toString()).stream()
             .noneMatch(e -> e.path().equals(bad.toString())));

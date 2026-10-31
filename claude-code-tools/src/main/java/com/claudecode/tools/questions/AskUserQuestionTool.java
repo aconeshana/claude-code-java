@@ -188,7 +188,7 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
                         ? null : input.get("annotations").deepCopy());
                 return mapped(input, formatResult(answersNode, input.get("annotations")), invocation);
             }
-// Empty answers object = the user declined in the permission prompt.
+            // Empty answers object = the user declined in the permission prompt.
             return mapped(input, "User declined to answer questions", null);
         }
 
@@ -313,7 +313,7 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
      */
     public static JsonNode buildAnswerInput(JsonNode originalInput,
                                              Map<String, QuestionPresenter.Answer> answers) {
-        ObjectNode copy = (ObjectNode) originalInput.deepCopy();
+        ObjectNode copy = originalInput.deepCopy();
         ObjectNode answersNode = copy.putObject("answers");
         ObjectNode annNode = copy.putObject("annotations");
         if (answers != null) {

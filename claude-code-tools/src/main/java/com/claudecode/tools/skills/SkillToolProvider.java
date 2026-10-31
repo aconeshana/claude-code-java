@@ -1,10 +1,11 @@
 package com.claudecode.tools.skills;
 
 import static com.claudecode.core.config.EnvUtils.isEnvTruthy;
-import com.claudecode.core.process.SubprocessEnvironment;
-import com.claudecode.tools.ToolRegistry;
+
 import com.claudecode.core.config.ClaudeConfigDirectories;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.tools.ToolRegistry;
 import java.nio.file.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,7 @@ public class SkillToolProvider {
         initialize(projectDir, registry, true, true, true);
     }
 
-/** Initializes skill sources, or installs the configured all-skills-off gate. */
+    /** Initializes skill sources, or installs the configured all-skills-off gate. */
     public void initialize(Path projectDir, ToolRegistry registry, boolean skillsEnabled) {
         initialize(projectDir, registry, skillsEnabled, true, true);
     }

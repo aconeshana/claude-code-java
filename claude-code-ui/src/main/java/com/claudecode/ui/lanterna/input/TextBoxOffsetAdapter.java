@@ -3,10 +3,6 @@ package com.claudecode.ui.lanterna.input;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.gui2.TextBox;
 
-
-
-
-
 final class TextBoxOffsetAdapter {
 
     private TextBoxOffsetAdapter() {}

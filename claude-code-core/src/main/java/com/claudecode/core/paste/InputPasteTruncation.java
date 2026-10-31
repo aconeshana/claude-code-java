@@ -1,7 +1,5 @@
 package com.claudecode.core.paste;
 
-
-
 /** Mid-text truncation for oversized prompt-input values. */
 public final class InputPasteTruncation {
 

@@ -81,7 +81,7 @@ public final class TurnEngine {
     private final Consumer<Runnable> onUi;
     /** Runs the blocking query loop off the caller thread (prod: one virtual thread per turn). */
     private final Executor background;
-/** Records the submitted display text for the adapter's undo (matches {@code lastSubmittedInput}). */
+    /** Records the submitted display text for the adapter's undo (matches {@code lastSubmittedInput}). */
     private final Consumer<String> recordLastSubmitted;
     /** Platform adapter for the active-turn sleep-prevention lifecycle. */
     private final TurnAwakeGuard awakeGuard;

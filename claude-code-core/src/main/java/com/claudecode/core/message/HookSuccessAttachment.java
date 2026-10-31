@@ -2,9 +2,6 @@ package com.claudecode.core.message;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-
-
-
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record HookSuccessAttachment(
     String content,

@@ -12,9 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-
-
-
 public final class ImageStore {
 
     private static final String IMAGE_STORE_DIR = "image-cache";

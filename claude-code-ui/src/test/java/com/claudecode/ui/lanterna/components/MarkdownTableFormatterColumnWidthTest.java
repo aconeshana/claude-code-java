@@ -65,7 +65,7 @@ class MarkdownTableFormatterColumnWidthTest {
         assertArrayEquals(new int[]{20}, result);
     }
 
-// ── format integration ────────────────────────────────────────────────
+    // ── format integration ────────────────────────────────────────────────
 
     @Test
     void simpleTable_renders_withBoxBorders() {

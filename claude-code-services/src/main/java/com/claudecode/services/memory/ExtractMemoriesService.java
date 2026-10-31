@@ -84,7 +84,7 @@ public class ExtractMemoriesService implements MemoryExtractor {
             return;
         }
         if (inProgress) {
-// Coalesce: only the latest stashed context matters.
+            // Coalesce: only the latest stashed context matters.
             pendingContext = new PendingContext(messagesSinceLastTurn, engine);
             return;
         }

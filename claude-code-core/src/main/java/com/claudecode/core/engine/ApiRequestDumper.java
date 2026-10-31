@@ -86,11 +86,11 @@ public final class ApiRequestDumper {
         synchronized (state) {
             StringBuilder out = new StringBuilder();
 
-// Init data (everything except messages), deduped by cheap fingerprint first, then
-// content hash.
+            // Init data (everything except messages), deduped by cheap fingerprint first, then
+            // content hash.
             String fingerprint = initFingerprint(body);
             if (!state.initialized || !fingerprint.equals(state.lastInitFingerprint)) {
-                ObjectNode initData = ((ObjectNode) body).deepCopy();
+                ObjectNode initData = body.deepCopy();
                 initData.remove("messages");
                 String initDataStr = JsonUtils.getMapper().writeValueAsString(initData);
                 String initDataHash = sha256(initDataStr);

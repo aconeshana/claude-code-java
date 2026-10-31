@@ -36,7 +36,7 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
 
     @Override
     public MessageCompactor.MicrocompactResult apply(List<Message> messages, boolean liveMainThread) {
-// Time-based trigger runs first and short-circuits.
+        // Time-based trigger runs first and short-circuits.
         if (liveMainThread) {
             MessageCompactor.MicrocompactResult timeBased =
                 maybeTimeBasedMicrocompact(messages, TimeBasedMcConfig.load(), Instant.now());
@@ -71,13 +71,21 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
         long charsSaved = 0;
         List<Message> result = new ArrayList<>(messages.size());
         for (Message msg : messages) {
-            if (!(msg instanceof UserMessage um) || um.message() == null || um.message().blocks() == null) {
+            if (!(msg instanceof UserMessage(
+                String uuid, MessageContent message, boolean isMeta, boolean isCompactSummary,
+                Object toolUseResult, MessageOrigin origin, String parentUuidValue,
+                Instant timestampValue, List<Integer> imagePasteIds, String permissionMode,
+                String sessionIdValue, String sourceToolAssistantUUID, String sourceToolUseID,
+                Boolean isVirtual, java.util.Map<String, Object> mcpMeta,
+                Boolean isVisibleInTranscriptOnly, String planContent,
+                SummarizeMetadata summarizeMetadata
+            )) || message == null || message.blocks() == null) {
                 result.add(msg);
                 continue;
             }
             boolean touched = false;
-            List<ContentBlock> newBlocks = new ArrayList<>(um.message().blocks().size());
-            for (ContentBlock block : um.message().blocks()) {
+            List<ContentBlock> newBlocks = new ArrayList<>(message.blocks().size());
+            for (ContentBlock block : message.blocks()) {
                 if (block instanceof ToolResultBlock tr
                         && clearSet.contains(tr.toolUseId())
                         && !isAlreadyCleared(tr)) {
@@ -91,12 +99,12 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
             }
             if (touched) {
                 result.add(new UserMessage(
-                    um.uuid(), MessageContent.ofBlocks(newBlocks), um.isMeta(), um.isCompactSummary(),
-                    um.toolUseResult(), um.origin(), um.parentUuidValue(),
-                    um.timestampValue(), um.imagePasteIds(), um.permissionMode(),
-                    um.sessionIdValue(), um.sourceToolAssistantUUID(), um.sourceToolUseID(),
-                    um.isVirtual(), um.mcpMeta(), um.isVisibleInTranscriptOnly(),
-                    um.planContent(), um.summarizeMetadata()));
+                    uuid, MessageContent.ofBlocks(newBlocks), isMeta, isCompactSummary,
+                    toolUseResult, origin, parentUuidValue,
+                    timestampValue, imagePasteIds, permissionMode,
+                    sessionIdValue, sourceToolAssistantUUID, sourceToolUseID,
+                    isVirtual, mcpMeta, isVisibleInTranscriptOnly,
+                    planContent, summarizeMetadata));
             } else {
                 result.add(msg);
             }
@@ -110,8 +118,8 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
         log.debug("[TIME-BASED MC] gap {}min > {}min, cleared {} tool results (~{} chars), kept last {}",
             Math.round(gapMinutes), config.gapThresholdMinutes(), clearSet.size(), charsSaved, keepSet.size());
 
-// We just changed prompt content — the next response's cache read will be low, but that's
-// us, not a break.
+        // We just changed prompt content — the next response's cache read will be low, but that's
+        // us, not a break.
         PromptCacheBreakDetection.notifyCacheDeletion(PROMPT_CACHE_SOURCE, null);
 
         return new MessageCompactor.MicrocompactResult(result);
@@ -141,16 +149,16 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
 
     private static boolean isAlreadyCleared(ToolResultBlock tr) {
         return tr.content() != null && tr.content().size() == 1
-            && tr.content().getFirst() instanceof TextBlock tb
-            && TIME_BASED_MC_CLEARED_MESSAGE.equals(tb.text());
+            && tr.content().getFirst() instanceof TextBlock(String text)
+            && TIME_BASED_MC_CLEARED_MESSAGE.equals(text);
     }
 
     private static long contentChars(List<ContentBlock> content) {
         if (content == null) return 0;
         long chars = 0;
         for (ContentBlock block : content) {
-            if (block instanceof TextBlock tb && tb.text() != null) {
-                chars += tb.text().length();
+            if (block instanceof TextBlock(String text) && text != null) {
+                chars += text.length();
             }
         }
         return chars;

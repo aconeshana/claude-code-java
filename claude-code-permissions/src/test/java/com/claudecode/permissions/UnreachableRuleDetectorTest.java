@@ -97,7 +97,7 @@ class UnreachableRuleDetectorTest {
 
         assertEquals("Bash(git *)", result.ruleDisplay());
 
-// the renderer prepends ruleDisplay). Source shown via lowercase display name.
+        // the renderer prepends ruleDisplay). Source shown via lowercase display name.
         assertEquals("Blocked by \"Bash\" deny rule (from shared project settings)", result.reason());
 
         assertEquals("Remove the \"Bash\" deny rule from shared project settings, "

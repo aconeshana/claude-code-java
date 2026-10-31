@@ -1,32 +1,38 @@
 package com.claudecode.tools;
 
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.engine.RawBlocksOutput;
 import com.claudecode.core.engine.ToolExecutionContext;
-import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.engine.ToolResultContentForm;
+import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolReferenceBlock;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.permissions.PermissionDecision;
+import com.claudecode.permissions.ToolPermissionContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import java.util.*;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.nio.file.Files;
-
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.serialization.JsonUtils;
-import com.claudecode.permissions.PermissionDecision;
-import com.claudecode.permissions.ToolPermissionContext;
+import org.apache.commons.lang3.Strings;
 
 /**
  * ToolSearchTool — fetches full schema definitions for deferred tools so they can be called.
@@ -158,7 +164,7 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
         return ToolSearchGate.isEnabled();
     }
 
-/** ToolSearch is an internal read-only discovery step. */
+    /** ToolSearch is an internal read-only discovery step. */
     @Override
     public PermissionDecision checkPermissions(JsonNode input, ToolPermissionContext permCtx) {
         return PermissionDecision.allow();

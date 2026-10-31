@@ -267,9 +267,9 @@ class AgentToolTest {
             """);
         AgentDefinitionLoader.clearCache();
 
-// AgentTool.prompt still computes and filters the MCP-gated agent listing
-// (availableMcpServers/hasRequiredMcpServers retained), but by default
-// AgentToolPrompt.getPrompt ignores that listing entirely.
+        // AgentTool.prompt still computes and filters the MCP-gated agent listing
+        // (availableMcpServers/hasRequiredMcpServers retained), but by default
+        // AgentToolPrompt.getPrompt ignores that listing entirely.
         SubprocessEnvironment.updateSettings(Map.of("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES", "false"));
         try {
             ToolExecutionContext noMcp = ToolExecutionContext.builder(new AbortController(), "test-session").workingDirectory(projectDir.toString()).build();

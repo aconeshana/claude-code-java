@@ -1,10 +1,17 @@
 package com.claudecode.ui.lanterna.features.settings;
 
-import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.commands.StatusProperty;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
 import com.claudecode.ui.lanterna.dialog.ModelPickerDialog;
+import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
+import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.claudecode.ui.lanterna.status.StatusPane;
+import com.claudecode.ui.lanterna.status.UsagePane;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
@@ -18,24 +25,16 @@ import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
-
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
-import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
-import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.status.StatusPane;
-import com.claudecode.ui.lanterna.status.UsagePane;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import org.apache.commons.lang3.Strings;
 
 /**
@@ -257,7 +256,7 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
         if (!active) return;
 
         if (!headerFocused) {
-// Only reachable when selectedTab == CONFIG — see switchTab/show.
+            // Only reachable when selectedTab == CONFIG — see switchTab/show.
             configPanel.handleKey(key, deliver);
             return;
         }

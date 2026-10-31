@@ -1,7 +1,5 @@
 package com.claudecode.core.engine;
 
-
-
 /**
  * Supplies whether a Bash command will run inside the native sandbox, so the permission engine can
  * auto-allow the Bash permission when {@code sandbox.autoAllowBashIfSandboxed} is enabled.

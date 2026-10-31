@@ -135,13 +135,13 @@ class BuiltInAgentDefinitionsTest {
 
     @Test
     void verificationAgent_registeredOnlyWhenGateOn() {
-// Default (gate off) must NOT include verification.
+        // Default (gate off) must NOT include verification.
         assertFalse(
             BuiltInAgentDefinitions.getBuiltInAgents("cli").stream()
                 .anyMatch(a -> Strings.CS.equals(a.agentType(), "verification")),
             "verification must be absent when VERIFICATION_AGENT_NUDGE is off");
 
-// With the gate on, it is registered and carries the implemented fields.
+        // With the gate on, it is registered and carries the implemented fields.
         FeatureGate.withFlags(() -> {
             List<BuiltInAgentDefinitions.AgentDefinition> agents =
                 BuiltInAgentDefinitions.getBuiltInAgents("cli");

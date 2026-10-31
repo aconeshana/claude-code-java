@@ -1,7 +1,5 @@
 package com.claudecode.core.engine;
 
-
-
 /**
  * Outcome of a sandbox-eligibility decision for a single bash command.
  */

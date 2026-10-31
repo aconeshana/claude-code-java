@@ -106,7 +106,7 @@ class AsyncHookResponseAttachmentProviderTest {
     @Test
     void collectWithNullDispatcherReturnsEmpty() {
         AsyncHookResponseAttachmentProvider provider = new AsyncHookResponseAttachmentProvider();
-// hookDispatcher == null → safe empty result, no NPE.
+        // hookDispatcher == null → safe empty result, no NPE.
         List<AttachmentPayload> out = provider.collect(contextWith(null));
         assertEquals(List.of(), out);
     }

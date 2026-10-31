@@ -1,6 +1,5 @@
 package com.claudecode.tools.skills;
 
-
 import com.claudecode.core.engine.ToolContextModifier;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
@@ -11,6 +10,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.ModelSkillVisibility;
+import com.claudecode.core.prompt.ArgumentSubstitutor;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.tools.AnnotatedTool;
@@ -20,10 +20,8 @@ import com.claudecode.tools.agent.NoOpSubAgentFactory;
 import com.claudecode.tools.agent.SubAgentFactory;
 import com.claudecode.tools.agent.SubAgentRequest;
 import com.claudecode.tools.agent.SubAgentResult;
-import com.claudecode.core.prompt.ArgumentSubstitutor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -155,7 +153,7 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
         if (variableInjector != null) {
             content = variableInjector.inject(content);
         }
-// $ARGUMENTS / $ARGUMENTS[n] / $n expansion.
+        // $ARGUMENTS / $ARGUMENTS[n] / $n expansion.
 
 
         // plugin commands. appendIfNoPlaceholder=true matches the prior behavior.

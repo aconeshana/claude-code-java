@@ -63,7 +63,7 @@ class TaskRegistryListRunningTest {
             new InProcessTeammateTask(task, store, new NoOpSubAgentFactory(), req, context(task.id(), "alpha"));
         registry.registerTeammate(handle);
 
-// Not started → runnerThread is null → isActive is false → excluded.
+        // Not started → runnerThread is null → isActive is false → excluded.
         assertTrue(registry.listRunningTeammates().isEmpty());
     }
 

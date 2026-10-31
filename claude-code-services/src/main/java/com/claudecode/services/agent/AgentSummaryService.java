@@ -26,10 +26,9 @@ public class AgentSummaryService implements SubAgentProgressSummarizer, AutoClos
 
     private static final Logger log = LoggerFactory.getLogger(AgentSummaryService.class);
 
-
     private static final long SUMMARY_INTERVAL_MS = 30_000;
 
-/** Best-effort wait for in-flight ticks to bail out on {@link #close}. */
+    /** Best-effort wait for in-flight ticks to bail out on {@link #close}. */
     private static final long SHUTDOWN_AWAIT_SECONDS = 2;
 
     private final LlmClient llmClient;
@@ -40,7 +39,7 @@ public class AgentSummaryService implements SubAgentProgressSummarizer, AutoClos
      */
     private ScheduledExecutorService executor;
 
-/** Set once {@link #close} runs so late {@link #startSummarization} calls no-op. */
+    /** Set once {@link #close} runs so late {@link #startSummarization} calls no-op. */
     private boolean closed = false;
 
     private final Object lock = new Object();

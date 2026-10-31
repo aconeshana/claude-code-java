@@ -15,9 +15,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-
-
-
 public final class SkillListingFormatter {
 
     public static final int DEFAULT_CHAR_BUDGET = 8_000;

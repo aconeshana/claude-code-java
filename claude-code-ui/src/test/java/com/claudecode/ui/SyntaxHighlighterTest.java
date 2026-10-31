@@ -263,7 +263,7 @@ class SyntaxHighlighterTest {
         // The STORAGE_KEYWORDS escape hatch: even when a grammar tags
         // 'const'/'function'/'class' as plain `keyword.*`, the colour map
 
-// color-diff-napi scopeColor L466-468.
+        // color-diff-napi scopeColor L466-468.
         RgbColor color = ScopeColorMap.scopeColor(
             List.of("source.foo", "keyword.control.lang.foo"), "function", "dark");
         assertEquals(new RgbColor(102, 217, 239), color,  // Monokai _storage

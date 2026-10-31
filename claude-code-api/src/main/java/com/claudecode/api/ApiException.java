@@ -24,7 +24,7 @@ public class ApiException extends RuntimeException implements FriendlyApiError {
         this(message, statusCode, cause, null);
     }
 
-/** Connection-level failure (no HTTP response) with a curated {@link #friendlyMessage}. */
+    /** Connection-level failure (no HTTP response) with a curated {@link #friendlyMessage}. */
     public ApiException(String message, int statusCode, Throwable cause, String friendlyMessage) {
         super(message, cause);
         this.statusCode = statusCode;
@@ -42,7 +42,7 @@ public class ApiException extends RuntimeException implements FriendlyApiError {
         this(message, statusCode, errorType, retryAfterSeconds, null);
     }
 
-/** Full constructor with a curated {@link #friendlyMessage} for display layers. */
+    /** Full constructor with a curated {@link #friendlyMessage} for display layers. */
     public ApiException(String message, int statusCode, String errorType, Long retryAfterSeconds,
                         String friendlyMessage) {
         super(message);

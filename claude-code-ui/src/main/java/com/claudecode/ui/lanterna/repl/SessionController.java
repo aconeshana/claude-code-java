@@ -1,20 +1,13 @@
 package com.claudecode.ui.lanterna.repl;
 
-import com.claudecode.core.annotation.Explanation;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.commands.CommandContext;
-import com.claudecode.commands.session.ResumeRequest;
 import com.claudecode.commands.XmlConstants;
-import com.claudecode.keybindings.UserKeybindingsStore;
-import com.claudecode.keybindings.KeybindingHints;
+import com.claudecode.commands.session.ResumeRequest;
+import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.engine.CompactProgressEvent;
 import com.claudecode.core.engine.FileHistoryManager;
-import com.claudecode.core.engine.MessageCompactor;
-import com.claudecode.runtime.query.QuerySession;
-import com.claudecode.runtime.query.RewindModelUnwind;
 import com.claudecode.core.engine.HookDispatcher;
+import com.claudecode.core.engine.MessageCompactor;
 import com.claudecode.core.engine.ThinkingClearLatch;
 import com.claudecode.core.git.GitUtils;
 import com.claudecode.core.imagestore.ImageStore;
@@ -29,14 +22,20 @@ import com.claudecode.core.message.MessageNormalizer;
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SystemMessage;
-import com.claudecode.core.message.TokenEstimator;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.ApiProviderScope;
 import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.prompt.SystemPromptSectionResolver;
 import com.claudecode.core.state.AgentColorStore;
+import com.claudecode.core.state.CwdState;
+import com.claudecode.core.text.DisplayTagUtils;
+import com.claudecode.core.text.XmlTagUtils;
+import com.claudecode.keybindings.KeybindingHints;
+import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.permissions.PermissionGate;
+import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.runtime.query.RewindModelUnwind;
 import com.claudecode.runtime.session.ConversationResetPort;
 import com.claudecode.runtime.session.PreparedSessionResume;
 import com.claudecode.runtime.session.SessionLifecycle;
@@ -44,11 +43,20 @@ import com.claudecode.runtime.session.SessionResumeRequest;
 import com.claudecode.runtime.turn.ConversationOps;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.tools.skills.InvokedSkillRegistry;
-import com.claudecode.core.state.CwdState;
-import com.claudecode.core.text.DisplayTagUtils;
-import com.claudecode.core.text.XmlTagUtils;
 import com.claudecode.ui.ProductName;
+import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
+import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
+import com.claudecode.ui.lanterna.features.ReplFeature;
+import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.input.PromptHistoryView;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.claudecode.ui.lanterna.transcript.MessageCollapser;
+import com.claudecode.ui.lanterna.transcript.MessageHistory;
+import com.claudecode.ui.lanterna.transcript.MessagePanel;
+import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
 import com.googlecode.lanterna.TextColor;
+import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.screen.Screen.RefreshType;
@@ -63,26 +71,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
-import com.claudecode.ui.lanterna.dialog.MessageSelectorDialog;
-import com.claudecode.ui.lanterna.dialog.SessionSelectorDialog;
-import com.claudecode.ui.lanterna.features.ReplFeature;
-import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.input.PromptHistoryView;
-import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
-import com.claudecode.ui.lanterna.transcript.MessageCollapser;
-import com.claudecode.ui.lanterna.transcript.MessageHistory;
-import com.claudecode.ui.lanterna.transcript.MessagePanel;
-import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
-import com.googlecode.lanterna.gui2.Component;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Owns the conversation / session lifecycle for the REPL: resuming a past session into the view,
@@ -585,7 +583,7 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
                         ? " · switched to " + PathUtils.abbreviateTilde(prepared.restoredCwd())
                         : "");
                 messagePanel.appendLine(header, LanternaTheme.welcomeDim());
-// Restore prompt-bar agentName / customTitle / agentColor from the resumed JSONL.
+                // Restore prompt-bar agentName / customTitle / agentColor from the resumed JSONL.
                 applyPreparedSessionColor(
                     request.sessionId(), badge, request.projectPath());
                 replayLoadedMessages(msgs, request.projectPath(), request.sessionId());
@@ -1180,14 +1178,11 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
                 // cancellation before starting the equivalent user-initiated compact request.
                 cs.prepareManualCompact();
                 HookDispatcher hooks = queryEngine.execution().getHookDispatcher();
-                long preCompactTokens = cs.contextTokenCount(
-                    snapshot, queryEngine.configuration().getConfig().model());
                 if (notify != null) {
                     notify.accept(new CompactProgressEvent.HooksStart("pre_compact"));
                 }
                 HookDispatcher.HookOutcome preOutcome = hooks != null
-                    ? hooks.dispatchPreCompactWithOutcome(
-                        "manual", null, preCompactTokens)
+                    ? hooks.dispatchPreCompactWithOutcome("manual", null)
                     : HookDispatcher.HookOutcome.PROCEED;
                 String compactInstructions = partialCompactInstructions(
                     preOutcome.additionalContext(), feedback);
@@ -1220,9 +1215,7 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
                     notify.accept(new CompactProgressEvent.HooksStart("post_compact"));
                 }
                 if (hooks != null) {
-                    hooks.dispatchPostCompactWithOutcome(
-                        "manual", compacted.summaryText(),
-                        postCompactTokenCount(compacted, post, cs));
+                    hooks.dispatchPostCompactWithOutcome("manual", compacted.summaryText());
                 }
 
                 List<Message> retainedRewindMessages =
@@ -1305,19 +1298,6 @@ public final class SessionController implements ReplCommandUiBridge.Session, Rep
         }
         if (hasHook) return hookInstructions;
         return hasFeedback ? "User context: " + feedback : null;
-    }
-
-    private long postCompactTokenCount(
-            MessageCompactor.PartialCompactOutput compacted,
-            List<Message> post, MessageCompactor compactor) {
-        Usage usage = compacted.compactionUsage();
-        if (usage.inputTokens() > 0 || usage.outputTokens() > 0
-                || usage.cacheCreationInputTokens() > 0
-                || usage.cacheReadInputTokens() > 0) {
-            return TokenEstimator.contextTokens(
-                usage, queryEngine.configuration().getConfig().model());
-        }
-        return compactor.estimatePostCompactTokenCount(post);
     }
 
     private void completeSummarizeOnGuiThread(

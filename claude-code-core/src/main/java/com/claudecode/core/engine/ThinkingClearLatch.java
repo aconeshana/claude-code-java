@@ -1,15 +1,12 @@
 package com.claudecode.core.engine;
 
-
-
-
 public final class ThinkingClearLatch {
 
     private static volatile boolean latched = false;
 
     private ThinkingClearLatch() {}
 
-/** Whether the latch has tripped — once true, stays true until {@link #reset}. */
+    /** Whether the latch has tripped — once true, stays true until {@link #reset}. */
     public static boolean isLatched() {
         return latched;
     }

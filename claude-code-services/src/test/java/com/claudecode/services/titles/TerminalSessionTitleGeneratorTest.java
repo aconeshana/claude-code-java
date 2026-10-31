@@ -177,7 +177,7 @@ class TerminalSessionTitleGeneratorTest {
         assertEquals(SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX + "\n\n"
             + TerminalSessionTitleGenerator.SESSION_TITLE_PROMPT, request.systemPrompt());
         JsonNode wire = JsonUtils.getMapper().readTree(dumped.get());
-// The billing attribution must sit in its own leading block.
+        // The billing attribution must sit in its own leading block.
         assertTrue(Strings.CS.startsWith(wire.at("/system/0/text").asText(),
             "x-anthropic-billing-header:"));
         assertEquals(SystemPromptConstants.AGENT_SDK_SYSPROMPT_PREFIX,

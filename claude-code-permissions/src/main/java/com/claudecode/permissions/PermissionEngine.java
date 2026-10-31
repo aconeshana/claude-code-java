@@ -71,7 +71,7 @@ public class PermissionEngine {
         "Read", "Write", "Edit", "NotebookEdit", "Grep", "LSP"
     );
 
-/** Read this field first, then this, then this — matches {@link #extractInputText}. */
+    /** Read this field first, then this, then this — matches {@link #extractInputText}. */
     private static final List<String> PATH_FIELDS = List.of("file_path", "notebook_path", "path", "filePath");
 
     /**
@@ -316,11 +316,11 @@ public class PermissionEngine {
         if (rule.pattern().isPresent()) {
             String bucket = TOOL_TO_FILE_BUCKET.getOrDefault(toolName, toolName);
             return !bucket.equals(toolName) && ruleToolName.equals(bucket);
-// Content rules match by exact tool name (or bucket, above) only — never via the
-// server-level branch below.
+            // Content rules match by exact tool name (or bucket, above) only — never via the
+            // server-level branch below.
         }
-// MCP server-level permission: rule "mcp__server1" (or "mcp__server1__*") matches any tool
-// "mcp__server1__*" from that server.
+        // MCP server-level permission: rule "mcp__server1" (or "mcp__server1__*") matches any tool
+        // "mcp__server1__*" from that server.
         McpInfo ruleInfo = mcpInfoFromString(ruleToolName);
         McpInfo toolInfo = mcpInfoFromString(toolName);
         return ruleInfo != null

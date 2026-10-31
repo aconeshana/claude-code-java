@@ -338,25 +338,25 @@ public interface HookDispatcher {
     /**
      * Fired just before compact hooks run and before LLM summarisation.
      */
-    default void dispatchPreCompact(String trigger, String customInstructions, long preTokenCount) {}
+    default void dispatchPreCompact(String trigger, String customInstructions) {}
 
     /**
      * Rich variant of {@link #dispatchPreCompact}: returns any {@code additionalContext} hooks want
      * merged into the summarization instructions.
      */
-    default HookOutcome dispatchPreCompactWithOutcome(String trigger, String customInstructions, long preTokenCount) {
-        dispatchPreCompact(trigger, customInstructions, preTokenCount);
+    default HookOutcome dispatchPreCompactWithOutcome(String trigger, String customInstructions) {
+        dispatchPreCompact(trigger, customInstructions);
         return HookOutcome.PROCEED;
     }
 
     /**
      * Fired after the compacted conversation has been written back.
      */
-    default void dispatchPostCompact(String trigger, String compactSummary, long postTokenCount) {}
+    default void dispatchPostCompact(String trigger, String compactSummary) {}
 
 
-    default HookOutcome dispatchPostCompactWithOutcome(String trigger, String compactSummary, long postTokenCount) {
-        dispatchPostCompact(trigger, compactSummary, postTokenCount);
+    default HookOutcome dispatchPostCompactWithOutcome(String trigger, String compactSummary) {
+        dispatchPostCompact(trigger, compactSummary);
         return HookOutcome.PROCEED;
     }
 

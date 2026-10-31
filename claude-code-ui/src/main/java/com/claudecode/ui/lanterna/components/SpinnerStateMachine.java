@@ -1,6 +1,5 @@
 package com.claudecode.ui.lanterna.components;
 
-import org.apache.commons.lang3.Strings;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -10,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Translates streaming {@code SDKMessage.StreamEvent}s into {@link SpinnerComponent} state
@@ -123,7 +123,7 @@ public final class SpinnerStateMachine {
                 });
             }
             case "tool_streaming_start" -> {
-// A tool_use block started streaming.
+                // A tool_use block started streaming.
                 gotMeaningfulContent = true;
                 responseHasTools = true;
                 pendingToolCount.incrementAndGet();

@@ -83,7 +83,7 @@ public final class BashModeExecutor {
         void show(Path image, Runnable onClose) throws IOException;
     }
 
-/** In-flight process ref for {@link #interrupt} — null when idle. */
+    /** In-flight process ref for {@link #interrupt} — null when idle. */
     private final AtomicReference<Run> currentRun = new AtomicReference<>(null);
     
     public BashModeExecutor(WindowBasedTextGUI gui,

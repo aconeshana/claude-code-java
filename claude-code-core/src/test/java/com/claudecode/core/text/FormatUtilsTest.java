@@ -275,7 +275,7 @@ class FormatUtilsTest {
     @Test
     void exportTimestampAndIso() {
         Instant t = Instant.parse("2026-07-20T14:30:15.123Z");
-// export timestamp uses the system default zone.
+        // export timestamp uses the system default zone.
         assertEquals(
             DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneId.systemDefault()).format(t),
@@ -285,7 +285,7 @@ class FormatUtilsTest {
         assertEquals("Jul 20", FormatUtils.formatMonthDay(t));
     }
 
-// ── tab expansion  ─────────────────────────────────────
+    // ── tab expansion  ─────────────────────────────────────
 
     @Test
     void expandTabsNoTabIsNoOp() {

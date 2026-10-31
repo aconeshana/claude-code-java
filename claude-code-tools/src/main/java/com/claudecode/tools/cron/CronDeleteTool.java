@@ -62,7 +62,7 @@ public class CronDeleteTool extends AnnotatedTool<JsonNode, String> {
         schema.set("required", mapper().createArrayNode().add("id"));
 
 
-// keys. createObjectSchema is permissive; set strict.
+        // keys. createObjectSchema is permissive; set strict.
         schema.put("additionalProperties", false);
         return schema;
     }

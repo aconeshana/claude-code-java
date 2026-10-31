@@ -78,7 +78,7 @@ public sealed interface MarketplaceSource
     @JsonIgnoreProperties(ignoreUnknown = true)
     record File(String path) implements MarketplaceSource {}
 
-/** Local directory containing. */
+    /** Local directory containing. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Directory(String path) implements MarketplaceSource {}
 

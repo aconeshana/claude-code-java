@@ -63,7 +63,7 @@ public class EnterPlanModeTool extends AnnotatedTool<JsonNode, String> {
         return schema;
     }
 
-/** established tool uses buildTool's read-only default allow decision. */
+    /** established tool uses buildTool's read-only default allow decision. */
     @Override
     public PermissionDecision checkPermissions(JsonNode input, ToolPermissionContext context) {
         return PermissionDecision.allow();

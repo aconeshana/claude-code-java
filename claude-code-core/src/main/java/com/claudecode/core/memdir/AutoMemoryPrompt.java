@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class AutoMemoryPrompt {
 
-/** Filename for the always-loaded index. matches {@code ENTRYPOINT_NAME}. */
+    /** Filename for the always-loaded index. matches {@code ENTRYPOINT_NAME}. */
     public static final String ENTRYPOINT_NAME = "MEMORY.md";
 
     /** Hard cap on entrypoint lines before truncation. */
@@ -334,7 +334,7 @@ public final class AutoMemoryPrompt {
         String sanitized = sanitizeProjectKey(memBase.toString());
 
         return toNfcPath(base.resolve("projects").resolve(sanitized)
-            .resolve("memory").toString() + File.separator);
+            .resolve("memory") + File.separator);
     }
 
 
@@ -342,8 +342,8 @@ public final class AutoMemoryPrompt {
         if (StringUtils.isBlank(raw)) {
             return null;
         }
-// A NUL byte would survive normalize and can truncate the path in a
-// C-based syscall; reject before Path.of (which throws on NUL).
+        // A NUL byte would survive normalize and can truncate the path in a
+        // C-based syscall; reject before Path.of (which throws on NUL).
         if (raw.indexOf('\0') >= 0) {
             return null;
         }

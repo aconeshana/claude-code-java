@@ -1,8 +1,5 @@
 package com.claudecode.core.attachment;
 
-
-
-
 public enum FeatureFlag {
     BUDDY,
     TRANSCRIPT_CLASSIFIER,

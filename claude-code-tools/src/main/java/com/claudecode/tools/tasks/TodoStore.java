@@ -1,17 +1,20 @@
 package com.claudecode.tools.tasks;
 
-import org.apache.commons.lang3.StringUtils;
-
 import com.claudecode.core.config.ClaudePaths;
-import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Persistent store for the model-facing to-do list (TaskCreate / TaskGet / TaskList / TaskUpdate
@@ -41,7 +44,7 @@ public class TodoStore {
 
     private final Path tasksDir;
 
-/** In-memory match keyed by task ID — read path stays O(1), like {@link TaskStore}. */
+    /** In-memory match keyed by task ID — read path stays O(1), like {@link TaskStore}. */
     private Map<String, Task> tasks = new LinkedHashMap<>();
 
     public TodoStore(String taskListId) {
@@ -96,7 +99,7 @@ public class TodoStore {
         return TaskPersistence.sortLikeReleasedTaskList(List.copyOf(tasks.values()));
     }
 
-/** Replaces the in-memory snapshot with the current on-disk task files. */
+    /** Replaces the in-memory snapshot with the current on-disk task files. */
     public synchronized void reload() {
         if (tasksDir == null) return;
         Map<String, Task> reloaded = new LinkedHashMap<>();
@@ -116,7 +119,7 @@ public class TodoStore {
         tasks = reloaded;
     }
 
-/** Clears all task files while preserving the sequential-ID highwatermark. */
+    /** Clears all task files while preserving the sequential-ID highwatermark. */
     public synchronized boolean reset() {
         if (tasksDir == null) {
             tasks = new LinkedHashMap<>();

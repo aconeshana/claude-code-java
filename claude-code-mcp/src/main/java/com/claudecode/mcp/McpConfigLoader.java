@@ -138,7 +138,7 @@ public class McpConfigLoader {
             Collections.unmodifiableMap(scopes), List.copyOf(warnings), List.copyOf(diagnostics));
     }
 
-/** Testable overload with an injected  path. */
+    /** Testable overload with an injected  path. */
     static McpConfig loadConfig(Path projectDir, Path globalConfigPath) {
         return loadConfig(projectDir, globalConfigPath, ALL_FILE_SCOPES);
     }
@@ -202,7 +202,7 @@ public class McpConfigLoader {
         return Set.copyOf(normalized);
     }
 
-/** Returns the user-level MCP config path. */
+    /** Returns the user-level MCP config path. */
     static Path getUserConfigPath() {
         return ClaudePaths.GLOBAL_JSON;
     }
@@ -274,7 +274,7 @@ public class McpConfigLoader {
         }
     }
 
-/** Canonical key used by. */
+    /** Canonical key used by. */
     static String projectConfigKey(Path projectDir) {
         Path gitRoot = GitUtils.findCanonicalGitRoot(projectDir);
         Path keyPath = gitRoot != null ? gitRoot : projectDir.toAbsolutePath().normalize();

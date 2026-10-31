@@ -5,17 +5,6 @@ import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
 
-
-
-
-
-
-
-
-
-
-
-
 @SlashCommand(
     name = "output-style",
     description = "Deprecated: use /config to change output style"

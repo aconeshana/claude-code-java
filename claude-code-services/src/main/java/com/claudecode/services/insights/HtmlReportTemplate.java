@@ -27,7 +27,7 @@ final class HtmlReportTemplate {
         <div class="bar-value">${count}</div>
       </div>""";
 
-// ------------------------------------------------------------------ At a Glance.
+    // ------------------------------------------------------------------ At a Glance.
 
     static final String AT_A_GLANCE = """
 
@@ -58,7 +58,7 @@ final class HtmlReportTemplate {
         "<div class=\"glance-section\"><strong>Ambitious workflows:</strong> ${text} "
             + "<a href=\"#section-horizon\" class=\"see-more\">On the Horizon →</a></div>";
 
-// ------------------------------------------------------------------ Project areas.
+    // ------------------------------------------------------------------ Project areas.
 
     static final String PROJECT_AREAS = """
 
@@ -79,7 +79,7 @@ final class HtmlReportTemplate {
         </div>
 """ + "      ";
 
-// ------------------------------------------------------------------ Interaction style.
+    // ------------------------------------------------------------------ Interaction style.
 
     static final String INTERACTION = """
 
@@ -93,7 +93,7 @@ final class HtmlReportTemplate {
     static final String KEY_PATTERN_LINE =
         "<div class=\"key-insight\"><strong>Key pattern:</strong> ${text}</div>";
 
-// ------------------------------------------------------------------ What works.
+    // ------------------------------------------------------------------ What works.
 
     static final String WHAT_WORKS = """
 
@@ -115,7 +115,7 @@ final class HtmlReportTemplate {
         </div>
 """ + "      ";
 
-// ------------------------------------------------------------------ Friction.
+    // ------------------------------------------------------------------ Friction.
 
     static final String FRICTION = """
 
@@ -135,7 +135,7 @@ final class HtmlReportTemplate {
         </div>
 """ + "      ";
 
-// ------------------------------------------------------------------ Suggestions.
+    // ------------------------------------------------------------------ Suggestions.
 
     static final String SUGGESTIONS = """
 
@@ -233,7 +233,7 @@ final class HtmlReportTemplate {
           </div>
 """ + "          ";
 
-// ------------------------------------------------------------------ On the Horizon.
+    // ------------------------------------------------------------------ On the Horizon.
 
     static final String HORIZON = """
 
@@ -300,7 +300,7 @@ final class HtmlReportTemplate {
     static final String FEEDBACK_EVIDENCE_LINE =
         "<div class=\"feedback-evidence\"><em>Evidence:</em> ${text}</div>";
 
-// ------------------------------------------------------------------ Fun ending.
+    // ------------------------------------------------------------------ Fun ending.
 
     static final String FUN_ENDING = """
 
@@ -312,7 +312,7 @@ final class HtmlReportTemplate {
 
     static final String FUN_DETAIL_LINE = "<div class=\"fun-detail\">${text}</div>";
 
-// ------------------------------------------------------------------ Multi-clauding branches.
+    // ------------------------------------------------------------------ Multi-clauding branches.
 
     static final String MULTI_CLAUDING_NONE = """
 
@@ -343,7 +343,7 @@ final class HtmlReportTemplate {
         </p>
 """ + "      ";
 
-// ------------------------------------------------------------------ CSS.
+    // ------------------------------------------------------------------ CSS.
 
     static final String CSS = """
 
@@ -458,7 +458,7 @@ final class HtmlReportTemplate {
     @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } .stats-row { justify-content: center; } }
 """ + "  ";
 
-// ------------------------------------------------------------------ Inline JS.
+    // ------------------------------------------------------------------ Inline JS.
 
     static final String JS = """
 
@@ -559,7 +559,7 @@ final class HtmlReportTemplate {
     });
 """ + "  ";
 
-// ------------------------------------------------------------------ Page skeleton.
+    // ------------------------------------------------------------------ Page skeleton.
 
     static final String PAGE = """
 <!DOCTYPE html>

@@ -144,7 +144,7 @@ class FacetExtractorTest {
 
     @Test
     void invalidFacetsReturnNull() {
-// Missing required brief_summary → isValid false → silently skipped
+        // Missing required brief_summary → isValid false → silently skipped
         RecordingLlmClient client = new RecordingLlmClient(_ -> """
             {
               "underlying_goal": "x",

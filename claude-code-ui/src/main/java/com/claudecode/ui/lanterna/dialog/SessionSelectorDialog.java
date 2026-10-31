@@ -1,21 +1,26 @@
 package com.claudecode.ui.lanterna.dialog;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.RetractedMessages;
-import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.DisplayTagUtils;
+import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.TerminalSafeText;
+import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.ui.lanterna.components.LanternaDraw;
+import com.claudecode.ui.lanterna.components.LoadingStateLabel;
+import com.claudecode.ui.lanterna.components.SmartLayout;
+import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
+import com.claudecode.ui.lanterna.input.KillRing;
+import com.claudecode.ui.lanterna.input.MouseScrollHandler;
+import com.claudecode.ui.lanterna.input.SessionPreviewKey;
 import com.claudecode.ui.lanterna.repl.InteractiveSessionPort;
+import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
+import com.claudecode.ui.lanterna.transcript.MessageCollapser;
+import com.claudecode.ui.lanterna.transcript.MessagePanel;
+import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.bundle.LanternaThemes;
@@ -40,26 +45,24 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import com.claudecode.ui.lanterna.input.KillRing;
-import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
-import com.claudecode.ui.lanterna.input.MouseScrollHandler;
-import com.claudecode.ui.lanterna.input.SessionPreviewKey;
-import com.claudecode.ui.lanterna.components.LanternaDraw;
-import com.claudecode.ui.lanterna.components.LoadingStateLabel;
-import com.claudecode.ui.lanterna.components.SmartLayout;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
-import com.claudecode.ui.lanterna.transcript.LanternaMessageDispatcher;
-import com.claudecode.ui.lanterna.transcript.MessageCollapser;
-import com.claudecode.ui.lanterna.transcript.MessagePanel;
-import com.claudecode.ui.lanterna.transcript.TranscriptReplay;
-import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Full-screen session picker for {@code /resume}.
@@ -259,7 +262,7 @@ public class SessionSelectorDialog extends BasicWindow {
 
         setComponent(root);
 
-// ── Preview trees ────────────────────────────────────────────────────.
+        // ── Preview trees ────────────────────────────────────────────────────.
 
         // ternary between the loading column and the transcript + footer column.
         previewDispatcher.setVerbose(true);
@@ -1294,7 +1297,7 @@ public class SessionSelectorDialog extends BasicWindow {
                     selectedIndex = 0; scrollOffset = 0;
                     rebuildEntries(); refreshDisplay();
                 } else if (ch == 'y') {
-// Ctrl+Y = yank (paste last killed text).
+                    // Ctrl+Y = yank (paste last killed text).
                     String kill = KillRing.INSTANCE.getLast();
                     if (!kill.isEmpty()) {
                         searchQuery.insert(searchCursorOffset, kill);

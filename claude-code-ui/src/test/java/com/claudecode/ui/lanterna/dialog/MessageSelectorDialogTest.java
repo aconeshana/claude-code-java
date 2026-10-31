@@ -1441,7 +1441,7 @@ class MessageSelectorDialogTest {
         assertFalse(d.isActive(), "Esc is the only way out once an error is shown");
     }
 
-// ── Ctrl+C / Ctrl+D double-press exit ─────────────────────────────────────────
+    // ── Ctrl+C / Ctrl+D double-press exit ─────────────────────────────────────────
 
     @Test
     void singleCtrlC_doesNotClose() {

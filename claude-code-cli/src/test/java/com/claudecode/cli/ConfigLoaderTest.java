@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ConfigLoaderTest {
 
-/** Env-injecting subclass — matches the "Visible for testing" seam ConfigLoader already exposes. */
+    /** Env-injecting subclass — matches the "Visible for testing" seam ConfigLoader already exposes. */
     private static ConfigLoader withEnv(Map<String, String> env) {
         return new ConfigLoader() {
             @Override

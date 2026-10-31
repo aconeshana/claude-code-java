@@ -165,8 +165,8 @@ public final class MemoryFileScanner {
             try {
                 out.add(fs.getPathMatcher("glob:" + normalized));
             } catch (Exception _) { /* malformed → skip silently */ }
-// Absolute pattern: try to resolve the static prefix's realpath and add that variant
-// too, so /tmp/...
+            // Absolute pattern: try to resolve the static prefix's realpath and add that variant
+            // too, so /tmp/...
             if (Strings.CS.startsWith(normalized, "/")) {
                 Path resolved = tryResolveStaticPrefix(normalized);
                 if (resolved != null) {
@@ -365,8 +365,8 @@ public final class MemoryFileScanner {
 
         processed.add(normalized);
 
-// Also mark the realpath (symlink-resolved) so a second @include of the underlying file —
-// via a different symlink or the real path — hits the dedup Set.
+        // Also mark the realpath (symlink-resolved) so a second @include of the underlying file —
+        // via a different symlink or the real path — hits the dedup Set.
 
         try {
             Path real = file.toRealPath();
@@ -386,7 +386,7 @@ public final class MemoryFileScanner {
         try {
             raw = Files.readString(file, UTF_8);
         } catch (IOException _) {
-// ENOENT / permission — silently skip.
+            // ENOENT / permission — silently skip.
             return List.of();
         }
 
@@ -399,7 +399,7 @@ public final class MemoryFileScanner {
         }
 
 
-// from the on-disk bytes whenever frontmatter / HTML comments were removed.
+        // from the on-disk bytes whenever frontmatter / HTML comments were removed.
         boolean differs = !body.equals(raw);
 
         List<MemoryFileInfo> collected = new ArrayList<>();
@@ -462,7 +462,7 @@ public final class MemoryFileScanner {
                 Matcher m = INCLUDE_REGEX.matcher(text.getLiteral());
                 while (m.find()) {
                     String candidate = m.group(1);
-// Strip fragment identifier (#heading).
+                    // Strip fragment identifier (#heading).
                     int hash = candidate.indexOf('#');
                     if (hash != -1) candidate = candidate.substring(0, hash);
                     if (candidate.isEmpty()) continue;

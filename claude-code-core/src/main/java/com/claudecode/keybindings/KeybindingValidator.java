@@ -1,24 +1,20 @@
 package com.claudecode.keybindings;
 
-
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Validates a user config and reports warnings.
@@ -70,8 +66,8 @@ public final class KeybindingValidator {
                 "Invalid JSON: " + e.getMessage(), null, null, null, null));
         }
         List<KeybindingWarning> warnings = validate(root);
-// Duplicate-key detection must run on the RAW text: Jackson's readTree silently keeps the
-// last value for a repeated field name, so the parsed tree can never reveal a duplicate.
+        // Duplicate-key detection must run on the RAW text: Jackson's readTree silently keeps the
+        // last value for a repeated field name, so the parsed tree can never reveal a duplicate.
         try {
             warnings.addAll(checkDuplicateKeysInJson(json));
         } catch (Exception _) {

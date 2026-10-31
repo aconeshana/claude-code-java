@@ -1,13 +1,10 @@
 package com.claudecode.services.compact;
 
+import com.claudecode.api.ApiException;
 import com.claudecode.core.annotation.CacheTier;
 import com.claudecode.core.annotation.Explanation;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.claudecode.api.ApiException;
 import com.claudecode.core.engine.CacheSharingForkBuilder;
-import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.message.ApiErrorMessages;
 import com.claudecode.core.message.ContentBlock;
@@ -15,15 +12,16 @@ import com.claudecode.core.message.Message;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
-import com.claudecode.core.engine.SessionCostState;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.query.QuerySession;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * {@link CompactSummarizer} backed by a real model call.
@@ -237,7 +235,7 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
             JsonNode topLevel = root.path("message");
             if (topLevel.isTextual() && !StringUtils.isBlank(topLevel.asText())) return topLevel.asText();
         } catch (Exception _) {
-// Provider/proxy returned a non-JSON body; preserve icompatibility baseline text below.
+        // Provider/proxy returned a non-JSON body; preserve icompatibility baseline text below.
         }
         return null;
     }

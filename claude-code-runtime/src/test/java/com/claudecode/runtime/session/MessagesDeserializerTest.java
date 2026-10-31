@@ -256,8 +256,8 @@ class MessagesDeserializerTest {
     void systemMessagesDontBlockSentinelInsertion() {
         UserMessage u = user("u1", "hi");
         SystemMessage sys = new SystemMessage("s1", "info", "info", "…");
-// Sentinel should be inserted BETWEEN u and sys (immediately after the last non-system
-// relevant message).
+        // Sentinel should be inserted BETWEEN u and sys (immediately after the last non-system
+        // relevant message).
         List<Message> out = MessagesDeserializer.deserialize(List.of(u, sys));
         assertEquals(3, out.size());
         assertInstanceOf(AssistantMessage.class, out.get(1));

@@ -1,7 +1,5 @@
 package com.claudecode.ui.vim;
 
-import org.apache.commons.lang3.Strings;
-
 import java.text.BreakIterator;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -9,6 +7,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Predicate;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Vim-style state machine for terminal input handling.
@@ -83,7 +82,7 @@ public class VimStateMachine {
      * Used by InputPanel to re-sync vim state after a readline shortcut moved the textBox caret.
      */
     public void setCursor(int pos) {
-        this.cursor = Math.max(0, Math.min(pos, buffer.length()));
+        this.cursor = Math.clamp(pos, 0, buffer.length());
         this.preferredColumn = colOf(buffer.toString(), this.cursor);
     }
 
@@ -544,7 +543,7 @@ public class VimStateMachine {
 
         if (op == VimOperator.CHANGE
                 && (motion == VimMotion.WORD_FORWARD || motion == VimMotion.WORD_BIG_FORWARD)) {
-// cw/cW changes to the end of the word, not the start of the next word.
+            // cw/cW changes to the end of the word, not the start of the next word.
             int wc = start;
             for (int i = 0; i < count - 1; i++) {
                 wc = (motion == VimMotion.WORD_FORWARD)
@@ -568,7 +567,7 @@ public class VimStateMachine {
                 from -= 1;
             }
         } else if (isInclusiveMotion(motion) && start <= target) {
-// Inclusive motions (e, E, $) extend one grapheme past the landing position.
+            // Inclusive motions (e, E, $) extend one grapheme past the landing position.
             to = Math.min(nextOffset(text, to), text.length());
         }
 
@@ -923,7 +922,7 @@ public class VimStateMachine {
             case DOWN, DOWN_VISUAL, UP, UP_VISUAL -> {
                 int delta = (motion == VimMotion.DOWN || motion == VimMotion.DOWN_VISUAL) ? 1 : -1;
                 int line = lineNumberOf(text, from);
-                int targetLine = Math.max(0, Math.min(lineCount(text) - 1, line + delta));
+                int targetLine = Math.clamp(line + delta, 0, lineCount(text) - 1);
                 int off = offsetOfLineCol(text, targetLine, preferredColumn);
                 preferredColumn = colOf(text, off);
                 yield off;
@@ -961,7 +960,7 @@ public class VimStateMachine {
         if (isWordChar(text.charAt(i))) {
             while (i < text.length() && isWordChar(text.charAt(i))) i = nextOffset(text, i);
         } else if (isPunctuation(text.charAt(i))) {
-// Traverse the whole punctuation run.
+            // Traverse the whole punctuation run.
             while (i < text.length() && isPunctuation(text.charAt(i))) i = nextOffset(text, i);
         }
         while (i < text.length() && Character.isWhitespace(text.charAt(i))) i = nextOffset(text, i);
@@ -976,7 +975,7 @@ public class VimStateMachine {
         if (isWordChar(text.charAt(i))) {
             while (i > 0 && isWordChar(text.charAt(prevOffset(text, i)))) i = prevOffset(text, i);
         } else if (isPunctuation(text.charAt(i))) {
-// Traverse the whole punctuation run.
+            // Traverse the whole punctuation run.
             while (i > 0 && isPunctuation(text.charAt(prevOffset(text, i)))) i = prevOffset(text, i);
         }
         return i;
@@ -994,7 +993,7 @@ public class VimStateMachine {
                 i = n;
             }
         } else if (isPunctuation(text.charAt(i))) {
-// Traverse the whole punctuation run.
+            // Traverse the whole punctuation run.
             while (true) {
                 int n = nextOffset(text, i);
                 if (n >= text.length() || !isPunctuation(text.charAt(n))) break;
@@ -1092,7 +1091,7 @@ public class VimStateMachine {
         int start = startOfLine(text, lineIdx);
         int end = lineEndExclOf(text, start);
         int len = end - start; // chars in the line, excluding the newline
-        int c = Math.max(0, Math.min(col, Math.max(0, len - 1)));
+        int c = Math.clamp(col, 0, Math.max(0, len - 1));
         return start + c;
     }
 

@@ -1,7 +1,5 @@
 package com.claudecode.core.engine;
 
-
-
 /**
  * A completed background (output-driven / config-async) hook's deferred result, surfaced on a later
  * turn as an {@code async_hook_response} attachment.

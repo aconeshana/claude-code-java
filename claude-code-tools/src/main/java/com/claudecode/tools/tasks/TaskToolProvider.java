@@ -64,7 +64,7 @@ public class TaskToolProvider implements AutoCloseable {
             return;
         }
 
-// Model-facing to-do list tools share one effective session/team service.
+        // Model-facing to-do list tools share one effective session/team service.
         registry.register(new TaskCreateTool(taskBoard));
         registry.register(new TaskGetTool(taskBoard));
         registry.register(new TaskListTool(taskBoard));

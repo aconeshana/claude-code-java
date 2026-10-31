@@ -509,7 +509,7 @@ public final class McpCollapseClassifier {
     private McpCollapseClassifier() {
     }
 
-/** Returns true only for a established allowlisted MCP search/read tool. */
+    /** Returns true only for a established allowlisted MCP search/read tool. */
     public static boolean isCollapsible(String qualifiedToolName) {
         String toolName = unqualifiedToolName(qualifiedToolName);
         if (toolName == null) return false;

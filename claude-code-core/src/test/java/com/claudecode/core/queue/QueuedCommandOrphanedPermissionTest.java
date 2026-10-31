@@ -27,7 +27,7 @@ class QueuedCommandOrphanedPermissionTest {
 
     @Test
     void backwardCompatible11ArgConstructorLeavesPayloadNull() {
-// matches the existing 11-arg call sites that must keep compiling.
+        // matches the existing 11-arg call sites that must keep compiling.
         QueuedCommand cmd = new QueuedCommand(
             "text", null, "prompt", QueuePriority.NEXT,
             false, null, false, false, null, null, null);

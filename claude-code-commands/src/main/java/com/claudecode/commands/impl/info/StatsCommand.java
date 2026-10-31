@@ -1,13 +1,12 @@
 package com.claudecode.commands.impl.info;
 
 import com.claudecode.commands.AnnotatedCommand;
-import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
-import com.claudecode.core.model.ModelNames;
+import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.session.SessionCommandPort;
+import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.text.FormatUtils;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,7 @@ public class StatsCommand implements AnnotatedCommand {
 
     @Override
     public CommandResult execute(CommandContext context, String args) {
-// Interactive path: open the Stats panel.
+        // Interactive path: open the Stats panel.
         if (context.presentation().statsDialogLauncher() != null) {
             context.presentation().statsDialogLauncher().run();
             return CommandResult.skip();
@@ -43,7 +42,7 @@ public class StatsCommand implements AnnotatedCommand {
         }
     }
 
-/** Flat-text overview matching the dialog's Overview tab rows. */
+    /** Flat-text overview matching the dialog's Overview tab rows. */
     static String renderText(SessionCommandPort.StatsSnapshot stats) {
         List<Map.Entry<String, SessionCommandPort.ModelUsage>> models = stats.modelUsage().entrySet().stream()
             .sorted(Comparator.comparingLong((Map.Entry<String, SessionCommandPort.ModelUsage> e) ->

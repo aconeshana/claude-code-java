@@ -1,11 +1,32 @@
 package com.claudecode.lsp;
 
+import com.claudecode.core.process.SubprocessEnvironment;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-
-import com.claudecode.core.process.SubprocessEnvironment;
-
-
 import org.eclipse.lsp4j.CallHierarchyIncomingCall;
 import org.eclipse.lsp4j.CallHierarchyIncomingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyItem;
@@ -53,25 +74,12 @@ import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
-import org.eclipse.lsp4j.services.TextDocumentService;
+import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageServer;
-import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
+import org.eclipse.lsp4j.services.TextDocumentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
-
-import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Generic {@link LspServerInstance} that spawns any stdio-based language server subprocess and
@@ -197,8 +205,8 @@ public class ProcessLspServerInstance implements LspServerInstance {
         }
         this.workspaceRoot = workspaceRoot;
 
-// Only the stdio transport is spoken by this port; skip anything else before spawning a
-// subprocess.
+        // Only the stdio transport is spoken by this port; skip anything else before spawning a
+        // subprocess.
         if (!Strings.CI.equals("stdio", transport)) {
             LOG.warn("LSP server '{}' uses unsupported transport '{}' (only stdio is "
                 + "supported); skipping", languageId, transport);
@@ -298,9 +306,9 @@ public class ProcessLspServerInstance implements LspServerInstance {
 
             long initTimeout = timeoutMs != null ? timeoutMs : TIMEOUT_SECONDS;
             InitializeResult result = initializeServer(params, initTimeout);
-// The LSP handshake requires the client to send the `initialized` notification after a
-// successful initialize response; servers such as rust-analyzer reject requests that
-// arrive before it.
+            // The LSP handshake requires the client to send the `initialized` notification after a
+            // successful initialize response; servers such as rust-analyzer reject requests that
+            // arrive before it.
             languageServer.initialized(new InitializedParams());
             initialized = true;
             readinessSignal.complete(null);
@@ -480,7 +488,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
         try {
             if (languageServer != null && initialized) {
                 languageServer.shutdown().get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-// Send the mandatory `exit` notification so the server terminates gracefully.
+                // Send the mandatory `exit` notification so the server terminates gracefully.
                 try {
                     languageServer.exit();
                 } catch (Exception e) {

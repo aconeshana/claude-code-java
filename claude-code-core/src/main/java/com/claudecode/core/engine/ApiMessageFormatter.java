@@ -178,8 +178,8 @@ public final class ApiMessageFormatter {
                 case SystemMessage sm when MessageConstants.isSystemLocalCommandMessage(sm)
                         && sm.content() != null ->
 
-// only system messages that survive — converted to a user turn so the model can
-// reference previous command output in later turns.
+                    // only system messages that survive — converted to a user turn so the model can
+                    // reference previous command output in later turns.
                     requestMessages.add(new StreamingClient.StreamRequest.RequestMessage(
                         "user", sm.content()));
                 default -> { /* Skip other system, progress, etc. */ }

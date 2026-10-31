@@ -348,8 +348,8 @@ class TranscriptLogLoaderTest {
             file, null, _ -> false);
 
         assertEquals(1, logs.size());
-// The cycle walk returns each UUID at most once, then appends the terminal
-// auxiliary child selected by the shared.
+        // The cycle walk returns each UUID at most once, then appends the terminal
+        // auxiliary child selected by the shared.
         assertEquals(List.of("a1", "u1", "tail"), uuids(logs.getFirst()));
     }
 

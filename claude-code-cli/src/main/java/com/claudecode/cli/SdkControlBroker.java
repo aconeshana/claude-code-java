@@ -1,40 +1,34 @@
 package com.claudecode.cli;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.OrphanedPermission;
 import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
-import com.claudecode.core.engine.RefusalFallbackPrompt;
 import com.claudecode.core.engine.PermissionUpdateJsonCodec;
-import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.core.engine.RefusalFallbackPrompt;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.RefusalFallbackDecision;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.WireMessages;
-import com.claudecode.core.queue.QueuedCommand;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.queue.QueuedCommand;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionEngine;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
+import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.services.config.PermissionSettings;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.HashSet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +41,10 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class SdkControlBroker implements RefusalFallbackPrompt {
 
@@ -666,8 +664,8 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         }
         messageOutputWaiters.clear();
         for (PendingAsk ask : pendingByRequestId.values()) {
-// Cancel the outstanding request so the SDK consumer's canUseTool callback (and any UI
-// prompt) is.
+            // Cancel the outstanding request so the SDK consumer's canUseTool callback (and any UI
+            // prompt) is.
             ObjectNode cancel = MAPPER.createObjectNode();
             cancel.put("type", "control_cancel_request");
             cancel.put("request_id", ask.requestId());
@@ -883,7 +881,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
             permissionGate.removeDirectories(paths);
         } else {
 
-// (additionalWorkingDirectories uses {path, source}); match that.
+            // (additionalWorkingDirectories uses {path, source}); match that.
             permissionGate.addDirectories(paths, source);
         }
     }

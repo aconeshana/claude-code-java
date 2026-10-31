@@ -81,9 +81,14 @@ public final class GitDiffCollector {
         }
 
 
-// fetchGitDiffHunks preamble reduces to the diff call itself.
+        // fetchGitDiffHunks preamble reduces to the diff call itself.
         Map<String, List<StructuredPatchHunk>> hunks = fetchHunks();
 
+        return new DiffData(stats, toDiffFiles(perFileStats, hunks), hunks);
+    }
+
+    private static List<DiffData.DiffFile> toDiffFiles(
+            Map<String, PerFileStat> perFileStats, Map<String, List<StructuredPatchHunk>> hunks) {
         List<DiffData.DiffFile> files = new ArrayList<>(perFileStats.size());
         for (Map.Entry<String, PerFileStat> entry : perFileStats.entrySet()) {
             PerFileStat fs = entry.getValue();
@@ -96,8 +101,7 @@ public final class GitDiffCollector {
                 isLargeFile, isTruncated, false, fs.isUntracked()));
         }
         files.sort(Comparator.comparing(DiffData.DiffFile::path));
-
-        return new DiffData(stats, files, hunks);
+        return files;
     }
 
     // ── parsers (pure, package-private for tests) ────────────────────────────

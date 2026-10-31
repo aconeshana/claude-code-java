@@ -1,16 +1,14 @@
 package com.claudecode.commands.impl.terminal;
 
-import java.util.Locale;
-
 import com.claudecode.commands.AnnotatedCommand;
-import com.claudecode.commands.metadata.SlashCommand;
-import com.claudecode.core.text.FormatUtils;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
+import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.tooling.ToolingCommandPorts;
-
+import com.claudecode.core.text.FormatUtils;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@code /tasks} (alias {@code /bashes}) — list and manage background tasks.
@@ -33,7 +31,7 @@ public class TasksCommand implements AnnotatedCommand {
 
         List<ToolingCommandPorts.Tasks.Snapshot> all = context.application().tooling().tasks().list();
         if (all.isEmpty()) {
-// Background tasks are in-memory only.
+            // Background tasks are in-memory only.
             return CommandResult.of("No background tasks in this session.");
         }
         all = all.stream()

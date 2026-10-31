@@ -790,7 +790,7 @@ public class LanternaReplScreen implements SlashHost {
             });
     }
 
-/** Persists {@code model} to  as {@code "model"}. */
+    /** Persists {@code model} to  as {@code "model"}. */
     private void saveModelSetting(String model) {
         UiSettings.writeUserSettingAsync("model", model)
             .whenComplete((_, failure) -> {

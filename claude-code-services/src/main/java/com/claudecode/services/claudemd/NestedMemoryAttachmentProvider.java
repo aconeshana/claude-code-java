@@ -91,9 +91,9 @@ public final class NestedMemoryAttachmentProvider implements AttachmentProvider 
         }
         ctx.loadedNestedMemoryPaths().add(f.path().toString());
 
-// Mark readFileState (cross-turn dedup via the LRU.has check).
+        // Mark readFileState (cross-turn dedup via the LRU.has check).
 
-// wall-clock time while real Reads.
+        // wall-clock time while real Reads.
         try {
             long now = System.currentTimeMillis();
             ctx.fileStateCache().set(f.path().toString(), new FileStateCache.FileState(

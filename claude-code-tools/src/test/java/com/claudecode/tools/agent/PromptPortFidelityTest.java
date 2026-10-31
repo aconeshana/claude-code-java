@@ -146,7 +146,7 @@ class PromptPortFidelityTest {
 
     @Test
     void bashToolPrompt_matches197GitGuidance() {
-// Guard representative phrases from the byte-locked.
+        // Guard representative phrases from the byte-locked.
         String d = new BashTool().description();
         assertTrue(Strings.CS.contains(d, "# Committing changes with git"),
             d.substring(0, Math.min(200, d.length())));

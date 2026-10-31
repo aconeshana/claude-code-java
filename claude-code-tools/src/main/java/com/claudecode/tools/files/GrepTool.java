@@ -454,7 +454,7 @@ public class GrepTool extends AnnotatedTool<JsonNode, String> {
                 return sb.toString();
             }
 
-// content mode: lines + optional pagination footer.
+            // content mode: lines + optional pagination footer.
             String limitInfo = formatLimitInfo(appliedLimit, appliedOffset);
             String content = limited.stream()
                 .map(GrepResult::content)

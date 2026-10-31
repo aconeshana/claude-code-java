@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-
 public final class StatusLineController implements AutoCloseable {
 
     static final long DEBOUNCE_MS = 300;
@@ -147,7 +146,7 @@ public final class StatusLineController implements AutoCloseable {
         scheduleUpdate();
     }
 
-/** Fires the debounced task only if no newer {@link #scheduleUpdate} superseded it. */
+    /** Fires the debounced task only if no newer {@link #scheduleUpdate} superseded it. */
     private void runIfCurrent(long gen) {
         if (closed.get() || gen != generation.get()) return;
         // Snapshot the message list on the GUI thread — it is not thread-safe

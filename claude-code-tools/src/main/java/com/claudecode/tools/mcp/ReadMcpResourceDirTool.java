@@ -1,8 +1,8 @@
 package com.claudecode.tools.mcp;
 
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.engine.StructuredToolOutput;
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.mcp.McpClientRuntime;
 import com.claudecode.mcp.McpConnectionView;
 import com.claudecode.permissions.PermissionDecision;
@@ -11,13 +11,13 @@ import com.claudecode.tools.AnnotatedTool;
 import com.claudecode.tools.BuiltInTool;
 import com.claudecode.tools.ToolTexts;
 import com.claudecode.tools.skills.McpSkillDiscovery;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Lists direct children of an MCP directory resource.
@@ -38,7 +38,7 @@ public final class ReadMcpResourceDirTool
     private final McpClientRuntime clientManager;
     private final boolean mcpSkillsEnabled;
 
-/** Default established profile: the MCP skills/directory-read gate is off. */
+    /** Default established profile: the MCP skills/directory-read gate is off. */
     public ReadMcpResourceDirTool(McpClientRuntime clientManager) {
         this(clientManager, false);
     }

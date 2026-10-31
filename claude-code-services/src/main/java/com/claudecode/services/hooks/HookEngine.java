@@ -660,16 +660,15 @@ public class HookEngine implements HookDispatcher {
     // ---- compact ----
 
     @Override
-    public void dispatchPreCompact(String trigger, String customInstructions, long preTokenCount) {
-        dispatchPreCompactWithOutcome(trigger, customInstructions, preTokenCount);
+    public void dispatchPreCompact(String trigger, String customInstructions) {
+        dispatchPreCompactWithOutcome(trigger, customInstructions);
     }
 
     @Override
-    public HookOutcome dispatchPreCompactWithOutcome(
-            String trigger, String customInstructions, long preTokenCount) {
+    public HookOutcome dispatchPreCompactWithOutcome(String trigger, String customInstructions) {
         try {
             List<HookExecution> results = executeHooksWithCommands(HookEvent.PRE_COMPACT,
-                HookInput.forPreCompact(trigger, customInstructions, preTokenCount,
+                HookInput.forPreCompact(trigger, customInstructions,
                     sessionId(), cwd(), context.promptId()), _ -> true);
             return HookOutcomes.aggregateCompact("PreCompact", results, "\n\n");
         } catch (Throwable t) {
@@ -679,8 +678,8 @@ public class HookEngine implements HookDispatcher {
     }
 
     @Override
-    public void dispatchPostCompact(String trigger, String compactSummary, long postTokenCount) {
-        dispatchPostCompactWithOutcome(trigger, compactSummary, postTokenCount);
+    public void dispatchPostCompact(String trigger, String compactSummary) {
+        dispatchPostCompactWithOutcome(trigger, compactSummary);
     }
 
     /**
@@ -689,11 +688,10 @@ public class HookEngine implements HookDispatcher {
      * into the success message shown after {@code /compact} completes.
      */
     @Override
-    public HookOutcome dispatchPostCompactWithOutcome(
-            String trigger, String compactSummary, long postTokenCount) {
+    public HookOutcome dispatchPostCompactWithOutcome(String trigger, String compactSummary) {
         try {
             List<HookExecution> results = executeHooksWithCommands(HookEvent.POST_COMPACT,
-                HookInput.forPostCompact(trigger, compactSummary, postTokenCount, sessionId(), cwd()),
+                HookInput.forPostCompact(trigger, compactSummary, sessionId(), cwd()),
                 _ -> true);
             return HookOutcomes.aggregateCompact("PostCompact", results, "\n");
         } catch (Throwable t) {

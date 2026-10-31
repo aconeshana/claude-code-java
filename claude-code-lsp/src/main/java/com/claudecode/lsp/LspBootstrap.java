@@ -163,8 +163,8 @@ public final class LspBootstrap {
      */
     public FileChangeListener fileChangeListener() {
         return (filePath, _) -> {
-// Editing a file invalidates previously delivered diagnostics, so drop the dedup state
-// for it.
+            // Editing a file invalidates previously delivered diagnostics, so drop the dedup state
+            // for it.
             registry.clearDeliveredFingerprints(filePath.toUri().toString());
 
             String languageId = extensionToLanguageId.get(PathUtils.extensionOf(filePath));

@@ -1,8 +1,5 @@
 package com.claudecode.api;
 
-
-
-
 public final class ApiStreamException extends ApiException {
     public enum Reason { WATCHDOG, STALE_CONNECTION, ABORTED, OTHER }
 

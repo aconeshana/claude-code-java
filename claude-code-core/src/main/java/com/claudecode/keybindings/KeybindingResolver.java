@@ -94,13 +94,13 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
         KeystrokeParser.Chord pending
     ) {
 
-// Key's `.escape`; our caller builds a Keystroke whose key == "escape"
+        // Key's `.escape`; our caller builds a Keystroke whose key == "escape"
 
         if (Strings.CS.equals(key.key(), "escape") && pending != null) {
             return CHORD_CANCELLED;
         }
 
-// Unresolvable keystroke (no name, no modifier) — cancel a pending chord, else no match.
+        // Unresolvable keystroke (no name, no modifier) — cancel a pending chord, else no match.
         if (key.key().isEmpty()
                 && !key.ctrl() && !key.alt() && !key.shift() && !key.meta() && !key.superMod()) {
             return pending != null

@@ -27,7 +27,7 @@ class PermissionPathAlignmentTest {
             PermissionRule.withPattern("Edit", PermissionBehavior.ALLOW,
                 RuleSource.SESSION, "foo/*"));
         assertTrue(isAllowed(engine, star, "foo/bar"));
-// ignore treats the ignored foo/bar directory as hiding descendants.
+        // ignore treats the ignored foo/bar directory as hiding descendants.
         assertTrue(isAllowed(engine, star, "foo/bar/nested.txt"));
         assertFalse(isAllowed(engine, star, "foo"));
         assertFalse(isAllowed(engine, star, "foobar/bar"));

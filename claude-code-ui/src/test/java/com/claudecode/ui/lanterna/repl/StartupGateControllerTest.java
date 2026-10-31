@@ -105,11 +105,11 @@ class StartupGateControllerTest {
         @Override public void migrateLegacyTrust() { migrated = true; }
         @Override public boolean isTrustAccepted(Path cwd) { return accepted; }
         @Override public void acceptTrust(Path cwd) { accepted = true; }
-        @Override public boolean hasExternalIncludesApproved(Path cwd) {
+        @Override public boolean hasExternalIncludesApproved() {
             return Boolean.TRUE.equals(externalDecision);
         }
-        @Override public boolean hasExternalIncludesWarningShown(Path cwd) { return warningShown; }
-        @Override public void saveExternalIncludesDecision(Path cwd, boolean approved) {
+        @Override public boolean hasExternalIncludesWarningShown() { return warningShown; }
+        @Override public void saveExternalIncludesDecision(boolean approved) {
             externalDecision = approved;
             warningShown = true;
         }

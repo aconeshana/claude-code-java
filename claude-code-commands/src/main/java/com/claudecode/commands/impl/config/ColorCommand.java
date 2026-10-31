@@ -49,8 +49,8 @@ public class ColorCommand implements AnnotatedCommand {
             ? context.session().currentSessionId().get() : null;
 
         if (RESET_ALIASES.contains(raw)) {
-// Use "default" sentinel (not empty/null) so truthiness guards in sessionStorage
-// persist the reset across session restarts.
+            // Use "default" sentinel (not empty/null) so truthiness guards in sessionStorage
+            // persist the reset across session restarts.
             if (StringUtils.isNotBlank(sessionId)) {
                 try { context.application().sessions().saveAgentColor(sessionId, "default"); }
                 catch (RuntimeException e) { return CommandResult.of("Failed to save color: " + e.getMessage()); }
@@ -78,8 +78,4 @@ public class ColorCommand implements AnnotatedCommand {
         // TODO(analytics): logEvent('tengu_agent_color_set', {})
         return CommandResult.of("Session color set to: " + raw);
     }
-
-    /**
-     * Appends {@code {type:"agent-color", agentColor, sessionId}} to the session JSONL.
-     */
 }

@@ -481,9 +481,9 @@ public final class BashPermissions {
             }
         }
 
-// SECURITY: output-redirection targets are validated for EVERY command (not just path
-// commands) — a `rm`-less command like `echo` can still write to a blocked location via
-// `>`.
+        // SECURITY: output-redirection targets are validated for EVERY command (not just path
+        // commands) — a `rm`-less command like `echo` can still write to a blocked location via
+        // `>`.
         return validateSegmentRedirects(
             allTokens, cwdStr, compoundCommandHasCd, permCtx);
     }
@@ -650,8 +650,8 @@ public final class BashPermissions {
                 continue;
             }
 
-// SECURITY: any write-via-redirection in a cd-compound requires approval (final CWD
-// can't be reliably determined).
+            // SECURITY: any write-via-redirection in a cd-compound requires approval (final CWD
+            // can't be reliably determined).
             if (compoundCommandHasCd) {
                 return PermissionDecision.ask();
             }

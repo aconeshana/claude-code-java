@@ -27,7 +27,7 @@ public class InitCommand implements Command {
 
     static final String CLAUDE_CODE_NEW_INIT_ENV = "CLAUDE_CODE_NEW_INIT";
 
-/** Kept stable for compatibility with  — the external-user default. */
+    /** Kept stable for compatibility with  — the external-user default. */
     static final String OLD_INIT_PROMPT = """
         Please analyze this codebase and create a CLAUDE.md file, which will be given to future instances of Claude Code to operate in this repository.
 

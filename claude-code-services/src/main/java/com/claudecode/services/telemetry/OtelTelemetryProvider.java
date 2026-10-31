@@ -1,9 +1,6 @@
 package com.claudecode.services.telemetry;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.core.config.VersionInfo;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -12,6 +9,9 @@ import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.exporter.logging.LoggingMetricExporter;
+import io.opentelemetry.exporter.logging.LoggingSpanExporter;
+import io.opentelemetry.exporter.logging.SystemOutLogRecordExporter;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
@@ -25,23 +25,21 @@ import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
-import io.opentelemetry.exporter.logging.SystemOutLogRecordExporter;
-import io.opentelemetry.exporter.logging.LoggingMetricExporter;
-import io.opentelemetry.exporter.logging.LoggingSpanExporter;
-import com.claudecode.core.config.VersionInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.Strings;
 
 /**
  * {@link TelemetryProvider} backed by the OpenTelemetry SDK.
  */
 final class OtelTelemetryProvider implements TelemetryProvider {
 
-// service.version resource attribute for telemetry.
+    // service.version resource attribute for telemetry.
     private static final String SERVICE_VERSION = VersionInfo.version();
     private static final long SHUTDOWN_TIMEOUT_MS = 2000;
     private static final long METRICS_INTERVAL_MS = 60000;

@@ -1,11 +1,11 @@
 package com.claudecode.tools;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
+import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
 import com.claudecode.core.engine.PermissionUpdate;
+import com.claudecode.core.engine.PostToolUseOutputResult;
 import com.claudecode.core.engine.RawBlocksOutput;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.StructuredToolOutput;
@@ -13,50 +13,67 @@ import com.claudecode.core.engine.ToolContextModifier;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.engine.ToolResult;
-import com.claudecode.core.engine.ToolResultContentForm;
 import com.claudecode.core.engine.ToolResultBudget;
-import com.claudecode.core.engine.PostToolUseOutputResult;
-import com.claudecode.core.validation.JsonSchemaValidator;
+import com.claudecode.core.engine.ToolResultContentForm;
 import com.claudecode.core.engine.ToolSchemaGate;
 import com.claudecode.core.engine.ToolSearchGate;
-import com.claudecode.core.message.*;
+import com.claudecode.core.message.AssistantMessage;
+import com.claudecode.core.message.AttachmentMessage;
+import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageConstants;
+import com.claudecode.core.message.QueuedCommandAttachment;
+import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.queue.InterruptBehavior;
+import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.validation.JsonSchemaValidator;
 import com.claudecode.permissions.AutoModeClassifier;
 import com.claudecode.permissions.CommandSuggestion;
 import com.claudecode.permissions.DecisionReason;
 import com.claudecode.permissions.DestructiveCommandWarning;
-import com.claudecode.permissions.PowerShellDestructiveCommandWarning;
+import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.PermissionDecisionResult;
 import com.claudecode.permissions.PermissionEngine;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
 import com.claudecode.permissions.PermissionRule;
-import com.claudecode.permissions.PermissionBehavior;
+import com.claudecode.permissions.PowerShellDestructiveCommandWarning;
 import com.claudecode.permissions.RuleSource;
-import com.claudecode.tools.mcp.MCPTool;
-import com.claudecode.tools.agent.AgentTool;
-import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
-import com.claudecode.core.serialization.JsonUtils;
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.config.EnvUtils;
+import com.claudecode.tools.agent.AgentTool;
+import com.claudecode.tools.bash.BashTool;
+import com.claudecode.tools.mcp.MCPTool;
+import com.claudecode.tools.output.ToolResultStorage;
+import com.claudecode.tools.tasks.teammate.AgentTeamsEnabled;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.claudecode.tools.bash.BashTool;
-import com.claudecode.tools.output.ToolResultStorage;
 
 /**
  * Registry for managing tool instances.
@@ -493,7 +510,7 @@ public class ToolRegistry implements ToolExecutor {
         }
         PermissionGate gate = this.permissionGate;
         if (gate != null) {
-// Consult the tool's own checkPermissions and merge it into the rules/mode decision.
+            // Consult the tool's own checkPermissions and merge it into the rules/mode decision.
             var permCtx = gate.currentContext();
             PermissionDecision toolDecision = tool.checkPermissions(input, permCtx);
             PermissionDecision.Ask toolAsk = toolDecision instanceof PermissionDecision.Ask ask
@@ -504,9 +521,9 @@ public class ToolRegistry implements ToolExecutor {
             PermissionDecisionResult result = gate.checkDetailed(
                 canonicalName, permissionInput, toolDecision);
             logRegistryEvent("permission.decision", toolName, result.decision());
-// Interactive tools (requiresUserInteraction) must always consult the human even when
-// the mode would otherwise auto-allow (BYPASS/AUTO/ DONT_ASK) — their answer is
-// collected during the prompt, so an automatic Allow would skip collection.
+            // Interactive tools (requiresUserInteraction) must always consult the human even when
+            // the mode would otherwise auto-allow (BYPASS/AUTO/ DONT_ASK) — their answer is
+            // collected during the prompt, so an automatic Allow would skip collection.
             if (tool.requiresUserInteraction() && result.decision() instanceof PermissionDecision.Allow) {
                 result = new PermissionDecisionResult(PermissionDecision.ask(), result.reason());
             }
@@ -563,8 +580,8 @@ public class ToolRegistry implements ToolExecutor {
                 PermissionAskCallback askCb =
                     context != null ? context.permissionAskCallback() : null;
                 if (askCb == null) {
-// No interactive prompt available — headless (SDK / CI /
-// REPL-less) ask→deny.
+                    // No interactive prompt available — headless (SDK / CI /
+                    // REPL-less) ask→deny.
 
                     //      decision but no callback exists, it returns
                     // AUTO_REJECT_MESSAGE(tool.name).
@@ -591,7 +608,7 @@ public class ToolRegistry implements ToolExecutor {
                     }
                     boolean isSubagent = context.agentId() != null;
                     if (fb == null) {
-// No-feedback reject = pure cancel.
+                        // No-feedback reject = pure cancel.
                         if (isSubagent) {
                             return ToolResult.error(MessageConstants.SUBAGENT_REJECT_MESSAGE)
                                 .withToolUseResult("User rejected tool use");
@@ -608,7 +625,7 @@ public class ToolRegistry implements ToolExecutor {
                         // prefix used for a local "No + feedback" response.
                         return ToolResult.error(fb).withToolUseResult("Error: " + fb);
                     }
-// No+feedback = ask-back with feedback.
+                    // No+feedback = ask-back with feedback.
                     String rejection = (isSubagent
                             ? MessageConstants.SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX
                             : MessageConstants.REJECT_MESSAGE_WITH_REASON_PREFIX) + fb;

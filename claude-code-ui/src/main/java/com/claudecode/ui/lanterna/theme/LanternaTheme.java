@@ -128,8 +128,8 @@ public final class LanternaTheme {
     public static TextColor modeAuto()      { return toLC(theme().autoAccept()); }
     public static TextColor modePlan()      { return toLC(theme().planMode()); }
 
-// ── Agent colors  ───────────
-// 8-color pool matches AGENT_COLORS: red, blue, green, yellow, purple, orange, pink, cyan
+    // ── Agent colors  ───────────
+    // 8-color pool matches AGENT_COLORS: red, blue, green, yellow, purple, orange, pink, cyan
     public static TextColor agentRed()      { return toLC(theme().red_FOR_SUBAGENTS_ONLY()); }
     public static TextColor agentBlue()     { return toLC(theme().blue_FOR_SUBAGENTS_ONLY()); }
     public static TextColor agentGreen()    { return toLC(theme().green_FOR_SUBAGENTS_ONLY()); }
@@ -176,7 +176,7 @@ public final class LanternaTheme {
      */
     public static TextColor backgroundTaskAccent() { return toLC(theme().background()); }
 
-// ── Permission mode hint colors ───────────────────────────────────────.
+    // ── Permission mode hint colors ───────────────────────────────────────.
     public static TextColor bypassRed()    { return toLC(theme().error()); }
     public static TextColor autoYellow()   { return toLC(theme().warning()); }
     public static TextColor acceptPurple() { return toLC(theme().autoAccept()); }
@@ -262,7 +262,7 @@ public final class LanternaTheme {
         };
     }
 
-/** matches color-diff's fixed xterm indices below truecolor for dark themes. */
+    /** matches color-diff's fixed xterm indices below truecolor for dark themes. */
     private static TextColor darkDiffColor(int r, int g, int b, int indexed) {
         return CHALK_LEVEL >= 3 ? new TextColor.RGB(r, g, b) : new TextColor.Indexed(indexed);
     }

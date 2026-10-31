@@ -264,7 +264,7 @@ class Phase2DeltaAttachmentTest {
 
     @Test
     void serviceWithAllFlagsOffCollectsNoPhase2() {
-// The CLI wires all five providers but FeatureFlagRegistry.allOff
+        // The CLI wires all five providers but FeatureFlagRegistry.allOff
 
         var svc = new AttachmentService(List.of(
             new DeferredToolsDeltaAttachmentProvider(),

@@ -19,9 +19,6 @@ import org.junit.jupiter.api.Test;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.input.InputPanel;
 
-
-
-
 class ToolApprovalInteractionPermissionUpdateTest {
 
     @Test

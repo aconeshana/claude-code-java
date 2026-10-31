@@ -110,7 +110,7 @@ class SandboxNetworkProxyTest {
 
     @Test
     void connect_deniedBeatsAllow_isForbidden() throws IOException {
-// A host present in BOTH lists must be refused: the denylist wins.
+        // A host present in BOTH lists must be refused: the denylist wins.
         SandboxNetworkProxy proxy = new SandboxNetworkProxy(
             List.of("10.255.255.1"), List.of("10.255.255.1"));
         try {

@@ -24,7 +24,7 @@ public final class MemoryAge {
         return Math.max(0, Math.floorDiv(nowMs - mtimeMs, DAY_MS));
     }
 
-/** Human-readable age string. matches {@code memoryAge}. */
+    /** Human-readable age string. matches {@code memoryAge}. */
     public static String age(long mtimeMs, long nowMs) {
         long d = ageDays(mtimeMs, nowMs);
         if (d == 0) return "today";

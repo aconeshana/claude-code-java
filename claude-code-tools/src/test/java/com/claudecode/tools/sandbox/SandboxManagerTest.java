@@ -104,7 +104,7 @@ class SandboxManagerTest {
         };
     }
 
-// ── decide logic (FakeSandboxBackend controls availability) ─────────────
+    // ── decide logic (FakeSandboxBackend controls availability) ─────────────
 
     @Test
     void disabledConfig_isAlwaysUnsandboxed() {

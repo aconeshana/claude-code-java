@@ -1,12 +1,6 @@
 package com.claudecode.tools.skills;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.util.FrontmatterParser;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +14,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Loads skills from multiple sources: managed, user, project, bundled, and MCP paths.
@@ -516,7 +514,7 @@ public class SkillLoader {
             entries.sorted().forEach(entry -> {
                 try {
 
-// follows symlinks, matching entry.isSymbolicLink support.
+                    // follows symlinks, matching entry.isSymbolicLink support.
                     if (!Files.isDirectory(entry)) return;
                     Path skillMd = entry.resolve(SKILL_FILE);
                     if (!Files.isRegularFile(skillMd)) return;

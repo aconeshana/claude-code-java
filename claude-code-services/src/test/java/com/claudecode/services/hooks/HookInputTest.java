@@ -37,7 +37,7 @@ class HookInputTest {
 
     @Test
     void preCompact_carriesCustomInstructionsWhenPresent() {
-        JsonNode node = json(HookInput.forPreCompact("manual", "focus on the auth bug", 1000L, null, null));
+        JsonNode node = json(HookInput.forPreCompact("manual", "focus on the auth bug", null, null));
         assertEquals("manual", node.path("trigger").asText());
         assertEquals("focus on the auth bug", node.path("custom_instructions").asText());
     }
@@ -45,15 +45,15 @@ class HookInputTest {
     @Test
     void preCompact_carriesTheCurrentHeadlessPromptIdWhenAvailable() {
         JsonNode node = json(HookInput.forPreCompact(
-            "manual", "focus", 1000L, "session-197", "/tmp/project", "prompt-197"));
+            "manual", "focus", "session-197", "/tmp/project", "prompt-197"));
 
         assertEquals("prompt-197", node.path("prompt_id").asText());
     }
 
     @Test
     void preCompact_serializesAbsentCustomInstructionsAsNullAndHasNoJavaOnlyTokenCount() {
-        JsonNode absent = json(HookInput.forPreCompact("auto", null, 1000L, null, null));
-        JsonNode blank = json(HookInput.forPreCompact("auto", "  ", 1000L, null, null));
+        JsonNode absent = json(HookInput.forPreCompact("auto", null, null, null));
+        JsonNode blank = json(HookInput.forPreCompact("auto", "  ", null, null));
         assertTrue(absent.has("custom_instructions"));
         assertTrue(absent.get("custom_instructions").isNull());
         assertTrue(blank.get("custom_instructions").isNull());
@@ -62,7 +62,7 @@ class HookInputTest {
 
     @Test
     void postCompact_carriesCompactSummaryWhenPresent() {
-        JsonNode node = json(HookInput.forPostCompact("manual", "Discussed X, changed Y.", 500L, null, null));
+        JsonNode node = json(HookInput.forPostCompact("manual", "Discussed X, changed Y.", null, null));
         assertEquals("manual", node.path("trigger").asText());
         assertEquals("Discussed X, changed Y.", node.path("compact_summary").asText());
         assertFalse(node.has("post_compact_token_count"));
@@ -70,7 +70,7 @@ class HookInputTest {
 
     @Test
     void postCompact_omitsCompactSummaryWhenNullOrBlank() {
-        assertFalse(json(HookInput.forPostCompact("auto", null, 500L, null, null)).has("compact_summary"));
+        assertFalse(json(HookInput.forPostCompact("auto", null, null, null)).has("compact_summary"));
     }
 
     @Test

@@ -175,8 +175,8 @@ final class UserMessageRenderer {
                 return;
             }
         }
-// imagePasteIds is a parallel list carrying the pasted-content id for each ImageBlock, in
-// order of appearance.
+        // imagePasteIds is a parallel list carrying the pasted-content id for each ImageBlock, in
+        // order of appearance.
 
         List<Integer> imagePasteIds = msg.message().imagePasteIds();
         int imageBlockIndex = 0;
@@ -297,7 +297,7 @@ final class UserMessageRenderer {
         if (imageId != null && Ansi.supportsHyperlinks()) {
             String path = ImageStore.getStoredImagePath(imageId);
             if (path != null) {
-// new File(...).toURI produces file:///... with proper
+                // new File(...).toURI produces file:///... with proper
 
                 // pathToFileURL(imagePath).href.
                 url = new File(path).toURI().toString();
@@ -335,10 +335,10 @@ final class UserMessageRenderer {
     void renderTextBlock(String text, MessagePanel panel) {
         if (text == null) return;
 
-// Background Agent/Task completion — the XML is an internal model-facing protocol, not
-// user-authored terminal content. The underscore spelling covers sessions persisted
-// before the builder adopted the official hyphen tags; replaying those must not
-// leak raw XML either.
+        // Background Agent/Task completion — the XML is an internal model-facing protocol, not
+        // user-authored terminal content. The underscore spelling covers sessions persisted
+        // before the builder adopted the official hyphen tags; replaying those must not
+        // leak raw XML either.
         if (Strings.CS.contains(text, "<" + XmlConstants.TASK_NOTIFICATION_TAG)
                 || Strings.CS.contains(text, "<task_notification")) {
             renderAgentNotification(text, panel);

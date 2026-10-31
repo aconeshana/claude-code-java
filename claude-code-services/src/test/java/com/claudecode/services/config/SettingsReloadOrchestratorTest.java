@@ -52,7 +52,7 @@ class SettingsReloadOrchestratorTest {
     void setup() throws IOException {
         originalHome = System.getProperty("user.home");
         originalUserDir = System.getProperty("user.dir");
-// Route SettingsPaths.userSettingsPath into our temp dir.
+        // Route SettingsPaths.userSettingsPath into our temp dir.
         System.setProperty("user.home", fakeHome.toString());
         Files.createDirectories(fakeHome.resolve(".claude"));
 

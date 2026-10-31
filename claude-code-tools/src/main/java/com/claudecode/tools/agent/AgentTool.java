@@ -1111,8 +1111,8 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         // second transition (RUNNING -> RUNNING) throws an IllegalStateException.
 
         AbortController abortController = new AbortController();
-// Teammates always run under the DEFAULT permission mode and forward every permission/plan
-// ask the leader.
+        // Teammates always run under the DEFAULT permission mode and forward every permission/plan
+        // ask the leader.
         TeammateContext teammateContext = TeammateContext.builder()
             .agentId(task.id())
             .teamId(request.teamId())
@@ -1132,7 +1132,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         TeammatePermissionAskCallback teammateCallback =
             new TeammatePermissionAskCallback(handleRef::get);
 
-// Coordination tools the teammate needs to talk to the leader / peers.
+        // Coordination tools the teammate needs to talk to the leader / peers.
         List<String> teammateTools = new ArrayList<>(request.tools() != null ? request.tools() : DEFAULT_SAFE_TOOLS);
         if (!teammateTools.contains("SendMessage")) {
             teammateTools.add("SendMessage");
@@ -1161,8 +1161,8 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             teamTodoStore, teammateHookDispatcher);
         handleRef.set(handle);
         registry.registerTeammate(handle);
-// Track the spawned teammate as an active member of its team so TeamDeleteTool's
-// active-member guard can refuse deletion while it runs.
+        // Track the spawned teammate as an active member of its team so TeamDeleteTool's
+        // active-member guard can refuse deletion while it runs.
         if (StringUtils.isNotBlank(request.teamId())) {
             TeamRegistry.instance().addAgent(request.teamId(), task.id(),
                 teammateContext.name(), request.subagentType(), request.model(), request.cwd());
@@ -1319,7 +1319,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
         StringBuilder trailer = new StringBuilder();
         String agentId = result.agentId().orElse(fallbackAgentId);
         if (StringUtils.isNotBlank(agentId)) {
-/* Keep this literal synchronized with asyncLaunchResult above. */
+            /* Keep this literal synchronized with asyncLaunchResult above. */
             trailer.append("agentId: ").append(agentId)
               .append(" (use SendMessage with to: '").append(agentId)
               .append("', summary: '<5-10 word recap>' to continue this agent)");
@@ -1448,7 +1448,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             .fork(fork)
             .maxTurns(maxTurns)
             .cwd(requestCwd)
-// Bridge sub-agent progress (incl.
+            // Bridge sub-agent progress (incl.
             .progressCallback(new SubAgentRequest.ProgressCallback() {
                 @Override
                 public void onProgress(String status, double progress) {
@@ -1504,8 +1504,8 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             }
         }
 
-// Resolve tools: caller-explicit tools win; otherwise inherit the agent definition's
-// allow-list.
+        // Resolve tools: caller-explicit tools win; otherwise inherit the agent definition's
+        // allow-list.
         List<String> explicitTools = extractToolList(input);
         if (fork) {
             // Fork children use the parent's exact model-visible tool array so
@@ -1735,7 +1735,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
 
     private static JsonNode buildSchema() {
 
-// applies the model-visible feature profile observed in the lossless.
+        // applies the model-visible feature profile observed in the lossless.
 
         // equivalent in either version) and are dropped from the model-facing
         // contract for the same reason; buildRequest() below still honors
@@ -1756,8 +1756,8 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             .put("description", "The task for the agent to perform");
 
 
-// When omitted and fork mode is enabled, the agent forks; when omitted without fork
-// mode the general-purpose agent is used.
+        // When omitted and fork mode is enabled, the agent forks; when omitted without fork
+        // mode the general-purpose agent is used.
         properties.putObject("subagent_type")
             .put("type", "string")
             .put("description", "The type of specialized agent to use for this task");

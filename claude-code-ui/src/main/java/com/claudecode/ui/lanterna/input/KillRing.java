@@ -45,7 +45,7 @@ public final class KillRing {
         yankIndex = 0;
     }
 
-/** Returns the most recently killed text, or "" if ring is empty. matches {@code getLastKill}. */
+    /** Returns the most recently killed text, or "" if ring is empty. matches {@code getLastKill}. */
     public String getLast() {
         String s = ring.peekFirst();
         return s != null ? s : "";

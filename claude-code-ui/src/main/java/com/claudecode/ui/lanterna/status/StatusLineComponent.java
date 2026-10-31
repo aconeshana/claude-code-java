@@ -14,10 +14,6 @@ import org.apache.commons.lang3.StringUtils;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.transcript.MessagePanel;
 
-
-
-
-
 public final class StatusLineComponent extends AbstractComponent<StatusLineComponent> {
 
     private List<List<MessagePanel.Segment>> lines = List.of();

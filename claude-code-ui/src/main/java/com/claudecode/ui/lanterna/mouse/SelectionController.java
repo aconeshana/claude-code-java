@@ -1,15 +1,14 @@
 package com.claudecode.ui.lanterna.mouse;
 
-import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.ui.lanterna.components.OSC52Helper;
+import com.claudecode.ui.lanterna.transcript.MessagePanel;
 import com.claudecode.ui.lanterna.transcript.Selection;
 import com.claudecode.ui.lanterna.transcript.SelectionAwareTextGUI;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.input.MouseAction;
-
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -141,7 +140,7 @@ public final class SelectionController {
         lastClickCol = col;
         lastClickRow = row;
 
-// Shift+Click: extend existing selection focus.
+        // Shift+Click: extend existing selection focus.
         if (ma.isShiftDown() && selection.hasSelection()) {
             selection.extendFocus(col, row);
             messagePanel.invalidate();

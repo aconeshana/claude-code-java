@@ -565,7 +565,7 @@ class QueryEngineTest {
 
     @Test
     void startNewSession_fileHistoryDisabled_doesNotThrow() {
-// getFileHistoryManager == null (default) — must not NPE.
+        // getFileHistoryManager == null (default) — must not NPE.
         DefaultQuerySession engine = newEngine();
         assertDoesNotThrow(engine::startNewSession);
     }

@@ -98,7 +98,7 @@ final class DefaultAutoCompactStrategy implements AutoCompactStrategy {
         boolean isAboveAutoCompactThreshold = autoCompactEnabled && tokenUsage >= threshold;
 
         long defaultBlockingLimit = getDefaultBlockingLimit(model);
-// Support CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE for testing.
+        // Support CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE for testing.
         String limitOverride = SubprocessEnvironment.get(
             "CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE");
         long blockingLimit = defaultBlockingLimit;

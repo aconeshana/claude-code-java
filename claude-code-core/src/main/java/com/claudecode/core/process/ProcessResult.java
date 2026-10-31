@@ -1,10 +1,8 @@
 package com.claudecode.core.process;
 
-import org.apache.commons.lang3.Strings;
-
 import java.util.ArrayList;
 import java.util.List;
-
+import org.apache.commons.lang3.Strings;
 
 public record ProcessResult(String stdout, String stderr, int exitCode, boolean timedOut) {
 
@@ -28,7 +26,7 @@ public record ProcessResult(String stdout, String stderr, int exitCode, boolean 
         return new ProcessResult("", "", -1, false);
     }
 
-/** A deadline-exceeded result; {@link #exitCode} is {@code -1}. */
+    /** A deadline-exceeded result; {@link #exitCode} is {@code -1}. */
     public static ProcessResult timeout() {
         return new ProcessResult("", "", -1, true);
     }

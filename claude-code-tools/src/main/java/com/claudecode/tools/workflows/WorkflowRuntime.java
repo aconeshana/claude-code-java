@@ -1,26 +1,15 @@
 package com.claudecode.tools.workflows;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.TurnTokenBudget;
-import com.claudecode.core.util.AgentId;
-import com.claudecode.tools.validation.SchemaValidator;
-import com.claudecode.tools.output.SyntheticOutputTool;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.AgentId;
+import com.claudecode.tools.output.SyntheticOutputTool;
+import com.claudecode.tools.validation.SchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.graalvm.polyglot.Context;
-import org.graalvm.polyglot.HostAccess;
-import org.graalvm.polyglot.PolyglotException;
-import org.graalvm.polyglot.Source;
-import org.graalvm.polyglot.Value;
-import org.graalvm.polyglot.io.IOAccess;
-import org.graalvm.polyglot.proxy.ProxyExecutable;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -34,19 +23,25 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-
-
-
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.PolyglotException;
+import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.io.IOAccess;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 
 public final class WorkflowRuntime {
 
@@ -141,7 +136,7 @@ public final class WorkflowRuntime {
         return execute(definition, args, parentContext, List.of());
     }
 
-/** Executes a run, reusing only the unchanged leading {@code agent} calls. */
+    /** Executes a run, reusing only the unchanged leading {@code agent} calls. */
     public WorkflowExecutionResult execute(WorkflowDefinition definition, JsonNode args,
                                            ToolExecutionContext parentContext,
                                            List<WorkflowAgentCacheEntry> resumeCache) {

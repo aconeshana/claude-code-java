@@ -293,7 +293,7 @@ public final class ExportDialog extends Panel implements InlineOverlay {
         String name = filenameBuf.toString().trim();
         if (name.isEmpty()) {
 
-// we match by treating it as no-op to keep the user in the input).
+            // we match by treating it as no-op to keep the user in the input).
             return;
         }
 
@@ -478,7 +478,7 @@ public final class ExportDialog extends Panel implements InlineOverlay {
                 shown = shown.substring(0, maxLen);
             }
             g.putString(LEFT_PAD, 3, shown);
-// Caret: reverse video on the cell at "> ".length + caret.
+            // Caret: reverse video on the cell at "> ".length + caret.
             int caretX = LEFT_PAD + 2 + Math.min(caret, buf.length());
             if (caretX < size.getColumns()) {
                 char under = caret < buf.length() ? buf.charAt(caret) : ' ';

@@ -496,7 +496,7 @@ public final class BackgroundTasksDialog extends Panel implements InlineOverlay 
             else if (ty == TaskType.LOCAL_WORKFLOW) workflowCount++;
             else if (ty == TaskType.DREAM) dreamCount++;
         }
-// Group headers only render when >1 group is present.
+        // Group headers only render when >1 group is present.
         int groupCount = (shellCount > 0 ? 1 : 0) + (monitorCount > 0 ? 1 : 0)
             + (agentCount > 0 ? 1 : 0)
             + (workflowCount > 0 ? 1 : 0)

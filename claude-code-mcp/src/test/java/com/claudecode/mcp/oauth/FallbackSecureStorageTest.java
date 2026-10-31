@@ -78,7 +78,7 @@ class FallbackSecureStorageTest {
     @Test
     void read_walksToFallback_whenPrimaryEmpty() {
         MemStore keychain = new MemStore("keychain");
-// keychain.data is null → returns Optional.empty
+        // keychain.data is null → returns Optional.empty
         MemStore plain = new MemStore("plaintext");
         plain.data = new SecureStorageData(Map.of(), null, null);
         SecureStorage fs = new FallbackSecureStorage(keychain, plain);

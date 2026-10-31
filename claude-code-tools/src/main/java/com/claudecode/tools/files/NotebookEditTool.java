@@ -1,18 +1,18 @@
 package com.claudecode.tools.files;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.FileStateCache;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
+import com.claudecode.core.io.FileUtils;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolCallResult;
+import com.claudecode.tools.ToolTexts;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.core.util.DefaultIndenter;
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
-import com.claudecode.core.io.FileUtils;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,10 +21,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.ToolTexts;
-import com.claudecode.tools.ToolCallResult;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * NotebookEditTool — edit Jupyter notebook cells.
@@ -248,7 +246,7 @@ public class NotebookEditTool extends AnnotatedTool<JsonNode, String> {
 
             FileUtils.writeString(path, updated, StandardCharsets.UTF_8);
 
-// Register the post-edit content/mtime as "read" — the model now knows this content.
+            // Register the post-edit content/mtime as "read" — the model now knows this content.
 
             context.fileStateCache().set(absolutePath, new FileStateCache.FileState(
                 updated, FileUtils.modificationTimeMillis(path), null, null, false));
@@ -306,7 +304,7 @@ public class NotebookEditTool extends AnnotatedTool<JsonNode, String> {
         return null;
     }
 
-/** matches  parseCellId — accepts the "cell-N" numeric index form. */
+    /** matches  parseCellId — accepts the "cell-N" numeric index form. */
     private static Integer parseCellId(String id) {
         Matcher m = CELL_ID_PATTERN.matcher(id);
         if (m.matches()) {

@@ -1,15 +1,12 @@
 package com.claudecode.permissions;
 
-import java.util.Locale;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
-
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 public final class PathSafety {
 
@@ -133,9 +130,9 @@ public final class PathSafety {
      * Full safety evaluation for an auto-edit target.
      */
     public static SafetyResult checkPathSafetyForAutoEdit(Path path) {
-// Check the raw path string: Path.normalize collapses a leading "//"
+        // Check the raw path string: Path.normalize collapses a leading "//"
 
-// resolved path string directly, so match that here.
+        // resolved path string directly, so match that here.
         String raw = path.toString();
         if (hasSuspiciousWindowsPathPattern(raw)) {
             return SafetyResult.fail(

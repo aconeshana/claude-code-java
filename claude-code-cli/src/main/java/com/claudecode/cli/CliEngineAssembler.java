@@ -262,8 +262,8 @@ final class CliEngineAssembler {
             };
             int effectiveMaxTokens = maxTokensResolver.applyAsInt(resolvedModel);
 
-// Dynamic system-prompt inputs — gathered fresh per query so settings edits (language /
-// outputStyle) and late MCP connections are reflected on the next turn.
+            // Dynamic system-prompt inputs — gathered fresh per query so settings edits (language /
+            // outputStyle) and late MCP connections are reflected on the next turn.
             final var promptSkillLoader = skillToolProvider.getSkillLoader();
             final PermissionGate promptGate = permissionGate;
             // Auto-memory dir — resolved+created once at startup, which makes
@@ -343,7 +343,7 @@ final class CliEngineAssembler {
             // by WorkspaceSettings#loadAutoMemoryDirectory (security).
             AutoMemoryPrompt.setAutoMemoryDirectory(WorkspaceSettings.loadAutoMemoryDirectory());
 
-// Attachment system — per-turn maybe(name, fn) dispatch matching
+            // Attachment system — per-turn maybe(name, fn) dispatch matching
 
 
             // nested_memory scanner deliberately uses a null HookDispatcher:
@@ -458,7 +458,7 @@ final class CliEngineAssembler {
                     client, Strings.CS.equals("stream-json", inputFormat)))
                 .sessionIdentity(sessionIdentity)
                 .planSlugInitializer(sid -> PlanFiles.getPlanFilePath(sid, null))
-// Disk-first transcript loader for orphaned-permission recovery.
+                // Disk-first transcript loader for orphaned-permission recovery.
                 .transcriptLoader(sid -> {
                     try {
                         Path file = new SessionManager(cwd).getSessionFile(sid);
@@ -519,7 +519,7 @@ final class CliEngineAssembler {
                         return null;
                     }
                 })
-// todo_reminder: current legacy TodoWrite list.
+                // todo_reminder: current legacy TodoWrite list.
                 .todosSupplier(() -> {
                     try {
                         return TodoWriteTool.getTodos(sessionIdentity.get()).stream()
@@ -593,7 +593,7 @@ final class CliEngineAssembler {
                 // off (teamMemoryEnabled settings key, @Explanation).
                 .teamMemoryEnabledSupplier(() -> teamMemoryEnabled)
                 .sandboxConfigSupplier(SandboxSettings::loadSandboxConfig)
-// File-read deny rules → GlobTool exclusion mask.
+                // File-read deny rules → GlobTool exclusion mask.
                 .readDenyIgnorePatternsSupplier(permissionGate::getFileReadIgnorePatterns)
                 // Changed-file attachments re-check the live Read deny rules before disk access.
                 .fileReadDeniedPredicate(permissionGate::isFileReadDenied);
@@ -618,8 +618,8 @@ final class CliEngineAssembler {
             // tools could capture it; we keep the variable for the rest of the
             // wiring (UI + memory + remote, below).
 
-// Compact service: implements MessageCompactor — drives microcompact (every turn),
-// shouldAutoCompact (at 93% context window), and manual /compact.
+            // Compact service: implements MessageCompactor — drives microcompact (every turn),
+            // shouldAutoCompact (at 93% context window), and manual /compact.
             boolean autoCompactEnabled = loadAutoCompactEnabled();
             CompactService compactService = new CompactService(
                 TokenEstimator.getInstance(),
@@ -712,10 +712,10 @@ final class CliEngineAssembler {
             toolRegistry.setAutoModeClassifier(sideQuery != null
                 ? new AutoModeClassifierService(sideQuery, LlmClientAdapter::requestMetadata)
                 : null);
-// Resolve settings, hidden CLI flags and MAX_THINKING_TOKENS with the
-// exact.
+            // Resolve settings, hidden CLI flags and MAX_THINKING_TOKENS with the
+            // exact.
             configureInitialThinking(engine.configuration().getConfig(), thinkingMode, maxThinkingTokens);
-// A refused turn only asks the user first when this is turned off.
+            // A refused turn only asks the user first when this is turned off.
             engine.configuration().getConfig().setSwitchModelsOnFlag(
                 RuntimeSettings.loadSwitchModelsOnFlagEnabled());
             // Seed the session effort before the first request. Previously the
@@ -780,8 +780,8 @@ final class CliEngineAssembler {
             Supplier<ContextData> contextDataCollector =
                 () -> contextAnalyzer.analyze(engine.conversation().getMessages(), config.model());
 
-// Hook engine: implements HookDispatcher — drives lifecycle hooks (SessionStart,
-// UserPromptSubmit, PreToolUse, PostToolUse, Stop).
+            // Hook engine: implements HookDispatcher — drives lifecycle hooks (SessionStart,
+            // UserPromptSubmit, PreToolUse, PostToolUse, Stop).
 
             hookEngine.effects().setMessageQueue(engine.conversation().getMessageQueue());
             hookEngine.context().bindPermissionMode(

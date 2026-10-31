@@ -1,14 +1,14 @@
 package com.claudecode.mcp;
 
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
-import org.apache.commons.lang3.StringUtils;
+import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +19,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * MCP transport over subprocess stdin/stdout using JSON-RPC 2.0.
@@ -38,7 +41,7 @@ public class StdioTransport implements McpTransport {
     private final Map<String, ServerRequestHandler> serverRequestHandlers = new ConcurrentHashMap<>();
     private final Map<String, NotificationHandler> notificationHandlers = new ConcurrentHashMap<>();
 
-/** Set by {@link #close} so the reader loop's terminal IOException stays quiet. */
+    /** Set by {@link #close} so the reader loop's terminal IOException stays quiet. */
     private volatile boolean closed = false;
 
     /** Test hook: overrides both request timeouts when > 0. */

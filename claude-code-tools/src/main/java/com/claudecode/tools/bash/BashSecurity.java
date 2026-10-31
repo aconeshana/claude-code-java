@@ -95,7 +95,7 @@ final class BashSecurity {
         if (scan.malformedTokenInjection) {
             return "Command contains ambiguous shell tokens next to a command separator";
         }
-// Ordinary redirections are deliberately left to BashPermissions' path extractor.
+        // Ordinary redirections are deliberately left to BashPermissions' path extractor.
         return null;
     }
 
@@ -238,7 +238,7 @@ final class BashSecurity {
             || trimmed.matches("^(?:&&|\\|\\||;|>>?|<).*");
     }
 
-/** matches shellQuote.hasShellQuoteSingleQuoteBug without invoking a shell. */
+    /** matches shellQuote.hasShellQuoteSingleQuoteBug without invoking a shell. */
     private static boolean hasShellQuoteSingleQuoteBug(String command) {
         boolean single = false;
         boolean dbl = false;

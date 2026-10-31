@@ -153,7 +153,7 @@ public final class DiffRenderer {
         // Step 2: group adjacent remove-blocks -> add-blocks and pair by index.
         List<LineObj> grouped = processAdjacent(objs);
 
-// Step 3: assign a single gutter line number (matches numberDiffLines).
+        // Step 3: assign a single gutter line number (matches numberDiffLines).
         numberLines(grouped, hunk.oldStart());
 
 

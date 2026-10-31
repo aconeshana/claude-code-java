@@ -428,7 +428,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                 ? null : normalizedMaxDepth(request.subagentMaxDepthSnapshot()))
             .messageQueue(request.parentQueue())
 
-// from an interactive CLI on the CLI prompt profile.
+            // from an interactive CLI on the CLI prompt profile.
             .promptRuntimeSupplier(() -> new SystemPromptRuntime(
                 null,
                 skillListingSupplier != null && hasSkills(),
@@ -463,11 +463,11 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             })
             .skillListingSupplier(() -> skillListingSupplier == null
                 ? List.of() : ModelSkillVisibility.filter(safeSkillListing(), request.model()))
-// Inherit the parent's team-memory guard setting so a sub-agent is subject to the same
-// secret-write block when it writes into the team-memory directory.
+            // Inherit the parent's team-memory guard setting so a sub-agent is subject to the same
+            // secret-write block when it writes into the team-memory directory.
             .teamMemoryEnabledSupplier(() ->
                 request.parentContext() != null && request.parentContext().teamMemoryEnabled())
-// Multi-turn history: seed the sub-engine with the prior conversation.
+            // Multi-turn history: seed the sub-engine with the prior conversation.
             .initialMessages(request.priorMessages() != null ? request.priorMessages() : List.of());
         if (claudeMdContentLoader != null) {
             builder.claudeMdContentSupplier(() -> loadClaudeMdContent(Path.of(resolvedCwd)));
@@ -587,9 +587,9 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     }
 
     private SubAgentResult executeSubAgent(SubAgentRequest request) {
-// isolation: "worktree" — create a dedicated agent worktree up front so it becomes the
-// sub-engine's cwd, then clean it up after the run (remove if unchanged, keep + surface the
-// path if the agent made changes).
+        // isolation: "worktree" — create a dedicated agent worktree up front so it becomes the
+        // sub-engine's cwd, then clean it up after the run (remove if unchanged, keep + surface the
+        // path if the agent made changes).
 
         WorktreeService.AgentWorktree agentWorktree = null;
         if (request.worktreeIsolation()) {
@@ -641,8 +641,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
 
         QuerySessionSpec config = buildSubEngineConfig(effectiveRequest, cwdOverride, agentId, nestedSink);
 
-// Give the sub-agent its own scoped compact service when one is wired in (composition root
-// injects SubAgentCompactServiceImpl).
+        // Give the sub-agent its own scoped compact service when one is wired in (composition root
+        // injects SubAgentCompactServiceImpl).
 
         // guard: sub-agents run the same query() loop, so they get auto-compact
         // + micro-compact too. The supplier is late-bound (engineBox[0]) because
@@ -889,8 +889,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                         }
                     }
                     if (lastToolUse != null) {
-// QueryLoop yields the completed tool block before its message_delta usage
-// update.
+                        // QueryLoop yields the completed tool block before its message_delta usage
+                        // update.
                         pendingToolAssistant = new PendingToolAssistant(
                             assistant.message().uuid(), lastToolUse, asyncToolUseCount);
                     } else if (effectiveRequest.async() && assistant.message() != null) {
@@ -974,8 +974,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             log.warn("Timed out releasing sub-agent {} transcript state", agentId);
         }
 
-// Clean up the isolated agent worktree: remove if unchanged, keep + surface the path if the
-// agent made changes.
+        // Clean up the isolated agent worktree: remove if unchanged, keep + surface the path if the
+        // agent made changes.
         Optional<String> keptWorktreePath = WorktreeService.cleanupAgentWorktree(agentWorktree);
         cleaned.set(true);
         if (agentWorktree != null && keptWorktreePath.isEmpty()
@@ -1163,7 +1163,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
 
     private record FinalAssistantResult(String output, Usage usage) {}
 
-/** matches LocalAgentTask.getTokenCountFromTracker: latest input/cache + summed outputs. */
+    /** matches LocalAgentTask.getTokenCountFromTracker: latest input/cache + summed outputs. */
     private static long progressTokenCount(List<Message> messages) {
         long latestInput = 0L;
         long cumulativeOutput = 0L;
@@ -1258,7 +1258,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                     "SubagentStart")));
             return request.withPriorMessages(List.copyOf(initialMessages));
         } catch (RuntimeException error) {
-// Hooks are advisory at this boundary.
+            // Hooks are advisory at this boundary.
             log.warn("SubagentStart hook failed for agent {}", agentId, error);
             return request;
         }
@@ -1512,11 +1512,11 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         boolean authoredPrompt = resolved != null
             && resolved.systemPrompt() != null && !StringUtils.isBlank(resolved.systemPrompt());
         if (authoredPrompt) {
-// Custom/user/project agent: the authored body IS the whole prompt.
+            // Custom/user/project agent: the authored body IS the whole prompt.
             sb.append(resolved.systemPrompt());
         } else {
-// Built-in with no authored prompt (general-purpose/Explore/Plan/ statusline-setup), or
-// an unresolvable subagent_type — unchanged synthesis.
+            // Built-in with no authored prompt (general-purpose/Explore/Plan/ statusline-setup), or
+            // an unresolvable subagent_type — unchanged synthesis.
             if (resolved != null) {
                 sb.append("You are the \"").append(resolved.agentType()).append("\" agent.\n\n");
                 sb.append(resolved.whenToUse()).append("\n\n");

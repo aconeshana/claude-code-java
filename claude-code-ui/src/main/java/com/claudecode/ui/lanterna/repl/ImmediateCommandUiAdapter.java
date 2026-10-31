@@ -55,7 +55,7 @@ public final class ImmediateCommandUiAdapter {
             return false;
         }
 
-// Clear the input box.
+        // Clear the input box.
 
         inputPanel.setText("");
 
@@ -66,29 +66,26 @@ public final class ImmediateCommandUiAdapter {
               .name("immediate-cmd-" + commandName)
               .start(() -> executeAndNotify(cmd, args, ctx, commandName));
 
+        //        1. Datadog — trackDatadogEvent，走 Statsig feature gate tengu_log_datadog_events 控制开关；发送前用 stripProtoFields
+        //        剥掉所有 _PROTO_* 字段（防 PII 泄漏）
+        //        2. 1P BigQuery — logEventTo1P，通过 firstPartyEventLoggingExporter，保留完整 payload（包括 _PROTO_* 字段，这些路由到
+        //        BigQuery protected columns）
 
+        //        两条通道都是 Anthropic 内部基础设施，和 api.anthropic.com 完全无关——用户的对话内容通过 API
+        //        发，遥测事件走单独的内部通道。
 
+        //        另外有个 isSinkKilled 开关可以紧急关闭各个 sink，Statsig killswitch 控制。
+        //        Datadog
+        //        https://http-intake.logs.us5.datadoghq.com/api/v2/logs
+        //        用的是硬编码的 public client token，批量发送（最多 100 条，每 15 秒 flush 一次）。只限白名单里 ~40 种事件名，_PROTO_*
+        //            字段发前剥掉。
 
-//        1. Datadog — trackDatadogEvent，走 Statsig feature gate tengu_log_datadog_events 控制开关；发送前用 stripProtoFields
-//        剥掉所有 _PROTO_* 字段（防 PII 泄漏）
-//        2. 1P BigQuery — logEventTo1P，通过 firstPartyEventLoggingExporter，保留完整 payload（包括 _PROTO_* 字段，这些路由到
-//        BigQuery protected columns）
-
-//        两条通道都是 Anthropic 内部基础设施，和 api.anthropic.com 完全无关——用户的对话内容通过 API
-//        发，遥测事件走单独的内部通道。
-
-//        另外有个 isSinkKilled 开关可以紧急关闭各个 sink，Statsig killswitch 控制。
-//        Datadog
-//        https://http-intake.logs.us5.datadoghq.com/api/v2/logs
-//        用的是硬编码的 public client token，批量发送（最多 100 条，每 15 秒 flush 一次）。只限白名单里 ~40 种事件名，_PROTO_*
-//            字段发前剥掉。
-
-//        1P (firstParty)
-//        https://api.anthropic.com/api/event_logging/batch
-//        这确实发到 api.anthropic.com，但走的是 /api/event_logging/batch 这个专用内部端点，不是 AI 对话接口。事件序列化成
-//        ClaudeCodeInternalEvent proto 格式，用用户的 OAuth/API key 作为鉴权（401 时降级为无鉴权）。失败事件持久化到
-//        ~/.claude/telemetry/，二次方退避重试，最多 8 次。
-// TODO(analytics): replace with AnalyticsService.recordEvent once wired.
+        //        1P (firstParty)
+        //        https://api.anthropic.com/api/event_logging/batch
+        //        这确实发到 api.anthropic.com，但走的是 /api/event_logging/batch 这个专用内部端点，不是 AI 对话接口。事件序列化成
+        //        ClaudeCodeInternalEvent proto 格式，用用户的 OAuth/API key 作为鉴权（401 时降级为无鉴权）。失败事件持久化到
+        //        ~/.claude/telemetry/，二次方退避重试，最多 8 次。
+        // TODO(analytics): replace with AnalyticsService.recordEvent once wired.
         log.debug("[analytics] tengu_immediate_command_executed commandName={} fromKeybinding={}",
                   commandName, fromKeybinding);
 

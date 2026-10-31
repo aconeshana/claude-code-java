@@ -97,7 +97,7 @@ class AgentRoutingIntegrationTest {
             "delivered payload is the task notification XML: " + subEmitted.getFirst());
         assertEquals(0, queue.size(), "notification consumed by the sub-agent loop");
 
-// Coordinator has nothing left to drain — the notification never compatibility baselineto main.
+        // Coordinator has nothing left to drain — the notification never compatibility baselineto main.
         List<String> mainEmitted = new ArrayList<>();
         Consumer<SDKMessage> mainEmit = m -> {
             if (m instanceof SDKMessage.User u) mainEmitted.add(u.message().message().text());

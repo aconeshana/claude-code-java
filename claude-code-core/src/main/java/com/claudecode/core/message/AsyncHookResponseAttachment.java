@@ -1,7 +1,5 @@
 package com.claudecode.core.message;
 
-
-
 /**
  * Attachment surfacing a completed background (output-driven / config-async) hook's deferred result
  * on a later turn.

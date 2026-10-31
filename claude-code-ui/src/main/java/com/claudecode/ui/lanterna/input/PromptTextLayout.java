@@ -41,7 +41,7 @@ public final class PromptTextLayout {
     }
 
     private static String normalize(String value) {
-// NFC is identity for ASCII.
+        // NFC is identity for ASCII.
         for (int index = 0; index < value.length(); index++) {
             if (value.charAt(index) > 0x7f) {
                 return Normalizer.normalize(value, Normalizer.Form.NFC);

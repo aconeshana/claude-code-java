@@ -104,7 +104,7 @@ public final class PathUtils {
         return normalizeNfc(resolved.normalize());
     }
 
-/** Pure conversion matching. */
+    /** Pure conversion matching. */
     public static String windowsPathToPosixPath(String path) {
         if (Strings.CS.startsWith(path, "\\\\")) return path.replace('\\', '/');
         if (path.matches("^[A-Za-z]:[/\\\\].*")) {
@@ -114,7 +114,7 @@ public final class PathUtils {
         return path.replace('\\', '/');
     }
 
-/** Pure conversion matching. */
+    /** Pure conversion matching. */
     public static String posixPathToWindowsPath(String path) {
         if (Strings.CS.startsWith(path, "//")) return path.replace('/', '\\');
         Matcher cygdrive = Pattern

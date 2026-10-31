@@ -128,7 +128,7 @@ public class LspService {
         diagnosticRegistry.remove(filePath);
     }
 
-// ── 9 navigation operations — route by file extension ──────────────────.
+    // ── 9 navigation operations — route by file extension ──────────────────.
 
     /**
      * How long a navigation call waits for a server that is still initializing before giving up with a
@@ -153,8 +153,8 @@ public class LspService {
      * Awaits the server's initialization completion signal for up to {@link #INIT_WAIT}.
      */
     private static boolean awaitReady(LspServerInstance server) {
-// Give a crashed/slow server a chance to (re)start lazily before we decide it's
-// unavailable.
+        // Give a crashed/slow server a chance to (re)start lazily before we decide it's
+        // unavailable.
         server.ensureStarted();
         try {
             server.readiness().toCompletableFuture()

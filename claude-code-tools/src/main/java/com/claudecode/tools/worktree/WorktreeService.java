@@ -1,17 +1,14 @@
 package com.claudecode.tools.worktree;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.ThinkingClearLatch;
-import com.claudecode.core.prompt.SystemPromptSectionResolver;
-import com.claudecode.session.SessionStorage;
-import com.claudecode.core.state.CwdState;
 import com.claudecode.core.git.GitUtils;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.process.ProcessResult;
 import com.claudecode.core.process.ProcessRunner;
+import com.claudecode.core.prompt.SystemPromptSectionResolver;
+import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.state.CwdState;
+import com.claudecode.session.SessionStorage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -32,9 +29,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public final class WorktreeService {
 
@@ -658,7 +656,7 @@ public final class WorktreeService {
                 Files.createSymbolicLink(dest, source);
                 log.debug("Symlinked {} from main repo into worktree", dir);
             } catch (FileAlreadyExistsException | NoSuchFileException _) {
-// Dest exists (git checked it out) or source not present yet — skip.
+            // Dest exists (git checked it out) or source not present yet — skip.
             } catch (IOException | UnsupportedOperationException e) {
                 log.debug("Failed to symlink {} (skipped): {}", dir, e.getMessage());
             }
@@ -688,7 +686,7 @@ public final class WorktreeService {
      * root.
      */
     public static AgentWorktree createAgentWorktree(String slug, String fromCwd) {
-// Hook-first (non-git VCS fallback).
+        // Hook-first (non-git VCS fallback).
         Optional<String> hookPath = tryCreateViaHook(slug);
         if (hookPath.isPresent()) {
             return new AgentWorktree(hookPath.get(), null, null, null, /* hookBased */ true);
@@ -855,7 +853,7 @@ public final class WorktreeService {
             // setOriginalCwd(originalCwd)).
             CwdState.setOriginalCwd(Path.of(session.originalCwd()));
             if (session.hookBased()) {
-// VCS-agnostic worktree: delegate removal to the WorktreeRemove hook.
+                // VCS-agnostic worktree: delegate removal to the WorktreeRemove hook.
                 WorktreeHooks h = worktreeHooks;
                 if (h == null || !h.remove(session.worktreePath())) {
                     log.warn("No WorktreeRemove hook ran; hook-based worktree left at: {}", session.worktreePath());

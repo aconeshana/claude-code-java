@@ -403,7 +403,7 @@ public final class AgentDefinitionLoader {
                     filePath, maxTurnsRaw);
             }
 
-// Markdown body (after the closing "---") is the agent's authored system prompt.
+            // Markdown body (after the closing "---") is the agent's authored system prompt.
             String systemPrompt = extractBody(content);
 
             AgentSource source = deriveSource(filePath);

@@ -80,7 +80,7 @@ class SettingsSchemaTest {
     @Test
     void removedWorkflowKeysRemainUnknownPassthrough() {
 
-// these historical keys must follow the outer.passthrough behavior.
+        // these historical keys must follow the outer.passthrough behavior.
         assertEquals(List.of(), validate(
             "{\"enableWorkflows\": \"legacy\", \"disableWorkflows\": {\"future\": true}}"));
     }

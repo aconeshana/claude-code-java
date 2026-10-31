@@ -60,8 +60,8 @@ class SymbolAtPositionTest {
 
     @Test
     void lastLineTruncatedWhenBufferFull_empty() throws Exception {
-// Single line longer than 64KB — fully fills the buffer, so the only line is the truncated
-// final line → empty.
+        // Single line longer than 64KB — fully fills the buffer, so the only line is the truncated
+        // final line → empty.
         Path f = write("big.txt", "x".repeat(70_000));
         assertFalse(SymbolAtPosition.symbolAt(f, 0, 0).isPresent());
     }

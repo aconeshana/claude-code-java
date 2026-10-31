@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.eclipse.tm4e.core.grammar.IGrammar;
 import org.eclipse.tm4e.core.grammar.IStateStack;
 import org.eclipse.tm4e.core.grammar.IToken;
@@ -20,8 +22,6 @@ import org.eclipse.tm4e.core.registry.IGrammarSource;
 import org.eclipse.tm4e.core.registry.Registry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Wraps a single shared {@link Registry} with TextMate grammars from {@code
@@ -56,7 +56,7 @@ public final class TmTokenizer {
         public boolean isEmpty() { return lines.isEmpty(); }
     }
 
-/** Index entry — kept private; {@link #knownLanguages} exposes alias set only. */
+    /** Index entry — kept private; {@link #knownLanguages} exposes alias set only. */
     private record GrammarEntry(String file, String scope) {}
 
     /** Returns the set of supported language aliases (e.g. {@code "py"}, {@code "rust"}). */

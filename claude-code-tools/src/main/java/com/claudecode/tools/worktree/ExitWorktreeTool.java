@@ -92,20 +92,26 @@ public class ExitWorktreeTool extends AnnotatedTool<JsonNode, String> {
                     + "discard_changes: true to proceed — or use action: \"keep\" to preserve the worktree.");
             }
             if (summary.changedFiles() > 0 || summary.commits() > 0) {
-                List<String> parts = new ArrayList<>();
-                if (summary.changedFiles() > 0) {
-                    parts.add(summary.changedFiles() + (summary.changedFiles() == 1 ? " uncommitted file" : " uncommitted files"));
-                }
-                if (summary.commits() > 0) {
-                    parts.add(summary.commits() + (summary.commits() == 1 ? " commit" : " commits")
-                        + " on " + (session.worktreeBranch() != null ? session.worktreeBranch() : "the worktree branch"));
-                }
-                return ValidationResult.invalid("Worktree has " + String.join(" and ", parts) + ". Removing will discard "
+                return ValidationResult.invalid("Worktree has "
+                    + String.join(" and ", pendingWork(summary, session)) + ". Removing will discard "
                     + "this work permanently. Confirm with the user, then re-invoke with discard_changes: "
                     + "true — or use action: \"keep\" to preserve the worktree.");
             }
         }
         return ValidationResult.valid();
+    }
+
+    private static List<String> pendingWork(WorktreeService.ChangeSummary summary,
+                                            WorktreeSession session) {
+        List<String> parts = new ArrayList<>();
+        if (summary.changedFiles() > 0) {
+            parts.add(summary.changedFiles() + (summary.changedFiles() == 1 ? " uncommitted file" : " uncommitted files"));
+        }
+        if (summary.commits() > 0) {
+            parts.add(summary.commits() + (summary.commits() == 1 ? " commit" : " commits")
+                + " on " + (session.worktreeBranch() != null ? session.worktreeBranch() : "the worktree branch"));
+        }
+        return parts;
     }
 
     @Override
@@ -221,7 +227,7 @@ public class ExitWorktreeTool extends AnnotatedTool<JsonNode, String> {
         required.add("action");
 
 
-// reject unknown keys. createObjectSchema is permissive; set strict.
+        // reject unknown keys. createObjectSchema is permissive; set strict.
         schema.put("additionalProperties", false);
         return schema;
     }

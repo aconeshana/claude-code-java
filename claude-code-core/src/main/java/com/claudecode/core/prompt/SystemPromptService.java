@@ -109,7 +109,7 @@ public class SystemPromptService {
         dynamicSections.add(SystemPromptSection.cached("context_management",
             SystemPromptSections::getContextManagementSection));
 
-// but it is absent from the target.
+        // but it is absent from the target.
 
         List<String> resolved = SystemPromptSectionResolver.resolve(dynamicSections);
         for (String v : resolved) addIfNotNull(parts, v);
@@ -118,7 +118,7 @@ public class SystemPromptService {
         // ── CLAUDE.md instructions (explicit-config callers only) ──────────
         // The main loop no longer routes memory content through the system
 
-// (# claudeMd section, see QueryHelpers.buildClaudeMdUserContext) and the wire
+        // (# claudeMd section, see QueryHelpers.buildClaudeMdUserContext) and the wire
 
         if (StringUtils.isNotBlank(config.claudeMdContent())) {
             parts.add(config.claudeMdContent());

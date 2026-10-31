@@ -615,7 +615,6 @@ class SessionControllerTest {
         AtomicReference<String> compactorInstructions = new AtomicReference<>();
         AtomicReference<String> preHookInstructions = new AtomicReference<>("not-called");
         AtomicReference<String> postHookSummary = new AtomicReference<>();
-        AtomicReference<Long> postHookTokens = new AtomicReference<>();
         List<String> progress = new ArrayList<>();
         MessageCompactor compactor = new MessageCompactor() {
             @Override public MicrocompactResult microcompactMessages(List<Message> messages) {
@@ -630,10 +629,6 @@ class SessionControllerTest {
             @Override public CompactionResult compactConversation(
                     List<Message> messages, boolean isAutoCompact) {
                 throw new UnsupportedOperationException();
-            }
-
-            @Override public long contextTokenCount(List<Message> messages, String model) {
-                return 77L;
             }
 
             @Override public PartialCompactOutput partialCompact(
@@ -671,9 +666,8 @@ class SessionControllerTest {
             @Override public void dispatchStop(String reason) { }
 
             @Override public HookOutcome dispatchPreCompactWithOutcome(
-                    String trigger, String customInstructions, long preTokenCount) {
+                    String trigger, String customInstructions) {
                 assertEquals("manual", trigger);
-                assertEquals(77L, preTokenCount);
                 preHookInstructions.set(customInstructions);
                 return new HookOutcome(true, "hook instruction", List.of());
             }
@@ -684,10 +678,9 @@ class SessionControllerTest {
             }
 
             @Override public HookOutcome dispatchPostCompactWithOutcome(
-                    String trigger, String compactSummary, long postTokenCount) {
+                    String trigger, String compactSummary) {
                 assertEquals("manual", trigger);
                 postHookSummary.set(compactSummary);
-                postHookTokens.set(postTokenCount);
                 return HookOutcome.PROCEED;
             }
         });
@@ -708,7 +701,6 @@ class SessionControllerTest {
         assertEquals("hook instruction\nUser context: user detail",
             compactorInstructions.get());
         assertEquals("raw compact summary", postHookSummary.get());
-        assertEquals(19L, postHookTokens.get());
         assertEquals(List.of(
             "pre_compact", "compact_start", "session_start", "post_compact", "compact_end"),
             progress);

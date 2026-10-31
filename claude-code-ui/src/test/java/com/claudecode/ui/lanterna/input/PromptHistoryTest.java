@@ -149,7 +149,7 @@ class PromptHistoryTest {
     @Test
     void concurrentExplicitFlushes_neverDuplicateNorHideEntries(@TempDir Path tmp)
             throws Exception {
-// The shutdown hook can call flushPending while an async flush is in flight; the flush lock
+        // The shutdown hook can call flushPending while an async flush is in flight; the flush lock
 
         PromptHistory h = history(tmp);
         for (int i = 0; i < 10; i++) {
@@ -222,7 +222,7 @@ class PromptHistoryTest {
     @Test
     void failureBeforeHistoryLockPreservesThePendingEntries(@TempDir Path tmp)
             throws Exception {
-// Point the history "file" at a directory.
+        // Point the history "file" at a directory.
         Path asDir = tmp.resolve("history.jsonl");
         Files.createDirectories(asDir);
         PromptHistory h = new PromptHistory(asDir);

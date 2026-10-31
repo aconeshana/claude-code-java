@@ -49,7 +49,7 @@ public final class RefusalFallbackAnnouncement {
         if (RefusalCategory.usesRoutineConversationCopy(category)) {
             return ModelNames.displayName(refusedModel) + ROUTINE_BODY;
         }
-// An unrecognized category does not name the model.
+        // An unrecognized category does not name the model.
         return UNNAMED_MODEL_BODY;
     }
 

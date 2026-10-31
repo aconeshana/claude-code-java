@@ -74,7 +74,7 @@ public final class MemoryPromptBuilder {
             .filter(f -> !StringUtils.isBlank(f.content()))
             .toList();
         if (fileStateCache != null) {
-// The eager discovery pass is one observation event.
+            // The eager discovery pass is one observation event.
             long observedAtMs = System.currentTimeMillis();
             for (MemoryFileInfo file : included) {
                 String absolutePath = file.path().toAbsolutePath().toString();

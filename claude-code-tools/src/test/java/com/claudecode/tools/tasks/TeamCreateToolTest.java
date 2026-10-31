@@ -54,7 +54,7 @@ class TeamCreateToolTest {
     @Test
     void validateInput_refusesSecondTeamForSameLeader() {
         TeamCreateTool tool = new TeamCreateTool();
-// Simulate the leader already owning a team (no call FS side effect).
+        // Simulate the leader already owning a team (no call FS side effect).
         TeamRegistry.instance().create("alpha", "", "team-lead@alpha", "sess-lead");
         ValidationResult r = tool.validateInput(input("beta"), ctx("sess-lead"));
         assertInstanceOf(ValidationResult.Invalid.class, r);
@@ -68,7 +68,7 @@ class TeamCreateToolTest {
         JsonNode json = mapper.readTree(result);
         assertEquals("gamma", json.get("team_name").asText());
         assertEquals("team-lead@gamma", json.get("lead_agent_id").asText());
-// clean it up.
+        // clean it up.
         Path dir = ClaudePaths.TEAMS_DIR.resolve("gamma");
         if (Files.exists(dir)) {
             try (var stream = Files.walk(dir)) {

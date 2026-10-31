@@ -1,8 +1,5 @@
 package com.claudecode.tools.monitor;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.engine.SandboxConfig;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -12,6 +9,8 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Validates Monitor WebSocket destinations before opening a network socket.
@@ -102,7 +101,7 @@ final class MonitorUrlSafety {
         }
     }
 
-/** established guard intentionally allows loopback for local development. */
+    /** established guard intentionally allows loopback for local development. */
     static boolean isBlocked(InetAddress address) {
         if (address.isLoopbackAddress()) return false;
         byte[] bytes = address.getAddress();

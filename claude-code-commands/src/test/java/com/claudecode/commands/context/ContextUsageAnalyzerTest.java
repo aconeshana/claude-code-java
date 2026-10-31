@@ -238,7 +238,7 @@ class ContextUsageAnalyzerTest {
             new UserMessage("u1", MessageContent.ofText("hi")),
             assistantWithUsage(usage));
         ContextData data = new ContextUsageAnalyzer(emptySources()).analyze(messages, "m");
-// input + cache_creation + cache_read (matches the status line).
+        // input + cache_creation + cache_read (matches the status line).
         assertEquals(100_000L, data.totalTokens());
         assertEquals(50, data.percentage());
         assertEquals(usage, data.apiUsage());

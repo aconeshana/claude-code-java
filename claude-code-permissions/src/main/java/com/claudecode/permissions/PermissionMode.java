@@ -39,20 +39,20 @@ public enum PermissionMode {
 
     PermissionMode(Config config) { this.config = config; }
 
-/** Full title (e.g. "Bypass Permissions"). matches {@code permissionModeTitle}. */
+    /** Full title (e.g. "Bypass Permissions"). matches {@code permissionModeTitle}. */
     public String title()      { return config.title; }
-/** Short title (e.g. "Bypass"). matches {@code permissionModeShortTitle}. */
+    /** Short title (e.g. "Bypass"). matches {@code permissionModeShortTitle}. */
     public String shortTitle() { return config.shortTitle; }
-/** Symbol glyph ({@code Figures.PAUSE_ICON} / "⏵⏵" / ""). matches {@code permissionModeSymbol}. */
+    /** Symbol glyph ({@code Figures.PAUSE_ICON} / "⏵⏵" / ""). matches {@code permissionModeSymbol}. */
     public String symbol()     { return config.symbol; }
-/** Theme color key. matches {@code getModeColor}. */
+    /** Theme color key. matches {@code getModeColor}. */
     public ColorKey colorKey() { return config.colorKey; }
-/** External name as serialized in SDK output. matches {@code toExternalPermissionMode}. */
+    /** External name as serialized in SDK output. matches {@code toExternalPermissionMode}. */
     public String external()   { return config.external; }
     /** Full config bundle. */
     public Config config()     { return config; }
 
-/** True if this is the implicit default mode (or null). matches {@code isDefaultMode}. */
+    /** True if this is the implicit default mode (or null). matches {@code isDefaultMode}. */
     public static boolean isDefault(PermissionMode mode) {
         return mode == null || mode == DEFAULT;
     }

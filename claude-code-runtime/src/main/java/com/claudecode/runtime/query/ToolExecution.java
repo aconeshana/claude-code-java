@@ -1,11 +1,19 @@
 package com.claudecode.runtime.query;
 
-import com.claudecode.core.engine.*;
+import com.claudecode.core.engine.AbortController;
+import com.claudecode.core.engine.FileChangeListener;
+import com.claudecode.core.engine.HookDispatcher;
+import com.claudecode.core.engine.PermissionAskCallback;
+import com.claudecode.core.engine.PermissionUpdate;
+import com.claudecode.core.engine.PermissionUpdateJsonCodec;
+import com.claudecode.core.engine.PostToolUseOutputResult;
+import com.claudecode.core.engine.SessionCostState;
+import com.claudecode.core.engine.ToolContextModifier;
+import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.engine.ToolExecutor;
+import com.claudecode.core.engine.ToolResult;
+import com.claudecode.core.engine.ToolResultContentForm;
 import com.claudecode.core.error.ErrorUtils;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.ContentBlock;
@@ -13,8 +21,8 @@ import com.claudecode.core.message.HookErrorDuringExecutionAttachment;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageConstants;
 import com.claudecode.core.message.MessageContent;
-import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.MessageFactory;
+import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SystemMessage;
@@ -26,9 +34,6 @@ import com.claudecode.core.model.PermissionModeKind;
 import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -36,6 +41,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * One tool-use turn's single-tool execution step, shared by every {@link ToolRunner} implementation
@@ -172,7 +181,7 @@ final class ToolExecution {
             return new ToolStep(tub, cancelMsg, null, false, null, false, null, null, null);
         }
 
-// ---- Tool Pre/Post hook dispatch.
+        // ---- Tool Pre/Post hook dispatch.
         boolean preventContinuation = false;
         String stopReason = null;
         List<Message> hookContextMessages = new ArrayList<>();

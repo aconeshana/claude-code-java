@@ -94,25 +94,10 @@ class CompactCommandTest {
         }
     }
 
-    /** Like {@link CapturingSummarizer} but also returns a real API {@link Usage}. */
-    private static final class UsageAwareSummarizer extends CapturingSummarizer {
-        private final Usage usage;
-
-        UsageAwareSummarizer(Usage usage) { this.usage = usage; }
-
-        @Override
-        public CompactSummarizer.SummaryResult summarizeWithUsage(List<Message> messages, String compactPrompt) {
-            lastPrompt = compactPrompt;
-            return new CompactSummarizer.SummaryResult(MODEL_SUMMARY, usage);
-        }
-    }
-
     /** Captures dispatchPreCompactWithOutcome/dispatchPostCompactWithOutcome arguments. */
     private static class CapturingHooks implements HookDispatcher {
         String preCustomInstructions;
         String postCompactSummary;
-        long preTokenCount;
-        long postTokenCount;
         boolean preCalled;
         boolean postCalled;
         String preAdditionalContext;
@@ -127,10 +112,9 @@ class CompactCommandTest {
         @Override public void dispatchStop(String reason) {}
 
         @Override
-        public HookOutcome dispatchPreCompactWithOutcome(String trigger, String customInstructions, long preTokenCount) {
+        public HookOutcome dispatchPreCompactWithOutcome(String trigger, String customInstructions) {
             preCalled = true;
             this.preCustomInstructions = customInstructions;
-            this.preTokenCount = preTokenCount;
             return preAdditionalContext == null
                 ? HookOutcome.PROCEED
                 : new HookOutcome(true, preAdditionalContext, List.of(), false, null,
@@ -138,10 +122,9 @@ class CompactCommandTest {
         }
 
         @Override
-        public HookOutcome dispatchPostCompactWithOutcome(String trigger, String compactSummary, long postTokenCount) {
+        public HookOutcome dispatchPostCompactWithOutcome(String trigger, String compactSummary) {
             postCalled = true;
             this.postCompactSummary = compactSummary;
-            this.postTokenCount = postTokenCount;
             return postAdditionalContext == null
                 ? HookOutcome.PROCEED
                 : new HookOutcome(true, postAdditionalContext, List.of(), false, null,
@@ -401,11 +384,9 @@ class CompactCommandTest {
 
         assertEquals(List.of(user), summarizer.lastMessages,
             "the terminal assistant stays outside the summary wire fork");
-        assertEquals(2L, hooks.preTokenCount,
-            "2.1.197 computes PreCompact pre_tokens from the full post-microcompact list before omitting the terminal assistant");
         SystemMessage boundary = assertInstanceOf(SystemMessage.class, loaded.getFirst());
         assertEquals(2L, boundary.compactMetadata().preTokens(),
-            "compact_boundary.preTokens must use the same full-context count as the PreCompact hook");
+            "compact_boundary.preTokens must be the full-context count taken before omitting the terminal assistant");
         UserMessage summary = loaded.stream()
             .filter(UserMessage.class::isInstance)
             .map(UserMessage.class::cast)
@@ -590,20 +571,6 @@ class CompactCommandTest {
             "pre-compact hook status must reach the user; got: " + r.output());
         assertTrue(Strings.CS.contains(r.output(), "PostCompact [post.sh] completed successfully: post hook ran"),
             "post-compact hook status must reach the user; got: " + r.output());
-    }
-
-    @Test
-    void realUsage_flowsToPostCompactHookTokenCount() {
-        Usage usage = new Usage(500, 100, 50, 20); // total = 670
-        UsageAwareSummarizer summarizer = new UsageAwareSummarizer(usage);
-        CompactService compactService = new CompactService(TokenEstimator.getInstance(), summarizer, true);
-        CapturingHooks hooks = new CapturingHooks();
-
-        new CompactCommand().execute(
-            ctx(compactService, hooks, someMessages(), _ -> {}), "");
-
-        assertEquals(670L, hooks.postTokenCount,
-            "postTokenCount must be the real API usage total (input+output+cache), not a flat estimate");
     }
 
     @Test

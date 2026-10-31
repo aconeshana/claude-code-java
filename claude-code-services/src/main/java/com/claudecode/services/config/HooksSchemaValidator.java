@@ -24,7 +24,6 @@ final class HooksSchemaValidator {
 
     private HooksSchemaValidator() {}
 
-
     private static final List<String> HOOK_EVENTS = List.of(
         "PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch", "Notification",
         "UserPromptSubmit", "UserPromptExpansion", "SessionStart", "SessionEnd", "Stop", "StopFailure",
@@ -38,7 +37,7 @@ final class HooksSchemaValidator {
     private static final List<String> SHELL_TYPES = List.of("bash", "powershell");
 
     static void validate(JsonNode hooks, List<FieldError> errors) {
-// Root error-path prefix: hooks settings only ever live under the top-level "hooks" key.
+        // Root error-path prefix: hooks settings only ever live under the top-level "hooks" key.
         String path = "hooks";
         if (!present(hooks)) return;
         if (!hooks.isObject()) {

@@ -68,7 +68,7 @@ class InstallCountsTest {
         return tmp.resolve("install-counts-cache.json");
     }
 
-/** Byte-format sample of the shared two-space-indented JSON cache. */
+    /** Byte-format sample of the shared two-space-indented JSON cache. */
     private void writeOfficialCliCache(String fetchedAt) throws Exception {
         Files.writeString(cacheFile(), """
             {

@@ -45,7 +45,7 @@ public final class GitUtils {
 
 
     public static String currentBranch(Path cwd) {
-// `rev-parse --abbrev-ref HEAD` fails before the first commit.
+        // `rev-parse --abbrev-ref HEAD` fails before the first commit.
         List<String> symbolic = runGit(cwd, "symbolic-ref", "--short", "HEAD");
         if (!symbolic.isEmpty() && !symbolic.getFirst().trim().isEmpty()) {
             return symbolic.getFirst().trim();

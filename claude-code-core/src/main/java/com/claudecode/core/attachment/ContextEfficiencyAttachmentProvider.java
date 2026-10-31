@@ -22,7 +22,7 @@ public final class ContextEfficiencyAttachmentProvider implements AttachmentProv
     @Override
     public List<AttachmentPayload> collect(AttachmentContext ctx) {
 
-// isSnipRuntimeEnabled is false.
+        // isSnipRuntimeEnabled is false.
         return List.of();
     }
 }

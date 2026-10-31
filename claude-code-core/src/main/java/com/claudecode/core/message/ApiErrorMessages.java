@@ -48,7 +48,7 @@ public final class ApiErrorMessages {
                 : "Request too large (max 20 MB). Double press esc to go back and try again with "
                     + "a smaller file.";
 
-// deliberately NOT registered in errorToBlockTypes so it strips nothing.
+            // deliberately NOT registered in errorToBlockTypes so it strips nothing.
             case PROMPT_TOO_LONG -> "Prompt is too long";
         };
     }

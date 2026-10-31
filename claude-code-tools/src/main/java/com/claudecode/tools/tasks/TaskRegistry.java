@@ -1,25 +1,22 @@
 package com.claudecode.tools.tasks;
 
-
-import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.core.annotation.Explanation;
-import org.apache.commons.lang3.StringUtils;
+import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.tools.workflows.WorkflowRun;
 import com.claudecode.tools.workflows.WorkflowTask;
-
-import java.util.Comparator;
-import java.util.ArrayList;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.Set;
-
+import org.apache.commons.lang3.StringUtils;
 
 public final class TaskRegistry {
 
@@ -207,7 +204,7 @@ public final class TaskRegistry {
         GLOBAL = registry;
     }
 
-/** Test hook: drop the global singleton so the next {@link #global} rebuilds it. */
+    /** Test hook: drop the global singleton so the next {@link #global} rebuilds it. */
     public static void resetGlobalForTest() {
         closeQuietly(GLOBAL);
         GLOBAL = null;

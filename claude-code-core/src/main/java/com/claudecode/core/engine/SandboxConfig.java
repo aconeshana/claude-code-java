@@ -1,12 +1,11 @@
 package com.claudecode.core.engine;
 
-import org.apache.commons.lang3.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Snapshot of {@code settings.sandbox.*} consumed by the bash sandbox runtime.
@@ -117,7 +116,7 @@ public record SandboxConfig(
 
     // ── nested network config ────────────────────────────────────────────────
 
-/** matches {@code SandboxSettingsSchema.network}. */
+    /** matches {@code SandboxSettingsSchema.network}. */
     public static record SandboxNetworkConfig(
         List<String> allowedDomains,
         List<String> deniedDomains,
@@ -154,7 +153,7 @@ public record SandboxConfig(
 
     // ── nested filesystem config ─────────────────────────────────────────────
 
-/** matches {@code SandboxSettingsSchema.filesystem}. */
+    /** matches {@code SandboxSettingsSchema.filesystem}. */
     public static record SandboxFilesystemConfig(
         List<String> allowWrite,
         List<String> denyWrite,
@@ -178,7 +177,7 @@ public record SandboxConfig(
 
     // ── nested ripgrep config ──────────────────────────────────────────────────
 
-/** matches {@code SandboxSettingsSchema.ripgrep} (command is required when present). */
+    /** matches {@code SandboxSettingsSchema.ripgrep} (command is required when present). */
     public static record SandboxRipgrepConfig(String command, List<String> args) {
         public static SandboxRipgrepConfig fromJson(JsonNode n) {
             if (n == null || !n.isObject()) return null;

@@ -1,21 +1,19 @@
 package com.claudecode.services.config;
 
-import java.util.Locale;
-
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionRule;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.services.hooks.HookEngine;
 import com.claudecode.services.hooks.HookRegistry;
 import com.claudecode.services.hooks.HooksSettings;
-import java.nio.file.Path;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Wires {@link SettingsHotReloader} to the live {@link PermissionGate} and {@link HookEngine} so
@@ -84,7 +82,7 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
 
                 @Override
                 public void onChange(RuleSource source, Path path) {
-// A null path is emitted by the MDM/registry poll, which.
+                    // A null path is emitted by the MDM/registry poll, which.
                     if (path == null) {
                         reload(source, null, false);
                     } else {

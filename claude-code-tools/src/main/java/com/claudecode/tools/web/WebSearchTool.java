@@ -1,26 +1,24 @@
 package com.claudecode.tools.web;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
-import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.message.WebSearchToolResultBlock;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.http.HttpCalls;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.tools.AnnotatedTool;
+import com.claudecode.tools.BuiltInTool;
+import com.claudecode.tools.ToolCallResult;
+import com.claudecode.tools.ToolHttpClient;
+import com.claudecode.tools.ToolTexts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-
 import java.net.URI;
 import java.net.URLEncoder;
 import java.time.Duration;
@@ -40,11 +38,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.claudecode.tools.AnnotatedTool;
-import com.claudecode.tools.BuiltInTool;
-import com.claudecode.tools.ToolTexts;
-import com.claudecode.tools.ToolHttpClient;
-import com.claudecode.tools.ToolCallResult;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * WebSearchTool — web search integration with Anthropic's server-side {@code web_search_20250305}
@@ -141,7 +139,7 @@ public class WebSearchTool extends AnnotatedTool<JsonNode, String> {
             .replaceFirst(match -> match.group(1) + monthYear);
     }
 
-/** matches {@code new Date(override).toLocaleString('en-US',...)} for ISO dates. */
+    /** matches {@code new Date(override).toLocaleString('en-US',...)} for ISO dates. */
     static String localMonthYear(Instant now, ZoneId zone, String overrideDate) {
         ZonedDateTime date = now.atZone(zone);
         if (StringUtils.isNotBlank(overrideDate)) {
@@ -191,9 +189,9 @@ public class WebSearchTool extends AnnotatedTool<JsonNode, String> {
         }
 
 
-// z.string.min(2), but the Java tool contract carries only metadata,
+        // z.string.min(2), but the Java tool contract carries only metadata,
 
-// schema-level validation that would otherwise block the call).
+        // schema-level validation that would otherwise block the call).
         if (query.length() < 2) {
             return mapped("Error: Query must be at least 2 characters",
                 new SearchInvocation(query, List.of("Error: Query must be at least 2 characters"), 0.0));

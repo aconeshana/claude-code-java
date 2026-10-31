@@ -178,7 +178,7 @@ class XmlTagUtilsTest {
         assertEquals("<command_name>bar</command_name>", XmlTagUtils.wrap("command_name", "bar"));
     }
 
-/** wrap: null tagName must throw IllegalArgumentException. */
+    /** wrap: null tagName must throw IllegalArgumentException. */
     @Test
     void wrap_nullTagName_throwsIllegalArgumentException() {
         assertThrows(IllegalArgumentException.class, () -> XmlTagUtils.wrap(null, "content"));

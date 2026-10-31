@@ -1,14 +1,19 @@
 package com.claudecode.ui.lanterna.features.settings;
 
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.message.RefusalFallbackFeature;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
+import com.claudecode.ui.lanterna.components.LanternaDraw;
+import com.claudecode.ui.lanterna.dialog.ModelPickerDialog;
+import com.claudecode.ui.lanterna.dialog.OutputStylePickerDialog;
+import com.claudecode.ui.lanterna.dialog.ThemePickerDialog;
+import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
+import com.claudecode.ui.lanterna.input.InputPanel;
+import com.claudecode.ui.lanterna.overlay.InlineOverlay;
+import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
@@ -22,23 +27,24 @@ import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
-
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
-import com.claudecode.ui.lanterna.dialog.ModelPickerDialog;
-import com.claudecode.ui.lanterna.dialog.OutputStylePickerDialog;
-import com.claudecode.ui.lanterna.dialog.ThemePickerDialog;
-import com.claudecode.ui.lanterna.components.LanternaDraw;
-import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
-import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.overlay.InlineOverlay;
-import com.claudecode.ui.lanterna.theme.LanternaTheme;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Inline {@code /config} Settings panel — sits above {@link InputPanel} in the SmartLayout stack,
@@ -63,7 +69,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
     private static final List<Item> ITEMS = List.of(
 
         new Item("autoCompactEnabled", "Auto-compact", ItemType.BOOLEAN, null),
-// Offered only while the refusal-fallback lane is on; see visibleItems.
+        // Offered only while the refusal-fallback lane is on; see visibleItems.
         new Item("switchModelsOnFlag", "Switch models when a message is flagged",
             ItemType.BOOLEAN, null),
         new Item("spinnerTipsEnabled", "Show tips", ItemType.BOOLEAN, null),
@@ -178,7 +184,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
     private ModelPickerDialog.PreparedModelPicker preparedModelPicker;
     private InlineOverlay activeSubmenu;
 
-// Callbacks (see show).
+    // Callbacks (see show).
     private Consumer<String> onPreview;
     private BiConsumer<String, String> onChange = (_, _) -> { };
     private Consumer<Map<String, String>> onResult;
@@ -942,7 +948,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
         if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
         if (selectedIndex >= scrollOffset + maxVisible) scrollOffset = selectedIndex - maxVisible + 1;
         int maxOffset = Math.max(0, filtered.size() - maxVisible);
-        scrollOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
+        scrollOffset = Math.clamp(scrollOffset, 0, maxOffset);
     }
 
     /** Stable list height keeps the settings overlay anchored while filtering. */
@@ -1031,8 +1037,8 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
                 // whose text can actually change.
                 if (renderedSearchWidth > 0) {
                     g.fillRectangle(new TerminalPosition(LEFT_PAD, 1),
-                        new TerminalSize(Math.min(renderedSearchWidth,
-                            Math.max(0, cols - LEFT_PAD)), 1), ' ');
+                        new TerminalSize(Math.clamp(cols - LEFT_PAD, 0, renderedSearchWidth), 1),
+                        ' ');
                 }
                 if (!queryOnlyFrame && footerRow > 3) {
                     clearRememberedDynamicRows(g, cols, 3, footerRow);
@@ -1166,8 +1172,8 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
             }
             g.setForegroundColor(selected ? LanternaTheme.inputText() : LanternaTheme.welcomeDim());
             if (selected) g.enableModifiers(SGR.BOLD);
-            int valueColumn = Math.min(LEFT_PAD + VALUE_COL,
-                Math.max(LEFT_PAD + 12, g.getSize().getColumns() - 16));
+            int valueColumn = Math.clamp(
+                g.getSize().getColumns() - 16, LEFT_PAD + 12, LEFT_PAD + VALUE_COL);
             int labelWidth = Math.max(1, valueColumn - (LEFT_PAD + 2) - 1);
             String label = FormatUtils.truncateNoEllipsis(it.label(), labelWidth);
             g.putString(LEFT_PAD + 2, rowY, label);
@@ -1188,8 +1194,7 @@ public final class ConfigPanel extends Panel implements InlineOverlay {
             String v = effective(it.key());
             return switch (it.type()) {
                 case BOOLEAN -> v;
-                case ENUM, STRING -> displayValue(it.key(), v);
-                case THEME, OUTPUT_STYLE -> displayValue(it.key(), v);
+                case ENUM, STRING, THEME, OUTPUT_STYLE -> displayValue(it.key(), v);
                 case MODEL -> (Strings.CS.equals(DEFAULT_MODEL_PREFERENCE, v)
                     ? "Default (recommended)" : v);
             };

@@ -22,7 +22,7 @@ public interface SubAgentFactory {
      */
     SubAgentResult runSubAgent(SubAgentRequest request);
 
-/** Whether this factory invokes {@link SubAgentRequest#beforeFirstModelRequest}. */
+    /** Whether this factory invokes {@link SubAgentRequest#beforeFirstModelRequest}. */
     default boolean supportsFirstModelRequestSignal() {
         return false;
     }

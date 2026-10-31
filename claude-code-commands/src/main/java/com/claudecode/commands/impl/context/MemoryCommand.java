@@ -89,7 +89,7 @@ public class MemoryCommand implements AnnotatedCommand {
         if (Files.exists(project)) files.add("project → " + project);
         if (Files.exists(local))   files.add("local   → " + local);
 
-// Scan project-scoped Markdown rules.
+        // Scan project-scoped Markdown rules.
         Path rulesDir = Path.of(cwd, ".claude", "rules");
         if (Files.isDirectory(rulesDir)) {
             try {
@@ -118,7 +118,7 @@ public class MemoryCommand implements AnnotatedCommand {
     }
 
     private static CommandResult openInEditor(Path file) {
-// Create file if it doesn't exist.
+        // Create file if it doesn't exist.
         if (!Files.exists(file)) {
             try {
                 Files.createDirectories(file.getParent() != null ? file.getParent() : Path.of("."));

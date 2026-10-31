@@ -4,32 +4,6 @@ import com.googlecode.lanterna.TerminalTextUtils;
 import com.googlecode.lanterna.input.KeyStroke;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 public interface InlineOverlay {
 
     /** Whether this overlay currently owns keyboard input. */

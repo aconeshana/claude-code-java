@@ -194,7 +194,7 @@ class BashPermissionsTest {
     void normalCommandsClassifiedAsBefore() {
         assertInstanceOf(PermissionDecision.Allow.class, BashPermissions.check("git status", ctx()));
         assertInstanceOf(PermissionDecision.Allow.class, BashPermissions.check("ls -la", ctx()));
-// Default mode does not auto-allow writes, even inside the cwd.
+        // Default mode does not auto-allow writes, even inside the cwd.
         PermissionDecision.Ask a = ask("cp a.txt b.txt");
         assertEquals("/Users/test/project/a.txt", a.blockedPath());
     }

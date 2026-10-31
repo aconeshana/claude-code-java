@@ -264,7 +264,7 @@ final class MarketplaceSchemaValidator {
 
     private static void validateMarketplaceName(String name, String path, List<FieldError> errors) {
         if (name.isEmpty()) {
-// z.string.min(1,...): too_small → formatZodError numeric wording.
+            // z.string.min(1,...): too_small → formatZodError numeric wording.
             err(errors, path, "Number must be greater than or equal to 1");
         }
         if (Strings.CS.contains(name, " ")) {

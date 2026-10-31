@@ -13,18 +13,27 @@ import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.keybindings.KeybindingHints;
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.tools.ToolUseTag;
+import com.claudecode.tools.tasks.PendingBackgroundWork;
 import com.claudecode.ui.MarkdownRenderer;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.render.RenderingContext;
 import com.claudecode.ui.render.ToolUseIndicatorRenderer;
-import com.claudecode.tools.tasks.PendingBackgroundWork;
-import com.claudecode.tools.ToolUseTag;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.SGR;
-import java.util.*;
-import java.util.function.*;
-
+import com.googlecode.lanterna.TextColor;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -971,7 +980,7 @@ public class LanternaMessageDispatcher {
                     agents.beginProgress(active.toolUseId(), panel);
                 }
 
-// x:renderToolUseMessage + AssistantToolUseMessage inline body.
+                // x:renderToolUseMessage + AssistantToolUseMessage inline body.
                 inlineHeaderLookup.apply(toolName, callArgsJson).ifPresent(line ->
                     panel.appendMixed(List.of(
                         new MessagePanel.Segment("  ⎿  ", LanternaTheme.welcomeDim()),

@@ -76,8 +76,8 @@ public final class ChangedFilesProvider implements AttachmentProvider {
                 fsc.remove(path);
                 continue;
             } catch (IOException _) {
-// Transient stat failure (editor atomic-save race) — don't evict, just skip this
-// turn.
+                // Transient stat failure (editor atomic-save race) — don't evict, just skip this
+                // turn.
                 continue;
             }
             long mtime = attributes.lastModifiedTime().toMillis();

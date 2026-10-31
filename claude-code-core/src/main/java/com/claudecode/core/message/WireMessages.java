@@ -1,9 +1,8 @@
 package com.claudecode.core.message;
 
-import org.apache.commons.lang3.StringUtils;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Names the messages a retraction takes back, in the shape the reader looks for.
@@ -64,8 +63,8 @@ public final class WireMessages {
                     collectBlockUuids(user.uuid(), content.blocks(), into);
                 }
             }
-// Progress, attachment and system rows pass through unexpanded and always count as
-// content.
+            // Progress, attachment and system rows pass through unexpanded and always count as
+            // content.
             default -> into.add(message.uuid());
         }
     }
@@ -87,8 +86,8 @@ public final class WireMessages {
      * bodies the client writes when it has nothing from the model.
      */
     private static boolean hasVisibleContent(ContentBlock block) {
-        if (!(block instanceof TextBlock text)) return true;
-        return hasVisibleText(text.text());
+        if (!(block instanceof TextBlock(String text1))) return true;
+        return hasVisibleText(text1);
     }
 
     /** Whether a text body is more than whitespace and is not a placeholder. */

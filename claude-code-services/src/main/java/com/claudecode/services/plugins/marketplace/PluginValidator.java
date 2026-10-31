@@ -1,11 +1,7 @@
 package com.claudecode.services.plugins.marketplace;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Developer-facing plugin validation ({@code claude plugin validate} core): manifest shape,
@@ -41,7 +39,7 @@ public final class PluginValidator {
 
     private PluginValidator() {}
 
-/** Validates a  manifest file. */
+    /** Validates a  manifest file. */
     public static ValidationResult validatePluginManifest(Path filePath) {
         List<ValidationError> errors = new ArrayList<>();
         List<ValidationWarning> warnings = new ArrayList<>();

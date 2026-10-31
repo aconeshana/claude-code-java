@@ -505,7 +505,7 @@ class PermissionEngineTest {
         assertEquals(original, copy);
     }
 
-// ── Working-directory auto-allow.
+    // ── Working-directory auto-allow.
 
     @Test
     void readInsideWorkingDirectoryIsAutoAllowedInDefaultMode() {
@@ -588,8 +588,8 @@ class PermissionEngineTest {
         assertInstanceOf(PermissionDecision.Ask.class, decision);
     }
 
-// ── LSP tool (LSPTool.checkPermissions → PermissionEngine.evaluateDetailed("LSP", …).decision)
-// ── LSP only reads, so it auto-allows unconditionally inside the working dir.
+    // ── LSP tool (LSPTool.checkPermissions → PermissionEngine.evaluateDetailed("LSP", …).decision)
+    // ── LSP only reads, so it auto-allows unconditionally inside the working dir.
 
     @Test
     void lspInsideWorkingDirectoryIsAutoAllowedInDefaultMode() {
@@ -661,7 +661,7 @@ class PermissionEngineTest {
         assertInstanceOf(PermissionDecision.Ask.class, decision);
     }
 
-// ── H3: MCP server-level authorization.
+    // ── H3: MCP server-level authorization.
 
     @Test
     void mcpServerLevelRuleMatchesToolsFromSameServer() {
@@ -709,7 +709,7 @@ class PermissionEngineTest {
             engine.evaluateDetailed("mcp__server2__tool1", createInput("command", "ls"), ctx).decision());
     }
 
-// ── H4: tool name case must match exactly.
+    // ── H4: tool name case must match exactly.
 
     @Test
     void toolNameMatchIsCaseSensitive() {
@@ -767,7 +767,7 @@ class PermissionEngineTest {
         assertEquals(PermissionMode.DEFAULT, PermissionMode.fromString("ACCEPT_EDITS"));
         assertEquals(PermissionMode.DEFAULT, PermissionMode.fromString("acceptedits"));
         assertEquals(PermissionMode.DEFAULT, PermissionMode.fromString("bogus"));
-// parseMode matches the same strictness.
+        // parseMode matches the same strictness.
         assertEquals(PermissionMode.ACCEPT_EDITS, PermissionGate.parseMode("acceptEdits"));
         assertEquals(PermissionMode.DEFAULT, PermissionGate.parseMode("accept-edits"));
     }

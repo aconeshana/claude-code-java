@@ -1,16 +1,13 @@
 package com.claudecode.session.stats;
 
+import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.io.FileUtils;
+import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.session.stats.ClaudeCodeStats.DailyActivity;
 import com.claudecode.session.stats.ClaudeCodeStats.DailyModelTokens;
 import com.claudecode.session.stats.ClaudeCodeStats.ModelUsage;
 import com.claudecode.session.stats.ClaudeCodeStats.SessionStats;
-import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.io.FileUtils;
-import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -27,7 +24,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class StatsCacheStore {
 
@@ -35,14 +33,14 @@ public final class StatsCacheStore {
 
     static final int STATS_CACHE_VERSION = 3;
     static final int MIN_MIGRATABLE_VERSION = 1;
-/** Version 4 uses a key-compatible schema and is accepted on read. */
+    /** Version 4 uses a key-compatible schema and is accepted on read. */
     static final int MAX_ACCEPTED_VERSION = 4;
     private static final String FILENAME = "stats-cache.json";
 
     private static final ReentrantLock LOCK = new ReentrantLock();
     private final Path cachePath;
 
-/** Production wiring:. */
+    /** Production wiring:. */
     public StatsCacheStore() {
         this(ClaudePaths.CLAUDE_HOME.resolve(FILENAME));
     }

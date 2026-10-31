@@ -324,14 +324,14 @@ final class CliRuntimeAdapters {
                     PermissionSettings.loadAdditionalDirectories(cwd.toString()).stream()
                         .map(Path::of).toList());
             }
-            @Override public boolean hasExternalIncludesApproved(Path cwd) {
-                return TrustConfigStore.hasExternalIncludesApproved(cwd);
+            @Override public boolean hasExternalIncludesApproved() {
+                return TrustConfigStore.hasExternalIncludesApproved();
             }
-            @Override public boolean hasExternalIncludesWarningShown(Path cwd) {
-                return TrustConfigStore.hasExternalIncludesWarningShown(cwd);
+            @Override public boolean hasExternalIncludesWarningShown() {
+                return TrustConfigStore.hasExternalIncludesWarningShown();
             }
-            @Override public void saveExternalIncludesDecision(Path cwd, boolean approved) {
-                TrustConfigStore.saveExternalIncludesDecision(cwd, approved);
+            @Override public void saveExternalIncludesDecision(boolean approved) {
+                TrustConfigStore.saveExternalIncludesDecision(approved);
             }
         };
     }

@@ -766,8 +766,8 @@ class LlmClientAdapterTest {
 
     @Test
     void contextManagementRevertsToKeepAllAfterLatchReset() {
-// ThinkingClearLatch.reset is called by SessionController.clearConversation (/clear) and
-// CompactService.compactConversation (/compact, auto-compact).
+        // ThinkingClearLatch.reset is called by SessionController.clearConversation (/clear) and
+        // CompactService.compactConversation (/compact, auto-compact).
         LlmClientAdapter.lastAssistantTurnMsBySource.put(
             "repl_main_thread", System.currentTimeMillis() - 61 * 60 * 1000);
         StreamingClient.StreamRequest request = new StreamingClient.StreamRequest(

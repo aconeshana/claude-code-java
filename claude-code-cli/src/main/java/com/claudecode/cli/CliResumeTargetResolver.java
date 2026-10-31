@@ -36,10 +36,10 @@ final class CliResumeTargetResolver {
      */
     enum Mode {
 
-/**: an absolute, case-sensitive  suffix. */
+        /**: an absolute, case-sensitive  suffix. */
         INTERACTIVE,
 
-/**: any path with a case-insensitive  suffix. */
+        /**: any path with a case-insensitive  suffix. */
         PRINT
     }
 
@@ -64,7 +64,7 @@ final class CliResumeTargetResolver {
         record TranscriptFile(Path transcript, String sessionId, String rawValue)
             implements Target {}
 
-/** A  path that could not be read. */
+        /** A  path that could not be read. */
         record UnreadableTranscriptFile(String rawValue) implements Target {}
 
         /** A well-formed UUID with no log behind it. */

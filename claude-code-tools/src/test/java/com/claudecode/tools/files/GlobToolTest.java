@@ -156,7 +156,7 @@ class GlobToolTest {
         }
     }
 
-/** Forces {@link RipGrepUtil#isAvailable} to return false so {@code call} uses the Java fallback. */
+    /** Forces {@link RipGrepUtil#isAvailable} to return false so {@code call} uses the Java fallback. */
     private static void forceRipgrepUnavailable() throws Exception {
         var field = RipGrepUtil.class.getDeclaredField("availableCache");
         field.setAccessible(true);

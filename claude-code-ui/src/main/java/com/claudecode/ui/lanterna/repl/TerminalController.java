@@ -10,8 +10,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -78,7 +78,7 @@ final class TerminalController {
         }, 0, 960, TimeUnit.MILLISECONDS);
     }
 
-/** Stop the loading title animation — matches isAnimating=false when isLoading clears. */
+    /** Stop the loading title animation — matches isAnimating=false when isLoading clears. */
     void stopTitleAnimation() {
         titleAnimating = false;
         stopTitleAnimationScheduler();

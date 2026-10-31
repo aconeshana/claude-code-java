@@ -26,7 +26,7 @@ public final class FeatureFlagRegistry {
         return new Builder();
     }
 
-/** Fluent builder — start from {@link #allOff} and enable what's needed. */
+    /** Fluent builder — start from {@link #allOff} and enable what's needed. */
     public static final class Builder {
         private final Set<FeatureFlag> set = EnumSet.noneOf(FeatureFlag.class);
 

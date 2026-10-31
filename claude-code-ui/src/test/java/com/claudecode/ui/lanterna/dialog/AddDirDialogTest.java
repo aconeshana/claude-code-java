@@ -239,7 +239,7 @@ class AddDirDialogTest {
         for (char c : (tempDir + "/anoth").toCharArray()) {
             d.handleKey(new KeyStroke(c, false, false), new AtomicBoolean(true));
         }
-// Enter with a suggestion list open submits the suggestion directly.
+        // Enter with a suggestion list open submits the suggestion directly.
         d.handleKey(new KeyStroke(KeyType.ENTER), new AtomicBoolean(true));
 
         assertEquals(sub + "/", submittedPath.get());

@@ -23,7 +23,7 @@ public final class EffortHelpers {
      */
     private static final Set<String> LEVELS =
         Set.of("none", "minimal", "low", "medium", "high", "xhigh", "max");
-/** Sentinel returned by {@link #getEffortEnvOverride} when env is {@code auto}/{@code unset}. */
+    /** Sentinel returned by {@link #getEffortEnvOverride} when env is {@code auto}/{@code unset}. */
     public static final String ENV_UNSET = "__UNSET__";
 
     /**

@@ -23,7 +23,7 @@ class AnthropicSdkClientTest {
         String body = "{\"error\":{\"message\":\"`tool_use` ids must be unique\"}}";
         ApiException failure = AnthropicSdkClient.apiExceptionFor(400, body, Headers.of());
         assertTrue(Strings.CS.contains(failure.friendlyMessage(), "duplicate tool_use ID"));
-// getMessage keeps the raw body — consumed by ApiErrorMessages.classify/retry logic.
+        // getMessage keeps the raw body — consumed by ApiErrorMessages.classify/retry logic.
         assertTrue(Strings.CS.contains(failure.getMessage(), body));
     }
 

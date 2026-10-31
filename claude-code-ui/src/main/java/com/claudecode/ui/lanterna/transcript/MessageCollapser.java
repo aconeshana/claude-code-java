@@ -224,7 +224,7 @@ public class MessageCollapser {
     private int activeRunLineIdx = -1;
     private int activeRunRowCount = 0;
 
-// ── Git operation tracking ─────────────────────────────────────────────.
+    // ── Git operation tracking ─────────────────────────────────────────────.
     private String lastBashCommand = null;
     private String gitCommitSha    = null;
     private String gitCommitKind   = null;  // "committed"/"amended"/"cherry-picked"
@@ -1037,8 +1037,8 @@ public class MessageCollapser {
                 color, null, null, Set.of(SGR.BOLD)));
         }
 
-// Each count-part's "first" flag is derived from its index in a runtime-built list, so the
-// leading part is not a compile-time constant.
+        // Each count-part's "first" flag is derived from its index in a runtime-built list, so the
+        // leading part is not a compile-time constant.
         record CountPart(String active, String done, int count, String singular, String plural) {}
         // 236's je() call order in the renderer: search, read, list, mcp, shell commands, then the
         // memory parts. Only the segments this product has are present; 236's scratchpad, workshop,

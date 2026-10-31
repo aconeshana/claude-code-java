@@ -193,7 +193,7 @@ class TrustFolderDialogTest {
         assertEquals(0, exitCount.get());
     }
 
-// ── P5: Ctrl+C / Ctrl+D double-press-to-exit.
+    // ── P5: Ctrl+C / Ctrl+D double-press-to-exit.
 
     private static KeyStroke ctrl(char c) {
         return new KeyStroke(c, true, false); // character + ctrl, no alt

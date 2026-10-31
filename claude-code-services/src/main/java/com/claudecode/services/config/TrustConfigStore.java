@@ -1,13 +1,11 @@
 package com.claudecode.services.config;
 
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.config.ClaudePaths;
-import com.claudecode.core.state.CwdState;
 import com.claudecode.core.git.GitUtils;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.state.CwdState;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,10 +13,9 @@ import java.text.Normalizer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public final class TrustConfigStore {
 
@@ -48,13 +45,6 @@ public final class TrustConfigStore {
     static volatile Path configPath = ClaudePaths.GLOBAL_JSON;
 
     private TrustConfigStore() {}
-
-
-
-    public static boolean isSessionTrustAccepted() {
-        return sessionTrustAccepted;
-    }
-
 
     public static void setSessionTrustAccepted(boolean accepted) {
         sessionTrustAccepted = accepted;
@@ -88,7 +78,7 @@ public final class TrustConfigStore {
         originalCwdKeyCache = null;
     }
 
-// ── Project config key (matches getProjectPathForConfig / normalizePathForConfigKey) ─
+    // ── Project config key (matches getProjectPathForConfig / normalizePathForConfigKey) ─
 
 
     private static final Map<String, String> PROJECT_PATH_CACHE = new ConcurrentHashMap<>();
@@ -168,29 +158,14 @@ public final class TrustConfigStore {
         return isTrue(readProjects(), originalCwdProjectKey(), FIELD_HAS_TRUST_DIALOG_ACCEPTED);
     }
 
-    public static boolean isPathTrusted(Path dir) {
-        ObjectNode projects = readProjects();
-        String current = normalizePathForConfigKey(dir.toAbsolutePath().normalize(), false);
-        while (true) {
-            if (isTrue(projects, current, FIELD_HAS_TRUST_DIALOG_ACCEPTED)) {
-                return true;
-            }
-            String parent = normalizePathForConfigKey(Path.of(current).resolve("..").normalize(), false);
-            if (parent.equals(current)) {
-                return false;
-            }
-            current = parent;
-        }
-    }
-
     /** Reads {@code projects[path].hasClaudeMdExternalIncludesApproved} (path anchored to original cwd). */
-    public static boolean hasExternalIncludesApproved(Path cwd) {
+    public static boolean hasExternalIncludesApproved() {
         return isTrue(readProjects(), originalCwdProjectKey(),
             FIELD_HAS_CLAUDE_MD_EXTERNAL_INCLUDES_APPROVED);
     }
 
     /** Reads {@code projects[path].hasClaudeMdExternalIncludesWarningShown} (path anchored to original cwd). */
-    public static boolean hasExternalIncludesWarningShown(Path cwd) {
+    public static boolean hasExternalIncludesWarningShown() {
         return isTrue(readProjects(), originalCwdProjectKey(),
             FIELD_HAS_CLAUDE_MD_EXTERNAL_INCLUDES_WARNING_SHOWN);
     }
@@ -215,7 +190,7 @@ public final class TrustConfigStore {
     /**
      * Persists the external CLAUDE.md includes decision.
      */
-    public static void saveExternalIncludesDecision(Path cwd, boolean approved) {
+    public static void saveExternalIncludesDecision(boolean approved) {
         String key = originalCwdProjectKey();
         updateProjectEntry(key, entry -> {
             entry.put(FIELD_HAS_CLAUDE_MD_EXTERNAL_INCLUDES_APPROVED, approved);

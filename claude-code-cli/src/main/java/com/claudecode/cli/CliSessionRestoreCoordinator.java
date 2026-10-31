@@ -116,7 +116,7 @@ final class CliSessionRestoreCoordinator {
         };
     }
 
-/** Reports an unreadable transcript using the argument supplied by the user. */
+    /** Reports an unreadable transcript using the argument supplied by the user. */
     @Explanation("Naming the transcript argument keeps print-mode failures actionable")
     private static Restoration abortUnreadableTranscript(Request request, String rawValue) {
         return abort(request, "Unable to load transcript from file: " + rawValue);

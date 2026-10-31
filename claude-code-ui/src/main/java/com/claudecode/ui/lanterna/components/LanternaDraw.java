@@ -12,8 +12,6 @@ public final class LanternaDraw {
 
     static final int LEFT_PAD    = 2;
 
-
-
     /** Horizontal {@code ─} divider spanning {@code cols} columns at {@code row}. */
     public static void divider(TextGUIGraphics g, int cols, int row) {
         g.setForegroundColor(LanternaTheme.welcomeDim());
@@ -21,12 +19,12 @@ public final class LanternaDraw {
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
     }
 
-/** Bold, left-aligned title at ({@code leftPad}, 1) — matches Dialog's title. */
+    /** Bold, left-aligned title at ({@code leftPad}, 1) — matches Dialog's title. */
     public static void title(TextGUIGraphics g, String title) {
         title(g, title, LEFT_PAD);
     }
 
-/** Bold, left-aligned title at ({@code leftPad}, 1) — matches Dialog's title. */
+    /** Bold, left-aligned title at ({@code leftPad}, 1) — matches Dialog's title. */
     public static void title(TextGUIGraphics g, String title, int leftPad) {
         g.setForegroundColor(LanternaTheme.permission());
         g.enableModifiers(SGR.BOLD);
@@ -35,14 +33,12 @@ public final class LanternaDraw {
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
     }
 
-/** Dim footer text at ({@code leftPad}, {@code footerRow}) — matches Dialog's footer. */
+    /** Dim footer text at ({@code leftPad}, {@code footerRow}) — matches Dialog's footer. */
     public static void footer(TextGUIGraphics g, String text, int leftPad, int footerRow) {
         g.setForegroundColor(LanternaTheme.welcomeDim());
         g.putString(leftPad, footerRow, text);
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
     }
-
-
 
     /**
      * Bare (borderless) search line: {@code ⌕ query█} when focused, dim

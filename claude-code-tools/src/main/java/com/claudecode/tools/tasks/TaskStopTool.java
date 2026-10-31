@@ -1,21 +1,19 @@
 package com.claudecode.tools.tasks;
 
-import java.util.Locale;
-
 import com.claudecode.core.engine.ToolExecutionContext;
-import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.engine.ToolResult;
-import com.claudecode.tools.ValidationResult;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.tools.AnnotatedTool;
 import com.claudecode.tools.BuiltInTool;
 import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.ValidationResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import java.util.Locale;
 import java.util.Optional;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Tool to stop/kill a running task.
@@ -122,7 +120,7 @@ public class TaskStopTool extends AnnotatedTool<JsonNode, String> {
                 + toTsStatus(task.status()) + ")");
         }
 
-// HIGH: actually terminate the underlying process/agent.
+        // HIGH: actually terminate the underlying process/agent.
         boolean killed = TaskRegistry.global().killTask(taskId);
         if (!killed) {
             taskStore.updateStatusAndMarkNotified(taskId, TaskStatus.KILLED);
@@ -131,7 +129,7 @@ public class TaskStopTool extends AnnotatedTool<JsonNode, String> {
         TaskState stopped = taskStore.get(taskId).orElse(task);
 
 
-// object { message, task_id, task_type, command }.
+        // object { message, task_id, task_type, command }.
         String command = stopped.description();
         ObjectNode out = mapper().createObjectNode();
         out.put("message", "Successfully stopped task: " + stopped.id() + " (" + command + ")");

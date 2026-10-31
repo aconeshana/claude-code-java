@@ -25,7 +25,7 @@ class ImmediateCommandUiAdapterTest {
 
     // ── Test doubles ──────────────────────────────────────────────────────
 
-/** Command stub with {@code isImmediate = true}. */
+    /** Command stub with {@code isImmediate = true}. */
     private static final Command IMMEDIATE_CMD = new Command() {
         @Override public CommandMetadata metadata() {
             return new CommandMetadata("btw", "BTW — immediate stub");
@@ -36,12 +36,12 @@ class ImmediateCommandUiAdapterTest {
         }
     };
 
-/** Command stub with {@code isImmediate = false} (the default). */
+    /** Command stub with {@code isImmediate = false} (the default). */
     private static final Command NORMAL_CMD = new Command() {
         @Override public CommandMetadata metadata() {
             return new CommandMetadata("help", "help — normal stub");
         }
-// isImmediate uses the default → false
+        // isImmediate uses the default → false
         @Override public CommandResult execute(CommandContext ctx, String args) {
             return CommandResult.of("help text");
         }

@@ -409,7 +409,7 @@ class PartialCompactTest {
 
     @Test
     void partialCompactAndAssemble_noSummarizer_returnsFilteredKeptOnly() {
-// Summarizer=null → hasCompaction=false → wrapper returns just filtered kept
+        // Summarizer=null → hasCompaction=false → wrapper returns just filtered kept
         CompactService service = new CompactService(
                 TokenEstimator.getInstance(), null, true);
 

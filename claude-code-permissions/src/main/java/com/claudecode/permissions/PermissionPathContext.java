@@ -1,7 +1,7 @@
 package com.claudecode.permissions;
 
-import com.claudecode.core.state.CwdState;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.state.CwdState;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.Map;
@@ -80,7 +80,7 @@ public record PermissionPathContext(
         if (explicit != null) return explicit;
         if (source == RuleSource.USER_SETTINGS) {
 
-// getClaudeConfigHomeDir, including CLAUDE_CONFIG_DIR overrides.
+            // getClaudeConfigHomeDir, including CLAUDE_CONFIG_DIR overrides.
             return ClaudePaths.currentClaudeHome().toAbsolutePath().normalize();
         }
         return originalWorkingDirectory;

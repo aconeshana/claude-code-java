@@ -72,7 +72,7 @@ public class ExitPlanModeTool extends AnnotatedTool<JsonNode, StructuredToolOutp
 
     @Override public JsonNode inputSchema() {
 
-// the trailing.passthrough wins, so extra keys are accepted.
+        // the trailing.passthrough wins, so extra keys are accepted.
         var schema = createObjectSchema();
         ObjectNode properties = (ObjectNode) schema.get("properties");
 

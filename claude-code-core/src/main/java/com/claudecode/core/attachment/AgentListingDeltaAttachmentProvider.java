@@ -34,7 +34,7 @@ public final class AgentListingDeltaAttachmentProvider implements AttachmentProv
     public List<AttachmentPayload> collect(AttachmentContext ctx) {
         List<AgentDefinition> active = ctx.activeAgents();
         if (active == null) active = List.of();
-// The Agent tool must be in the pool or the listing is unactionable.
+        // The Agent tool must be in the pool or the listing is unactionable.
         if (ctx.toolNames() == null || ctx.toolNames().stream().noneMatch("Agent"::equals)) {
             return List.of();
         }

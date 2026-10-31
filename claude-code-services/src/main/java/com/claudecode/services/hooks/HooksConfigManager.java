@@ -352,7 +352,7 @@ public final class HooksConfigManager {
      * truncated to {@code maxLen} characters.
      */
     public static String getHookDisplayText(HookCommand command, int maxLen) {
-// statusMessage takes display priority.
+        // statusMessage takes display priority.
         Optional<String> sm = command.statusMessage();
         if (sm.isPresent() && !StringUtils.isBlank(sm.get())) {
             String msg = sm.get();

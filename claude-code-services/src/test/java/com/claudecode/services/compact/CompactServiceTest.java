@@ -114,8 +114,8 @@ class CompactServiceTest {
 
         @Test
         void legacyTruncationRemoved_preservesLongToolResult() {
-// Long compactable-tool results must pass through unchanged rather
-// than being truncated by the legacy per-turn limit.
+            // Long compactable-tool results must pass through unchanged rather
+            // than being truncated by the legacy per-turn limit.
             String longText = longString(15000);
             AssistantMessage asst = assistantWithToolUse("tu-1", "Read");
             UserMessage user = userWithToolResult("tu-1", longText);
@@ -562,8 +562,8 @@ class CompactServiceTest {
 
         @Test
         void streamCompactSummary_projectsAwayMessagesBeforePriorBoundary() {
-// A second compaction must not re-summarize the pre-boundary original
-// conversation.
+            // A second compaction must not re-summarize the pre-boundary original
+            // conversation.
             List<List<Message>> seen = new ArrayList<>();
             CompactSummarizer capturing = new CompactSummarizer() {
                 @Override
@@ -817,7 +817,7 @@ class CompactServiceTest {
         }
     }
 
-// ========== Token warning state.
+    // ========== Token warning state.
 
     @Nested
     class TokenWarningStateTests {

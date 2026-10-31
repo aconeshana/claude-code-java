@@ -1,8 +1,5 @@
 package com.claudecode.core.engine;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import static com.claudecode.core.config.EnvUtils.isEnvTruthy;
 
 import com.claudecode.core.annotation.Explanation;
@@ -14,11 +11,12 @@ import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.AnthropicProviderUrls;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.process.SubprocessEnvironment;
-
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Shared statics for the ToolSearch deferred-tool-schema mechanism, used by both
@@ -115,7 +113,7 @@ public final class ToolSearchGate {
         baseUrlResolver = resolver != null ? resolver : _ -> null;
     }
 
-/** Supplies the wire protocol selected for each request model. */
+    /** Supplies the wire protocol selected for each request model. */
     public static void configureProtocolResolver(
             Function<String, ModelApiProtocol> resolver) {
         protocolResolver = resolver != null
