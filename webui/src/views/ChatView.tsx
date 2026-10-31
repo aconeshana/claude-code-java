@@ -3,9 +3,15 @@ import { IconChevronDownOutline14 } from '@primitives'
 import type { ConversationState } from '../store/conversations'
 import { deriveTurnProcessView, openTurnsOf, useTurnProcess } from '../store/turnProcess'
 import { useTranscriptView } from '../store/transcriptView'
+import { useSpinnerVerbs } from '../store/spinnerVerbs'
+import { withStreamingDraft } from '../store/streamingDraft'
+import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
+import { useTranslate } from '../i18n/useTranslate'
+import { RunningStatus } from '@vendor/dsh-running-status/RunningStatus.tsx'
 import css from '@chat-styles/ChatView.module.css'
 import { MessageItem } from './MessageItem'
 import { TurnProcessControl } from './TurnProcessControl'
+import { runningVerb } from './runningVerb'
 
 /**
  * Transcript scrollport over the vendored dsh ChatView styles. Follow
@@ -22,6 +28,26 @@ import { TurnProcessControl } from './TurnProcessControl'
  * answer row carries `data-turn-process-answer` for the vendored 8px
  * follow-gap. Both the control and every row stay direct children of
  * `.column` — the vendored sibling-gap rules key on that.
+ *
+ * While a turn runs, the vendored RunningStatus (dsh's shimmer row with its
+ * live elapsed clock, minus the whale icon) is the column's last flow row. It
+ * is worded with the TUI spinner's verbs (`/api/spinner-verbs`), picked the
+ * way the spinner picks them — see runningVerb. Its clock origin is the
+ * conversation's turnStartedAt, which the snapshot seeds from running_since,
+ * so a page opened mid-turn resumes the same clock. Each row
+ * names its `data-chat-flow-kind`: the status draws its divider only when the
+ * row above it is output rather than the user's prompt.
+ *
+ * The block the model is streaming (the conversation's `streaming` draft,
+ * built from the mirror's transient delta frames) renders in place through
+ * the same MessageItem as a settled block, open — so text appears as the
+ * TUI prints it rather than all at once when the block settles. See
+ * withStreamingDraft for where the draft sits. Every slice repaints, as
+ * upstream does: MarkdownText is memoized with a streaming cache, so settled
+ * rows skip and the open block re-parses only its tail. (A deferred draft
+ * would let back-to-back urgent delta updates keep interrupting its
+ * transition render, freezing the text until the block settles — the very
+ * bug this fixes.)
  */
 export function ChatView(
   { conversation, sessionId }: {
@@ -38,6 +64,10 @@ export function ChatView(
   // outright outside compact), so the view must re-derive when it flips —
   // and the memo must depend on it, or a settings toggle would not repaint.
   const transcriptMode = useTranscriptView((state) => state.mode)
+  const chatT = useTranslate(STATS_NS, statsDicts)
+  const verbs = useSpinnerVerbs((state) => state.vocabulary)
+  const loadVerbs = useSpinnerVerbs((state) => state.load)
+  useEffect(() => { void loadVerbs() }, [loadVerbs])
   // Keyed on the substrate the derivation actually reads, NOT on the
   // conversation object: the reduction returns a fresh conversation (and a
   // fresh messages array) on every streamed block, so a `conversation` key
@@ -91,6 +121,8 @@ export function ChatView(
   }, [setOpen, sessionId])
 
   const messages = conversation?.messages ?? []
+  const draft = conversation?.streaming
+  const rendered = useMemo(() => withStreamingDraft(messages, draft), [messages, draft])
 
   return (
     <div
@@ -99,13 +131,13 @@ export function ChatView(
       onScroll={onScroll}
     >
       <div className={css.column}>
-        {messages.flatMap((message) => {
+        {rendered.flatMap((message) => {
           const role = foldView.roles[message.id]
           const controlTurn = foldView.controlTurns[message.id]
           const rows = []
           if (controlTurn !== undefined && foldView.counts[message.id] !== undefined) {
             rows.push(
-              <div key={`${message.id}-process`} className={css.flowItem}>
+              <div key={`${message.id}-process`} className={css.flowItem} data-chat-flow-kind="turn-process">
                 <TurnProcessControl
                   turn={controlTurn}
                   counts={foldView.counts[message.id]}
@@ -122,6 +154,7 @@ export function ChatView(
             <div
               key={message.id}
               className={css.flowItem}
+              data-chat-flow-kind={message.kind === 'user' ? 'user' : 'assistant'}
               data-turn-process-member={memberTurn !== undefined ? String(memberTurn) : undefined}
               data-turn-process-answer={foldView.compactAnswers.has(message.id) ? '' : undefined}
               hidden={collapsed ? ('until-found' as unknown as boolean) : undefined}
@@ -136,7 +169,13 @@ export function ChatView(
           return rows
         })}
         {conversation != null && conversation.turnRunning && (
-          <div className={`${css.flowItem} ${css.turnStatus}`}>…</div>
+          <RunningStatus
+            key="running"
+            startTime={conversation.turnStartedAt}
+            paused={false}
+            verb={runningVerb(verbs, messages, conversation.turnStartedAt)}
+            t={chatT}
+          />
         )}
         {conversation != null && conversation.lastError != null && (
           <div className={css.openError}>{conversation.lastError}</div>

@@ -103,6 +103,15 @@ class SpinnerVerbsTest {
     }
 
     @Test
+    void toolVerbs_isTheTableForToolConsults() {
+        // The gateway serves this table to the webui running status, so it
+        // must be exactly what forTool resolves fixed verbs from.
+        SpinnerVerbs.toolVerbs().forEach((tool, verb) ->
+            assertEquals(verb, SpinnerVerbs.forTool(tool)));
+        assertEquals("Reading", SpinnerVerbs.toolVerbs().get("Read"));
+    }
+
+    @Test
     void forTool_unknownFallsBackToRandomActive() {
         String v = SpinnerVerbs.forTool("SomeCustomMcpTool_123");
         assertTrue(SpinnerVerbs.activeVerbs().contains(v),

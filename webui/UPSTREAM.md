@@ -16,6 +16,7 @@ cordis/Typert RPC).
 | `vendor/dsh-composer-menu/` | `packages/client/ui-input-trigger/` + `ui-commands/` | The composer "+" menu — see the section below |
 | `vendor/dsh-stats-pills/` | `packages/client/ui-chat/` | The composer session-stat pills + the turn-tail usage/time pills — see the section below |
 | `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`, `conversation-nodes/turn-tail.ts`) | The turn-process fold rules + the per-turn tail anchor — see the section below |
+| `vendor/dsh-running-status/` | `packages/client/ui-chat/src/client/chat/` (`RunningStatus.tsx`, `message-chrome.ts`, `accessibility.module.css`) | The running-turn indicator (shimmer + live elapsed clock, worded with the TUI spinner verbs; whale icon dropped), **at commit `ce7073d`** — see the section below |
 | `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
@@ -898,6 +899,125 @@ pick up a utility class.
 - **Dashboard has no workspace group chips** (no `useWorkspaces` seat); a card
   click selects the session through `useSessions.select`.
 
+### `vendor/dsh-running-status/` — the running-turn indicator
+
+The row upstream's `ChatFlow` mounts as the flow's last row while the session
+runs: an animated whale tail, then `深度求索中，用时 N 秒 ···` under a text
+shimmer, with a live whole-second clock and a visually hidden `role=status`
+that announces only the static label (never the ticks). It replaces this
+app's earlier bare `…` row, which gave no sign of progress when a turn was
+driven from the TUI. Read via `gh api` at **`ce7073d51254c26cd63b22a60835b8f948deb447`**
+— newer than the tree pin above, because the component postdates `5dda764`.
+
+| File here | Upstream source | Notes |
+|-----------|-----------------|-------|
+| `RunningStatus.tsx` | `ui-chat/src/client/chat/RunningStatus.tsx` | Kept: the `memo` wrapper, the `startTime`/`paused`/`holding` props, the one-second interval allocated only while a start is known and the clock is neither paused nor holding, the `Math.max(1000, now - startTime)` floor, the `data-chat-running`/`data-holding` attributes and the hidden status. Local: `TextShimmer` from `@primitives`, the styles from `@chat-styles/ChatView.module.css` (upstream keeps the `.running*` rules in `ChatView.module.css` too), upstream's `ChatViewSlotProps['t']` becomes a local `RunningStatusTranslate`. Subtracted: the `<RunningWhaleTail />` child. Added: an optional `verb` prop — the shimmer reads `{verb}… ({duration})` (TUI spinner wording) instead of `深度求索中，用时 N ···`; the hidden status announces the static `chat.running`. See Local modification below. |
+| `run-duration.ts` | `ui-chat/src/client/chat/message-chrome.ts` | Just `LIVE_RUN_CLOCK_INTERVAL_MS`, `RunDurationPart` and the parts-based `formatRunDuration` (`1小时0分0秒`; minutes from 60s, hours from 60min, no leading zeros). The older whole-string formatter in `dsh-stats-pills/message-chrome-runtime.ts` stays: the settled turn-time pill is still on the `5dda764` copy. |
+| `accessibility.module.css` | `ui-chat/src/client/chat/accessibility.module.css` | Verbatim (`.visuallyHidden`). |
+
+Not vendored (removed after the first import): `RunningWhaleTail.tsx` and
+`ui-chat/src/client/assets/running-whale@2x.png` — the whale is DeepSeek's
+brand mark (see Local modification below).
+
+Also from the same commit:
+
+- `vendor/ui-primitives/TextShimmer.tsx` + `TextShimmer.module.css` —
+  verbatim (`ui-primitives/src/TextShimmer.*`, not in the `5dda764` tree);
+  exported from `index.ts`.
+- `vendor/chat-styles/ChatView.module.css` — the `.running`,
+  `.running[data-holding]`, divider, `.runningContent` and `.runningText`
+  rules copied verbatim. The `.runningIcon`/`.runningWhale*` rules and their
+  `@supports` mask block are not carried (no icon). The local `.turnStatus`/
+  `.turnStatusClock` loader rules and `@keyframes dsh-turn-status-shimmer`
+  they replace are deleted.
+- Three tokens added to `vendor/theme/styles/design-platform.css` from the
+  same commit's file, in both the light and dark alias blocks:
+  `--dsw-alias-label-deep-diving`, `--dsw-alias-label-deep-diving-shimmer`,
+  `--dsw-alias-label-shimmer`. Every `--dsw-*` token the new CSS consumes was
+  grepped and resolves.
+- Locale: `duration.secondUnit`/`minuteUnit`/`hourUnit` in
+  `src/i18n/dictionaries/stats.ts` (the `chat` namespace), copied from
+  `ui-chat/src/client/locale.ts`. Upstream's `chat.deepDiving`/
+  `chat.deepDivingFor` are replaced by local `chat.running` (运行中 / Working —
+  the fallback verb and the a11y announcement), `chat.runningVerb`
+  (`{verb}…`) and `chat.runningVerbFor` (`{verb}… ({duration})`).
+
+Backend surface: the frame path takes the start clock from `turn.started`'s
+`time`; the snapshot path needed a new fact, since a page opened mid-turn
+used to reset `turnRunning` to false. `GET /api/sessions/{id}/messages` now
+carries `running_since` (epoch ms, present exactly while a turn runs —
+`MirrorHub.runningSince`, the same clock `turn.completed`'s `elapsed_ms` is
+measured from), documented in `openapi.yaml`'s `MessageSnapshot`. The store
+seeds `turnRunning`/`turnStartedAt` from it, so the indicator and its clock
+resume where the TUI's turn actually started.
+
+Product-scope deviations (documented, not gaps):
+
+- **No `holding` phase.** Upstream's running bit and the turn's end arrive
+  separately, so the status holds its slot hidden until the actions row
+  replaces it. Here `turn.completed` clears `turnRunning` and stamps the
+  tail in the same reduce, so there is no interval to hold; `holding` is
+  never passed (the prop and its CSS stay for parity).
+- **`paused` is always false.** Upstream freezes the clock while the
+  connection is `disconnected`/`connecting`. This app has no connection-state
+  store (the `EventSource` reconnects on its own); add one before wiring it.
+- **Divider selector adapted.** Upstream's `:nth-last-child(2 of …)` rule
+  excludes its trailing steering/Inbox echoes and keys on
+  `data-chat-flow-kind`. Here the trailing chrome is `.openError` and
+  `.toBottomSlot`, which the selector excludes instead, and `ChatView` now
+  stamps `data-chat-flow-kind` (`user` / `assistant` / `turn-process`) on its
+  rows. The `turn-tail + .running` and steering-entrance rules are not
+  copied: this app's tail renders inside the message row, and it has no
+  steering echoes.
+
+Local modification — TUI spinner verbs instead of the DeepSeek voice
+(product decision, 2026-10-31): the whale mark and the "深度求索中" label are
+DeepSeek's brand voice, the same family Local modification 1 removed from the
+brand row. The icon is dropped outright (component, asset, CSS). The label
+reuses the TUI spinner's vocabulary and selection rule instead of a fixed
+string:
+
+- `GET /api/spinner-verbs` (`GatewaySpinnerVerbsHandler` over the
+  `GatewaySpinnerVerbsPort`; the CLI projects `SpinnerVerbs.activeVerbs()` —
+  the packaged list spliced with the `spinnerVerbs` setting — and
+  `SpinnerVerbs.toolVerbs()`), documented in `openapi.yaml` as `SpinnerVerbs`.
+  The gateway does not depend on claude-code-ui; the composition root wires it.
+- `src/store/spinnerVerbs.ts` loads it once per page; until it loads (or if it
+  fails) the row reads `运行中…`.
+- `src/views/runningVerb.ts` mirrors `SpinnerComponent`/`SpinnerStateMachine`:
+  a random active verb when the turn opens; once a tool starts, that tool's
+  fixed verb (`Read` → `Reading`), or a random active verb for an unmapped
+  tool; it holds until the next tool. "Random" is an FNV-1a hash of the turn
+  start or the tool-use id, so re-renders, remounts and a second tab agree on
+  the word rather than flickering.
+
+The `--dsw-alias-label-deep-diving*` tokens stay: they are the row's text and
+shimmer colours, independent of the wording.
+
+### Live block streaming (2026-10-31)
+
+Not a vendored tree — the transport behind upstream's streamed assistant
+text. Upstream streams each block into the open message as live, cursorless
+frames and lets the settled block replace the draft; the mirror used to drop
+the runtime's `content_block_delta`/`thinking_delta` stream events, so the web
+only ever saw whole blocks (the TUI printed them as they streamed).
+
+- Gateway: `MirrorHub` fans the deltas out as `output.text.delta` /
+  `output.thinking.delta` frames carrying `{content, offset}` — transient, no
+  `id:` line, never journaled or replayed — and keeps the block's draft so
+  `GET /api/sessions/{id}/messages` serves it as `streaming` for a page opened
+  mid-block. Documented in `openapi.yaml` (`FrameOutputDelta`,
+  `StreamingDraft`).
+- `src/api/events.ts` forwards the delta frames with id 0 (EventSource would
+  otherwise report the previous frame's id and the dedupe would drop them).
+- `src/store/streamingDraft.ts` merges slices by offset (append / restart /
+  ignore a gap); `conversations.ts` holds the draft beside the rows and clears
+  it when the settled block, a tool call or the turn's end arrives.
+- `ChatView` renders the draft through the same `MessageItem` (open, so the
+  vendored `MarkdownText` streaming mode and the running reasoning row apply).
+  Deltas carry no step id, so the draft joins the open step while it has no
+  tool call yet, else stands in its own row until its block settles.
+
 ### `vendor/ui-attachment/` — chat-history image gallery + lightbox
 
 Real image previews for pasted-image user turns, replacing the plain
@@ -967,6 +1087,11 @@ Keep this list complete; each entry needs a reason.
    `vendor/dsh-context/` section above is the ledger. Refresh from
    `https://raw.githubusercontent.com/bowenliang123/dsh-context/<commit>/src/<path>`
    (a different upstream from the deepseek-harness pin above).
+5. `vendor/theme/styles/design-platform.css` and `vendor/ui-primitives/` —
+   partially refreshed from `ce7073d` (three alias tokens; `TextShimmer`)
+   ahead of a full pin bump, for the running-turn indicator. See the
+   `vendor/dsh-running-status/` section. A full bump to `ce7073d` subsumes
+   this entry.
 
 ## Refresh procedure
 

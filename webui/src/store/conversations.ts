@@ -1,19 +1,24 @@
 import { create } from 'zustand'
 import type { MessageImageAttachment, MessagesSnapshot, MirrorFrame, SnapshotMessage, TurnUsage } from '../api/types'
+import { mergeDelta, type StreamingDraft } from './streamingDraft'
 
 /**
  * Per-session conversation state: the snapshot is the authority, mirror
  * frames are the live delta.
  *
  * Reduction rules (the mirror frames' contract):
- * - output.text/output.thinking are full blocks, one frame per block —
- *   never deltas; appending is the whole story.
+ * - output.text/output.thinking are full blocks, one frame per block;
+ *   appending is the whole story for the transcript rows.
+ * - output.text.delta/output.thinking.delta are the transient live slices
+ *   of the block in flight: they only build `streaming`, the draft the view
+ *   renders until that block's settled frame (which clears it) arrives.
  * - tool.started opens a pending tool_call; tool.completed pairs back by
  *   tool_use_id and fills the result.
  * - turn.completed finishes the assistant message and lands the frame's
  *   turn usage facts on it; turn.started opens a fresh one.
- * - Every frame carries a monotonic id; a frame at or below the last
- *   applied id for its session is a journal replay overlap and drops.
+ * - Every journaled frame carries a monotonic id; a frame at or below the
+ *   last applied id for its session is a journal replay overlap and drops.
+ *   Transient frames arrive with id 0: never deduped, never a cursor.
  */
 
 interface AssistantMessageState {
@@ -69,6 +74,17 @@ export interface ConversationState {
   readonly lastFrameId: number
   /** Turn spinner: a turn.started without its matching completion yet. */
   readonly turnRunning: boolean
+  /**
+   * The running turn's start clock, epoch ms — the running status's elapsed
+   * origin. Frame path: turn.started's time; snapshot path: running_since, so
+   * a page opened mid-turn resumes the same clock. Absent while idle.
+   */
+  readonly turnStartedAt?: number
+  /**
+   * The block streaming right now (live delta frames, or the snapshot's
+   * `streaming` seed for a page opened mid-block). Absent between blocks.
+   */
+  readonly streaming?: StreamingDraft
   readonly lastError: string | null
 }
 
@@ -96,7 +112,7 @@ export const useConversations = create<ConversationsStore>((set, get) => ({
     set((state) => ({
       conversations: {
         ...state.conversations,
-        [sessionId]: { messages, lastFrameId: 0, turnRunning: false, lastError: null },
+        [sessionId]: snapshotConversation(messages, snapshot.running_since, snapshot.streaming),
       },
     }))
   },
@@ -112,11 +128,33 @@ export const useConversations = create<ConversationsStore>((set, get) => ({
     set((state) => ({
       conversations: {
         ...state.conversations,
-        [sessionId]: { ...next, lastFrameId: frame.id },
+        [sessionId]: { ...next, lastFrameId: frame.id === 0 ? current.lastFrameId : frame.id },
       },
     }))
   },
 }))
+
+/**
+ * The conversation a snapshot seeds. The snapshot carries running_since only
+ * while a turn runs, so a page opened mid-turn shows the running status (and
+ * its elapsed clock) before the next frame arrives. Likewise `streaming`
+ * seeds the draft of a block caught mid-stream, so the next delta's offset
+ * continues it rather than gapping.
+ */
+function snapshotConversation(
+  messages: readonly MessageState[],
+  runningSince: number | undefined,
+  streaming: StreamingDraft | undefined,
+): ConversationState {
+  return {
+    messages,
+    lastFrameId: 0,
+    turnRunning: runningSince !== undefined,
+    ...(runningSince !== undefined ? { turnStartedAt: runningSince } : {}),
+    ...(streaming !== undefined ? { streaming: { kind: streaming.kind, content: streaming.content } } : {}),
+    lastError: null,
+  }
+}
 
 function toMessageState(message: SnapshotMessage): MessageState {
   if (message.role === 'user') {
@@ -166,7 +204,8 @@ function toMessageState(message: SnapshotMessage): MessageState {
   }
 }
 
-function reduceFrame(state: ConversationState, frame: MirrorFrame): ConversationState {  switch (frame.event) {
+function reduceFrame(state: ConversationState, frame: MirrorFrame): ConversationState {
+  switch (frame.event) {
     case 'turn.started': {
       const userMessage: MessageState = {
         kind: 'user',
@@ -176,9 +215,10 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...(frame.data.images !== undefined ? { images: frame.data.images } : {}),
       }
       return {
-        ...state,
+        ...settleDraft(state),
         messages: [...state.messages, userMessage],
         turnRunning: true,
+        turnStartedAt: frame.data.time ?? Date.now(),
         lastError: null,
       }
     }
@@ -187,14 +227,15 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...last,
         textBlocks: [...last.textBlocks, frame.data.content],
       }))
-      return { ...state, messages }
+      // A System projection is not the streamed block; the draft stays.
+      return { ...(frame.data.synthetic === true ? state : settleDraft(state)), messages }
     }
     case 'output.thinking': {
       const messages = appendBlock(state.messages, stepOf(frame.data), (last) => ({
         ...last,
         thinkingBlocks: [...last.thinkingBlocks, frame.data.content],
       }))
-      return { ...state, messages }
+      return { ...settleDraft(state), messages }
     }
     case 'tool.started': {
       const call: ToolCallState = {
@@ -213,7 +254,16 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...last,
         toolCalls: [...last.toolCalls, call],
       }))
-      return { ...state, messages }
+      return { ...settleDraft(state), messages }
+    }
+    case 'output.text.delta':
+    case 'output.thinking.delta': {
+      const kind = frame.event === 'output.text.delta' ? 'text' : 'thinking'
+      const streaming = mergeDelta(state.streaming, kind, frame.data.content, frame.data.offset)
+      // An unchanged draft (a gapped slice) leaves the state — and the
+      // render — alone; `messages` keeps its identity either way, so the
+      // fold derivation never re-runs per slice.
+      return streaming === state.streaming || streaming === undefined ? state : { ...state, streaming }
     }
     case 'tool.completed': {
       const messages = state.messages.map((message) => {
@@ -242,7 +292,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
       return { ...state, messages }
     }
     case 'session.error': {
-      return { ...state, turnRunning: false, lastError: frame.data.message }
+      return { ...idle(state), lastError: frame.data.message }
     }
     case 'turn.completed': {
       // The completion frame carries the turn's durable-fold delta and wall
@@ -263,20 +313,33 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...(frame.data.ttft_ms !== undefined ? { ttftMs: frame.data.ttft_ms } : {}),
         ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
       }))
-      return { ...state, messages, turnRunning: false }
+      return { ...idle(state), messages }
     }
     case 'turn.cancelled': {
       const messages = closeAssistant(state.messages)
-      return { ...state, messages, turnRunning: false }
+      return { ...idle(state), messages }
     }
     case 'session.idle': {
-      return { ...state, turnRunning: false }
+      return idle(state)
     }
     default:
       // permission.asked/resolved feed the approvals store; session.activated
       // feeds `useSessions.applyFrame`; tool.progress is not rendered in v1.
       return state
   }
+}
+
+/** The state with no turn running: the spinner, its start clock and any draft clear. */
+function idle(state: ConversationState): ConversationState {
+  const { turnStartedAt: _cleared, ...rest } = settleDraft(state)
+  return { ...rest, turnRunning: false }
+}
+
+/** The state without its streaming draft — a settled block replaced it. */
+function settleDraft(state: ConversationState): ConversationState {
+  if (state.streaming === undefined) return state
+  const { streaming: _settled, ...rest } = state
+  return rest
 }
 
 /** One step's identity as reported by the frame that carries a block. */

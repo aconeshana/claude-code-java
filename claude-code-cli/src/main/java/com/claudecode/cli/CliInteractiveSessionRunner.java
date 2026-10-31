@@ -39,6 +39,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayCommandsPort;
+import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
@@ -93,6 +94,7 @@ import com.claudecode.tools.loop.LoopPromptResolver;
 import com.claudecode.tools.mcp.McpRuntime;
 import com.claudecode.tools.skills.SkillToolProvider;
 import com.claudecode.tools.worktree.WorktreeService;
+import com.claudecode.ui.lanterna.components.SpinnerVerbs;
 import com.claudecode.ui.lanterna.repl.LanternaProgressSink;
 import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import com.claudecode.ui.lanterna.repl.ProjectCatalogPort;
@@ -397,7 +399,8 @@ final class CliInteractiveSessionRunner {
                     headlessSessions, interactiveCwd, contextDataCollector,
                     toolRegistry::getContextAnalysisToolDefinitions),
                 gatewaySessionActions(),
-                gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions));
+                gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
+                gatewaySpinnerVerbs());
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -872,6 +875,18 @@ final class CliInteractiveSessionRunner {
                     contextWindow, multimodal));
             }
             @Override public boolean remove(String modelName) { return catalog.remove(modelName); }
+        };
+    }
+
+    /**
+     * Projects the TUI spinner's resolved verb vocabulary (packaged lists plus
+     * the {@code spinnerVerbs} settings splice) onto the gateway, so the
+     * webui running status words its row the way the TUI spinner does.
+     */
+    private static GatewaySpinnerVerbsPort gatewaySpinnerVerbs() {
+        return new GatewaySpinnerVerbsPort() {
+            @Override public List<String> activeVerbs() { return SpinnerVerbs.activeVerbs(); }
+            @Override public Map<String, String> toolVerbs() { return SpinnerVerbs.toolVerbs(); }
         };
     }
 

@@ -127,6 +127,13 @@ export type SnapshotMessage = SnapshotAssistantMessage | SnapshotUserMessage
 export interface MessagesSnapshot {
   readonly session_id: string
   readonly messages: readonly SnapshotMessage[]
+  /** The running turn's start clock, epoch ms; absent while the session is idle. */
+  readonly running_since?: number
+  /** The block the model is streaming right now; absent between blocks. */
+  readonly streaming?: {
+    readonly kind: 'text' | 'thinking'
+    readonly content: string
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +161,16 @@ export type MirrorFrame =
       readonly session_id: string
       readonly content: string
       readonly message_id?: string
+    } }
+  /**
+   * Transient live stream slices: never journaled, no `id:` line on the wire
+   * (the subscription forwards them with id 0). `offset` is the draft length
+   * before this slice, in UTF-16 code units.
+   */
+  | { readonly event: 'output.text.delta' | 'output.thinking.delta'; readonly id: number; readonly data: {
+      readonly session_id: string
+      readonly content: string
+      readonly offset: number
     } }
   | { readonly event: 'tool.started'; readonly id: number; readonly data: {
       readonly session_id: string
@@ -402,6 +419,17 @@ export interface ComposerCommandEntry {
 
 export interface CommandsListing {
   readonly commands: readonly ComposerCommandEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/spinner-verbs — the TUI spinner's verb vocabulary
+// ---------------------------------------------------------------------------
+
+export interface SpinnerVerbsListing {
+  /** Present-participle verbs, already spliced with the `spinnerVerbs` setting. */
+  readonly active: readonly string[]
+  /** Tool name to its fixed verb; unlisted tools take a random active verb. */
+  readonly tools: Readonly<Record<string, string>>
 }
 
 // ---------------------------------------------------------------------------

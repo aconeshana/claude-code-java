@@ -60,6 +60,9 @@ public final class SpinnerVerbs {
      */
     public static List<String> completionVerbs() { return COMPLETION_VERBS; }
 
+    /** Immutable tool-name to fixed-verb table that {@link #forTool} consults. */
+    public static Map<String, String> toolVerbs() { return TOOL_TO_VERB; }
+
     /** Pick a random present-participle verb for the streaming spinner. */
     public static String randomActive() {
         return ACTIVE_VERBS.get(ThreadLocalRandom.current().nextInt(ACTIVE_VERBS.size()));

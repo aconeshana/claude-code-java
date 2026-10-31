@@ -2,7 +2,8 @@ import type { LocaleDict, LocaleId } from '../types'
 
 // Copy lifted verbatim from upstream ui-chat's own dictionary
 // (packages/client/ui-chat/src/client/locale.ts at the pinned dsh commit);
-// only the keys the stat pills and the turn-usage chrome consume are kept.
+// only the keys the stat pills, the turn-usage chrome and the running status
+// consume are kept.
 export const STATS_NS = 'chat'
 
 export const statsZh = {
@@ -17,6 +18,12 @@ export const statsZh = {
   'duration.compactMinutes': '{minutes}分{seconds}秒',
   'duration.seconds': '{seconds}秒',
   'duration.minutes': '{minutes}分{seconds}秒',
+  'duration.secondUnit': '秒',
+  'duration.minuteUnit': '分',
+  'duration.hourUnit': '小时',
+  'chat.running': '运行中',
+  'chat.runningVerb': '{verb}…',
+  'chat.runningVerbFor': '{verb}… ({duration})',
   'stats.counts': '{turns} 轮 {steps} 步',
   'stats.cacheHit': '缓存命中 {percent}%',
   'stats.dialog.title': '会话统计',
@@ -62,6 +69,12 @@ export const statsEn: Record<keyof typeof statsZh, string> = {
   'duration.compactMinutes': '{minutes}m{seconds}s',
   'duration.seconds': '{seconds}s',
   'duration.minutes': '{minutes}m {seconds}s',
+  'duration.secondUnit': 's',
+  'duration.minuteUnit': 'm ',
+  'duration.hourUnit': 'h ',
+  'chat.running': 'Working',
+  'chat.runningVerb': '{verb}…',
+  'chat.runningVerbFor': '{verb}… ({duration})',
   'stats.counts': '{turns} turns {steps} steps',
   'stats.cacheHit': 'Cache hit {percent}%',
   'stats.dialog.title': 'Session statistics',

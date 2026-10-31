@@ -242,6 +242,87 @@ describe('conversations frame reduction', () => {
     expect(reloadedTurns).toEqual(liveTurns)
   })
 
+  it('stamps the running clock on turn.started and clears it when the turn ends', () => {
+    store().applyFrame(frame('turn.started', 1, {
+      display_text: 'go', permission_mode: 'ask', origin: 'tui', time: 1_700_000_000_000,
+    }))
+    expect(store().conversations[SESSION]).toMatchObject({ turnRunning: true, turnStartedAt: 1_700_000_000_000 })
+
+    store().applyFrame(frame('turn.completed', 2, { done: true, elapsed_ms: 5 }))
+    expect(store().conversations[SESSION].turnRunning).toBe(false)
+    expect(store().conversations[SESSION]).not.toHaveProperty('turnStartedAt')
+  })
+
+  it.each(['turn.cancelled', 'session.idle', 'session.error'] as const)('clears the running clock on %s', (event) => {
+    store().applyFrame(frame('turn.started', 1, {
+      display_text: 'go', permission_mode: 'ask', origin: 'tui', time: 42,
+    }))
+    store().applyFrame(frame(event, 2, { message: 'boom' }))
+    expect(store().conversations[SESSION].turnRunning).toBe(false)
+    expect(store().conversations[SESSION]).not.toHaveProperty('turnStartedAt')
+  })
+
+  it('resumes the running status from a mid-turn snapshot', async () => {
+    const { fetchSnapshot } = await import('../api/client')
+    vi.mocked(fetchSnapshot).mockResolvedValue({
+      session_id: SESSION, messages: [], running_since: 1_700_000_000_123,
+    })
+    await store().loadSnapshot(SESSION)
+    expect(store().conversations[SESSION]).toMatchObject({ turnRunning: true, turnStartedAt: 1_700_000_000_123 })
+
+    vi.mocked(fetchSnapshot).mockResolvedValue({ session_id: SESSION, messages: [] })
+    await store().loadSnapshot(SESSION)
+    expect(store().conversations[SESSION].turnRunning).toBe(false)
+    expect(store().conversations[SESSION]).not.toHaveProperty('turnStartedAt')
+  })
+
+  it('builds a streaming draft from transient delta frames without moving the cursor', () => {
+    store().applyFrame(frame('turn.started', 4, { display_text: 'q', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text.delta', 0, { content: 'Hel', offset: 0 }))
+    store().applyFrame(frame('output.text.delta', 0, { content: 'lo', offset: 3 }))
+    const conversation = store().conversations[SESSION]
+    expect(conversation.streaming).toEqual({ kind: 'text', content: 'Hello' })
+    expect(conversation.lastFrameId).toBe(4)
+    // Deltas never touch the rows, so the fold derivation keyed on them stays put.
+    expect(conversation.messages).toHaveLength(1)
+  })
+
+  it('leaves the state identity alone for a gapped delta', () => {
+    store().applyFrame(frame('output.text.delta', 0, { content: 'Hel', offset: 0 }))
+    const before = store().conversations[SESSION]
+    store().applyFrame(frame('output.text.delta', 0, { content: 'world', offset: 9 }))
+    expect(store().conversations[SESSION]).toBe(before)
+  })
+
+  it('replaces the draft with the settled block', () => {
+    store().applyFrame(frame('output.thinking.delta', 0, { content: 'hmm', offset: 0 }))
+    store().applyFrame(frame('output.thinking', 1, { content: 'hmm', message_id: 'm1' }))
+    expect(store().conversations[SESSION]).not.toHaveProperty('streaming')
+    store().applyFrame(frame('output.text.delta', 0, { content: 'Hi', offset: 0 }))
+    store().applyFrame(frame('output.text', 2, { content: 'Hi', synthetic: true }))
+    // A System projection is not the streamed block.
+    expect(store().conversations[SESSION].streaming).toEqual({ kind: 'text', content: 'Hi' })
+    store().applyFrame(frame('output.text', 3, { content: 'Hi', message_id: 'm1' }))
+    expect(store().conversations[SESSION]).not.toHaveProperty('streaming')
+  })
+
+  it('drops the draft when the turn ends', () => {
+    store().applyFrame(frame('turn.started', 1, { display_text: 'q', permission_mode: 'ask', origin: 'chat' }))
+    store().applyFrame(frame('output.text.delta', 0, { content: 'partial', offset: 0 }))
+    store().applyFrame(frame('turn.cancelled', 2, {}))
+    expect(store().conversations[SESSION]).not.toHaveProperty('streaming')
+  })
+
+  it('seeds the draft from a mid-block snapshot and continues it', async () => {
+    const { fetchSnapshot } = await import('../api/client')
+    vi.mocked(fetchSnapshot).mockResolvedValue({
+      session_id: SESSION, messages: [], running_since: 1, streaming: { kind: 'thinking', content: 'let me' },
+    })
+    await store().loadSnapshot(SESSION)
+    store().applyFrame(frame('output.thinking.delta', 0, { content: ' think', offset: 6 }))
+    expect(store().conversations[SESSION].streaming).toEqual({ kind: 'thinking', content: 'let me think' })
+  })
+
   it('appends the submitted message immediately on turn.started', () => {
     store().applyFrame(frame('turn.started', 1, { display_text: '你好', permission_mode: 'ask', origin: 'chat' }))
     const conversation = useConversations.getState().conversations[SESSION]

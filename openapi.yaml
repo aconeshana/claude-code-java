@@ -598,6 +598,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CommandList' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/spinner-verbs:
+    get:
+      tags: [Commands]
+      summary: The TUI spinner's verb vocabulary
+      description: |
+        The resolved present-participle list the TUI spinner draws from
+        (packaged verbs plus the `spinnerVerbs` settings splice) and the
+        fixed per-tool verbs. The webui running status picks its verb the
+        same way the TUI spinner does: a random active verb per turn,
+        replaced by a tool's fixed verb (or a fresh random one for an
+        unlisted tool) once that tool starts.
+      responses:
+        '200':
+          description: The verb vocabulary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpinnerVerbs' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/session/context:
     get:
       tags: [Sessions]
@@ -947,10 +965,30 @@ components:
       description: The authoritative current message list of one session (snapshot-first)
       properties:
         session_id: { type: string }
+        running_since:
+          type: integer
+          description: |
+            Epoch ms at which the session's running turn started; absent while
+            no turn is running. A client opening mid-turn (for example a turn
+            submitted from the terminal UI) has no turn.started frame to
+            reduce, so it seeds its running indicator and elapsed clock here.
+        streaming:
+          $ref: '#/components/schemas/StreamingDraft'
         messages:
           type: array
           description: User text rows and assistant content[] rows, transcript order; both kinds stamp `time` (epoch ms) for their clock labels
           items: { $ref: '#/components/schemas/AssistantMessageSnapshot' }
+    StreamingDraft:
+      type: object
+      description: |
+        The text or thinking block the model is streaming right now; absent
+        between blocks. `messages` holds only settled blocks, so a client
+        opening mid-block seeds its live draft here and continues it with
+        the output.text.delta / output.thinking.delta frames' offsets.
+      required: [kind, content]
+      properties:
+        kind: { type: string, enum: [text, thinking] }
+        content: { type: string, description: The block's streamed text so far }
     AssistantMessageSnapshot:
       type: object
       description: Assistant-message snapshot shape
@@ -1097,6 +1135,12 @@ components:
         GET /api/sessions/{id}/messages for authoritative state, then take the
         delta from the cursor. The mirror is a rendering channel, so no client
         depends on having missed no frame.
+
+        Live stream frames (output.text.delta, output.thinking.delta) are
+        transient: they fan out while the model streams a block, carry no
+        `id:` line (the client's Last-Event-ID stays on the last journaled
+        frame), and are never journaled or replayed. The block's settled
+        output.text / output.thinking frame replaces the draft they built.
       required: [event, id, data]
       properties:
         event:
@@ -1106,6 +1150,8 @@ components:
             - turn.started
             - output.text
             - output.thinking
+            - output.text.delta
+            - output.thinking.delta
             - tool.started
             - tool.progress
             - tool.completed
@@ -1118,13 +1164,14 @@ components:
         id:
           type: integer
           format: int64
-          description: Monotonic journal cursor; bounded ring replay via Last-Event-ID
+          description: Monotonic journal cursor; bounded ring replay via Last-Event-ID. Absent on transient live stream frames.
         data:
           oneOf:
             - $ref: '#/components/schemas/FrameSessionActivated'
             - $ref: '#/components/schemas/FrameTurnStarted'
             - $ref: '#/components/schemas/FrameOutputText'
             - $ref: '#/components/schemas/FrameOutputThinking'
+            - $ref: '#/components/schemas/FrameOutputDelta'
             - $ref: '#/components/schemas/FrameToolStarted'
             - $ref: '#/components/schemas/FrameToolProgress'
             - $ref: '#/components/schemas/FrameToolCompleted'
@@ -1157,6 +1204,23 @@ components:
           type: array
           items: { $ref: '#/components/schemas/MessageImageAttachment' }
           description: Inline image attachments pasted into this turn, chip-id order; absent when none
+    FrameOutputDelta:
+      type: object
+      description: |
+        One streamed slice of the text (output.text.delta) or thinking
+        (output.thinking.delta) block in flight. Transient: no journal id.
+      required: [content, offset, session_id]
+      properties:
+        content: { type: string, description: The appended text }
+        offset:
+          type: integer
+          description: |
+            The draft length (UTF-16 code units) before this slice. Equal to
+            the client's draft length: append. Smaller: the stream restarted
+            the block (offset 0 after a retry or streaming fallback); truncate
+            to it, then append. Larger: frames were missed; keep the draft
+            until the settled block frame replaces it.
+        session_id: { type: string }
     FrameOutputText:
       type: object
       required: [content, session_id]
@@ -1428,6 +1492,17 @@ components:
         commands:
           type: array
           items: { $ref: '#/components/schemas/CommandEntry' }
+    SpinnerVerbs:
+      type: object
+      required: [active, tools]
+      properties:
+        active:
+          type: array
+          items: { type: string }
+        tools:
+          type: object
+          description: Tool name to its fixed verb.
+          additionalProperties: { type: string }
     ContextTimelineHead:
       type: object
       description: |

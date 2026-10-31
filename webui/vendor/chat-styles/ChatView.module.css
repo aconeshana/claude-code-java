@@ -77,63 +77,71 @@
 /* Selection still sets data-selected for details linkage; no outline —
    tool rows match Think chrome (no selected ring). */
 
-/* Turn activity keeps the former loader's one-line footprint. A pale
-   brand-blue band sweeps from left to right; reduced-motion keeps it static. */
-.turnStatus {
-  align-self: flex-start;
-  flex: none;
+/* Running status (upstream ui-chat ChatView.module.css .running*): the blue
+   live row mounted as the column's last flow row while a turn runs. The
+   whale icon rules (.runningIcon/.runningWhale*) are not carried. */
+.running {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  --dsh-chat-flow-gap: 12px;
+  --dsw-alias-label-shimmer: var(--dsw-alias-label-deep-diving-shimmer);
+  color: var(--dsw-alias-label-deep-diving);
+  font-size: calc(var(--dsh-content-font-size, 14px) - 2px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+}
+
+/* After the Session stops running and before the Turn's actions row arrives, the status keeps its slot
+   unseen so the tail does not shrink for that interval. */
+.running[data-holding] {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* The last visible row before the status must contain output, not an input.
+   Hidden and empty seats do not separate a user message from the status; the
+   error line and the back-to-bottom control after the status (this app's
+   trailing chrome, where upstream has steering/Inbox echoes) are outside the
+   count. */
+.column > :nth-last-child(2 of :not([hidden]):not(.flowItem:empty):not(.openError):not(.toBottomSlot)):is(
+  .flowItem:not([data-chat-flow-kind="user"])
+) ~ .running > .runningDivider {
+  opacity: 1;
+}
+
+/* Drawn inside the 16px offset above the status row, so showing or hiding it
+   never changes the tail slot's height. */
+.runningDivider {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 0.5px;
+  background: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, var(--dsw-alias-border-l2));
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .runningDivider {
+    transition: opacity 160ms ease;
+  }
+}
+
+/* Same offset and height as the completed Turn's tail actions row. */
+.runningContent {
   display: inline-flex;
   align-items: center;
-  height: calc(26px + var(--dsh-content-font-delta, 0px));
-  font: var(--dsw-font-s-strong-14);
-  /* The status line reads at the body size: the fixed 14 token supplies the
-     family/weight, the axis supplies the size. At default that is 14px text
-     on a 22px line inside a 26px row; both box heights shift by the same
-     delta, preserving the 8px (22 − 14) leading and the 4px (26 − 22) row
-     padding at every size. */
-  font-size: var(--dsh-content-font-size, 14px);
-  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
-  white-space: nowrap;
-  background: linear-gradient(
-    90deg,
-    var(--dsw-static-deepseek-500) 0%,
-    var(--dsw-static-deepseek-500) 40%,
-    var(--dsw-static-deepseek-200) 50%,
-    var(--dsw-static-deepseek-500) 60%,
-    var(--dsw-static-deepseek-500) 100%
-  );
-  background-position: 100% 0;
-  background-size: 250% 100%;
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: dsh-turn-status-shimmer 1.8s linear infinite;
+  min-width: 0;
+  gap: 6px;
+  margin-top: 4px;
+  height: calc(28px + var(--dsh-content-font-delta, 0px));
 }
 
-.turnStatusClock {
-  margin-left: 8px;
-  font: var(--dsw-font-xs-13);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
-  font-weight: 400;
+.runningText {
+  min-width: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-caption);
-  -webkit-text-fill-color: var(--dsw-alias-label-caption);
-}
-
-@keyframes dsh-turn-status-shimmer {
-  to {
-    background-position: 0 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .turnStatus {
-    background-position: 0 0;
-    background-size: 100% 100%;
-    animation: none;
-  }
 }
 
 .hint {
