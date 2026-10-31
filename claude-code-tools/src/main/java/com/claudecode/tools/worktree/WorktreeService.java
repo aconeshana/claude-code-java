@@ -578,10 +578,12 @@ public final class WorktreeService {
         if (StringUtils.isBlank(rawRelative)) return;
         String relative = rawRelative.trim();
         if (Strings.CS.endsWith(relative, "/") || containsPathTraversal(relative) || !matchesAnyPattern(patterns, relative)) return;
-        Path source = Path.of(repoRoot).resolve(relative).normalize();
-        Path destination = Path.of(worktreePath).resolve(relative).normalize();
-        if (!source.startsWith(Path.of(repoRoot).toAbsolutePath().normalize())
-                || !destination.startsWith(Path.of(worktreePath).toAbsolutePath().normalize())) return;
+        Path repoDir = Path.of(repoRoot);
+        Path worktreeDir = Path.of(worktreePath);
+        Path source = repoDir.resolve(relative).normalize();
+        Path destination = worktreeDir.resolve(relative).normalize();
+        if (!source.startsWith(repoDir.toAbsolutePath().normalize())
+                || !destination.startsWith(worktreeDir.toAbsolutePath().normalize())) return;
         try {
             if (!Files.isRegularFile(source)) return;
             Files.createDirectories(destination.getParent());

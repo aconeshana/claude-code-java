@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 class StringUtilsTest {
 
     @Test
+    void isWordCharAcceptsLettersDigitsAndUnderscoreOnly() {
+        assertTrue(StringUtils.isWordChar('a'));
+        assertTrue(StringUtils.isWordChar('Z'));
+        assertTrue(StringUtils.isWordChar('7'));
+        assertTrue(StringUtils.isWordChar('_'));
+        assertTrue(StringUtils.isWordChar('中'));
+        assertFalse(StringUtils.isWordChar(' '));
+        assertFalse(StringUtils.isWordChar('-'));
+        assertFalse(StringUtils.isWordChar('!'));
+    }
+
+    @Test
     void padEndPreservesWideStringsAndAddsOnlyMissingSpaces() {
         assertEquals("abc", StringUtils.padEnd("abc", 2));
         assertEquals("abc", StringUtils.padEnd("abc", 3));

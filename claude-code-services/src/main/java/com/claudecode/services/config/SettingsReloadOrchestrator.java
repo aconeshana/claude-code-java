@@ -26,7 +26,7 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
 
     private final PermissionGate permissionGate;
     private final HookEngine hookEngine;
-    private volatile Consumer<String> uiSink;
+    private final Consumer<String> uiSink;
     private volatile String cwd;
     private final boolean trustImplicitlyEstablished;
     private volatile SettingsHotReloader reloader;
@@ -113,16 +113,6 @@ public final class SettingsReloadOrchestrator implements AutoCloseable {
     /** Starts the underlying file watcher. Safe to call multiple times. */
     public void start() throws IOException {
         reloader.start();
-    }
-
-    /**
-     * Installs a UI sink after construction — used by the Lanterna wiring
-     * where the {@code LanternaReplScreen} is only ready after the
-     * orchestrator has already been built and started. Passing {@code null}
-     * clears the sink (falls back to log-only).
-     */
-    public void setUiSink(Consumer<String> sink) {
-        this.uiSink = sink;
     }
 
     /**

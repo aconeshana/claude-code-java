@@ -286,8 +286,7 @@ class DefaultSdkControlRuntimeTest {
                     tempDir.resolve("settings/project.json"),
                     tempDir.resolve("settings/local.json"),
                     tempDir.resolve("settings/policy.json")),
-                new InstalledPluginsStore(directories.installedPluginsFile()),
-                () -> "session-1"),
+                new InstalledPluginsStore(directories.installedPluginsFile())),
             tempDir.toString(), null, null, null, null);
         pluginRuntime.loadAndInject();
 

@@ -52,11 +52,6 @@ public enum PermissionMode {
     /** Full config bundle. */
     public Config config()     { return config; }
 
-    /** True if this is the implicit default mode (or null). matches {@code isDefaultMode}. */
-    public static boolean isDefault(PermissionMode mode) {
-        return mode == null || mode == DEFAULT;
-    }
-
     /**
      * Bridges to core's dependency-free plan-mode identity. Because
      * {@code core} cannot depend on this module, core's internal
@@ -81,7 +76,6 @@ public enum PermissionMode {
     public static PermissionMode fromString(String s) {
         if (s == null) return DEFAULT;
         return switch (s) {
-            case "default"           -> DEFAULT;
             case "plan"              -> PLAN;
             case "acceptEdits"       -> ACCEPT_EDITS;
             case "bypassPermissions" -> BYPASS_PERMISSIONS;

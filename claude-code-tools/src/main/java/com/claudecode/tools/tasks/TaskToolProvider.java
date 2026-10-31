@@ -24,7 +24,6 @@ public class TaskToolProvider implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TaskToolProvider.class);
 
-    private final TodoStore todoStore;
     private final TaskBoardService taskBoard;
     private final TaskBoardPort taskBoardView;
     private final TaskReminderSource taskReminderSource;
@@ -35,14 +34,12 @@ public class TaskToolProvider implements AutoCloseable {
     }
 
     public TaskToolProvider(TodoStore todoStore, Supplier<String> currentSessionId) {
-        this.todoStore = todoStore;
         this.taskBoard = new TaskBoardService(todoStore, currentSessionId);
         this.taskBoardView = borrowedTaskBoard(taskBoard);
         this.taskReminderSource = borrowedReminderSource(taskBoard);
     }
 
     public TaskToolProvider(TodoStore todoStore, SessionIdentity sessionIdentity) {
-        this.todoStore = todoStore;
         this.taskBoard = new TaskBoardService(todoStore, sessionIdentity);
         this.taskBoardView = borrowedTaskBoard(taskBoard);
         this.taskReminderSource = borrowedReminderSource(taskBoard);
@@ -52,7 +49,6 @@ public class TaskToolProvider implements AutoCloseable {
             TodoStore todoStore,
             Supplier<String> currentSessionId,
             BooleanSupplier taskToolsEnabled) {
-        this.todoStore = todoStore;
         this.taskBoard = new TaskBoardService(todoStore, currentSessionId, taskToolsEnabled);
         this.taskBoardView = borrowedTaskBoard(taskBoard);
         this.taskReminderSource = borrowedReminderSource(taskBoard);
@@ -80,10 +76,6 @@ public class TaskToolProvider implements AutoCloseable {
 
         initialized = true;
         LOG.info("Task tools initialized with TodoStore + shared TaskRegistry");
-    }
-
-    public TodoStore getTodoStore() {
-        return todoStore;
     }
 
     public TaskBoardPort taskBoard() {

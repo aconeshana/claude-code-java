@@ -40,31 +40,6 @@ public final class LanternaDraw {
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
     }
 
-    /**
-     * Bare (borderless) search line: {@code ⌕ query█} when focused, dim
-     * {@code ⌕ (type to search)} placeholder otherwise. Used by the raw
-     * {@code TextGUIGraphics} panels (ConfigPanel, PermissionRulesTab).
-     */
-    public static void searchBoxLine(TextGUIGraphics g, int rowY, int leftPad,
-                                     boolean focused, CharSequence query, int cursorOffset) {
-        g.setForegroundColor(focused ? LanternaTheme.suggestion() : LanternaTheme.ghostText());
-        if (focused) {
-            int co = Math.min(cursorOffset, query.length());
-            int column = leftPad;
-            g.setCharacter(column++, rowY, '⌕');
-            g.setCharacter(column++, rowY, ' ');
-            for (int index = 0; index < co; index++) {
-                g.setCharacter(column++, rowY, query.charAt(index));
-            }
-            g.setCharacter(column++, rowY, '█');
-            for (int index = co; index < query.length(); index++) {
-                g.setCharacter(column++, rowY, query.charAt(index));
-            }
-        } else {
-            g.putString(leftPad, rowY, "⌕ (type to search)");
-        }
-    }
-
     /** Top border of a round-bordered search box: {@code ╭─…─╮} of {@code width} columns. */
     public static String borderedSearchBoxTop(int width) {
         return "╭" + "─".repeat(Math.max(0, width - 2)) + "╮";
@@ -90,28 +65,5 @@ public final class LanternaDraw {
         }
         String inner = "│ ⌕ " + (query.isEmpty() ? "Search…" : query);
         return inner + " ".repeat(Math.max(0, width - inner.length() - 1)) + "│";
-    }
-
-
-
-    /**
-     * A selectable list row: {@code ❯ text} when selected (claude + input text,
-     * bold), {@code "  text"} otherwise (dim). Used by the generic list panels
-     * (WorkspaceTab, PermissionRulesTab).
-     */
-    public static void listItem(TextGUIGraphics g, int rowY, String text,
-                                boolean selected, int leftPad) {
-        if (selected) {
-            g.setForegroundColor(LanternaTheme.claude());
-            g.enableModifiers(SGR.BOLD);
-            g.putString(leftPad, rowY, "❯ ");
-        } else {
-            g.setForegroundColor(LanternaTheme.welcomeDim());
-            g.disableModifiers(SGR.BOLD);
-            g.putString(leftPad, rowY, "  ");
-        }
-        g.setForegroundColor(selected ? LanternaTheme.inputText() : LanternaTheme.welcomeDim());
-        g.putString(leftPad + 2, rowY, text);
-        g.disableModifiers(SGR.BOLD);
     }
 }

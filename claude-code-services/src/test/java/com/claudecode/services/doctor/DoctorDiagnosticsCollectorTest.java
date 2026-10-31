@@ -453,7 +453,7 @@ class DoctorDiagnosticsCollectorTest {
         settings.setEnabledPlugin("badplug@mkt", true, PluginScope.USER);
 
         var loaderErrors = new PluginRuntimeLoader(
-            dirs, settings, installedStore, () -> "sess").loadAll().errors();
+            dirs, settings, installedStore).loadAll().errors();
         assertFalse(loaderErrors.isEmpty());
 
         Path home = fakeHome(tmp);

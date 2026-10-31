@@ -55,7 +55,6 @@ final class PluginInstalledTab {
         CONFIRM_PROJECT_UNINSTALL, CONFIRM_DATA_CLEANUP }
 
     private sealed interface ListItem permits InstalledItem, FlaggedItem, FailedItem, McpItem {
-        String pluginId();
         String name();
         String marketplace();
         String description();

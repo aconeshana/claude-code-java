@@ -186,6 +186,10 @@ public abstract class SandboxManager {
     private static final List<String> BARE_GIT_FILES =
         List.of("HEAD", "objects", "refs", "hooks", "config");
 
+    private static final Path PROJECT_SETTINGS_REL = Path.of(".claude", "settings.json");
+    private static final Path LOCAL_SETTINGS_REL = Path.of(".claude", "settings.local.json");
+    private static final Path SKILLS_REL = Path.of(".claude", "skills");
+
     /**
      * Built-in writable paths always allowed: the Claude temp dir.
      */
@@ -202,8 +206,8 @@ public abstract class SandboxManager {
         // Settings files across tiers. The flag source is installed by the CLI
         // because tools intentionally cannot depend on the services module.
         paths.add(SettingsPathResolver.userSettingsPath().toString());
-        paths.add(orig.resolve(Path.of(".claude", "settings.json")).toString());
-        paths.add(orig.resolve(Path.of(".claude", "settings.local.json")).toString());
+        paths.add(orig.resolve(PROJECT_SETTINGS_REL).toString());
+        paths.add(orig.resolve(LOCAL_SETTINGS_REL).toString());
         Path policy = SettingsPathResolver.policySettingsPath();
         paths.add(policy.toString());
         Path policyParent = policy.getParent();
@@ -215,13 +219,13 @@ public abstract class SandboxManager {
         Path flag = flagSettingsPath;
         if (flag != null) paths.add(flag.toString());
         if (!cwd.equals(orig)) {
-            paths.add(cwd.resolve(Path.of(".claude", "settings.json")).toString());
-            paths.add(cwd.resolve(Path.of(".claude", "settings.local.json")).toString());
+            paths.add(cwd.resolve(PROJECT_SETTINGS_REL).toString());
+            paths.add(cwd.resolve(LOCAL_SETTINGS_REL).toString());
         }
         // .claude/skills (auto-discovered, full capabilities) needs OS-level denial.
-        paths.add(orig.resolve(Path.of(".claude", "skills")).toString());
+        paths.add(orig.resolve(SKILLS_REL).toString());
         if (!cwd.equals(orig)) {
-            paths.add(cwd.resolve(Path.of(".claude", "skills")).toString());
+            paths.add(cwd.resolve(SKILLS_REL).toString());
         }
         // Existing bare-repo files → deny; planted (non-existent) ones are scrubbed.
         for (Path base : (cwd.equals(orig) ? List.of(orig) : List.of(orig, cwd))) {

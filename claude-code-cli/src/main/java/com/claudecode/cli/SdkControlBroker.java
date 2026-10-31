@@ -1026,12 +1026,12 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         String type = ctx.decisionReasonType();
         if (type == null) return null;
         return switch (type) {
-            case "rule", "mode", "subcommandResults", "permissionPromptTool" -> null;
-
             // outside the BASH_CLASSIFIER/TRANSCRIPT_CLASSIFIER feature gate)
             // yields `undefined`, so we omit the field rather than sending detail.
             case "hook", "asyncAgent", "sandboxOverride", "workingDir", "safetyCheck", "other" ->
                 ctx.decisionReasonDetail();
+            // rule / mode / subcommandResults / permissionPromptTool are deliberately omitted,
+            // same as unknown types.
             default -> null;
         };
     }

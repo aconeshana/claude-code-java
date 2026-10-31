@@ -20,7 +20,6 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 public final class ImagePaste {
 
@@ -58,41 +57,6 @@ public final class ImagePaste {
             case OTHER  -> null;
         };
         return StringUtils.isEmpty(text) ? null : text;
-    }
-
-    // ── hasImageInClipboard ────────────────────────────────────────────────
-
-    /**
-     * Check if clipboard contains an image without retrieving it.
-     * Returns {@code false} on unsupported platforms.
-     */
-    public static boolean hasImageInClipboard() {
-        return switch (PLATFORM) {
-            case DARWIN -> hasImageDarwin();
-            case LINUX  -> hasImageLinux();
-            case WIN32  -> hasImageWin32();
-            case OTHER  -> false;
-        };
-    }
-
-    private static boolean hasImageDarwin() {
-        return run0("osascript", "-e", "the clipboard as «class PNGf»") == 0;
-    }
-
-    /** {@code xclip ... -t TARGETS -o | grep image/...} || {@code wl-paste -l | grep image/...}. */
-    private static boolean hasImageLinux() {
-        String out = runAndCapture("sh", "-c",
-            "xclip -selection clipboard -t TARGETS -o 2>/dev/null | grep -E \"image/(png|jpeg|jpg|gif|webp|bmp)\""
-            + " || wl-paste -l 2>/dev/null | grep -E \"image/(png|jpeg|jpg|gif|webp|bmp)\"");
-        return StringUtils.isNotEmpty(out);
-    }
-
-    private static boolean hasImageWin32() {
-        String out = runAndCapture(
-            "powershell", "-NoProfile", "-NonInteractive", "-Sta", "-Command",
-                "Add-Type -AssemblyName System.Windows.Forms; "
-                + "[System.Windows.Forms.Clipboard]::ContainsImage()");
-        return out != null && Strings.CI.equals(out.trim(), "true");
     }
 
     // ── getImageFromClipboard ──────────────────────────────────────────────
@@ -181,13 +145,6 @@ public final class ImagePaste {
     }
 
     /**
-     * Check if a given text represents an image file path.
-     */
-    public static boolean isImageFilePath(String text) {
-        return asImageFilePath(text) != null;
-    }
-
-    /**
      * Remove outer single/double quotes.
      */
     static String removeOuterQuotes(String text) {
@@ -237,11 +194,6 @@ public final class ImagePaste {
     /**
      * Detect image media type from magic bytes.
      */
-    static String detectMediaType(byte[] bytes) {
-        String detected = detectSupportedMediaType(bytes);
-        return detected != null ? detected : "image/png";
-    }
-
     private static String detectSupportedMediaType(byte[] bytes) {
         if (bytes.length >= 8 && bytes[0] == (byte) 0x89 && bytes[1] == 0x50
                 && bytes[2] == 0x4E && bytes[3] == 0x47) return "image/png";
@@ -290,10 +242,6 @@ public final class ImagePaste {
     }
 
     /** Run a command, return exit code, and terminate clipboard helpers that hang. */
-    private static int run0(String... cmd) {
-        return runWithTimeout(CLIPBOARD_PROCESS_TIMEOUT, cmd);
-    }
-
     static int runWithTimeout(Duration timeout, String... cmd) {
         try {
             Process process = new ProcessBuilder(cmd)

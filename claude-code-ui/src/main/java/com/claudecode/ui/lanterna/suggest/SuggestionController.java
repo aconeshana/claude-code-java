@@ -9,7 +9,6 @@ import com.claudecode.commands.Command;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.ui.lanterna.input.InputPanel;
-import com.claudecode.ui.lanterna.slash.SlashCommandDispatcher;
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.core.prompt.ArgumentSubstitutor;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
@@ -106,18 +105,16 @@ public final class SuggestionController implements AutoCloseable {
     public SuggestionController(WindowBasedTextGUI gui,
                                 InputPanel inputPanel,
                                 CommandRegistry commandRegistry,
-                                SlashCommandDispatcher slashDispatcher,
                                 FileSuggestionService fileSuggestionService,
                                 DirectorySuggestionService directorySuggestionService,
                                 int termWidth) {
-        this(gui, inputPanel, commandRegistry, slashDispatcher, fileSuggestionService,
+        this(gui, inputPanel, commandRegistry, fileSuggestionService,
             directorySuggestionService, termWidth, List::of);
     }
 
     public SuggestionController(WindowBasedTextGUI gui,
                                 InputPanel inputPanel,
                                 CommandRegistry commandRegistry,
-                                SlashCommandDispatcher slashDispatcher,
                                 FileSuggestionService fileSuggestionService,
                                 DirectorySuggestionService directorySuggestionService,
                                 int termWidth,

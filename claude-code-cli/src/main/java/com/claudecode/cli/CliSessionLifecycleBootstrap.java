@@ -229,7 +229,6 @@ final class CliSessionLifecycleBootstrap {
                 pluginDirs,
                 PluginSettingsStore.standard(workspace.cwd()),
                 new InstalledPluginsStore(pluginDirs.installedPluginsFile()),
-                () -> engine.conversation().getSessionId(),
                 toolchain.inlinePluginPaths(), toolchain.inlinePluginPathsWithoutMcp());
             CliPluginRuntime pluginRuntime = new CliPluginRuntime(pluginLoader, workspace.cwd(),
                 toolchain.skillToolProvider().getSkillLoader(), hookEngine,

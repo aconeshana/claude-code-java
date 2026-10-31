@@ -1,5 +1,7 @@
 package com.claudecode.core.attachment;
 
+import static com.claudecode.core.text.StringUtils.isWordChar;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -82,7 +84,7 @@ public final class UltracodeKeyword {
                 }
                 if (c != PAIRS.get(open)) continue;
                 // An apostrophe followed by a letter is a contraction, not a closing quote.
-                if (open == '\'' && isWordChar(text, i + 1)) continue;
+                if (open == '\'' && isWordCharAt(text, i + 1)) continue;
                 spans.add(new int[] {start, i + 1});
                 open = 0;
             } else if (opens(text, i, c)) {
@@ -96,7 +98,7 @@ public final class UltracodeKeyword {
     private static boolean opens(String text, int index, char c) {
         if (c == '<') return tagEnd(text, index) >= 0;
         // Only treat an apostrophe as an opening quote when it does not follow a word.
-        if (c == '\'') return !isWordChar(text, index - 1);
+        if (c == '\'') return !isWordCharAt(text, index - 1);
         return PAIRS.containsKey(c);
     }
 
@@ -177,10 +179,8 @@ public final class UltracodeKeyword {
         return Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == ':' || c == '.';
     }
 
-    private static boolean isWordChar(String text, int index) {
-        if (index < 0 || index >= text.length()) return false;
-        char c = text.charAt(index);
-        return Character.isLetterOrDigit(c) || c == '_';
+    private static boolean isWordCharAt(String text, int index) {
+        return index >= 0 && index < text.length() && isWordChar(text.charAt(index));
     }
 
     private static boolean isInside(List<int[]> spans, int index) {

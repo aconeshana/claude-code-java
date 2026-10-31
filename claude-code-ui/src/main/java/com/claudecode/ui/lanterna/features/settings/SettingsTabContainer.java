@@ -128,7 +128,7 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
 
 
     static int contentHeightForTerminalRows(int terminalRows) {
-        return Math.max(15, Math.min((int) Math.floor(terminalRows * 0.8), 30));
+        return Math.clamp((int) Math.floor(terminalRows * 0.8), 15, 30);
     }
 
     /**

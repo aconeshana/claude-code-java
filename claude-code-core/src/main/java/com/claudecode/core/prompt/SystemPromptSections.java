@@ -1,9 +1,9 @@
 package com.claudecode.core.prompt;
 
-import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Builders for individual system prompt sections.
@@ -471,30 +471,12 @@ public final class SystemPromptSections {
             taskToolName = TODO_WRITE_TOOL_NAME;
         }
 
-        List<String> providedToolSubitems = new ArrayList<>();
-        providedToolSubitems.add("To read files use " + FILE_READ_TOOL_NAME
-            + " instead of cat, head, tail, or sed");
-        providedToolSubitems.add("To edit files use " + FILE_EDIT_TOOL_NAME
-            + " instead of sed or awk");
-        providedToolSubitems.add("To create files use " + FILE_WRITE_TOOL_NAME
-            + " instead of cat with heredoc or echo redirection");
-        // hasEmbeddedSearchTools always false in Java — include Glob/Grep bullets.
-        providedToolSubitems.add("To search for files use " + GLOB_TOOL_NAME
-            + " instead of find or ls");
-        providedToolSubitems.add("To search the content of files, use " + GREP_TOOL_NAME
-            + " instead of grep or rg");
-        providedToolSubitems.add("Reserve using the " + BASH_TOOL_NAME + " exclusively "
-            + "for system commands and terminal operations that require shell execution. "
-            + "If you are unsure and there is a relevant dedicated tool, default to "
-            + "using the dedicated tool and only fallback on using the " + BASH_TOOL_NAME
-            + " tool for these if it is absolutely necessary.");
-
         List<Object> items = new ArrayList<>();
         items.add("Do NOT use the " + BASH_TOOL_NAME + " to run commands when a "
             + "relevant dedicated tool is provided. Using dedicated tools allows the "
             + "user to better understand and review your work. This is CRITICAL to "
             + "assisting the user:");
-        items.add(providedToolSubitems);
+        items.add(providedToolSubitems());
         if (taskToolName != null) {
             items.add("Break down and manage your work with the " + taskToolName
                 + " tool. These tools are helpful for planning your work and helping "
@@ -515,6 +497,26 @@ public final class SystemPromptSections {
         lines.add("# Using your tools");
         lines.addAll(prependBullets(items));
         return String.join("\n", lines);
+    }
+
+    private static List<String> providedToolSubitems() {
+        // hasEmbeddedSearchTools always false in Java — include Glob/Grep bullets.
+        return List.of(
+            "To read files use " + FILE_READ_TOOL_NAME
+                + " instead of cat, head, tail, or sed",
+            "To edit files use " + FILE_EDIT_TOOL_NAME
+                + " instead of sed or awk",
+            "To create files use " + FILE_WRITE_TOOL_NAME
+                + " instead of cat with heredoc or echo redirection",
+            "To search for files use " + GLOB_TOOL_NAME
+                + " instead of find or ls",
+            "To search the content of files, use " + GREP_TOOL_NAME
+                + " instead of grep or rg",
+            "Reserve using the " + BASH_TOOL_NAME + " exclusively "
+                + "for system commands and terminal operations that require shell execution. "
+                + "If you are unsure and there is a relevant dedicated tool, default to "
+                + "using the dedicated tool and only fallback on using the " + BASH_TOOL_NAME
+                + " tool for these if it is absolutely necessary.");
     }
 
 

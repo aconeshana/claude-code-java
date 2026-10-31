@@ -90,7 +90,7 @@ public class MarkdownRenderer {
     private static final Pattern MARKDOWN_SYNTAX_PATTERN = Pattern.compile(
         "[#*`|\\[>\\-_~]|\\n\\n|^\\d+\\. |\\n\\d+\\. ");
     private static final Pattern BARE_URL_PATTERN = Pattern.compile(
-        "(?:https?://|www\\.)[^\\s\\\"'<>\\\\…\\x00-\\x1f]+");
+        "(?:https?://|www\\.)[^\\s\"'<>\\\\…\\x00-\\x1f]+");
     private static final Pattern ISSUE_REF_PATTERN = Pattern.compile(
         "(^|[^\\w./-])([A-Za-z0-9][\\w-]*/[A-Za-z0-9][\\w.-]*)#(\\d+)\\b");
     private static final Pattern FOREGROUND_SGR_PATTERN = Pattern.compile(
@@ -629,7 +629,6 @@ public class MarkdownRenderer {
 
         private String getListNumber(int depth, int n) {
             return switch (depth) {
-                case 0, 1 -> String.valueOf(n);
                 case 2    -> numberToLetter(n);
                 case 3    -> numberToRoman(n);
                 default   -> String.valueOf(n);

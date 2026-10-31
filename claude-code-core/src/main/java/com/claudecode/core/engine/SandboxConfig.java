@@ -117,7 +117,7 @@ public record SandboxConfig(
     // ── nested network config ────────────────────────────────────────────────
 
     /** matches {@code SandboxSettingsSchema.network}. */
-    public static record SandboxNetworkConfig(
+    public record SandboxNetworkConfig(
         List<String> allowedDomains,
         List<String> deniedDomains,
         List<String> allowUnixSockets,
@@ -154,7 +154,7 @@ public record SandboxConfig(
     // ── nested filesystem config ─────────────────────────────────────────────
 
     /** matches {@code SandboxSettingsSchema.filesystem}. */
-    public static record SandboxFilesystemConfig(
+    public record SandboxFilesystemConfig(
         List<String> allowWrite,
         List<String> denyWrite,
         List<String> denyRead,
@@ -178,7 +178,7 @@ public record SandboxConfig(
     // ── nested ripgrep config ──────────────────────────────────────────────────
 
     /** matches {@code SandboxSettingsSchema.ripgrep} (command is required when present). */
-    public static record SandboxRipgrepConfig(String command, List<String> args) {
+    public record SandboxRipgrepConfig(String command, List<String> args) {
         public static SandboxRipgrepConfig fromJson(JsonNode n) {
             if (n == null || !n.isObject()) return null;
             String cmd = n.path("command").asText(null);

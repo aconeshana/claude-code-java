@@ -539,7 +539,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
      * @return the number of rows moved, or {@code 0} when the request was a no-op
      */
     int moveLines(int start, int count, int target) {
-        if (count <= 0 || start < 0 || target < 0 || target >= start) return 0;
+        if (count <= 0 || target < 0 || target >= start) return 0;
         lock.writeLock().lock();
         try {
             if (start + count > lines.size()) return 0;
@@ -778,7 +778,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
      * Register a collapsed logical message together with the real rows displayed when expanded.
      * The collapsed rows are captured from the panel's current inclusive line range.
      */
-    public LogicalMessage registerExpandableLogicalMessage(
+    public void registerExpandableLogicalMessage(
             String id,
             LogicalMessageKind kind,
             int startLine,
@@ -787,7 +787,7 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
             List<StyledLine> expandedLines) {
         LogicalMessage message = registerLogicalMessage(id, kind, startLine, endLine,
             copyText, null, null, null, true);
-        if (message == null || expandedLines == null || expandedLines.isEmpty()) return message;
+        if (message == null || expandedLines == null || expandedLines.isEmpty()) return;
         lock.writeLock().lock();
         try {
             List<StyledLine> collapsed = List.copyOf(
@@ -796,7 +796,6 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         } finally {
             lock.writeLock().unlock();
         }
-        return message;
     }
 
     /**
@@ -1794,8 +1793,8 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
         List<StyledLine> detachedAnchor = detachedHistoryTopAnchorRows(width, startDisplayRow);
         int anchorRowCount = Math.min(detachedAnchor.size(), safeHeight);
         int transcriptCapacity = Math.max(0, safeHeight - anchorRowCount);
-        int transcriptRowCount = Math.min(transcriptCapacity,
-            Math.max(0, displayRows.size() - startDisplayRow));
+        int transcriptRowCount = Math.clamp(
+            displayRows.size() - startDisplayRow, 0, transcriptCapacity);
 
         List<StyledLine> viewportRows = new ArrayList<>(anchorRowCount + transcriptRowCount);
         viewportRows.addAll(detachedAnchor.subList(0, anchorRowCount));

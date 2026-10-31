@@ -47,7 +47,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
@@ -105,28 +104,10 @@ public final class PluginRuntimeLoader {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    /** Compatibility shape; session IDs are now resolved at command invocation time. */
+    /** Session-only {@code --plugin-dir} shape. */
     public PluginRuntimeLoader(PluginDirectories directories,
                                PluginSettingsStore settings,
                                InstalledPluginsStore installedStore,
-                               Supplier<String> sessionIdSupplier) {
-        this(directories, settings, installedStore);
-    }
-
-    /** Testable full shape; session IDs are resolved at command invocation time. */
-    public PluginRuntimeLoader(PluginDirectories directories,
-                               PluginSettingsStore settings,
-                               InstalledPluginsStore installedStore,
-                               Supplier<String> sessionIdSupplier,
-                               SecureStorage secureStorage) {
-        this(directories, settings, installedStore, secureStorage);
-    }
-
-    /** Session-only {@code --plugin-dir} shape; session IDs remain invocation-time values. */
-    public PluginRuntimeLoader(PluginDirectories directories,
-                               PluginSettingsStore settings,
-                               InstalledPluginsStore installedStore,
-                               Supplier<String> sessionIdSupplier,
                                List<Path> inlinePluginDirs) {
         this(directories, settings, installedStore,
             SecureStorageFactory.getInstance(), inlinePluginDirs, List.of());
@@ -136,21 +117,10 @@ public final class PluginRuntimeLoader {
     public PluginRuntimeLoader(PluginDirectories directories,
                                PluginSettingsStore settings,
                                InstalledPluginsStore installedStore,
-                               Supplier<String> sessionIdSupplier,
                                List<Path> inlinePluginDirs,
                                List<Path> inlinePluginDirsWithoutMcp) {
         this(directories, settings, installedStore,
             SecureStorageFactory.getInstance(), inlinePluginDirs, inlinePluginDirsWithoutMcp);
-    }
-
-    /** Fully testable session-only plugin shape. */
-    public PluginRuntimeLoader(PluginDirectories directories,
-                               PluginSettingsStore settings,
-                               InstalledPluginsStore installedStore,
-                               Supplier<String> sessionIdSupplier,
-                               SecureStorage secureStorage,
-                               List<Path> inlinePluginDirs) {
-        this(directories, settings, installedStore, secureStorage, inlinePluginDirs, List.of());
     }
 
     /** Loads all components of every enabled plugin. Never throws. */

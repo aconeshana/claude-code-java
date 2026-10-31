@@ -164,15 +164,6 @@ final class PdfUtils {
         return result.exitCode() == 0 || !result.stderr().isEmpty();
     }
 
-    /** Resets the production availability cache for tests that exercise PATH. */
-    static void resetPopplerCache() {
-        pdftoppmAvailable = null;
-    }
-
-    static Integer getPDFPageCount(Path pdf) {
-        return getPDFPageCount(pdf, DEFAULT_COMMAND_RUNNER);
-    }
-
     static Integer getPDFPageCount(Path pdf, CommandRunner runner) {
         ProcessResult result = runner.run(
             List.of("pdfinfo", pdf.toAbsolutePath().toString()), null, PDFINFO_TIMEOUT);
@@ -186,12 +177,6 @@ final class PdfUtils {
             }
         }
         return null;
-    }
-
-    static PdfResult<ExtractedPages> extractPages(
-            Path pdf, String displayPath, Integer first, Integer last, Path toolResultsDir) {
-        return extractPages(pdf, displayPath, first, last, toolResultsDir,
-            DEFAULT_COMMAND_RUNNER);
     }
 
     /**

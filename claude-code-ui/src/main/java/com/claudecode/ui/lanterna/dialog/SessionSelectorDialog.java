@@ -1,5 +1,7 @@
 package com.claudecode.ui.lanterna.dialog;
 
+import static com.claudecode.core.text.StringUtils.isWordChar;
+
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.RetractedMessages;
@@ -140,7 +142,6 @@ public class SessionSelectorDialog extends BasicWindow {
 
     private final Panel previewLoadingRoot;
     private final MessagePanel previewTranscript = new MessagePanel();
-    private final LanternaMessageDispatcher previewDispatcher = new LanternaMessageDispatcher();
     private final MessageCollapser previewCollapser;
     private final Label previewDivider;
     private final Label previewMetaLabel;
@@ -265,6 +266,7 @@ public class SessionSelectorDialog extends BasicWindow {
         // ── Preview trees ────────────────────────────────────────────────────.
 
         // ternary between the loading column and the transcript + footer column.
+        LanternaMessageDispatcher previewDispatcher = new LanternaMessageDispatcher();
         previewDispatcher.setVerbose(true);
         previewCollapser = new MessageCollapser(previewDispatcher, true);
         previewCollapser.setShowAll(true);
@@ -597,7 +599,7 @@ public class SessionSelectorDialog extends BasicWindow {
             if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
             if (selectedIndex >= scrollOffset + visibleCount)
                 scrollOffset = selectedIndex - visibleCount + 1;
-            scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, flatList.size() - visibleCount)));
+            scrollOffset = Math.clamp(scrollOffset, 0, Math.max(0, flatList.size() - visibleCount));
 
             for (int i = 0; i < visibleCount; i++) {
                 int ei = scrollOffset + i;
@@ -811,7 +813,7 @@ public class SessionSelectorDialog extends BasicWindow {
         deleteFailure = null;
         viewMode = ViewMode.LIST;
         rebuildEntries();
-        selectedIndex = Math.min(selectedIndex, Math.max(0, flatList.size() - 1));
+        selectedIndex = Math.clamp(selectedIndex, 0, Math.max(0, flatList.size() - 1));
         scrollOffset = Math.min(scrollOffset, selectedIndex);
         refreshDisplay();
     }
@@ -1753,9 +1755,8 @@ public class SessionSelectorDialog extends BasicWindow {
         allProjectsLoadFuture = CompletableFuture.supplyAsync(() -> {
             List<InteractiveSessionPort.SessionEntry> loaded = activeListing != null
                 ? activeListing.loadMore(progressiveInitialLoad) : allProjectsLoader.get();
-            List<InteractiveSessionPort.SessionEntry> snapshot =
-                loaded != null ? List.copyOf(loaded) : List.of();
-            return snapshot;
+            return loaded != null ? List.copyOf(loaded)
+                : List.<InteractiveSessionPort.SessionEntry>of();
         }).whenComplete((loaded, failure) -> guiInvoker.accept(() -> {
             if (generation != allProjectsLoadGeneration) return;
             allProjectsLoadInFlight = false;
@@ -1839,10 +1840,6 @@ public class SessionSelectorDialog extends BasicWindow {
             boundary = next;
         }
         return boundary;
-    }
-
-    private static boolean isWordChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
     }
 
 

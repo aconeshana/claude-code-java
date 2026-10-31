@@ -62,7 +62,7 @@ class CliPluginRuntimeTest {
             tmp.resolve("settings/policy.json"));
         InstalledPluginsStore store = new InstalledPluginsStore(dirs.installedPluginsFile());
         PluginRuntimeLoader loader =
-            new PluginRuntimeLoader(dirs, settings, store, () -> "s-1");
+            new PluginRuntimeLoader(dirs, settings, store);
 
         Path root = tmp.resolve("cache/demo");
         pluginRoot = root;

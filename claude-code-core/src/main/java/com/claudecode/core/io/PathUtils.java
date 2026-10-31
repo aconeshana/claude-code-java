@@ -3,7 +3,6 @@ package com.claudecode.core.io;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.Locale;
@@ -146,26 +145,9 @@ public final class PathUtils {
             : absolutePath.toString();
     }
 
-    /**
-     * Returns a directory itself when it exists as one, otherwise its parent. UNC paths are
-     * never probed because probing them on Windows may trigger an NTLM credential request.
-     */
-    public static Path directoryForPath(String path, String cwd) {
-        Path absolutePath = expandPath(path, cwd);
-        String normalized = absolutePath.toString();
-        if (Strings.CS.startsWith(normalized, "\\\\") || Strings.CS.startsWith(normalized, "//")) {
-            return parentOrSelf(absolutePath);
-        }
-        return Files.isDirectory(absolutePath) ? absolutePath : parentOrSelf(absolutePath);
-    }
-
     /** Returns whether a path contains a lexical {@code ..} traversal segment. */
     public static boolean containsPathTraversal(String path) {
         return path != null && path.matches(".*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$).*");
-    }
-
-    private static Path parentOrSelf(Path path) {
-        return path.getParent() == null ? path : path.getParent();
     }
 
     private static Path normalizeNfc(Path p) {

@@ -306,15 +306,6 @@ public class McpToolProvider implements ManagedMcpRuntime, WaitForMcpServersTool
     }
 
     /**
-     * Returns the underlying MCP client manager so UI components (e.g. the
-     * {@code /mcp} dialog) can drive reconnect + tool discovery without
-     * spinning up a second instance.
-     */
-    McpClientManager clientManager() {
-        return clientManager;
-    }
-
-    /**
      * Returns the non-owning client operations view for session consumers.
      * Connection-manager shutdown remains this provider's responsibility.
      */
@@ -904,13 +895,6 @@ public class McpToolProvider implements ManagedMcpRuntime, WaitForMcpServersTool
             .flatMap(entry -> entry.getValue().stream())
             .map(McpPromptInfo::commandName)
             .toList();
-    }
-
-    /**
-     * Returns the client manager for direct access if needed.
-     */
-    McpClientManager getClientManager() {
-        return clientManager;
     }
 
     /**

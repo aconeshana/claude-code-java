@@ -40,7 +40,7 @@ class SuggestionControllerTest {
     private static SuggestionController controllerWithClear() {
         CommandRegistry registry = new CommandRegistry();
         registry.register(new ClearCommand());
-        return new SuggestionController(null, null, registry, null, null, null, 80);
+        return new SuggestionController(null, null, registry, null, null, 80);
     }
 
     @Test
@@ -78,7 +78,7 @@ class SuggestionControllerTest {
         CommandRegistry registry = new CommandRegistry();
         registry.register(new ClearCommand());   // aliases: reset, new
         registry.register(new ResumeCommand());  // name: resume
-        SuggestionController controller = new SuggestionController(null, null, registry, null, null, null, 80);
+        SuggestionController controller = new SuggestionController(null, null, registry, null, null, 80);
 
         // "res" prefix-matches /resume's own name AND /clear's "reset" alias.
         // /resume must rank first — a command's direct name-prefix match
@@ -106,7 +106,7 @@ class SuggestionControllerTest {
             });
         }
         SuggestionController controller = new SuggestionController(
-            null, null, registry, null, null, null, 80);
+            null, null, registry, null, null, 80);
 
         assertEquals(12, controller.buildCommandSuggestions("").size());
         assertEquals(12, controller.buildCommandSuggestions("test-command").size());
@@ -166,7 +166,7 @@ class SuggestionControllerTest {
         CountDownLatch supplierStarted = new CountDownLatch(1);
         CountDownLatch releaseSupplier = new CountDownLatch(1);
         SuggestionController controller = new SuggestionController(
-            immediateGui(), input, registry, null, null, null, 80, () -> {
+            immediateGui(), input, registry, null, null, 80, () -> {
                 supplierStarted.countDown();
                 try {
                     releaseSupplier.await(5, TimeUnit.SECONDS);
@@ -203,7 +203,7 @@ class SuggestionControllerTest {
         });
         CapturingInputPanel input = new CapturingInputPanel();
         SuggestionController controller = new SuggestionController(
-            immediateGui(), input, registry, null, null, null, 80,
+            immediateGui(), input, registry, null, null, 80,
             () -> List.of(new Skill("loop", "Run repeatedly", List.of(), "body",
                 null, SkillSource.BUNDLED, null, null, null,
                 Map.of("commandProjection", true))));
@@ -236,7 +236,7 @@ class SuggestionControllerTest {
             }
         });
         SuggestionController controller = new SuggestionController(
-            null, null, registry, null, null, null, 80);
+            null, null, registry, null, null, 80);
 
         SuggestionPanel.Suggestion loop = controller.buildCommandSuggestions("loop")
             .stream().filter(item -> Strings.CS.equals("/loop", item.primary()))
@@ -254,7 +254,7 @@ class SuggestionControllerTest {
         WindowBasedTextGUI gui = immediateGui();
         FileSuggestionService files = new FileSuggestionService(gui, input);
         SuggestionController controller = new SuggestionController(
-            gui, input, registry, null, files, null, 80);
+            gui, input, registry, files, null, 80);
 
         controller.onQueryChange("@settings", 9);
 
@@ -277,7 +277,7 @@ class SuggestionControllerTest {
         WindowBasedTextGUI gui = immediateGui();
         FileSuggestionService files = new FileSuggestionService(gui, input);
         SuggestionController controller = new SuggestionController(
-            gui, input, registry, null, files, null, 80);
+            gui, input, registry, files, null, 80);
 
         controller.onQueryChange("@pom", 4);
         controller.onQueryChange("", 0);
@@ -340,7 +340,7 @@ class SuggestionControllerTest {
         CapturingInputPanel input = new CapturingInputPanel();
         FileSuggestionService files = new FileSuggestionService(immediateGui(), input);
         SuggestionController controller = new SuggestionController(
-            immediateGui(), input, registry, null, files, null, 80);
+            immediateGui(), input, registry, files, null, 80);
         long before = files.currentGen();
 
         controller.onQueryChange("ordinary text", "ordinary text".length());
@@ -395,7 +395,7 @@ class SuggestionControllerTest {
         CountDownLatch metadataStarted = new CountDownLatch(1);
         CountDownLatch releaseMetadata = new CountDownLatch(1);
         SuggestionController controller = new SuggestionController(
-            immediateGui(), input, registry, null, null, null, 80, () -> {
+            immediateGui(), input, registry, null, null, 80, () -> {
                 metadataStarted.countDown();
                 try {
                     releaseMetadata.await(5, TimeUnit.SECONDS);
@@ -434,7 +434,7 @@ class SuggestionControllerTest {
         WindowBasedTextGUI gui = immediateGui();
         FileSuggestionService files = new FileSuggestionService(gui, input);
         SuggestionController controller = new SuggestionController(
-            gui, input, registry, null, files, new DirectorySuggestionService(), 80);
+            gui, input, registry, files, new DirectorySuggestionService(), 80);
         String query = "imgcat " + tempDir.resolve("Down");
         input.setRestoredText("!" + query);
 
@@ -455,7 +455,7 @@ class SuggestionControllerTest {
     private static SuggestionController controller(
             CommandRegistry registry, CapturingInputPanel input) {
         return new SuggestionController(immediateGui(), input, registry,
-            null, null, null, 80);
+            null, null, 80);
     }
 
     private static WindowBasedTextGUI immediateGui() {

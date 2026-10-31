@@ -59,11 +59,6 @@ public final class TeamTaskListRegistry {
         }
     }
 
-    /** Removes the session's team task-list binding without deleting the store. */
-    public void unbindSession(String sessionId) {
-        if (sessionId != null) sessionTeams.remove(sessionId);
-    }
-
     /** Resolves the store selected by the current session, or the injected fallback. */
     public TodoStore resolveForSession(String sessionId, TodoStore fallback) {
         String teamId = sessionId == null ? null : sessionTeams.get(sessionId);

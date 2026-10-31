@@ -129,20 +129,6 @@ public final class TeammateMailbox {
         }
     }
 
-    /**
-     * Number of inboxes a {@link #broadcast} from {@code sender} would actually reach — every
-     * registered inbox except the sender's own.
-     */
-    public int broadcastRecipientCount(String sender) {
-        int count = 0;
-        for (String key : boxes.keySet()) {
-            if (!key.equals(sender)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
     /** Snapshot of recipients a broadcast from {@code sender} reaches. */
     public List<String> broadcastRecipients(String sender) {
         return boxes.keySet().stream()

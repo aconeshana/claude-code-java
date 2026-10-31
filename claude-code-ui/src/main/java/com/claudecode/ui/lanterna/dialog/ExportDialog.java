@@ -54,9 +54,6 @@ public final class ExportDialog extends Panel implements InlineOverlay {
     enum State { PICKER, FILENAME }
     enum Option { CLIPBOARD, FILE }
 
-    private final Picker picker;
-    private final FilenameRow filenameRow;
-
     private boolean active;
     private State state;
     private Option focused;
@@ -88,8 +85,8 @@ public final class ExportDialog extends Panel implements InlineOverlay {
 
     public ExportDialog() {
         super(new LinearLayout(Direction.VERTICAL).setSpacing(0));
-        this.picker = new Picker();
-        this.filenameRow = new FilenameRow();
+        Picker picker = new Picker();
+        FilenameRow filenameRow = new FilenameRow();
         picker.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
         filenameRow.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.FILL));
         addComponent(picker);

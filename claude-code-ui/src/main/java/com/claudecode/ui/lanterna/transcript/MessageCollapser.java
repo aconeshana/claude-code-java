@@ -558,8 +558,7 @@ public class MessageCollapser {
     private String thinkingDurationText(boolean active) {
         long total = thoughtForMs;
         if (active && lastThinkingAtMs > 0) {
-            total += Math.min(MAX_THINKING_SPAN_MS,
-                Math.max(0, clock.getAsLong() - lastThinkingAtMs));
+            total += Math.clamp(clock.getAsLong() - lastThinkingAtMs, 0, MAX_THINKING_SPAN_MS);
         }
         return FormatUtils.formatDuration(Math.max(1000, total));
     }

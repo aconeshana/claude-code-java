@@ -518,9 +518,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
               if (Strings.CS.equals(o, "|") || Strings.CS.equals(o, ";") || Strings.CS.equals(o, "&&") || Strings.CS.equals(o, "||")) {
                     if (afterSep && !rest.isEmpty()) rest.append(' ');
                     afterSep = true;
-                    continue;
                 }
-                continue;
             } else if (t instanceof ShellQuoteParse.Word(String value)) {
                 if (afterSep) {
                     if (!rest.isEmpty()) rest.append(' ');

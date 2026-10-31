@@ -29,11 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import com.claudecode.tools.tasks.TeamMemSecretGuard;
 import com.claudecode.tools.AnnotatedTool;
 import com.claudecode.tools.BuiltInTool;
@@ -75,9 +72,6 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
 
 
     // the team-memory directory is gated, and that lives in TeamMemSecretGuard).
-
-    // Task 57.7d: File history tracking
-    private static final Map<String, FileHistoryEntry> FILE_HISTORY = new ConcurrentHashMap<>();
 
     // Task 57.7e: Encoding BOMs
     private final DynamicSkillDiscovery dynamicSkillDiscovery;
@@ -236,20 +230,12 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             FILE_READ_CACHE.invalidate(path);
 
-            // Task 57.7d: Track file history
-            trackFileHistory(absolutePath, content, toWrite);
-
             // Task 57.7b: Register the post-edit content/mtime as "read" — store
             // the on-disk (CRLF-restored) content so a later staleness compare
             // matches (FileReadTool reads raw, un-normalized bytes).
             context.fileStateCache().set(absolutePath, new FileStateCache.FileState(
                 toWrite, FileUtils.modificationTimeMillis(path), null, null, false));
 
-
-
-            long oldLines = content.lines().count();
-            long newLines = newContent.lines().count();
-            long diffLines = newLines - oldLines;
             String resultText = replaceAll
                 ? "The file " + filePath + " has been updated. All occurrences were successfully replaced."
                 : "The file " + filePath + " has been updated successfully.";
@@ -279,7 +265,7 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
                 "No changes to make: old_string and new_string are exactly the same.");
         }
         if (oldValue.isEmpty()) {
-            if (!source.isBlank()) {
+            if (!StringUtils.isBlank(source)) {
                 return EditPreview.error(source, "Cannot create new file - file already exists.");
             }
             return EditPreview.success(oldValue, newValue, newValue,
@@ -475,16 +461,6 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
     }
 
     /**
-     * Task 57.7d: Track file edit history.
-     */
-    private void trackFileHistory(String absolutePath, String oldContent, String newContent) {
-        long oldLines = oldContent.lines().count();
-        long newLines = newContent.lines().count();
-        FILE_HISTORY.put(absolutePath, new FileHistoryEntry(
-            absolutePath, Instant.now(), oldLines, newLines, newContent.length()));
-    }
-
-    /**
      * Task 57.7f: Check if file is a Jupyter notebook.
      */
     private boolean isNotebookFile(Path path) {
@@ -508,31 +484,6 @@ public class FileEditTool extends AnnotatedTool<JsonNode, Object> {
         }
         return count;
     }
-
-    /**
-     * Task 57.7d: Get file history entry.
-     */
-    public static FileHistoryEntry getFileHistory(String absolutePath) {
-        return FILE_HISTORY.get(absolutePath);
-    }
-
-    /**
-     * Clear file history (for testing).
-     */
-    public static void clearFileHistory() {
-        FILE_HISTORY.clear();
-    }
-
-    /**
-     * Task 57.7d: File history entry record.
-     */
-    public record FileHistoryEntry(
-        String path,
-        Instant editTime,
-        long oldLineCount,
-        long newLineCount,
-        long byteSize
-    ) {}
 
     private static JsonNode buildSchema() {
         ObjectNode schema = mapper().createObjectNode();

@@ -1,5 +1,7 @@
 package com.claudecode.ui.lanterna.transcript;
 
+import static com.claudecode.core.text.StringUtils.isWordChar;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -448,10 +450,5 @@ public final class Selection {
         if (charIdx <= 0) return 0;
         if (charIdx >= s.length()) return TerminalTextUtils.getColumnWidth(s);
         return TerminalTextUtils.getColumnIndex(s, charIdx);
-    }
-
-    /** Vim-style word char: letter / digit / underscore. */
-    private static boolean isWordChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
     }
 }

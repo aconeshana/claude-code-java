@@ -7,11 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Default {@link MicrocompactStrategy}: the time-based microcompact trigger, Implements the
@@ -76,7 +72,7 @@ final class DefaultMicrocompactStrategy implements MicrocompactStrategy {
                 Object toolUseResult, MessageOrigin origin, String parentUuidValue,
                 Instant timestampValue, List<Integer> imagePasteIds, String permissionMode,
                 String sessionIdValue, String sourceToolAssistantUUID, String sourceToolUseID,
-                Boolean isVirtual, java.util.Map<String, Object> mcpMeta,
+                Boolean isVirtual, Map<String, Object> mcpMeta,
                 Boolean isVisibleInTranscriptOnly, String planContent,
                 SummarizeMetadata summarizeMetadata
             )) || message == null || message.blocks() == null) {

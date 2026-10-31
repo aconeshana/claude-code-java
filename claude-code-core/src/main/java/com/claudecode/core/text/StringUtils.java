@@ -13,6 +13,11 @@ public final class StringUtils {
         // static-only utility
     }
 
+    /** Vim-style word character: letter, digit or underscore. */
+    public static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
+    }
+
     /**
      * Returns the singular or plural form of {@code word} based on {@code n}.
      */

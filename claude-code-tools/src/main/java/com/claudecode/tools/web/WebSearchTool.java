@@ -61,7 +61,7 @@ public class WebSearchTool extends AnnotatedTool<JsonNode, String> {
         "(?m)(The current month is )[^.]+(?=\\. You MUST use this year)");
     /** Extracts a complete query from streamed server-tool input JSON. */
     private static final Pattern STREAMED_QUERY = Pattern.compile(
-        "\\\"query\\\"\\s*:\\s*\\\"((?:[^\\\"\\\\]|\\\\.)*)\\\"");
+        "\"query\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final DateTimeFormatter MONTH_YEAR_FORMAT =
         DateTimeFormatter.ofPattern("MMMM uuuu", Locale.US);
 

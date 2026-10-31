@@ -4,7 +4,8 @@ import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VimStateMachineTest {
 
@@ -300,9 +301,6 @@ class VimStateMachineTest {
         assertEquals(0, VimStateMachine.prevWordStart("hello world", 6));
         assertEquals(4, VimStateMachine.wordEnd("hello", 0));
         assertEquals(4, VimStateMachine.wordEnd("a !!!", 0));
-        assertTrue(VimStateMachine.isWordChar('a'));
-        assertTrue(VimStateMachine.isWordChar('_'));
-        assertFalse(VimStateMachine.isWordChar(' '));
     }
 
     // ---- Text object (i/a) end-to-end via the WAITING_FOR_CHAR handshake ----

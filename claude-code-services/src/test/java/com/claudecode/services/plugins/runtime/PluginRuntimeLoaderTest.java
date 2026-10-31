@@ -67,7 +67,7 @@ class PluginRuntimeLoaderTest {
             tmp.resolve("settings/local.json"),
             tmp.resolve("settings/policy.json"));
         installedStore = new InstalledPluginsStore(dirs.installedPluginsFile());
-        loader = new PluginRuntimeLoader(dirs, settings, installedStore, () -> "sess-42");
+        loader = new PluginRuntimeLoader(dirs, settings, installedStore);
     }
 
     // ── fixture helpers ──────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ class PluginRuntimeLoaderTest {
             """);
 
         PluginRuntimeLoader inlineLoader = new PluginRuntimeLoader(
-            dirs, settings, installedStore, () -> "sess-42", List.of(root));
+            dirs, settings, installedStore, List.of(root));
         PluginRuntimeSnapshot snapshot = inlineLoader.loadAll();
 
         assertEquals(1, snapshot.enabledCount());
@@ -196,7 +196,7 @@ class PluginRuntimeLoaderTest {
         write(root.resolve("commands/ping.md"), "Ping");
 
         PluginRuntimeLoader inlineLoader = new PluginRuntimeLoader(
-            dirs, settings, installedStore, () -> "sess-42", List.of(root), List.of(root));
+            dirs, settings, installedStore, List.of(root), List.of(root));
         PluginRuntimeSnapshot snapshot = inlineLoader.loadAll();
 
         assertTrue(command(snapshot, "no-mcp:ping").isPresent());
@@ -317,7 +317,7 @@ class PluginRuntimeLoaderTest {
             @Override public Optional<String> update(SecureStorageData ignored) { return Optional.empty(); }
             @Override public boolean delete() { return true; }
         };
-        loader = new PluginRuntimeLoader(dirs, settings, installedStore, () -> "sess-42", storage);
+        loader = new PluginRuntimeLoader(dirs, settings, installedStore, storage);
         write(root.resolve("commands/call.md"), "Token: ${user_config.token}");
 
         PluginRuntimeSnapshot snapshot = loader.loadAll();

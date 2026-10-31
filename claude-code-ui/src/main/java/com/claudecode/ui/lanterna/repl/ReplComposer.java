@@ -127,7 +127,6 @@ final class ReplComposer {
     // Late-bound: created partway through compose(), read lazily by earlier lambdas.
     private TurnEngine turnEngine;
     private ReplSubmissionCoordinator submission;
-    private BashModeExecutor bashMode;
     private TranscriptController transcriptController;
     private StatusLineController statusLine;
     private CronScheduler cronScheduler;
@@ -288,7 +287,7 @@ final class ReplComposer {
         CompactProgressPresenter compactProgress = new CompactProgressPresenter(spinnerComponent);
         ImmediateCommandUiAdapter immediateAdapter =
             new ImmediateCommandUiAdapter(inputPanel, messagePanel, guiInvoker);
-        bashMode = new BashModeExecutor(gui, messagePanel, queryEngine, interactiveSessions,
+        BashModeExecutor bashMode = new BashModeExecutor(gui, messagePanel, queryEngine, interactiveSessions,
             interactionCoordinator,
             (image, onClose) -> ItermImagePreviewWindow.show(gui, image, onClose));
         // See FileSuggestionService for cache, throttling, git-index mtime, and stale-VT gen
@@ -579,7 +578,7 @@ final class ReplComposer {
 
         // Live query → slash-command + @-file/dir typeahead.
         SuggestionController suggestion = new SuggestionController(
-            gui, inputPanel, ctx.commandRegistry(), slashDispatcher,
+            gui, inputPanel, ctx.commandRegistry(),
             fileSuggestionService, ctx.directorySuggestions(),
             ctx.terminalColumns().getAsInt(), skills);
 

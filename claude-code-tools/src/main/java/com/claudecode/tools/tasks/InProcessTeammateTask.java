@@ -779,29 +779,6 @@ public class InProcessTeammateTask {
     }
 
     /**
-     * Asks the leader to approve a plan the teammate wants to act on.
-     */
-    public PlanApproval requestPlanApproval(String planSummary) {
-        String requestId = Mail.newRequestId();
-        CompletableFuture<PlanApproval> f = new CompletableFuture<>();
-        pendingApprovals.put(requestId, f);
-        // Carry the real requestId for correlation (Mail.of blanks it).
-        mailbox.send(new Mail(MailTypes.PLAN_APPROVAL_REQUEST, requestId, getTaskId(), TeammateMailbox.TEAM_LEAD, planSummary));
-        try {
-            return f.join();
-        } catch (CancellationException _) {
-            return new PlanApproval(false, "cancelled", null);
-        }
-    }
-
-    /**
-     * Sends a plan approval request without blocking the tool call.
-     */
-    public String submitPlanApprovalRequest(String planSummary) {
-        return submitPlanApprovalRequest(planSummary, _ -> {});
-    }
-
-    /**
      * Sends a plan approval request and observes the eventual leader decision without blocking.
      */
     public String submitPlanApprovalRequest(
@@ -842,17 +819,6 @@ public class InProcessTeammateTask {
             return;
         }
         mailbox.send(Mail.of(MailTypes.USER_MESSAGE, TeammateMailbox.TEAM_LEAD, getTaskId(), message));
-    }
-
-    /**
-     * Leader requests this teammate to shut down.
-     */
-    public void requestTeammateShutdown() {
-        if (!isActive() || shutdownRequested) {
-            return;
-        }
-        shutdownRequested = true;
-        mailbox.send(Mail.of(MailTypes.SHUTDOWN_REQUEST, TeammateMailbox.TEAM_LEAD, getTaskId(), "shutdown"));
     }
 
     /**

@@ -875,7 +875,6 @@ public class ProcessLspServerInstance implements LspServerInstance {
         return loc.isLeft() ? loc.getLeft().getUri() : loc.getRight().getUri();
     }
 
-    @SuppressWarnings("unchecked")
     private static Either<List<? extends Location>, List<? extends LocationLink>> filterDefinitionEither(
             Either<List<? extends Location>, List<? extends LocationLink>> result, Set<String> ignored) {
         if (result.isLeft()) {
@@ -883,13 +882,13 @@ public class ProcessLspServerInstance implements LspServerInstance {
             for (Location l : result.getLeft()) {
                 if (l == null || !ignored.contains(l.getUri())) kept.add(l);
             }
-            return (Either<List<? extends Location>, List<? extends LocationLink>>) (Either<?, ?>) Either.forLeft(kept);
+            return Either.forLeft(kept);
         }
         List<LocationLink> kept = new ArrayList<>();
         for (LocationLink l : result.getRight()) {
             if (l == null || !ignored.contains(l.getTargetUri())) kept.add(l);
         }
-        return (Either<List<? extends Location>, List<? extends LocationLink>>) (Either<?, ?>) Either.forRight(kept);
+        return Either.forRight(kept);
     }
 
     private static <L extends Location> List<L> filterLocations(List<L> result, Set<String> ignored) {
@@ -899,7 +898,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
 
 
     // is scoped to this method.
-    @SuppressWarnings({"unchecked", "deprecation"})
+    @SuppressWarnings("deprecation")
     private static Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>> filterWorkspaceSymbolsEither(
             Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>> result, Set<String> ignored) {
         if (result.isLeft()) {
@@ -908,15 +907,13 @@ public class ProcessLspServerInstance implements LspServerInstance {
                 if (s == null || s.getLocation() == null
                     || !ignored.contains(s.getLocation().getUri())) kept.add(s);
             }
-            return (Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>>)
-                (Either<?, ?>) Either.forLeft(kept);
+            return Either.forLeft(kept);
         }
         List<WorkspaceSymbol> kept = new ArrayList<>();
         for (WorkspaceSymbol s : result.getRight()) {
             if (s == null || !ignored.contains(workspaceSymbolUri(s.getLocation()))) kept.add(s);
         }
-        return (Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>>)
-            (Either<?, ?>) Either.forRight(kept);
+        return Either.forRight(kept);
     }
 
     // ========== Diagnostic handling ==========
@@ -976,7 +973,6 @@ public class ProcessLspServerInstance implements LspServerInstance {
             case Warning -> Diagnostic.Severity.WARNING;
             case Information -> Diagnostic.Severity.INFORMATION;
             case Hint -> Diagnostic.Severity.HINT;
-            default -> Diagnostic.Severity.ERROR;
         };
     }
 

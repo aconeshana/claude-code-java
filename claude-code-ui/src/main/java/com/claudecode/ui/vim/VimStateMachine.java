@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Predicate;
+import com.claudecode.core.text.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 /**
@@ -805,7 +806,7 @@ public class VimStateMachine {
         if (cursor >= text.length()) return null;
         Predicate<Character> isWord = bigWord
                 ? (ch) -> !Character.isWhitespace(ch)
-                : VimStateMachine::isWordChar;
+                : StringUtils::isWordChar;
 
         char at = text.charAt(cursor);
         boolean ws = Character.isWhitespace(at);
@@ -957,8 +958,8 @@ public class VimStateMachine {
     static int nextWordStart(String text, int pos) {
         if (pos >= text.length() - 1) return Math.max(0, text.length() - 1);
         int i = pos;
-        if (isWordChar(text.charAt(i))) {
-            while (i < text.length() && isWordChar(text.charAt(i))) i = nextOffset(text, i);
+        if (StringUtils.isWordChar(text.charAt(i))) {
+            while (i < text.length() && StringUtils.isWordChar(text.charAt(i))) i = nextOffset(text, i);
         } else if (isPunctuation(text.charAt(i))) {
             // Traverse the whole punctuation run.
             while (i < text.length() && isPunctuation(text.charAt(i))) i = nextOffset(text, i);
@@ -972,8 +973,8 @@ public class VimStateMachine {
         int i = prevOffset(text, pos);
         while (i > 0 && Character.isWhitespace(text.charAt(i))) i = prevOffset(text, i);
         if (i == 0 && Character.isWhitespace(text.charAt(0))) return 0;
-        if (isWordChar(text.charAt(i))) {
-            while (i > 0 && isWordChar(text.charAt(prevOffset(text, i)))) i = prevOffset(text, i);
+        if (StringUtils.isWordChar(text.charAt(i))) {
+            while (i > 0 && StringUtils.isWordChar(text.charAt(prevOffset(text, i)))) i = prevOffset(text, i);
         } else if (isPunctuation(text.charAt(i))) {
             // Traverse the whole punctuation run.
             while (i > 0 && isPunctuation(text.charAt(prevOffset(text, i)))) i = prevOffset(text, i);
@@ -986,10 +987,10 @@ public class VimStateMachine {
         int i = nextOffset(text, pos);
         while (i < text.length() && Character.isWhitespace(text.charAt(i))) i = nextOffset(text, i);
         if (i >= text.length()) return Math.max(0, text.length() - 1);
-        if (isWordChar(text.charAt(i))) {
+        if (StringUtils.isWordChar(text.charAt(i))) {
             while (true) {
                 int n = nextOffset(text, i);
-                if (n >= text.length() || !isWordChar(text.charAt(n))) break;
+                if (n >= text.length() || !StringUtils.isWordChar(text.charAt(n))) break;
                 i = n;
             }
         } else if (isPunctuation(text.charAt(i))) {
@@ -1031,15 +1032,11 @@ public class VimStateMachine {
         return i;
     }
 
-    static boolean isWordChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
-    }
-
     /**
      * A non-word, non-whitespace character.
      */
     static boolean isPunctuation(char c) {
-        return !isWordChar(c) && !Character.isWhitespace(c);
+        return !StringUtils.isWordChar(c) && !Character.isWhitespace(c);
     }
 
     // ---- line geometry helpers (multi-line aware) ----

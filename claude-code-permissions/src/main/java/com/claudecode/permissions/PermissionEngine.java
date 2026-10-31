@@ -698,10 +698,9 @@ public class PermissionEngine {
         }
         return switch (mode) {
             case BYPASS_PERMISSIONS -> PermissionDecision.allow();
-            case PLAN, ACCEPT_EDITS -> PermissionDecision.ask();
             case AUTO -> AUTO_SAFE_TOOLS.contains(toolName)
                 ? PermissionDecision.allow() : PermissionDecision.ask();
-            case DEFAULT, DONT_ASK -> PermissionDecision.ask();
+            case PLAN, ACCEPT_EDITS, DEFAULT, DONT_ASK -> PermissionDecision.ask();
         };
     }
 
@@ -825,4 +824,4 @@ public class PermissionEngine {
         return prefix.isEmpty() ? null : prefix;
     }
 
-    }
+}
