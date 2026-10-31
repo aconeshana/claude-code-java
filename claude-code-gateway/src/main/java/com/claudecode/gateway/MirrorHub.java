@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -74,11 +75,45 @@ import org.apache.commons.lang3.Strings;
  * a type discriminator per tool family, the textual payload, and error
  * fields, bounded by {@link #MAX_RESULT_CHARS} so one huge tool result
  * cannot crowd the journal ring.
+ *
+ * <p>Live stream projection: while the model streams a text or thinking
+ * block, each delta fans out as a transient {@code output.text.delta} /
+ * {@code output.thinking.delta} frame carrying the appended {@code content}
+ * and the draft {@code offset} it lands at. Transient frames are never
+ * journaled and carry no cursor (dsh's live-assistant-stream frames: the
+ * settled {@code output.text}/{@code output.thinking} block frame replaces
+ * the draft, and a reconnect resumes from the settled journal rather than
+ * from a delta). The block streaming right now is kept as the session's
+ * draft so a snapshot taken mid-block can seed it ({@link #streamingDraft}).
  */
 public final class MirrorHub {
 
+    /** The id of a transient frame: fanned out live, never journaled, no SSE cursor. */
+    static final long TRANSIENT_ID = 0;
+
     /** One mirrored session event: a named SSE event with its JSON payload. */
-    public record MirrorFrame(long id, String event, String data) {}
+    public record MirrorFrame(long id, String event, String data) {
+        /** False for a transient live-stream frame, which has no journal cursor. */
+        public boolean journaled() {
+            return id != TRANSIENT_ID;
+        }
+    }
+
+    /**
+     * The block a session is streaming right now: {@code kind} is
+     * {@code text} or {@code thinking}, {@code content} the deltas so far.
+     */
+    public record StreamingDraft(String kind, String content) {}
+
+    /** One session's in-flight block: its kind and the text streamed so far. */
+    private static final class Draft {
+        private final String kind;
+        private final StringBuilder content = new StringBuilder();
+
+        private Draft(String kind) {
+            this.kind = kind;
+        }
+    }
 
     private static final int RING_CAPACITY = 2_048;
 
@@ -123,13 +158,15 @@ public final class MirrorHub {
     /**
      * Each followed session's wall clock at its last turn start, for the
      * completion frame's TTFT (time to first stream output). A turn that
-     * errors before any output carries no reading.
+     * errors before any output carries no reading. Present exactly while the
+     * turn runs, so it doubles as the snapshot's {@code running_since} fact.
      */
     private final Map<String, Long> turnStartClocks = new ConcurrentHashMap<>();
     /**
      * Each followed session's first stream-output wall clock for the running
-     * turn, recorded once; the first Assistant or System message counts as
-     * the first token (Progress frames are control-plane, not model output).
+     * turn, recorded once; the first text/thinking delta, Assistant or System
+     * message counts as the first token (Progress frames are control-plane,
+     * not model output).
      */
     private final Map<String, Long> turnFirstOutputClocks = new ConcurrentHashMap<>();
     /**
@@ -139,6 +176,12 @@ public final class MirrorHub {
      * turn whose stream never reported a model stays without the field.
      */
     private final Map<String, String> turnModels = new ConcurrentHashMap<>();
+    /**
+     * Each followed session's in-flight text/thinking block, built from the
+     * stream deltas and dropped when the block settles into its Assistant
+     * message (or the turn ends without one).
+     */
+    private final Map<String, Draft> drafts = new ConcurrentHashMap<>();
 
     public MirrorHub(SessionHostRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -186,6 +229,32 @@ public final class MirrorHub {
         subscriptions.put(sessionId, session.events().subscribe(
             attributedSink(sessionId, () -> true)));
         sessionProjectDirs.put(sessionId, session.info().workDir());
+    }
+
+    /**
+     * Epoch ms at which {@code sessionId}'s running turn started, or empty
+     * when no turn is running. Serves the message snapshot's
+     * {@code running_since}: a web client that opens mid-turn (a TUI-run turn
+     * already under way) has no {@code turn.started} frame to reduce, so the
+     * snapshot carries the running fact and its clock origin instead.
+     */
+    public OptionalLong runningSince(String sessionId) {
+        Long started = turnStartClocks.get(sessionId);
+        return started == null ? OptionalLong.empty() : OptionalLong.of(started);
+    }
+
+    /**
+     * The block {@code sessionId} is streaming right now, or empty between
+     * blocks. Serves the message snapshot's {@code streaming} baseline: the
+     * snapshot holds only settled messages, so a client that opens mid-block
+     * seeds its draft here and the following delta frames' offsets line up.
+     */
+    public Optional<StreamingDraft> streamingDraft(String sessionId) {
+        Draft draft = drafts.get(sessionId);
+        if (draft == null) return Optional.empty();
+        synchronized (draft) {
+            return Optional.of(new StreamingDraft(draft.kind, draft.content.toString()));
+        }
     }
 
     /** Drops one headless session's mirror subscription (session closed). */
@@ -284,6 +353,7 @@ public final class MirrorHub {
         turnStartClocks.put(sessionId, System.currentTimeMillis());
         turnFirstOutputClocks.remove(sessionId);
         turnModels.remove(sessionId);
+        drafts.remove(sessionId);
         ObjectNode payload = object();
         ArrayNode images = pastedImages(input);
         // The chip token traveling in displayText is the TUI's stand-in for
@@ -353,9 +423,17 @@ public final class MirrorHub {
             turnModels.put(sessionId, assistant.model());
         }
         switch (msg) {
-            case SDKMessage.Assistant assistant -> publishAssistant(sessionId, assistant);
+            case SDKMessage.Assistant assistant -> {
+                // The settled block replaces the draft its deltas built.
+                drafts.remove(sessionId);
+                publishAssistant(sessionId, assistant);
+            }
             case SDKMessage.User user -> publishToolResults(sessionId, user);
             case SDKMessage.Progress progress -> publishProgress(sessionId, progress);
+            case SDKMessage.StreamEvent(String eventType, Object data) ->
+                onStreamEvent(sessionId, eventType, data);
+            // A retried request streams its blocks again from the start.
+            case SDKMessage.ApiRetry _ -> drafts.remove(sessionId);
             case SDKMessage.System system -> {
                 String subtype = system.message().subtype();
                 String content = system.message().content();
@@ -374,15 +452,55 @@ public final class MirrorHub {
 
     /**
      * Latches the turn's first stream-output clock, once per turn: the first
-     * Assistant or System message (Progress is control-plane, not model
-     * output). Turn-completion frames read the latch for the TTFT row;
-     * a turn with no recorded output carries no reading.
+     * text/thinking delta, Assistant or System message (Progress is
+     * control-plane, not model output). Turn-completion frames read the latch
+     * for the TTFT row; a turn with no recorded output carries no reading.
      */
     private void recordFirstOutput(String sessionId, SDKMessage msg) {
         if (turnFirstOutputClocks.containsKey(sessionId)) return;
-        if (msg instanceof SDKMessage.Assistant || msg instanceof SDKMessage.System) {
+        if (msg instanceof SDKMessage.Assistant || msg instanceof SDKMessage.System
+                || msg instanceof SDKMessage.StreamEvent(String eventType, Object _)
+                    && deltaKind(eventType) != null) {
             turnFirstOutputClocks.put(sessionId, System.currentTimeMillis());
         }
+    }
+
+    /** The draft kind a stream event appends to, or null for control events. */
+    private static String deltaKind(String eventType) {
+        return switch (eventType) {
+            case "content_block_delta" -> "text";
+            case "thinking_delta" -> "thinking";
+            case null, default -> null;
+        };
+    }
+
+    /**
+     * Projects one stream event. Text and thinking deltas append to the
+     * session's draft and fan out as transient delta frames; a streaming
+     * fallback restarts the blocks from scratch, so the draft resets and the
+     * next delta lands at offset 0 (which a client reads as "replace").
+     * Other stream events are control-plane.
+     */
+    private void onStreamEvent(String sessionId, String eventType, Object data) {
+        if (Strings.CS.equals(eventType, "streaming_fallback_began")) {
+            drafts.remove(sessionId);
+            return;
+        }
+        String kind = deltaKind(eventType);
+        if (kind == null || !(data instanceof String text) || text.isEmpty()) return;
+        // A block of another kind starting without the previous one settling
+        // (it cannot under the Messages protocol) still starts a fresh draft.
+        Draft draft = drafts.compute(sessionId, (_, current) ->
+            current != null && Strings.CS.equals(current.kind, kind) ? current : new Draft(kind));
+        int offset;
+        synchronized (draft) {
+            offset = draft.content.length();
+            draft.content.append(text);
+        }
+        ObjectNode payload = object();
+        payload.put("content", text);
+        payload.put("offset", offset);
+        publishTransient(sessionId, "output." + kind + ".delta", payload);
     }
 
     /**
@@ -430,6 +548,7 @@ public final class MirrorHub {
     }
 
     private void onError(String sessionId, Throwable error, boolean userCancel) {
+        drafts.remove(sessionId);
         if (userCancel) {
             publish(sessionId, "turn.cancelled", object());
             return;
@@ -440,6 +559,7 @@ public final class MirrorHub {
     }
 
     private void onTurnComplete(String sessionId, TurnOutcome outcome) {
+        drafts.remove(sessionId);
         ObjectNode payload = object();
         payload.put("done", true);
         payload.put("elapsed_ms", outcome.elapsedMs());
@@ -493,6 +613,10 @@ public final class MirrorHub {
     }
 
     private void onIdle(String sessionId) {
+        // Idle settles the session: a turn whose completion never arrived
+        // must not keep reporting itself as running to later snapshots.
+        turnStartClocks.remove(sessionId);
+        drafts.remove(sessionId);
         publish(sessionId, "session.idle", object());
     }
 
@@ -700,6 +824,19 @@ public final class MirrorHub {
         }
     }
 
+    /**
+     * Fans one live-stream frame out without journaling it: a reconnecting
+     * client resumes from the settled journal, never from a delta, and the
+     * deltas would otherwise evict the settled frames from the ring.
+     */
+    private void publishTransient(String sessionId, String event, ObjectNode payload) {
+        payload.put("session_id", sessionId);
+        MirrorFrame frame = new MirrorFrame(TRANSIENT_ID, event, payload.toString());
+        for (Consumer<MirrorFrame> sink : sinks) {
+            sink.accept(frame);
+        }
+    }
+
     private void closeSubscription(String sessionId) {
         AutoCloseable subscription = subscriptions.remove(sessionId);
         sessionProjectDirs.remove(sessionId);
@@ -707,6 +844,7 @@ public final class MirrorHub {
         turnStartClocks.remove(sessionId);
         turnFirstOutputClocks.remove(sessionId);
         turnModels.remove(sessionId);
+        drafts.remove(sessionId);
         if (subscription != null) {
             try { subscription.close(); } catch (Exception _) {
                 // Journal and fan-out state remain authoritative if an old

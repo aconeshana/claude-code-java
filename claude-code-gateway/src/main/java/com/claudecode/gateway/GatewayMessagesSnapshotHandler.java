@@ -27,6 +27,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
@@ -42,6 +45,15 @@ import com.sun.net.httpserver.HttpExchange;
  * later tool_result block pair up by tool use id into the entry's
  * status/result/ready fields, the same pairing the TUI dispatcher performs
  * when rendering a turn.
+ *
+ * <p>The snapshot also carries {@code running_since} (epoch ms) while a turn
+ * is running: a client that opens mid-turn has no {@code turn.started} frame
+ * to reduce, so the running indicator and its elapsed clock come from here.
+ *
+ * <p>Mid-block, it also carries {@code streaming}: the text or thinking block
+ * the model is streaming right now ({@code {kind, content}}). The messages
+ * hold only settled blocks, so this is the baseline the client's draft starts
+ * from; the live {@code output.*.delta} frames' offsets continue it.
  */
 @Explanation("Snapshot replay endpoint of the alignment model over HTTP")
 final class GatewayMessagesSnapshotHandler {
@@ -55,11 +67,19 @@ final class GatewayMessagesSnapshotHandler {
 
     private final GatewayHeadlessSessions headless;
     private final GatewaySessionMessagesPort messages;
+    /** The running turn's start clock per session; empty while idle. */
+    private final Function<String, OptionalLong> runningSince;
+    /** The block each session is streaming right now; empty between blocks. */
+    private final Function<String, Optional<MirrorHub.StreamingDraft>> streaming;
 
     GatewayMessagesSnapshotHandler(
-            GatewayHeadlessSessions headless, GatewaySessionMessagesPort messages) {
+            GatewayHeadlessSessions headless, GatewaySessionMessagesPort messages,
+            Function<String, OptionalLong> runningSince,
+            Function<String, Optional<MirrorHub.StreamingDraft>> streaming) {
         this.headless = Objects.requireNonNull(headless, "headless");
         this.messages = messages == null ? new GatewaySessionMessagesPort() {} : messages;
+        this.runningSince = Objects.requireNonNull(runningSince, "runningSince");
+        this.streaming = Objects.requireNonNull(streaming, "streaming");
     }
 
     /** Handles one snapshot exchange; {@code sessionId} from the URL path. */
@@ -76,25 +96,22 @@ final class GatewayMessagesSnapshotHandler {
                 "unknown session: " + sessionId));
             return;
         }
-        respondJson(exchange, 200, snapshot(sessionId, rows));
+        ObjectNode body = snapshot(sessionId, rows);
+        runningSince.apply(sessionId)
+            .ifPresent(started -> body.put("running_since", started));
+        streaming.apply(sessionId).ifPresent(draft -> {
+            ObjectNode node = body.putObject("streaming");
+            node.put("kind", draft.kind());
+            node.put("content", draft.content());
+        });
+        respondJson(exchange, 200, body);
     }
 
     /** Projects the message list into the snapshot shape. */
     private static ObjectNode snapshot(String sessionId, List<Message> rows) {
         // Tool results pair with their tool_use entries by id; collect them
         // in one pass so each assistant message can look them up.
-        Map<String, ToolOutcome> resultsByUseId = new HashMap<>();
-        for (Message row : rows) {
-            if (!(row instanceof UserMessage user) || user.message() == null) continue;
-            List<ContentBlock> blocks = user.message().blocks();
-            if (blocks == null) continue;
-            for (ContentBlock block : blocks) {
-                if (block instanceof ToolResultBlock result && result.toolUseId() != null) {
-                    resultsByUseId.put(result.toolUseId(),
-                        new ToolOutcome(result, user.toolUseResult()));
-                }
-            }
-        }
+        Map<String, ToolOutcome> resultsByUseId = collectToolOutcomes(rows);
 
         ObjectNode body = JsonUtils.getMapper().createObjectNode();
         body.put("session_id", sessionId);
@@ -117,6 +134,27 @@ final class GatewayMessagesSnapshotHandler {
             // snapshot serves the conversation, not the render log.
         }
         return body;
+    }
+
+    /**
+     * Indexes every tool_result block by its tool use id, carrying the
+     * structured side-channel the owning user row held. Assistant entries
+     * then pair a tool_use block with its outcome in one lookup.
+     */
+    private static Map<String, ToolOutcome> collectToolOutcomes(List<Message> rows) {
+        Map<String, ToolOutcome> resultsByUseId = new HashMap<>();
+        for (Message row : rows) {
+            if (!(row instanceof UserMessage user) || user.message() == null) continue;
+            List<ContentBlock> blocks = user.message().blocks();
+            if (blocks == null) continue;
+            for (ContentBlock block : blocks) {
+                if (block instanceof ToolResultBlock result && result.toolUseId() != null) {
+                    resultsByUseId.put(result.toolUseId(),
+                        new ToolOutcome(result, user.toolUseResult()));
+                }
+            }
+        }
+        return resultsByUseId;
     }
 
     /**

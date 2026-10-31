@@ -526,6 +526,54 @@ class GatewayServerInteropTest {
 
     @Test
     @Timeout(20)
+    void streamDeltasFanOutLiveButStayOutOfTheJournal() throws Exception {
+        // The model's text/thinking deltas reach a connected client as they
+        // stream (the TUI's character-by-character output), each with the
+        // draft offset it lands at; the settled block frame follows. Deltas
+        // are transient: a replay from the start of the journal skips them.
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+        awaitReady(events);
+
+        hub.onTurnStart(UserInput.of("hi", "hi", null, "default"));
+        hub.onMessage(new SDKMessage.StreamEvent("thinking_delta", "hmm"));
+        hub.onMessage(textMessageWithThinking("hmm"));
+        hub.onMessage(new SDKMessage.StreamEvent("content_block_delta", "Hel"));
+        hub.onMessage(new SDKMessage.StreamEvent("content_block_delta", "lo"));
+        hub.onMessage(new SDKMessage.StreamEvent("tool_streaming_start", "Bash|t1|m1"));
+        hub.onMessage(textMessage("Hello"));
+
+        assertThat(events.poll(5, TimeUnit.SECONDS)).contains("turn.started");
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("output.thinking.delta|")
+            .contains("\"content\":\"hmm\",\"offset\":0");
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("output.thinking|");
+        // The settled thinking block reset the draft: the text block starts at 0.
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("output.text.delta|")
+            .contains("\"content\":\"Hel\",\"offset\":0");
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("output.text.delta|")
+            .contains("\"content\":\"lo\",\"offset\":3");
+        // Control-plane stream events stay off the mirror.
+        assertThat(events.poll(5, TimeUnit.SECONDS)).startsWith("output.text|")
+            .contains("\"content\":\"Hello\"");
+        source.cancel();
+
+        LinkedBlockingQueue<String> replay = new LinkedBlockingQueue<>();
+        EventSource resumed = openMirror("0", replay);
+        List<String> replayed = new ArrayList<>();
+        String frame;
+        do {
+            frame = replay.poll(5, TimeUnit.SECONDS);
+            assertThat(frame).as("replay reaches the settled text block").isNotNull();
+            replayed.add(frame.substring(0, frame.indexOf('|')));
+        } while (!Strings.CS.startsWith(frame, "output.text|"));
+        assertThat(replayed).containsSubsequence("turn.started", "output.thinking", "output.text")
+            .noneMatch(event -> Strings.CS.endsWith(event, ".delta"));
+        resumed.cancel();
+    }
+
+    @Test
+    @Timeout(20)
     void agentToolCompletionCarriesTheSidechainTranscriptPath() throws Exception {
         // An Agent-family tool result with a structured toolUseResult payload
         // projects the sidechain transcript path the TUI local-agent viewer
@@ -684,8 +732,10 @@ class GatewayServerInteropTest {
             new EventSourceListener() {
                 @Override public void onEvent(EventSource source, String id, String type,
                         String data) {
-                    lastEventIdReference.updateAndGet(current ->
-                        Long.parseLong(id) > Long.parseLong(current) ? id : current);
+                    if (id != null) {
+                        lastEventIdReference.updateAndGet(current ->
+                            Long.parseLong(id) > Long.parseLong(current) ? id : current);
+                    }
                     events.add((type == null ? "" : type) + "|" + data);
                 }
             });
@@ -745,6 +795,39 @@ class GatewayServerInteropTest {
                 .url(url("/webui/index.html"))
                 .post(RequestBody.create(new byte[0], null)).build()).execute()) {
             assertThat(post.code()).isEqualTo(401);
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void spinnerVerbsEndpointServesThePortVocabularyBehindTheToken() throws Exception {
+        // The webui running status words its row from the TUI spinner's
+        // vocabulary: the active list in its resolved order, plus the fixed
+        // per-tool verbs (sorted so the body is byte-stable).
+        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
+            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
+            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
+            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
+            new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
+            new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
+            new GatewaySpinnerVerbsPort() {
+                @Override public List<String> activeVerbs() { return List.of("Brewing", "Zesting"); }
+                @Override public Map<String, String> toolVerbs() {
+                    return Map.of("Read", "Reading", "Bash", "Running");
+                }
+            });
+        server.start();
+
+        try (Response anonymous = client.newCall(new Request.Builder()
+                .url(url("/api/spinner-verbs")).build()).execute()) {
+            assertThat(anonymous.code()).isEqualTo(401);
+        }
+        try (Response listed = client.newCall(new Request.Builder()
+                .url(url("/api/spinner-verbs?token=" + TOKEN)).build()).execute()) {
+            assertThat(listed.code()).isEqualTo(200);
+            assertThat(listed.body().string()).isEqualTo(
+                "{\"active\":[\"Brewing\",\"Zesting\"],"
+                    + "\"tools\":{\"Bash\":\"Running\",\"Read\":\"Reading\"}}");
         }
     }
 
@@ -1375,6 +1458,10 @@ class GatewayServerInteropTest {
 
     private SDKMessage.Assistant textMessage(String text) {
         return assistantMessage(List.of(new TextBlock(text)));
+    }
+
+    private SDKMessage.Assistant textMessageWithThinking(String thinking) {
+        return assistantMessage(List.of(new ThinkingBlock(thinking, null)));
     }
 
     private SDKMessage.Assistant assistantMessage(List<ContentBlock> blocks) {

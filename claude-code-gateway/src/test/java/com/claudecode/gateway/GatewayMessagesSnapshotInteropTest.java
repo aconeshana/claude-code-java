@@ -302,6 +302,64 @@ class GatewayMessagesSnapshotInteropTest {
 
     @Test
     @Timeout(20)
+    void snapshotCarriesRunningSinceOnlyWhileATurnRuns() throws Exception {
+        // A web client opening mid-turn has no turn.started frame to reduce:
+        // the snapshot itself reports the running turn and its clock origin.
+        startServer(fixedMessages(List.of(userText("still working?"))));
+        assertThat(snapshotBody()).doesNotContain("running_since");
+
+        long before = System.currentTimeMillis();
+        hub.onTurnStart(UserInput.of("still working?", "still working?", null, "default"));
+        String running = snapshotBody();
+        assertThat(running).contains("\"running_since\":");
+        long since = JsonUtils.getMapper().readTree(running).get("running_since").asLong();
+        assertThat(since).isBetween(before, System.currentTimeMillis());
+
+        hub.onTurnComplete(new TurnOutcome(
+            false, false, false, false, false, 5L, null, null, null, null));
+        assertThat(snapshotBody()).doesNotContain("running_since");
+    }
+
+    @Test
+    @Timeout(20)
+    void snapshotCarriesTheStreamingDraftOnlyWhileABlockStreams() throws Exception {
+        // The messages hold only settled blocks; a client opening mid-block
+        // seeds its draft from `streaming` so the next delta offsets line up.
+        startServer(fixedMessages(List.of(userText("explain"))));
+        hub.onTurnStart(UserInput.of("explain", "explain", null, "default"));
+        assertThat(snapshotBody()).doesNotContain("\"streaming\"");
+
+        hub.onMessage(new SDKMessage.StreamEvent("thinking_delta", "let me "));
+        hub.onMessage(new SDKMessage.StreamEvent("thinking_delta", "think"));
+        var streaming = JsonUtils.getMapper().readTree(snapshotBody()).get("streaming");
+        assertThat(streaming.get("kind").asText()).isEqualTo("thinking");
+        assertThat(streaming.get("content").asText()).isEqualTo("let me think");
+
+        // The settled block replaces the draft.
+        hub.onMessage(new SDKMessage.Assistant(new AssistantMessage(UUID.randomUUID().toString(),
+            new AssistantContent(null, List.of(new ThinkingBlock("let me think", null)), null)),
+            null, "glm-4.7"));
+        assertThat(snapshotBody()).doesNotContain("\"streaming\"");
+
+        // A turn that ends mid-block drops its draft too.
+        hub.onMessage(new SDKMessage.StreamEvent("content_block_delta", "partial"));
+        assertThat(snapshotBody()).contains("\"streaming\":{\"kind\":\"text\"");
+        hub.onTurnComplete(new TurnOutcome(
+            false, false, false, false, false, 5L, null, null, null, null));
+        assertThat(snapshotBody()).doesNotContain("\"streaming\"");
+    }
+
+    private String snapshotBody() throws IOException {
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + sessionId + "/messages?token=" + TOKEN))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            return response.body().string();
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void snapshotHidesMetaRowsAndCollapsesCompactSummaryRows() throws Exception {
         // Regression: a -c/--continue resume replays a compact-summary user
         // row whose text is the multi-thousand-token synthetic continuation

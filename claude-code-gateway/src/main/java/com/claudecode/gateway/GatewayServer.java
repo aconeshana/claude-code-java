@@ -89,10 +89,13 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayScheduleHandler scheduleApi;
     private final GatewayModelsHandler modelsApi;
     private final GatewayCommandsHandler commandsApi;
+    private final GatewaySpinnerVerbsHandler spinnerVerbsApi;
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
+    /** The registry activation feed; released by {@link #close()}. */
+    private final AutoCloseable registrySubscription;
     private final AtomicBoolean started = new AtomicBoolean();
     private volatile HttpServer server;
 
@@ -185,6 +188,19 @@ public final class GatewayServer implements AutoCloseable {
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, actions, permissionMode,
+            new GatewaySpinnerVerbsPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -246,18 +262,19 @@ public final class GatewayServer implements AutoCloseable {
             this.permissionsApi = null;
         }
         this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
-            sessionMessages);
+            sessionMessages, mirror::runningSince, mirror::streamingDraft);
         this.settingsApi = new GatewaySettingsHandler(settings);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
+        this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
         mirror.metricsReader(sessionContext::metrics);
-        registry.subscribe(event -> {
+        this.registrySubscription = registry.subscribe(event -> {
             if (event.type() == SessionHostRegistry.EventType.ACTIVATED) {
                 registry.currentActivation()
                     .map(SessionHostRegistry.ActivationResult::session)
@@ -313,6 +330,14 @@ public final class GatewayServer implements AutoCloseable {
         mirror.detach();
         contextTimeline.close();
         sessionsApi.closeAll();
+        // Drop the activation feed last: the handler above can publish into
+        // the mirror on its way out, and the subscription must still be live
+        // to carry those frames to any lane still open.
+        try {
+            registrySubscription.close();
+        } catch (Exception _) {
+            // Nothing to recover: the registry is going away with this server.
+        }
     }
 
     /**
@@ -677,6 +702,17 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> commandsApi.handleGet(exchange));
             return;
         }
+        if (get && Strings.CS.equals("/api/spinner-verbs", targetPath)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            serve(exchange, () -> spinnerVerbsApi.handleGet(exchange));
+            return;
+        }
         if (get && Strings.CS.startsWith(targetPath, "/api/session/context/")) {
             if (!auth.authenticated(exchange)) {
                 try (exchange) {
@@ -908,8 +944,10 @@ public final class GatewayServer implements AutoCloseable {
         subscriptions.set(mirror.subscribe(frame -> {
             if (sessionFilter == null
                     || Strings.CS.contains(frame.data(), "\"session_id\":\"" + sessionFilter + "\"")) {
-                connection.offer(SseFrameWriter.event(
-                    frame.event(), Long.toString(frame.id()), frame.data()));
+                // A transient live-stream frame carries no id line, so the
+                // client's Last-Event-ID stays on the last journaled frame.
+                connection.offer(SseFrameWriter.event(frame.event(),
+                    frame.journaled() ? Long.toString(frame.id()) : "", frame.data()));
             }
         }));
         // A private, unjournaled marker: once a caller sees it, the live
