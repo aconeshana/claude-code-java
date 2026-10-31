@@ -10,6 +10,9 @@
  *   `processSpec` (the eligibility and counting rules)
  * - `src/client/conversation-nodes/turn-process-presentation.ts` —
  *   `derivePresentation` (the cross-node layout facts)
+ * - `src/client/conversation-nodes/turn-tail.ts` — `closingAnchor`'s
+ *   `closing` selection (`tailAnchor`): the last text-bearing finalized step,
+ *   which anchors the single per-turn tail row.
  *
  * Cut from upstream: the cordis `ConversationNodeDefinition` (match/start/
  * update/publication/buildLocationData/buildViewNode), the event-stream
@@ -175,6 +178,28 @@ function latestAnswer(turn: TurnInput): AssistantStep | null {
   if (latestStep === undefined) return null
   if (!latestStep.complete || !hasAssistantReplyContent(latestStep.blocks)) return null
   return latestStep.blocks.some((block) => block.kind === 'tool-call') ? null : latestStep
+}
+
+/**
+ * The turn's tail anchor: the step carrying the closing assistant actions, or
+ * null when no finalized step bears reply text.
+ *
+ * This is upstream `turn-tail.ts`'s `closing` — `finalized.findLast(hasText)`
+ * over the turn's steps — which is deliberately WEAKER than `latestAnswer`:
+ * the tail must still surface for a turn that ends on a tool call (the last
+ * text-bearing step is the anchor there), whereas the fold's answer boundary
+ * refuses any step that still calls a tool. Ported here rather than in the
+ * fold adapter because the anchor is a property of the turn, not of the fold
+ * — upstream's `turn-tail` node renders it in every mode.
+ * @param turn - the turn's rows in transcript order.
+ * @returns the anchoring step, or null when the turn has no reply text.
+ */
+export function tailAnchor(turn: TurnInput): AssistantStep | null {
+  for (let index = turn.steps.length - 1; index >= 0; index--) {
+    const step = turn.steps[index]
+    if (step.complete && hasAssistantReplyContent(step.blocks)) return step
+  }
+  return null
 }
 
 /**

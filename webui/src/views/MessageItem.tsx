@@ -23,9 +23,11 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * plus the vendored dsh chrome rows — copy actions with a date-aware clock
  * under every user bubble, and the full turn-tail icon row (copy + the
  * vendored dsh-context Chat→Context jump + usage pills + trailing clock) on
- * the settled turn's last assistant row.
+ * the settled turn's anchor assistant row, passed in as `showTail`. Upstream
+ * renders that row from a per-turn `turn-tail` node, so exactly one assistant
+ * row of each turn carries it — never one per step.
  */
-export function MessageItem({ message, hideReasoning = false }: {
+export function MessageItem({ message, hideReasoning = false, showTail = false }: {
   message: MessageState
   /**
    * The turn-process fold's `inlineReasoning`: this row is a folded turn's
@@ -33,6 +35,17 @@ export function MessageItem({ message, hideReasoning = false }: {
    * hidden while the reply stays visible.
    */
   hideReasoning?: boolean
+  /**
+   * Whether this assistant row is its turn's tail anchor — the ONE row that
+   * renders the turn tail (copy + usage/time pills + clock).
+   *
+   * The gateway stamps `turn_usage`/`time` on every assistant row of a turn
+   * (the same fact the TUI transcript row carries), so a per-row presence
+   * test would fan the tail out N times for an N-step turn. Upstream renders
+   * it from a separate per-turn `turn-tail` node instead; the fold view's
+   * `tailAnchors` reproduces that anchor decision here.
+   */
+  showTail?: boolean
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
@@ -53,13 +66,21 @@ export function MessageItem({ message, hideReasoning = false }: {
       </div>
     )
   }
-  return <AssistantItem message={message} t={statsT} hideReasoning={hideReasoning} />
+  return (
+    <AssistantItem
+      message={message}
+      t={statsT}
+      hideReasoning={hideReasoning}
+      showTail={showTail}
+    />
+  )
 }
 
-function AssistantItem({ message, t, hideReasoning }: {
+function AssistantItem({ message, t, hideReasoning, showTail }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
+  showTail: boolean
 }) {
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   // One stable labels identity: MarkdownText's streaming cache resets when
@@ -94,10 +115,12 @@ function AssistantItem({ message, t, hideReasoning }: {
       <DeliverablesRow toolCalls={message.toolCalls} />
       {/* The settled turn tail: the full vendored icon row — copy action,
           then the usage pill (provider buckets) and the time pill (turn
-          wall time), then the trailing clock. A running turn has no tail
-          yet, and an assistant row with no tail facts shows no row
+          wall time), then the trailing clock. Exactly one assistant row of
+          each turn renders it (the fold view's `tailAnchors`), because the
+          gateway stamps the turn facts on every row; a running turn has no
+          anchor yet, and an anchor row that carries no facts shows no row
           (upstream facts-absent semantics). */}
-      {!message.open && (message.turnUsage !== undefined
+      {showTail && !message.open && (message.turnUsage !== undefined
         || message.runMs !== undefined || message.time !== undefined) && (
         <MessageIconActions
           text={plainText}

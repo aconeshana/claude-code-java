@@ -144,9 +144,14 @@ describe('conversations frame reduction', () => {
     }
   })
 
-  it('keeps the single-step turn tail facts on the closing row only', () => {
-    // `turn_usage` is per step in the snapshot and the wall-clock facts
-    // belong to the turn's end, so they must not smear across every row.
+  it('stamps the turn tail facts on every row, like the snapshot path', () => {
+    // The tail's anchor is the turn's last text-bearing step, NOT necessarily
+    // the closing row (a turn ending on a tool call anchors on an earlier
+    // step), so the facts must reach every row of the turn exactly as
+    // GatewayMessagesSnapshotHandler.assistantEntry stamps them. The single
+    // tail is the fold view's `tailAnchors` gate, not a stamping restriction
+    // — see turnProcess.test.ts. Stamping only the closing row left the
+    // anchor factless on the live path while a reload showed the tail.
     store().applyFrame(frame('turn.started', 1, { display_text: 'go', permission_mode: 'ask', origin: 'chat' }))
     store().applyFrame(frame('output.text', 2, { content: 'step one', message_id: 'm1' }))
     store().applyFrame(frame('output.text', 3, { content: 'step two', message_id: 'm2' }))
@@ -159,18 +164,15 @@ describe('conversations frame reduction', () => {
     }))
 
     const rows = useConversations.getState().conversations[SESSION].messages
-    const first = rows[1]
-    const last = rows[rows.length - 1]
-    if (first.kind !== 'assistant' || last.kind !== 'assistant') {
-      throw new Error('expected assistant rows')
+    const assistants = rows.filter((row) => row.kind === 'assistant')
+    expect(assistants).toHaveLength(2)
+    for (const row of assistants) {
+      if (row.kind !== 'assistant') throw new Error('expected assistant rows')
+      expect(row.turn).toBe(1)
+      expect(row.runMs).toBe(900)
+      expect(row.ttftMs).toBe(40)
+      expect(row.turnUsage?.total_tokens).toBe(3)
     }
-    expect(first.turn).toBe(1)
-    expect(first.runMs).toBeUndefined()
-    expect(first.turnUsage).toBeUndefined()
-    expect(first.ttftMs).toBeUndefined()
-    expect(last.runMs).toBe(900)
-    expect(last.ttftMs).toBe(40)
-    expect(last.turnUsage?.total_tokens).toBe(3)
   })
 
   it('leaves earlier turns untouched when closing the current one', () => {

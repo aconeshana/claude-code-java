@@ -129,6 +129,7 @@ export function ChatView(
               <MessageItem
                 message={message}
                 hideReasoning={foldView.inlineReasoningAnswers.has(message.id)}
+                showTail={foldView.tailAnchors.has(message.id)}
               />
             </div>,
           )

@@ -24,7 +24,7 @@ import { create } from 'zustand'
 import type { ConversationState, MessageState } from './conversations'
 import { useTranscriptView } from './transcriptView'
 import {
-  derivePresentation, processSpec,
+  derivePresentation, processSpec, tailAnchor,
   type AssistantBlock, type AssistantStep, type TurnInput, type TurnMemberRow,
 } from '../../vendor/dsh-turn-process/turnProcessRules'
 
@@ -103,6 +103,18 @@ export interface TurnProcessView {
    * of truth (upstream's `inlineReasoning`).
    */
   readonly inlineReasoningAnswers: ReadonlySet<string>
+  /**
+   * The one assistant row of each turn that carries the turn tail (copy +
+   * usage/time pills + clock), keyed by message id.
+   *
+   * Upstream renders the tail from a separate `turn-tail` conversation node —
+   * ONE per turn, anchored at the last text-bearing finalized step — so the
+   * gateway stamping `turn_usage`/`time` on every assistant row of a turn
+   * must not produce a per-row tail. The fold's member/answer roles cannot
+   * stand in for this: they only exist while the turn folds, and an unfolded
+   * turn still owes exactly one tail.
+   */
+  readonly tailAnchors: ReadonlySet<string>
 }
 
 function emptyView(): TurnProcessView {
@@ -114,6 +126,7 @@ function emptyView(): TurnProcessView {
     expandedTurns: new Set(),
     compactAnswers: new Set(),
     inlineReasoningAnswers: new Set(),
+    tailAnchors: new Set(),
   }
 }
 
@@ -192,8 +205,8 @@ function toTurnSlice(
   }
 }
 
-/** One turn slice's contribution to the view, cached across renders. */
-interface TurnContribution {
+/** The fold's share of a turn: the control seat, roles and derived roles. */
+interface TurnProcessContribution {
   readonly anchorId: string
   readonly turn: number
   readonly counts: TurnProcessCounts
@@ -202,6 +215,20 @@ interface TurnContribution {
   readonly memberIds: readonly string[]
   readonly compactAnswerId: string | null
   readonly inlineReasoningAnswerId: string | null
+}
+
+/**
+ * One turn slice's contribution to the view, cached across renders.
+ *
+ * The tail anchor and the fold are independent: every turn with reply text
+ * owes exactly one tail, while only turns that fold contribute a process
+ * seat. Keeping them in one contribution lets a single memo entry serve both.
+ */
+interface TurnContribution {
+  /** The row that renders the turn tail, or null when the turn bears no reply. */
+  readonly tailAnchorId: string | null
+  /** The fold's share, or null when this turn contributes no fold. */
+  readonly process: TurnProcessContribution | null
 }
 
 /**
@@ -219,7 +246,7 @@ interface TurnContribution {
  * the map is rebuilt (not appended to) on every derivation, so turns that
  * leave the transcript leave the cache with them.
  */
-type TurnCache = Map<number, { readonly key: string; readonly value: TurnContribution | null }>
+type TurnCache = Map<number, { readonly key: string; readonly value: TurnContribution }>
 
 let lastCache: TurnCache = new Map()
 
@@ -256,8 +283,20 @@ function identityToken(message: MessageState): string {
   return token
 }
 
-/** Run the vendored rules over one slice, or null when it contributes nothing. */
-function deriveContribution(slice: TurnSlice): TurnContribution | null {
+/** Run the vendored rules over one slice. */
+function deriveContribution(slice: TurnSlice): TurnContribution {
+  // The tail anchor is the turn's own fact (upstream's `turn-tail` node), so
+  // it resolves whether or not this turn folds. `idsBySeq` maps the anchor
+  // step's row index to its message id.
+  const anchorStep = tailAnchor(slice.input)
+  const tailAnchorId = anchorStep === null
+    ? null
+    : slice.idsBySeq.get(anchorStep.seq) ?? null
+  return { tailAnchorId, process: deriveProcess(slice) }
+}
+
+/** The fold's share of a slice, or null when the turn contributes no fold. */
+function deriveProcess(slice: TurnSlice): TurnProcessContribution | null {
   const spec = processSpec(slice.input)
   if (spec === null) return null
   const presentation = derivePresentation(slice.input, spec)
@@ -312,9 +351,7 @@ export function deriveTurnProcessView(
   conversation: ConversationState | undefined,
   expandedTurns: ReadonlySet<number>,
 ): TurnProcessView {
-  if (conversation == null || useTranscriptView.getState().mode !== 'compact') {
-    return emptyView()
-  }
+  if (conversation == null) return emptyView()
   const messages = conversation.messages
   if (messages.length === 0) return emptyView()
 
@@ -329,9 +366,12 @@ export function deriveTurnProcessView(
   const memberTurns: Record<string, number> = {}
   const compactAnswers = new Set<string>()
   const inlineReasoningAnswers = new Set<string>()
+  const tailAnchors = new Set<string>()
   const seenTurns = new Set<number>()
   // Rebuilt rather than mutated in place, so dropped turns drop their entries.
   const nextCache: TurnCache = new Map()
+  // Folding is a compact-mode affordance; upstream's turn-tail node is not.
+  const folding = useTranscriptView.getState().mode === 'compact'
 
   for (let boundary = 0; boundary < boundaries.length; boundary++) {
     const start = boundaries[boundary]
@@ -352,27 +392,30 @@ export function deriveTurnProcessView(
       ? cached.value
       : deriveContribution(slice)
     nextCache.set(slice.turn, { key, value: contribution })
-    if (contribution === null) continue
+    if (contribution.tailAnchorId !== null) tailAnchors.add(contribution.tailAnchorId)
+    if (contribution.process === null) continue
 
-    controlTurns[contribution.anchorId] = contribution.turn
-    counts[contribution.anchorId] = contribution.counts
-    for (const [id, role] of contribution.roles) roles[id] = role
-    for (const id of contribution.memberIds) memberTurns[id] = contribution.turn
-    if (contribution.compactAnswerId !== null) compactAnswers.add(contribution.compactAnswerId)
-    if (contribution.inlineReasoningAnswerId !== null) {
-      inlineReasoningAnswers.add(contribution.inlineReasoningAnswerId)
+    const process = contribution.process
+    controlTurns[process.anchorId] = process.turn
+    counts[process.anchorId] = process.counts
+    for (const [id, role] of process.roles) roles[id] = role
+    for (const id of process.memberIds) memberTurns[id] = process.turn
+    if (process.compactAnswerId !== null) compactAnswers.add(process.compactAnswerId)
+    if (process.inlineReasoningAnswerId !== null) {
+      inlineReasoningAnswers.add(process.inlineReasoningAnswerId)
     }
   }
 
   lastCache = nextCache
 
   return {
-    roles,
-    controlTurns,
-    counts,
-    memberTurns,
+    roles: folding ? roles : {},
+    controlTurns: folding ? controlTurns : {},
+    counts: folding ? counts : {},
+    memberTurns: folding ? memberTurns : {},
     expandedTurns,
-    compactAnswers,
-    inlineReasoningAnswers,
+    compactAnswers: folding ? compactAnswers : new Set(),
+    inlineReasoningAnswers: folding ? inlineReasoningAnswers : new Set(),
+    tailAnchors,
   }
 }

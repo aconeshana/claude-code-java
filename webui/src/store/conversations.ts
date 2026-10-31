@@ -246,16 +246,18 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
     }
     case 'turn.completed': {
       // The completion frame carries the turn's durable-fold delta and wall
-      // time. The snapshot path stamps `turn` on EVERY assistant row of the
-      // turn (GatewayMessagesSnapshotHandler.assistantEntry), so the live
-      // path must too: a turn that ends on a tool call has no trailing
-      // answer row, and stamping only the last row would attach the turn
-      // tail to a different row before and after a reload.
+      // time. The snapshot path stamps the turn facts — `turn`, `time` and
+      // `turn_usage` — on EVERY assistant row of the turn
+      // (GatewayMessagesSnapshotHandler.assistantEntry), so the live path
+      // must too. Two reasons: the fold's turn number has to reach every row
+      // (a turn ending on a tool call has no trailing answer row), and the
+      // tail facts have to reach the row the tail anchor lands on, which is
+      // the last text-bearing step — not necessarily the closing row. The
+      // anchor gate in the fold view picks exactly one of the stamped rows,
+      // so stamping widely cannot fan the tail out.
       const messages = closeTurn(state.messages, (row) => ({
         ...row,
         ...(frame.data.turn !== undefined ? { turn: frame.data.turn } : {}),
-      }), (last) => ({
-        ...last,
         ...(frame.data.turn_usage !== undefined ? { turnUsage: frame.data.turn_usage } : {}),
         runMs: frame.data.elapsed_ms,
         ...(frame.data.ttft_ms !== undefined ? { ttftMs: frame.data.ttft_ms } : {}),
@@ -347,21 +349,21 @@ function closeAssistant(
 
 /**
  * Closes the running turn: applies {@code stampRow} to every assistant row of
- * the turn and {@code editLast} to the closing row alone.
+ * the turn and marks the closing row settled.
  *
  * One turn fans out into N assistant rows (one per step), and the snapshot
- * path stamps the turn number on all of them, so the live path walks back to
+ * path stamps the turn's facts on all of them, so the live path walks back to
  * the turn's first row — the row after the most recent user row — rather than
- * editing only the tail. Turn-scoped facts that belong to a single step
- * (`turn_usage`, which the snapshot serves per step, plus the wall-clock
- * facts the tail renders) stay on the closing row.
+ * editing only the tail. The tail facts ride the same stamp: the tail's
+ * anchor is the turn's last text-bearing step, which is not necessarily the
+ * closing row, so stamping only the closing row would leave the anchor — and
+ * therefore the tail — factless on the live path while a reload shows it.
  *
  * Rows before the last user row belong to earlier turns and are left alone.
  */
 function closeTurn(
   messages: readonly MessageState[],
   stampRow: (row: AssistantMessageState) => AssistantMessageState,
-  editLast: (last: AssistantMessageState) => AssistantMessageState,
 ): readonly MessageState[] {
   const lastIndex = messages.length - 1
   const last = messages[lastIndex]
@@ -380,6 +382,6 @@ function closeTurn(
   return messages.map((message, index) => {
     if (index < start || message.kind !== 'assistant') return message
     const stamped = stampRow(message)
-    return index === lastIndex ? { ...editLast(stamped), open: false } : stamped
+    return index === lastIndex ? { ...stamped, open: false } : stamped
   })
 }

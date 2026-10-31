@@ -15,7 +15,7 @@ cordis/Typert RPC).
 | `vendor/ui-primitives/` | `packages/client/ui-primitives/src/` | Full package source; already cordis-free upstream (runtime deps are public npm packages only) |
 | `vendor/dsh-composer-menu/` | `packages/client/ui-input-trigger/` + `ui-commands/` | The composer "+" menu — see the section below |
 | `vendor/dsh-stats-pills/` | `packages/client/ui-chat/` | The composer session-stat pills + the turn-tail usage/time pills — see the section below |
-| `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`) | The turn-process fold rules — see the section below |
+| `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`, `conversation-nodes/turn-tail.ts`) | The turn-process fold rules + the per-turn tail anchor — see the section below |
 | `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
@@ -468,7 +468,7 @@ a fresh session hijacked an authorization the user never triggered there.
 | `stat-dialog.module.css` | `ui-chat` | `src/client/chat/stat-dialog.module.css` — the shared stat-dialog surface skin (panel/title/titleRule/details), verbatim; all consumed `--dsw-*` tokens resolve in the vendored theme styles |
 | `TurnUsagePanel.module.css` | `ui-chat` | `src/client/chat/TurnUsagePanel.module.css` — the turn-tail pill chrome (root/trigger/label), verbatim; consumed by `vendor/dsh-stats-pills/TurnUsagePanel.tsx` |
 | `MessageIconActions.module.css` | `ui-chat` | `src/client/chat/MessageIconActions.module.css` — the shared copy/clock icon-row chrome (actions row, `timeStart`/`timeEnd` clock sides, the 28px `.action` buttons, hover-reveal `data-actions-reveal` gate), vendored verbatim in an earlier pass; consumed since the icon-row round by `vendor/dsh-stats-pills/MessageIconActions.tsx` |
-| `TurnTailNodeView.module.css` | `ui-chat` | `src/client/chat/TurnTailNodeView.module.css` — the turn-tail column and its `.actions { margin-left: -6px }` offset, verbatim; only the `.actions` class is consumed (the turn-tail wrapper here is the assistant stack itself, not a separate node view) |
+| `TurnTailNodeView.module.css` | `ui-chat` | `src/client/chat/TurnTailNodeView.module.css` — the turn-tail column and its `.actions { margin-left: -6px }` offset, verbatim; only the `.actions` class is consumed. Upstream seats the row from a separate per-turn `turn-tail` node; here the row renders inline on the turn's anchor assistant row (see the tail-anchor entry in the turn-process section below). |
 | `TurnProcessNodeView.module.css` | `ui-chat` | `src/client/chat/TurnProcessNodeView.module.css` — the turn-level process-disclosure control (root/label/chevron, the 0.5px l2 divider, the 8px closed-gap margin, the -90°→0° chevron rotation), vendored verbatim; consumed since the turn-process fold round (2026-09-13) by `src/views/TurnProcessControl.tsx`, ported from `TurnProcessNodeView.tsx` (see the turn-process fold deviation below). |
 | `ReasoningRow.module.css` | `ui-conversation` | `src/client/ReasoningRow.module.css` — already vendored verbatim in an earlier pass but never fully wired: `MessageItem.tsx` used to merge every `thinking` segment of a message into one string and wrap it in a single ad hoc `DisclosureRow` (hand-rolled `◦` icon, a title that toggled between "正在思考…"/"已深度思考"). The real upstream `ReasoningRow.tsx` renders **one row per thinking segment**, with a fixed title, the real `IconThinkOutline14` icon, and a collapsed summary derived from `firstLine`/`latestLine` (the latter only for the streaming segment) with `**` markdown markers stripped. `src/views/ReasoningRow.tsx` is a new small local component doing exactly that, and `MessageItem.tsx`'s `AssistantItem` now maps `message.thinkingBlocks` (already a per-segment `readonly string[]` in `store/conversations.ts`) to independent `<ReasoningRow>` instances instead of the merged single block. |
 | `ToolRow.module.css` | `ui-tool` | `packages/client/ui-tool/src/client/tool/components/ToolRow.module.css` — newly vendored this round. `ToolCallRow.tsx` previously imported `TurnProcessNodeView.module.css`, which on inspection of upstream source is the style for a **turn-level** fold/unfold summary button (e.g. "3 次工具调用 · 2 条消息"), not a per-tool-call row — a wrong-source mistake from an earlier pass, not a deliberate scope cut. `TurnProcessNodeView.module.css` is left in the vendor directory (a future turn-level fold feature could still use it) but is no longer imported by `ToolCallRow.tsx`. `ToolCallRow.tsx` is rewritten against the real `ToolRow.tsx`: state-derived leading icon (`StateDot` replaces the icon on error, matching `leadingFor()`), summary-priority chain (error's first line > a bash call's own `description` argument > the existing command/path/pattern/query fallback chain, renamed `argsSummary()`), and an expanded body dispatched through `.bodyWrap`/`.ioCard`/`.ioSection`/`.ioLabel`/`.ioText`/`.ioDivider`/`.terminalBody`/`.diffBody`/`.readBody` in place of the old inline `style={{...}}` attributes. |
@@ -558,6 +558,29 @@ is a genuinely-supported backend field being wired up, not new backend work.
     step and folds as a `context` row, never as an answer candidate. A frame
     with no `message_id` (an older gateway) keeps the old single-row behavior
     and simply does not fold.
+- **The turn tail is anchored per turn, not rendered per assistant row
+  (fixed 2026-10-30).** Upstream renders the tail from `conversation-nodes/turn-tail.ts`
+  — a separate node keyed by turn, one per turn, anchored at
+  `closing = finalized.findLast(hasText)` (the turn's last text-bearing
+  finalized step) and mounted by `TurnTailNodeView` in **every** transcript
+  mode, independent of the fold. This app originally seated the tail inside
+  `MessageItem`'s assistant branch behind a per-row fact test
+  (`turnUsage`/`runMs`/`time` present). Because
+  `GatewayMessagesSnapshotHandler.assistantEntry` deliberately stamps those
+  facts on **every** assistant row of a turn (the same contract the TUI
+  transcript row carries), the tail fanned out once per step: an N-step turn
+  rendered N copy buttons, N usage pills and N clocks. `turnAnchor` (ported
+  into `vendor/dsh-turn-process/turnProcessRules.ts` as `tailAnchor`) now
+  reproduces upstream's `closing` selection — deliberately **weaker** than the
+  fold's `latestAnswer`, since a turn that ends on a tool call still owes a
+  tail anchored on its last text-bearing step — and `turnProcess.ts` exports
+  the anchor set as `TurnProcessView.tailAnchors`, computed in both modes.
+  `MessageItem` takes a `showTail` prop and renders the row only on the
+  anchor. Two knock-on corrections: the live frame path now stamps the turn
+  facts on every row of the turn like the snapshot path (previously only the
+  closing row got them, which left the anchor factless on the live path while
+  a reload showed the tail), and the `ContextJumpButton` seated in the tail
+  no longer repeats per step.
 - **No Inspect pill / trajectory-view jump.** Upstream's hover-revealed
   Inspect button on an expanded tool row jumps to a trajectory/replay view
   this app does not have; the button is not rendered.

@@ -308,6 +308,82 @@ describe('isSubagentDelegationTool', () => {  it('recognizes this product delega
   })
 })
 
+describe('turn tail anchor', () => {
+  it('anchors the tail on the last text-bearing step of a multi-step turn', () => {
+    // Upstream's turn-tail node renders ONCE per turn: `closing` is
+    // `finalized.findLast(hasText)`. The gateway stamps turn facts on every
+    // assistant row, so without this gate the tail fans out per row.
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '第一步', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '第二步', message_id: 'msg-2' })
+    toolStep('msg-2', 'Bash', 'tu-2')
+    apply('output.text', { content: '最终答案', message_id: 'msg-3' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    const assistants = rows.filter((row) => row.kind === 'assistant')
+    expect(assistants).toHaveLength(3)
+    // Exactly one anchor, and it is the LAST step.
+    expect([...view().tailAnchors]).toEqual([assistants[2].id])
+  })
+
+  it('anchors the tail once per turn across consecutive turns', () => {
+    apply('turn.started', { display_text: '一', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '答案一', message_id: 'msg-1' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+    apply('turn.started', { display_text: '二', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-2', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案二', message_id: 'msg-3' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 2 })
+
+    // Turn 1 is answer-only (nothing to fold); turn 2 folds its tool step.
+    // Either way each turn owes exactly one tail, and the anchors are the
+    // two turns' closing rows — never two rows of the same turn.
+    const rows = conversation().messages
+    const derived = view()
+    expect(Object.keys(derived.controlTurns)).toEqual([rows[2].id])
+    expect([...derived.tailAnchors]).toEqual([rows[1].id, rows[4].id])
+  })
+
+  it('anchors on the last text-bearing step of a turn that ends on a tool call', () => {
+    // The tail rule is deliberately WEAKER than the fold's answer boundary:
+    // a turn whose last step still calls a tool gets no fold, but its last
+    // text-bearing step still anchors the tail.
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '我来跑一下', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('turn.completed', { done: true, elapsed_ms: 400, user_cancel: false, turn: 1 })
+
+    expect(view().roles).toEqual({})
+    const rows = conversation().messages
+    expect([...view().tailAnchors]).toEqual([rows[1].id])
+  })
+
+  it('leaves a running turn with no tail anchor', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '流式中', message_id: 'msg-1' })
+
+    expect([...view().tailAnchors]).toEqual([])
+  })
+
+  it('anchors the tail in normal mode too, where folding is off', () => {
+    useTranscriptView.getState().setMode('normal')
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    const derived = view()
+    // Folding is compact-only...
+    expect(derived.roles).toEqual({})
+    expect(derived.controlTurns).toEqual({})
+    // ...but the tail node renders in every mode (upstream's turn-tail).
+    const rows = conversation().messages
+    expect([...derived.tailAnchors]).toEqual([rows[2].id])
+  })
+})
+
 describe('useTurnProcess store', () => {
   it('toggles per-turn expansion immutably', () => {
     useTurnProcess.getState().setOpen(SESSION, 3, true)
