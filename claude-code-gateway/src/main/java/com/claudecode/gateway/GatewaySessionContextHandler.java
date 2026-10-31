@@ -66,21 +66,23 @@ final class GatewaySessionContextHandler {
             return;
         }
         String sessionId = StringUtils.trimToNull(text(request, "session_id"));
-        String model = text(request, "model");
-        String effort = text(request, "effort");
-        if (StringUtils.isBlank(model) && StringUtils.isBlank(effort)) {
-            respondJson(exchange, 400, errorBody("invalid_request",
-                "either model or effort is required"));
-            return;
-        }
-        if (StringUtils.isNotBlank(model) && StringUtils.isNotBlank(effort)) {
+        String model = StringUtils.trimToNull(text(request, "model"));
+        String effort = StringUtils.trimToNull(text(request, "effort"));
+        if (model != null && effort != null) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 "model and effort cannot be changed in one request"));
             return;
         }
-        GatewaySessionContextPort.SelectionResult result = StringUtils.isNotBlank(model)
-            ? context.selectModel(sessionId, model.strip())
-            : context.selectEffort(sessionId, effort.strip());
+        GatewaySessionContextPort.SelectionResult result;
+        if (model != null) {
+            result = context.selectModel(sessionId, model);
+        } else if (effort != null) {
+            result = context.selectEffort(sessionId, effort);
+        } else {
+            respondJson(exchange, 400, errorBody("invalid_request",
+                "either model or effort is required"));
+            return;
+        }
         if (!result.accepted()) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 StringUtils.defaultIfBlank(result.error(), "selection was rejected")));

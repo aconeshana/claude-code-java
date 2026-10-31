@@ -60,6 +60,8 @@ public final class ContextTimelineLedger {
 
     /** One live session's fold plus its header epoch cache and run state. */
     private static final class Entry {
+        /** Monitor guarding this entry's mutable fold/header state. */
+        final Object lock = new Object();
         final ContextTimelineFold fold = new ContextTimelineFold();
         volatile boolean running;
         volatile long updatedAt = System.currentTimeMillis();
@@ -151,7 +153,7 @@ public final class ContextTimelineLedger {
             Entry entry = resolved.entry();
             sync(resolved.id(), entry);
             SessionMetricsSnapshot metrics = metrics(resolved.id());
-            synchronized (entry) {
+            synchronized (entry.lock) {
                 return head(entry, metrics);
             }
         });
@@ -164,7 +166,7 @@ public final class ContextTimelineLedger {
             sync(resolved.id(), entry);
             refreshHeaders(resolved.id(), entry);
             SessionMetricsSnapshot metrics = metrics(resolved.id());
-            synchronized (entry) {
+            synchronized (entry.lock) {
                 ObjectNode result = JsonUtils.getMapper().createObjectNode();
                 result.put("rev", entry.fold.detailRev());
                 result.set("head", head(entry, metrics));
@@ -186,7 +188,7 @@ public final class ContextTimelineLedger {
             ObjectNode result = JsonUtils.getMapper().createObjectNode();
             if (seq != null) {
                 sync(resolved.id(), entry);
-                synchronized (entry) {
+                synchronized (entry.lock) {
                     ContextTimelineFold.Node node = entry.fold.nodeAt(seq);
                     if (node == null) return Optional.empty();
                     result.put("seq", node.seq);
@@ -199,7 +201,7 @@ public final class ContextTimelineLedger {
             }
             refreshHeaders(resolved.id(), entry);
             GatewaySessionContextPort.HeaderContent headers;
-            synchronized (entry) {
+            synchronized (entry.lock) {
                 headers = entry.headers;
             }
             if (headers == null) return Optional.empty();
@@ -248,7 +250,7 @@ public final class ContextTimelineLedger {
             row.put("updatedAt", live.updatedAt() != null
                 ? Math.max(live.updatedAt().toEpochMilli(), entry.updatedAt) : entry.updatedAt);
             SessionMetricsSnapshot metrics = metrics(live.id());
-            synchronized (entry) {
+            synchronized (entry.lock) {
                 row.set("timeline", head(entry, metrics));
                 row.set("activity", entry.fold.activity());
             }
@@ -341,7 +343,7 @@ public final class ContextTimelineLedger {
             return;
         }
         if (rows == null) return;
-        synchronized (entry) {
+        synchronized (entry.lock) {
             if (rows.isEmpty() && !entry.fold.isEmpty()) return;
             breakdown.ifPresent(value -> entry.fold.envelope(value.systemTokens(), value.toolsTokens()));
             model.ifPresent(entry.fold::model);
@@ -363,7 +365,7 @@ public final class ContextTimelineLedger {
 
     private void refreshHeaders(String id, Entry entry) {
         long now = System.currentTimeMillis();
-        synchronized (entry) {
+        synchronized (entry.lock) {
             if (entry.headers != null && now - entry.headersAt < HEADERS_TTL_MS) return;
         }
         GatewaySessionContextPort.HeaderContent fetched;
@@ -372,7 +374,7 @@ public final class ContextTimelineLedger {
         } catch (RuntimeException _) {
             fetched = null;
         }
-        synchronized (entry) {
+        synchronized (entry.lock) {
             entry.headersAt = now;
             if (fetched == null) return;
             boolean changed = entry.headers == null

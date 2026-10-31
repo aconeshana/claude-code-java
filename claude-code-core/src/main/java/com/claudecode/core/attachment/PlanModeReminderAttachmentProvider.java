@@ -92,11 +92,16 @@ public final class PlanModeReminderAttachmentProvider implements AttachmentProvi
         if (state.foundPrior() && state.humanTurnsSincePrior() < TURNS_BETWEEN_ATTACHMENTS) {
             return List.of();
         }
-        PlanCatalogContext catalog = planCatalogSupplier == null
-            ? new PlanCatalogContext(
-                null, null, planFilePathSupplier.get(),
-                Boolean.TRUE.equals(planExistsSupplier.get()), false, List.of())
-            : planCatalogSupplier.get();
+        PlanCatalogContext catalog;
+        if (planCatalogSupplier != null) {
+            catalog = planCatalogSupplier.get();
+        } else {
+            String planFilePath = planFilePathSupplier != null ? planFilePathSupplier.get() : null;
+            boolean planExists = planExistsSupplier != null
+                && Boolean.TRUE.equals(planExistsSupplier.get());
+            catalog = new PlanCatalogContext(
+                null, null, planFilePath, planExists, false, List.of());
+        }
         String planFilePath = catalog.planFilePath();
         boolean planExists = catalog.planExists();
         List<AttachmentPayload> attachments = new ArrayList<>(2);

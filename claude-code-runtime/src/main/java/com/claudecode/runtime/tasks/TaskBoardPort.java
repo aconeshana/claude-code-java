@@ -30,7 +30,7 @@ public interface TaskBoardPort {
             id = Objects.requireNonNull(id, "id");
             subject = Objects.requireNonNullElse(subject, "");
             description = Objects.requireNonNullElse(description, "");
-            status = Objects.requireNonNull(status, "status");
+            Objects.requireNonNull(status, "status");
             blocks = List.copyOf(blocks == null ? List.of() : blocks);
             blockedBy = List.copyOf(blockedBy == null ? List.of() : blockedBy);
         }

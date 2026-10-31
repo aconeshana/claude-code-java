@@ -31,11 +31,11 @@ import com.sun.net.httpserver.HttpExchange;
  * {@code OpenAiCompatClient} parses inbound: {@code delta.content},
  * {@code delta.reasoning_content}, and {@code delta.tool_calls[].function}.
  */
-public final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
+final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
 
     private final ProtocolTurnRunner runner;
 
-    public ChatHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
+    ChatHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 

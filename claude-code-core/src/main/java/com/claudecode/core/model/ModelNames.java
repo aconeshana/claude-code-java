@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  */
 public final class ModelNames {
 
-    private static final Pattern API_CONTEXT_TAG = Pattern.compile("\\[(1|2)m\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern API_CONTEXT_TAG = Pattern.compile("\\[[12]m\\]", Pattern.CASE_INSENSITIVE);
     private static final String GPT_5_6_SOL_MODEL = "gpt-5.6-sol";
     private static final String GPT_5_6_LUNA_MODEL = "gpt-5.6-luna";
 

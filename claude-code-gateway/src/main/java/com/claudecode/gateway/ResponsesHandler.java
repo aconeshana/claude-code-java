@@ -10,7 +10,6 @@ import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -34,11 +33,11 @@ import com.sun.net.httpserver.HttpExchange;
  * {@code response.output_text.delta}, {@code response.output_item.*}, and
  * {@code response.completed}.
  */
-public final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
+final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
 
     private final ProtocolTurnRunner runner;
 
-    public ResponsesHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
+    ResponsesHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 
@@ -85,7 +84,7 @@ public final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection
         if (content.isTextual()) return content.asText();
         if (!content.isArray()) return null;
         StringBuilder text = new StringBuilder();
-        for (JsonNode block : (ArrayNode) content) {
+        for (JsonNode block : content) {
             if (Strings.CS.equals("input_text", block.path("type").asText())
                     && block.path("text").isTextual()) {
                 if (!text.isEmpty()) text.append('\n');
@@ -194,8 +193,8 @@ public final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection
                 StringBuilder text = new StringBuilder("Tool failed");
                 if (result.content() != null) {
                     for (ContentBlock inner : result.content()) {
-                        if (inner instanceof TextBlock innerText) {
-                            text.append(": ").append(innerText.text());
+                        if (inner instanceof TextBlock(String text1)) {
+                            text.append(": ").append(text1);
                         }
                     }
                 }

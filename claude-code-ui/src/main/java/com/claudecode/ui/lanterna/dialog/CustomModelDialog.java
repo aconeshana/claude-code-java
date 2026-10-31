@@ -27,7 +27,7 @@ import java.util.function.Consumer;
 
 /**
  * Inline form for one user-defined model endpoint.
- *
+ * <p>
  * Captures the model name, protocol, base URL, optional API key, context
  * window, and custom HTTP headers. Up/down navigation cycles between fields;
  * Enter advances to the next field.

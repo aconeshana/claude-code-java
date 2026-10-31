@@ -44,7 +44,6 @@ public record CustomModelConfig(
         if (contextWindow != null && contextWindow < MIN_CONTEXT_WINDOW) {
             throw new IllegalArgumentException("Context window must be at least " + MIN_CONTEXT_WINDOW);
         }
-        multimodal = normalizeMultimodal(multimodal);
     }
 
     /** Pre-multimodal-field constructor — defaults the flag to "assume multimodal". */
@@ -65,10 +64,6 @@ public record CustomModelConfig(
 
     public boolean isTextOnly() {
         return Boolean.FALSE.equals(multimodal);
-    }
-
-    private static Boolean normalizeMultimodal(Boolean value) {
-        return value;
     }
 
     public long effectiveContextWindow() {

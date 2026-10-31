@@ -1,5 +1,6 @@
 package com.claudecode.commands.impl.integration;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.commands.AnnotatedCommand;
@@ -39,7 +40,9 @@ public class SkillsCommand implements AnnotatedCommand {
     }
 
     private String renderTextListing(CommandContext context) {
-        Path skillsDir = Path.of(context.session().workingDirectory(), SKILLS_DIR);
+        Path skillsDir = Path.of(StringUtils.defaultIfBlank(
+            context.session().workingDirectory(), System.getProperty("user.dir", ".")),
+            SKILLS_DIR);
         StringBuilder sb = new StringBuilder("Skills\n");
 
         List<String> names = listSkillNames(skillsDir);

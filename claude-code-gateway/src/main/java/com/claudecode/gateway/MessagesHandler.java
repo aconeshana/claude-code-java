@@ -6,7 +6,6 @@ import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -28,11 +27,11 @@ import com.sun.net.httpserver.HttpExchange;
  * this class is only the Anthropic wire projection on top of the shared
  * {@link SdkMessageToStreamEvent} block-level translation.
  */
-public final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
+final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
 
     private final ProtocolTurnRunner runner;
 
-    public MessagesHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
+    MessagesHandler(ProtocolTurnRunner.SessionResolver sessions, InFlightGuard inFlight) {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 
@@ -71,7 +70,7 @@ public final class MessagesHandler implements ProtocolTurnRunner.TurnProjection 
         if (content == null || !content.isArray()) return SubmissionAttachments.NONE;
         List<SessionHostSubmission.Attachment> images = new ArrayList<>();
         List<SessionHostSubmission.Attachment> files = new ArrayList<>();
-        for (JsonNode block : (ArrayNode) content) {
+        for (JsonNode block : content) {
             String type = block.path("type").asText();
             JsonNode source = block.path("source");
             if (Strings.CS.equals("image", type)) {
@@ -175,7 +174,7 @@ public final class MessagesHandler implements ProtocolTurnRunner.TurnProjection 
         if (content.isTextual()) {
             text.append(content.asText());
         } else if (content.isArray()) {
-            for (JsonNode block : (ArrayNode) content) {
+            for (JsonNode block : content) {
                 if (Strings.CS.equals("text", block.path("type").asText())
                         && block.path("text").isTextual()) {
                     if (!text.isEmpty()) text.append('\n');

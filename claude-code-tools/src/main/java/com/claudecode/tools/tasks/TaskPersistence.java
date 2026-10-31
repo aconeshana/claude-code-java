@@ -35,7 +35,7 @@ final class TaskPersistence {
     private static final String HIGH_WATER_MARK_FILE = ".highwatermark";
     private static final String LIST_LOCK_TARGET = ".lock";
     private static final Pattern JAVASCRIPT_DECIMAL_NUMBER = Pattern.compile(
-        "[+-]?(?:Infinity|(?:(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?))");
+        "[+-]?(?:Infinity|(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)");
     private static final Pattern JAVASCRIPT_HEX_NUMBER = Pattern.compile("0[xX][0-9a-fA-F]+");
     private static final Pattern JAVASCRIPT_BINARY_NUMBER = Pattern.compile("0[bB][01]+");
     private static final Pattern JAVASCRIPT_OCTAL_NUMBER = Pattern.compile("0[oO][0-7]+");

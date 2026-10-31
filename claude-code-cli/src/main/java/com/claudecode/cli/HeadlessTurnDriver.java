@@ -53,7 +53,7 @@ final class HeadlessTurnDriver {
         events.onTurnStart(UserInput.of(prompt, prompt,
             assembled.pasted().isEmpty() ? null : assembled.pasted(), "default"));
         Thread.ofVirtual().name("headless-turn", 0).start(() -> {
-            boolean userCancel = false;
+            boolean userCancel;
             try {
                 Iterator<SDKMessage> messages = engine.submission()
                     .submitMessage(prompt, SubmitOptions.withPastedContents(

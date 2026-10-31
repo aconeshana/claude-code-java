@@ -111,7 +111,7 @@ public class RenameCommand implements AnnotatedCommand {
         } finally {
             generating.compareAndSet(current, null);
             // Consume a cancel interrupt so it cannot leak into the dispatcher's thread.
-            Thread.interrupted();
+            boolean _ = Thread.interrupted();
         }
     }
 }

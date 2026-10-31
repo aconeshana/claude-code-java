@@ -30,7 +30,7 @@ final class PowerShellSecurity {
      */
     private static final Pattern FOREACH_MEMBER_INVOCATION = Pattern.compile(
         "(?i)(?:^|[;|])\\s*(?:foreach-object|foreach|%)\\b[^;|\\r\\n]*"
-            + "(?:\\s-+m(?:embername)?(?:\\s|:)|\\s+(?:-[a-z][a-z0-9-]*\\s+)*[^-\\s][^;|\\r\\n]*)");
+            + "(?:\\s-+m(?:embername)?[\\s:]|\\s+(?:-[a-z][a-z0-9-]*\\s+)*[^-\\s][^;|\\r\\n]*)");
     private static final Pattern ENV_MUTATION = Pattern.compile(
         "(?i)(?:set|new|remove|clear)-(?:item|content)\\s+[^;\\r\\n]*\\benv:");
     private static final Pattern MEMBER_INVOCATION = Pattern.compile(

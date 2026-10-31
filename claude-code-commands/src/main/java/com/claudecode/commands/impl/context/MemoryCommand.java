@@ -46,7 +46,8 @@ public class MemoryCommand implements AnnotatedCommand {
 
 
 
-        String cwd = context.session().workingDirectory() != null ? context.session().workingDirectory() : System.getProperty("user.dir");
+        String cwd = StringUtils.defaultIfBlank(context.session().workingDirectory(),
+            System.getProperty("user.dir", "."));
 
         Path globalClaude = userMemoryPath();
         Path projectClaude = Path.of(cwd, "CLAUDE.md");

@@ -361,7 +361,8 @@ final class CliRuntimeAdapters {
         void awaitCompletion(Duration timeout) {
             if (!started.get()) return;
             try {
-                finished.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                // Waiting is best-effort: if the deadline passes, main proceeds to exit.
+                boolean _ = finished.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }

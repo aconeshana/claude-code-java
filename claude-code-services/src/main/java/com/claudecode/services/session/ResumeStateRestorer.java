@@ -38,7 +38,7 @@ public final class ResumeStateRestorer {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeStateRestorer.class);
     private static final Pattern TASK_ID_TAG = Pattern.compile(
-        "<task(?:-|_)id>([^<]+)</task(?:-|_)id>");
+        "<task[-_]id>([^<]+)</task[-_]id>");
     private static final int ORPHAN_NOTIFICATION_CAP = 20;
     private static final String ORPHAN_SUMMARY_MARKER = "__orphan_summary__:workflow";
     private static final String ORPHAN_LIVE_MARKER_PREFIX = "__orphan_summary_live__:";
@@ -88,11 +88,12 @@ public final class ResumeStateRestorer {
         WorktreeService.restoreWorktreeSession(null);
         WorktreeService.resetLatches();
         try {
-            if (Files.isDirectory(Path.of(current.originalCwd()))) {
+            Path originalCwd = Path.of(current.originalCwd());
+            if (Files.isDirectory(originalCwd)) {
                 System.setProperty("user.dir", current.originalCwd());
 
 
-                CwdState.setOriginalCwd(Path.of(current.originalCwd()));
+                CwdState.setOriginalCwd(originalCwd);
             }
         } catch (Exception e) {
             log.warn("Failed to restore original cwd on worktree exit: {}", e.getMessage());
@@ -186,17 +187,7 @@ public final class ResumeStateRestorer {
             return;
         }
         for (WorkflowLaunch workflow : orphaned) {
-            String quotedName = workflow.workflowName() == null
-                ? "" : " \"" + workflow.workflowName() + "\"";
-            String resume = workflow.runId() == null ? ""
-                : " To pick up where it left off, relaunch with Workflow({scriptPath, "
-                    + "resumeFromRunId: \"" + workflow.runId()
-                    + "\"}) — completed agent() calls return cached.";
-            String summary = "No completion record was found for background workflow"
-                + quotedName
-                + " from the previous session. It may have been stopped (via the UI or "
-                + "TaskStop — these leave no transcript marker), or it may have been running "
-                + "when the previous Claude Code process exited." + resume;
+            String summary = orphanSummary(workflow);
             String xml = "<task-notification>\n"
                 + "<task-id>" + XmlEscaper.escapeText(workflow.taskId()) + "</task-id>\n"
                 + "<tool-use-id>" + XmlEscaper.escapeText(workflow.toolUseId())
@@ -212,6 +203,20 @@ public final class ResumeStateRestorer {
                 new SDKMessage.TaskNotification(workflow.taskId(), workflow.toolUseId(),
                     "stopped", null, summary));
         }
+    }
+
+    private static String orphanSummary(WorkflowLaunch workflow) {
+        String quotedName = workflow.workflowName() == null
+            ? "" : " \"" + workflow.workflowName() + "\"";
+        String resume = workflow.runId() == null ? ""
+            : " To pick up where it left off, relaunch with Workflow({scriptPath, "
+                + "resumeFromRunId: \"" + workflow.runId()
+                + "\"}) — completed agent() calls return cached.";
+        return "No completion record was found for background workflow"
+            + quotedName
+            + " from the previous session. It may have been stopped (via the UI or "
+            + "TaskStop — these leave no transcript marker), or it may have been running "
+            + "when the previous Claude Code process exited." + resume;
     }
 
     private void enqueueAggregateWorkflowOrphans(
@@ -260,9 +265,9 @@ public final class ResumeStateRestorer {
             if (user.message().blocks() != null) {
                 StringBuilder text = new StringBuilder();
                 for (var block : user.message().blocks()) {
-                    if (block instanceof TextBlock value) {
+                    if (block instanceof TextBlock(String text1)) {
                         if (!text.isEmpty()) text.append('\n');
-                        text.append(value.text());
+                        text.append(text1);
                     }
                 }
                 return Optional.of(text.toString());
@@ -445,14 +450,15 @@ public final class ResumeStateRestorer {
             }
             WorktreeSession persisted = WorktreeService.readPersistedWorktreeState(storage, sessionFile);
             if (persisted == null) return;
-            if (!Files.isDirectory(Path.of(persisted.worktreePath()))) {
+            Path worktreePath = Path.of(persisted.worktreePath());
+            if (!Files.isDirectory(worktreePath)) {
                 WorktreeService.persistWorktreeState(storage, sessionFile, engine.conversation().getSessionId(), null);
                 return;
             }
             System.setProperty("user.dir", persisted.worktreePath());
 
             // setOriginalCwd(getCwd)).
-            CwdState.setOriginalCwd(Path.of(persisted.worktreePath()));
+            CwdState.setOriginalCwd(worktreePath);
             WorktreeService.restoreWorktreeSession(persisted);
             WorktreeService.resetLatches();
         } catch (Exception e) {

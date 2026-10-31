@@ -66,7 +66,8 @@ public class ExportCommand implements AnnotatedCommand {
             filename = filename.replaceAll("\\.[^.]+$", "") + ".txt";
         }
 
-        String cwd = context.session().workingDirectory() != null ? context.session().workingDirectory() : System.getProperty("user.dir");
+        String cwd = StringUtils.defaultIfBlank(context.session().workingDirectory(),
+            System.getProperty("user.dir", "."));
         Path path = Path.of(filename).isAbsolute() ? Path.of(filename) : Path.of(cwd, filename);
 
         try {

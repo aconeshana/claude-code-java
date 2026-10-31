@@ -114,7 +114,7 @@ public class TaskGetTool extends AnnotatedTool<JsonNode, String> {
         Optional<Task> found = activeStore.get(taskId);
         String text = found.map(TaskGetTool::formatTask).orElse("Task not found");
         return new ToolCallResult<>(text,
-            ToolResult.success(text).withToolUseResult(taskPayload(found)));
+            ToolResult.success(text).withToolUseResult(taskPayload(found.orElse(null))));
     }
 
 
@@ -126,7 +126,7 @@ public class TaskGetTool extends AnnotatedTool<JsonNode, String> {
         activeStore.reload();
         Optional<Task> found = activeStore.get(taskId);
         return ToolResult.success(rawResult == null ? "" : rawResult.toString())
-            .withToolUseResult(taskPayload(found));
+            .withToolUseResult(taskPayload(found.orElse(null)));
     }
 
     @Override
@@ -165,13 +165,13 @@ public class TaskGetTool extends AnnotatedTool<JsonNode, String> {
         return String.join("\n", lines);
     }
 
-    private static ObjectNode taskPayload(Optional<Task> found) {
+    /** {@code task} is null when the lookup found nothing; the payload then says so. */
+    private static ObjectNode taskPayload(Task task) {
         ObjectNode payload = mapper().createObjectNode();
-        if (found.isEmpty()) {
+        if (task == null) {
             payload.putNull("task");
             return payload;
         }
-        Task task = found.orElseThrow();
         ObjectNode value = payload.putObject("task");
         value.put("id", task.id());
         value.put("subject", task.subject());
