@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -169,18 +170,16 @@ final class ProtocolTurnRunner {
             for (SseFrame frame : perTurn.openingFrames()) {
                 connection.offer(SseFrameWriter.event(frame.event(), null, frame.data()));
             }
-            submitPrompt(session, prompt, attachments, messageId);
+            submitPrompt(session, prompt, attachments, messageId, turnScope);
         } catch (RuntimeException failure) {
             inFlight.release(targetId);
-            turnScope.close();
-            connection.offer(SseFrameWriter.event("error", null, errorJson(
-                StringUtils.defaultIfBlank(failure.getMessage(),
-                    "turn submission failed")).toString()));
+            turnScope.fail(StringUtils.defaultIfBlank(failure.getMessage(),
+                "turn submission failed"));
         }
     }
 
     private void submitPrompt(SessionHostSession session, String prompt,
-            SubmissionAttachments attachments, String messageId) {
+            SubmissionAttachments attachments, String messageId, TurnScopeSink turnScope) {
         String sessionId = session.info().id();
         SessionHostSubmission submission = new SessionHostSubmission(
             prompt, messageId, attachments.images(), attachments.files());
@@ -189,8 +188,11 @@ final class ProtocolTurnRunner {
             .whenComplete((_, failure) -> {
                 if (failure != null) {
                     // The submission never reached the engine; release the
-                    // in-flight slot. Successful turns release it at turn end.
+                    // in-flight slot and end the stream. Successful turns do
+                    // both at turn end.
                     inFlight.release(sessionId);
+                    turnScope.fail(StringUtils.defaultIfBlank(failure.getMessage(),
+                        "turn submission failed"));
                 }
             });
     }
@@ -214,8 +216,11 @@ final class ProtocolTurnRunner {
      *
      * <p>Subscribes to the session hub without replay (the recorded prefix
      * belongs to earlier turns), projects this turn's events through the
-     * protocol projection, and closes the lane on turn completion — releasing
-     * the session's in-flight slot. Events before the first
+     * protocol projection, and on turn completion releases the session's
+     * in-flight slot and finishes the lane: the closing frames are flushed and
+     * the response body ends, so the client's HTTP connection is freed rather
+     * than held open by heartbeats (browsers allow six per host). Events
+     * before the first
      * {@code onTurnStart} are ignored so a turn that was already draining when
      * the request arrived cannot leak into this stream.
      */
@@ -226,6 +231,7 @@ final class ProtocolTurnRunner {
         private final String sessionId;
         private volatile AutoCloseable subscription;
         private volatile boolean turnObserved;
+        private final AtomicBoolean ended = new AtomicBoolean();
 
         TurnScopeSink(PerTurnProjection projection, SseConnection connection, String sessionId) {
             this.projection = projection;
@@ -269,11 +275,26 @@ final class ProtocolTurnRunner {
         }
 
         private void finishTurn() {
+            if (!ended.compareAndSet(false, true)) return;
             inFlight.release(sessionId);
             close();
+            connection.finish();
         }
 
-        void close() {
+        /**
+         * Ends the stream with the protocol-neutral error frame when the turn
+         * never started. The caller owns the in-flight slot release; a turn
+         * that already ended through the hub keeps its own closing frames.
+         */
+        void fail(String message) {
+            if (!ended.compareAndSet(false, true)) return;
+            close();
+            connection.offer(SseFrameWriter.event("error", null,
+                errorJson(message).toString()));
+            connection.finish();
+        }
+
+        private void close() {
             AutoCloseable current = subscription;
             subscription = null;
             if (current != null) {

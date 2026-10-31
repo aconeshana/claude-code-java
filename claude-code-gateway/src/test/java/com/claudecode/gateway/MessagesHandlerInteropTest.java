@@ -123,6 +123,40 @@ class MessagesHandlerInteropTest {
     }
 
     @Test
+    @Timeout(10)
+    void responseBodyEndsAfterMessageStop() throws Exception {
+        // A finished turn must end its HTTP response: a lane left open past
+        // message_stop pins one browser connection per submission until the
+        // per-host pool (six in Chrome) is exhausted and every later fetch
+        // stays pending.
+        startServer();
+        installSession(submission -> {
+            hub.onTurnStart(UserInput.of(submission.prompt(), submission.prompt(),
+                null, "default"));
+            hub.onMessage(textMessage("done"));
+            hub.onTurnComplete(new TurnOutcome(
+                false, false, false, false, false, 1L, null, null, null, null));
+            return CompletableFuture.completedFuture(null);
+        });
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/v1/messages"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .post(RequestBody.create(
+                    "{\"model\":\"m\",\"max_tokens\":1,\"stream\":true,"
+                        + "\"messages\":[{\"role\":\"user\",\"content\":\"end\"}]}",
+                    JSON))
+                .build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            String body = response.body().string();
+            assertThat(body).contains("message_stop");
+            assertThat(body.substring(body.indexOf("message_stop")))
+                .as("nothing follows the closing frame")
+                .doesNotContain("event:");
+        }
+    }
+
+    @Test
     @Timeout(20)
     void retriedPostWithSameIdempotencyKeySubmitsOnlyOnce() throws Exception {
         startServer();

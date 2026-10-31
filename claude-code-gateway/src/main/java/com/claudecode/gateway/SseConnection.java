@@ -25,6 +25,10 @@ import java.util.concurrent.locks.ReentrantLock;
  * has been quiet for the keep-alive interval. Write failures close the lane
  * and surface through {@code onClose} — for SSE, a failed write means the
  * client is gone.
+ *
+ * <p>{@link #close()} drops the lane at once; {@link #finish()} ends it
+ * gracefully — frames already queued reach the client, then the response body
+ * is closed so the HTTP connection returns to the client's keep-alive pool.
  */
 public final class SseConnection implements AutoCloseable {
 
@@ -36,6 +40,7 @@ public final class SseConnection implements AutoCloseable {
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition frameAvailable = lock.newCondition();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean finishing = new AtomicBoolean();
     private final Duration keepAlive;
 
     private SseConnection(OutputStream output, int capacity, Duration keepAlive, Runnable onClose) {
@@ -60,12 +65,26 @@ public final class SseConnection implements AutoCloseable {
      */
     public boolean offer(byte[] frame) {
         Objects.requireNonNull(frame, "frame");
-        if (closed.get() || !queue.offer(frame)) {
+        if (closed.get() || finishing.get() || !queue.offer(frame)) {
             close();
             return false;
         }
         signalFrame();
         return true;
+    }
+
+    /**
+     * Ends the lane after every frame queued so far has been written. Later
+     * offers are refused. A queue too full to take the end marker means the
+     * client is lagging anyway, so the lane is dropped as {@link #offer} would.
+     */
+    public void finish() {
+        if (closed.get() || !finishing.compareAndSet(false, true)) return;
+        if (!queue.offer(CLOSE)) {
+            close();
+            return;
+        }
+        signalFrame();
     }
 
     @Override
@@ -113,12 +132,13 @@ public final class SseConnection implements AutoCloseable {
 
     /**
      * Waits for the next frame, emitting a keep-alive heartbeat when the
-     * keep-alive interval passes without traffic. Returns the close sentinel
-     * as {@code null}.
+     * keep-alive interval passes without traffic. Returns the {@link #CLOSE}
+     * marker itself (queued by {@link #finish()}, or on interruption) so the
+     * write loop can end; {@code null} only when the lane closed meanwhile.
      */
     private byte[] awaitFrame() throws IOException {
         byte[] frame = queue.poll();
-        if (frame != null) return frame == CLOSE ? null : frame;
+        if (frame != null) return frame;
         long deadlineNanos = System.nanoTime() + keepAlive.toNanos();
         lock.lock();
         try {
@@ -134,11 +154,11 @@ public final class SseConnection implements AutoCloseable {
                     frameAvailable.await(remaining, TimeUnit.NANOSECONDS) ;
                 } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
-                    return null;
+                    return CLOSE;
                 }
                 frame = queue.poll();
             }
-            return frame == CLOSE ? null : frame;
+            return frame;
         } finally {
             lock.unlock();
         }

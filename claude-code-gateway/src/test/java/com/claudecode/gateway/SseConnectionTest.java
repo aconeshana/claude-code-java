@@ -85,6 +85,26 @@ class SseConnectionTest {
         assertThat(connection.isClosed()).isTrue();
     }
 
+    @Test
+    @Timeout(10)
+    void finishWritesEveryQueuedFrameBeforeClosingTheStream() throws Exception {
+        RecordingOutput output = new RecordingOutput();
+        AtomicBoolean closed = new AtomicBoolean();
+        SseConnection connection = SseConnection.start(
+            output, 16, Duration.ofSeconds(30), () -> closed.set(true));
+
+        connection.offer(SseFrameWriter.event("a", null, "one"));
+        connection.offer(SseFrameWriter.event("b", null, "two"));
+        connection.finish();
+
+        awaitCondition(closed::get);
+        assertThat(new String(output.bytes(), StandardCharsets.UTF_8))
+            .isEqualTo("event: a\ndata: one\n\nevent: b\ndata: two\n\n");
+        assertThat(output.closed()).isTrue();
+        assertThat(connection.offer(SseFrameWriter.event("c", null, "late")))
+            .as("a finished lane accepts nothing further").isFalse();
+    }
+
     /** Polls with jitter-free short sleeps until the condition holds or 5s pass. */
     private static void awaitCondition(BooleanSupplier condition)
             throws InterruptedException {
@@ -99,6 +119,7 @@ class SseConnectionTest {
 
     private static final class RecordingOutput extends OutputStream {
         private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private final AtomicBoolean closed = new AtomicBoolean();
 
         byte[] bytes() {
             synchronized (buffer) {
@@ -106,10 +127,18 @@ class SseConnectionTest {
             }
         }
 
+        boolean closed() {
+            return closed.get();
+        }
+
         @Override public void write(int b) {
             synchronized (buffer) {
                 buffer.write(b);
             }
+        }
+
+        @Override public void close() {
+            closed.set(true);
         }
     }
 
