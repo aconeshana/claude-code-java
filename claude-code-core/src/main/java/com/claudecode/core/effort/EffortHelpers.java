@@ -325,17 +325,20 @@ public final class EffortHelpers {
     }
 
     /**
-     * Maps an effort level to its single-glyph indicator character. {@link #ULTRACODE} keeps
-     * its own glyph rather than borrowing {@code xhigh}'s — 236's {@code Edo} branches on the
-     * pseudo-level before consulting the per-level table {@code kQi}.
+     * Maps an effort level to its single-glyph indicator character.
+     *
+     * <p>Authoritative source: the 2.1.236 bundle. {@code Edo} branches on the pseudo-level
+     * before consulting the per-level table {@code kQi}, and {@code kQi} enumerates only the
+     * five real levels — {@code none} and {@code minimal} (GPT-family values) have no case of
+     * their own and fall through to {@code default}, which is {@code high}'s glyph. {@code Edo}
+     * likewise coalesces a null level to {@code "low"} before calling {@code kQi}, so a null
+     * level draws {@code low}'s glyph rather than {@code high}'s.
      */
     public static String effortLevelToSymbol(String level) {
         if (isUltracode(level)) return Figures.EFFORT_ULTRACODE;
-        return switch (level == null ? "" : level) {
-            case "none", "minimal" -> Figures.EFFORT_LOW;
+        return switch (level == null ? "low" : level) {
             case "low"    -> Figures.EFFORT_LOW;
             case "medium" -> Figures.EFFORT_MEDIUM;
-            case "high"   -> Figures.EFFORT_HIGH;
             case "xhigh"  -> Figures.EFFORT_XHIGH;
             case "max"    -> Figures.EFFORT_MAX;
             default       -> Figures.EFFORT_HIGH;

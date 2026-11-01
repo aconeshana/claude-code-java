@@ -385,7 +385,7 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
     private static List<String> javascriptSlice(List<String> values, int end) {
         if (values == null || values.isEmpty() || end == 0) return List.of();
         int exclusive = end < 0 ? Math.max(0, values.size() + end) : Math.min(values.size(), end);
-        return exclusive <= 0 ? List.of() : List.copyOf(values.subList(0, exclusive));
+        return exclusive == 0 ? List.of() : List.copyOf(values.subList(0, exclusive));
     }
 
     private static Pattern wordBoundaryPattern(String term) {

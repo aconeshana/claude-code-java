@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.claudecode.core.platform.Platform;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /** Shell clipboard fallback safety tests. */
@@ -27,26 +27,18 @@ class ImagePasteFallbackTest {
     }
 
     @Test
-    void appleScriptStringEscapesQuotesBackslashesAndNewlines() {
-        assertEquals("\"a\\\\b\\\"c\\nd\"",
-            ImagePaste.quoteAppleScriptString("a\\b\"c\nd"));
-    }
-
-    @Test
-    void shellArgumentQuotingTreatsMetacharactersAsLiteralText() {
-        assertEquals("'/tmp/a'\"'\"'$(touch nope)'",
-            ImagePaste.quoteShellArgument("/tmp/a'$(touch nope)"));
-    }
-
-    @Test
-    void subprocessTimeoutTerminatesHungCommand() {
-        long started = System.nanoTime();
-
-        int result = ImagePaste.runWithTimeout(
-            Duration.ofMillis(100), "sh", "-c", "sleep 5");
-
-        long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
-        assertNotEquals(0, result);
-        assertTrue(elapsedMillis < 2_000, "hung clipboard process must be terminated promptly");
+    void backslashEscapesCollapseToSingleLevelOnPosixPlatforms() {
+        String input = "/Users/me/my\\ file.png";
+        if (Platform.CURRENT == Platform.WIN32) {
+            // Windows paths keep their backslashes; stripping is deliberately a no-op there.
+            assertEquals(input, ImagePaste.stripBackslashEscapes(input));
+            return;
+        }
+        // On POSIX the shell escapes a pasted path, so one escape level is stripped.
+        assertEquals("/Users/me/my file.png", ImagePaste.stripBackslashEscapes(input));
+        // An escaped backslash survives as a literal one.
+        assertEquals("a\\b", ImagePaste.stripBackslashEscapes("a\\\\b"));
+        // A trailing lone backslash has nothing to escape and is preserved.
+        assertEquals("dir\\", ImagePaste.stripBackslashEscapes("dir\\"));
     }
 }

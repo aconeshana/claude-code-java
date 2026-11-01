@@ -100,8 +100,6 @@ public final class ImagePaste {
         return text.isEmpty() ? null : text;
     }
 
-
-
     /**
      * Try to find and read an image file from a pasted text path.
      */
@@ -110,8 +108,9 @@ public final class ImagePaste {
         if (cleaned == null) return null;
         try {
             byte[] bytes;
-            if (Path.of(cleaned).isAbsolute()) {
-                bytes = Files.readAllBytes(Path.of(cleaned));
+            Path path = Path.of(cleaned);
+            if (path.isAbsolute()) {
+                bytes = Files.readAllBytes(path);
             } else {
                 // VSCode Terminal pastes just the filename; check if clipboard holds a full path
                 // whose basename matches.
@@ -166,18 +165,24 @@ public final class ImagePaste {
         String salt = Integer.toHexString(path.hashCode());
         String placeholder = "__DBLBS_" + salt + "__";
         String withPlaceholder = path.replace("\\\\", placeholder);
-        // Strip single-backslash escapes: \X → X
-        StringBuilder sb = new StringBuilder(withPlaceholder.length());
-        for (int i = 0; i < withPlaceholder.length(); i++) {
-            char c = withPlaceholder.charAt(i);
-            if (c == '\\' && i + 1 < withPlaceholder.length()) {
-                sb.append(withPlaceholder.charAt(i + 1));
+        return stripSingleBackslashEscapes(withPlaceholder).replace(placeholder, "\\");
+    }
+
+    /**
+     * Strip single-backslash escapes: {@code \X} → {@code X}. A trailing lone backslash is kept.
+     */
+    private static String stripSingleBackslashEscapes(String text) {
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\\' && i + 1 < text.length()) {
+                sb.append(text.charAt(i + 1));
                 i++;
             } else {
                 sb.append(c);
             }
         }
-        return sb.toString().replace(placeholder, "\\");
+        return sb.toString();
     }
 
     // ── Shared helpers ─────────────────────────────────────────────────────
@@ -217,18 +222,6 @@ public final class ImagePaste {
             pastedDims);
     }
 
-    static String quoteAppleScriptString(String value) {
-        return "\"" + value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n") + "\"";
-    }
-
-    static String quoteShellArgument(String value) {
-        return "'" + value.replace("'", "'\"'\"'") + "'";
-    }
-
     static Path createScreenshotPath() {
         String base = SubprocessEnvironment.get("CLAUDE_CODE_TMPDIR");
         if (StringUtils.isEmpty(base)) {
@@ -239,24 +232,6 @@ public final class ImagePaste {
             if (StringUtils.isEmpty(base)) base = "/tmp";
         }
         return Path.of(base, SCREENSHOT_PREFIX + UUID.randomUUID() + ".png");
-    }
-
-    /** Run a command, return exit code, and terminate clipboard helpers that hang. */
-    static int runWithTimeout(Duration timeout, String... cmd) {
-        try {
-            Process process = new ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .start();
-            try { process.getOutputStream().close(); } catch (IOException _) {}
-            if (process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                return process.exitValue();
-            }
-            terminate(process);
-            return -1;
-        } catch (Exception _) {
-            return -1;
-        }
     }
 
     /** Run a command and capture stdout as a UTF-8 string. Returns null on failure. */

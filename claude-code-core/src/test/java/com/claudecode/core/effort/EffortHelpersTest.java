@@ -240,6 +240,19 @@ class EffortHelpersTest {
     }
 
     @Test
+    void effortLevelToSymbol_followsThe236LevelTable() {
+        assertEquals(Figures.EFFORT_LOW, EffortHelpers.effortLevelToSymbol("low"));
+        assertEquals(Figures.EFFORT_MEDIUM, EffortHelpers.effortLevelToSymbol("medium"));
+        assertEquals(Figures.EFFORT_HIGH, EffortHelpers.effortLevelToSymbol("high"));
+        // 236's kQi enumerates only the five real levels: the GPT-family values none/minimal
+        // have no case and fall through to the default (high's glyph), not low's.
+        assertEquals(Figures.EFFORT_HIGH, EffortHelpers.effortLevelToSymbol("none"));
+        assertEquals(Figures.EFFORT_HIGH, EffortHelpers.effortLevelToSymbol("minimal"));
+        // Edo coalesces a null level to "low" before calling kQi.
+        assertEquals(Figures.EFFORT_LOW, EffortHelpers.effortLevelToSymbol(null));
+    }
+
+    @Test
     void effortNotification_swapsTheWholeTailForUltracode() {
         String model = "claude-opus-4-8"; // xhigh-capable, so ultracode can resolve
         assertEquals(Figures.EFFORT_MEDIUM + " medium · /effort",
