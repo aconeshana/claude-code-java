@@ -896,6 +896,10 @@ public class TranscriptRecorder implements TranscriptSink {
     /**
      * Invalidates persisted-message and chain caches after compaction rewrites
      * the logical conversation, while retaining live prompt/session metadata.
+     *
+     * @return {@code false} when pending writes did not drain before the timeout, in which
+     *     case the caches are left intact and the caller may retry; {@code true} otherwise,
+     *     including for a blank session id where there is nothing to clear.
      */
     public boolean clearCompactionCaches(String sessionId, long timeoutMillis) {
         if (StringUtils.isBlank(sessionId)) return true;
