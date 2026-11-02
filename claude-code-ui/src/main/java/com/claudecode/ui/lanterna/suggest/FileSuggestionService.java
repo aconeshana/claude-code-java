@@ -9,6 +9,7 @@ import com.claudecode.core.process.ProcessRunner;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 import com.claudecode.ui.lanterna.input.InputPanel;
 import com.claudecode.tools.files.RipGrepUtil;
+import com.claudecode.tools.files.WorkspaceFileSearch;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 
 import java.io.IOException;
@@ -171,46 +172,12 @@ public final class FileSuggestionService {
 
     /**
      * Subsequence fuzzy match score — pure-JVM equivalent of nucleo's
-     * Smith-Waterman variant. See {@link FileSuggestionService} class Javadoc.
-     * Returns -1 if query is not a subsequence of text.
+     * Smith-Waterman variant. Delegates to {@link WorkspaceFileSearch} so the
+     * TUI typeahead and the webui {@code @}-completion endpoint rank with one
+     * implementation. Returns -1 if query is not a subsequence of text.
      */
     public static int subsequenceScore(String query, String text) {
-        if (query.isEmpty()) return 0;
-        int score = 0;
-        int qi = 0;
-        int firstMatchPos = 0;
-        boolean prevMatch = false;
-        for (int ti = 0; ti < text.length() && qi < query.length(); ti++) {
-            char tc = Character.toLowerCase(text.charAt(ti));
-            if (tc == query.charAt(qi)) {
-                if (qi == 0) firstMatchPos = ti;
-                score += 1;
-                if (prevMatch) score += 2;
-                if (ti == 0) {
-                    score += 3;
-                } else {
-                    char prev = text.charAt(ti - 1);
-                    if (prev == '/' || prev == '.' || prev == '-' || prev == '_' || prev == ' ') {
-                        score += 3;
-                    }
-                }
-                qi++;
-                prevMatch = true;
-            } else {
-                prevMatch = false;
-            }
-        }
-        if (qi < query.length()) return -1;
-        int firstSlash = text.indexOf('/');
-        String firstSeg = firstSlash > 0 ? text.substring(0, firstSlash) : text;
-        String queryBare = Strings.CS.endsWith(query, "/") ? query.substring(0, query.length() - 1) : query;
-        int firstSegBonus = firstSeg.equalsIgnoreCase(queryBare) ? 20 : 0;
-        int slashIdx = text.lastIndexOf('/');
-        String baseName = slashIdx >= 0 ? text.substring(slashIdx + 1) : text;
-        int filenameBonus = Character.toLowerCase(baseName.charAt(0)) == query.charAt(0)
-            && Strings.CI.startsWith(baseName, query) ? 5 : 0;
-        int hiddenPenalty = Strings.CS.contains(text, "/.") ? 1 : 0;
-        return (score + firstSegBonus + filenameBonus - hiddenPenalty) * 1000 - firstMatchPos;
+        return WorkspaceFileSearch.subsequenceScore(query, text);
     }
 
     private void startBackgroundRefresh(String cwd) {

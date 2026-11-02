@@ -39,6 +39,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayCommandsPort;
+import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
@@ -88,6 +89,7 @@ import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
+import com.claudecode.tools.files.WorkspaceFileSearch;
 import com.claudecode.tools.bash.BashTool;
 import com.claudecode.tools.cron.CronStore;
 import com.claudecode.tools.loop.LoopPromptResolver;
@@ -400,7 +402,8 @@ final class CliInteractiveSessionRunner {
                     toolRegistry::getContextAnalysisToolDefinitions),
                 gatewaySessionActions(),
                 gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
-                gatewaySpinnerVerbs());
+                gatewaySpinnerVerbs(),
+                gatewayFileSuggestions(interactiveCwd));
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -898,6 +901,28 @@ final class CliInteractiveSessionRunner {
      * so menu rows follow hook/plugin-driven registry changes without a
      * restart.
      */
+    /**
+     * Projects the TUI {@code @}-completion workspace enumeration onto the
+     * gateway, so the webui composer's {@code @} menu lists the same paths the
+     * TUI typeahead offers. Both surfaces rank through one
+     * {@code WorkspaceFileSearch}, so the two cannot drift; rows carry paths
+     * only and never read file contents (the submission-time
+     * {@code AtMentionedFilesProvider} owns the read).
+     */
+    private static GatewayFileSuggestionsPort gatewayFileSuggestions(String cwd) {
+        WorkspaceFileSearch search = new WorkspaceFileSearch();
+        return new GatewayFileSuggestionsPort() {
+            @Override public List<FileCandidate> list(String query) {
+                return search.suggest(cwd, query, MAX_WEB_FILE_CANDIDATES).stream()
+                    .map(row -> new FileCandidate(row.path(), row.directory()))
+                    .toList();
+            }
+        };
+    }
+
+    /** Upper bound on one {@code @} menu answer (the client renders far fewer). */
+    private static final int MAX_WEB_FILE_CANDIDATES = 50;
+
     private static GatewayCommandsPort gatewayCommands(CommandRegistry registry) {
         return new GatewayCommandsPort() {
             @Override public List<CommandEntry> list() {

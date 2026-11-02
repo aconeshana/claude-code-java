@@ -17,7 +17,7 @@ import {
   type LexicalEditor,
 } from 'lexical'
 import { IconPaperclipOutline16, IconPlusOutline16, IconSendOutline16, IconSkillOutline16 } from '@primitives'
-import type { UserContentBlock } from '../api/types'
+import type { FileCandidate, UserContentBlock } from '../api/types'
 import { fetchComposerCommands, type ComposerCommandEntry } from '../api/client'
 import {
   AttachmentError,
@@ -34,6 +34,9 @@ import {
   storeQueuedSubmission,
 } from './composerQueue'
 import { useEnterBehavior } from '../store/enterBehavior'
+import { AtTriggerPlugin } from './AtTriggerPlugin'
+import { formatMention, type AtToken } from './atReference'
+import { useFileSuggestions } from '../store/fileSuggestions'
 import { ComposerMenu } from '../../vendor/dsh-composer-menu/ComposerMenu'
 import { menuReduce, MENU_CLOSED, type MenuCandidate, type MenuState } from '../../vendor/dsh-composer-menu/menuCore'
 import { sectionRows } from '../../vendor/dsh-composer-menu/sectionRows'
@@ -104,6 +107,14 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
   // The catalogue fetch is per-open (not interval-polled) — dsh warms its
   // directory per session scope; a fresh open is this app's equivalent.
   const [menu, setMenu] = useState<MenuState>(MENU_CLOSED)
+  // The `@`-reference menu is a second, independent menu over the same
+  // vendored shell and reducer: it owns a files-only group, opens on a typed
+  // `@` token under the caret (AtTriggerPlugin) and closes when that token
+  // goes away. The two menus never show together — a `@` pick consumes the
+  // key before the "+" menu sees it, and opening the "+" menu clears the
+  // token's menu.
+  const [atToken, setAtToken] = useState<AtToken | null>(null)
+  const [fileMenu, setFileMenu] = useState<MenuState>(MENU_CLOSED)
   // Selectors, not the whole-store subscription: zustand hands a new state
   // object to whole-store subscribers on every set (even no-op writes), and
   // the refresh effect below keys on these handles — a whole-store handle
@@ -124,6 +135,11 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
   const editorRef = useRef<LexicalEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const enterBehavior = useEnterBehavior((state) => state.behavior)
+  const fileFiles = useFileSuggestions((state) => state.files)
+  const filePending = useFileSuggestions((state) => state.pending)
+  const fileQuery = useFileSuggestions((state) => state.query)
+  const searchFiles = useFileSuggestions((state) => state.search)
+  const resetFiles = useFileSuggestions((state) => state.reset)
   const wasBusyRef = useRef(busy)
   // The session the current queue state was read for: a queue row parked
   // under another session must never flush through this composer.
@@ -267,6 +283,129 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
     }
   }, [menu.groups, closeMenu])
 
+  // --- "@" reference menu (typed trigger over GET /api/file-suggestions) ---
+
+  /**
+   * The AtTriggerPlugin reports the active token on every editor update (a
+   * keystroke *and* a caret move). A token opens/refines the file menu and
+   * fetches its candidates; a null token closes it. Re-opening the same
+   * token+query must not re-issue the fetch, so the effect keys on both.
+   */
+  useEffect(() => {
+    if (atToken == null) {
+      setFileMenu((current) => menuReduce(current, { type: 'close' }))
+      return
+    }
+    setFileMenu((current) => {
+      const hit = menuReduce(current, { type: 'hit' })
+      if (hit.groups.some((group) => group.source === 'file')) return hit
+      return {
+        ...hit,
+        groups: [...hit.groups, { source: 'file', status: 'pending' as const, items: [] }],
+      }
+    })
+    void searchFiles(atToken.query)
+  }, [atToken, searchFiles])
+
+  // Mirror the store's rows onto the menu's single 'file' group — but only
+  // once it has actually answered *this* token's query. Settling on the
+  // store's initial empty state would trip the reducer's all-ready-empty
+  // auto-close before the fetch returned, so the menu would vanish the
+  // instant it opened and the settled rows would then be dropped by the
+  // reducer's own `if (!state.open) return state` guard.
+  useEffect(() => {
+    if (atToken == null) return
+    if (filePending || fileQuery !== atToken.query) return
+    setFileMenu((current) => menuReduce(current, {
+      type: 'source-settled',
+      generation: current.generation,
+      source: 'file',
+      items: fileCandidates(fileFiles),
+    }))
+  }, [fileFiles, filePending, fileQuery, atToken])
+
+  /**
+   * A candidate pick. Two verbs, matching upstream's file-reference source:
+   *
+   * <ul>
+   *   <li>{@code settle} (row click or Enter) replaces the live `@` token with
+   *       the mention and closes the menu. The inserted text is the exact wire
+   *       form the backend's AtMentionedFilesProvider parses, so the model
+   *       receives the file. A settling pick on a directory is the same kind
+   *       of mention — trailing slash and all — and a directory resolves to no
+   *       attachment, which is what makes it a container rather than content.
+   *   <li>{@code drill} (Tab) rewrites the token to the directory's path and
+   *       leaves the menu open, so the caret sits at the trailing slash and
+   *       the next level loads as the query. That is the only way to reach a
+   *       nested path without retyping it.
+   * </ul>
+   */
+  const pickFile = useCallback((index: number, action: 'settle' | 'drill'): void => {
+    const candidate = fileFiles[index]
+    if (candidate === undefined || atToken == null) return
+    const mention = formatMention(candidate.path)
+    const editor = editorRef.current
+    if (editor == null) return
+    const drilling = action === 'drill' && candidate.directory
+    // A drill keeps the token live (no trailing space, so `activeAtToken` still
+    // sees it and the menu re-queries); a settle closes it.
+    const inserted = drilling ? mention : mention + ' '
+    editor.update(() => {
+      const root = $getRoot()
+      const text = root.getTextContent()
+      const merged = text.slice(0, atToken.start) + inserted + text.slice(atToken.end)
+      root.clear()
+      const node = $createTextNode(merged)
+      root.append($createParagraphNode().append(node))
+      const caret = atToken.start + inserted.length
+      node.select(caret, caret)
+    })
+    if (drilling) return
+    setFileMenu((current) => menuReduce(current, { type: 'close' }))
+    resetFiles()
+    setAtToken(null)
+  }, [fileFiles, atToken, resetFiles])
+
+  const hoverFile = useCallback((index: number): void => {
+    setFileMenu((current) => menuReduce(current, { type: 'hover', source: 'file', index }))
+  }, [])
+
+  /**
+   * The file menu's keyboard share. Runs before the "+" menu's handler (the
+   * two are exclusive in practice — the file menu only exists while a token
+   * does) and returns true only when it consumed the key.
+   */
+  const onFileMenuKeyDown = useCallback((event: KeyboardEvent): boolean => {
+    if (!fileMenu.open) return false
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setFileMenu((current) => menuReduce(current, { type: 'move', dir: event.key === 'ArrowDown' ? 1 : -1 }))
+      return true
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setFileMenu((current) => menuReduce(current, { type: 'close' }))
+      return true
+    }
+    if (event.key === 'Enter' && fileMenu.highlight !== null) {
+      event.preventDefault()
+      pickFile(fileMenu.highlight.index, 'settle')
+      return true
+    }
+    // Tab is the drill verb: on a directory it keeps the menu open one level
+    // deeper. On a file (or with no highlight) it passes through, so native
+    // focus traversal still works.
+    if (event.key === 'Tab' && fileMenu.highlight !== null) {
+      const candidate = fileFiles[fileMenu.highlight.index]
+      if (candidate?.directory === true) {
+        event.preventDefault()
+        pickFile(fileMenu.highlight.index, 'drill')
+        return true
+      }
+    }
+    return false
+  }, [fileMenu.open, fileMenu.highlight, pickFile, fileFiles])
+
   /** Inserts text at the draft head over the Lexical root, keeping focus. */
   const insertAtDraftHead = (text: string): void => {
     const editor = editorRef.current
@@ -366,6 +505,18 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
           loadingLabel="正在加载…"
           listboxLabel="命令候选建议"
         />
+        <ComposerMenu
+          state={fileMenu}
+          onPick={(_source, index) => pickFile(index, 'settle')}
+          onHover={(_source, index) => hoverFile(index)}
+          onDismiss={() => {
+            setFileMenu((current) => menuReduce(current, { type: 'close' }))
+            resetFiles()
+          }}
+          groupTitle={() => '文件'}
+          loadingLabel="正在查找文件…"
+          listboxLabel="文件候选建议"
+        />
         {attachmentError != null && (
           <div className={css.notice} role="alert">{attachmentError}</div>
         )}
@@ -398,9 +549,16 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
             <ClearEditorPlugin />
             <EditorRefPlugin editorRef={editorRef} />
             <OnChangePlugin ignoreSelectionChange onChange={onChange} />
-            <SubmitKeyPlugin disabled={disabled} onSubmit={submit} onMenuKeyDown={onMenuKeyDown} />
-            <MenuArrowKeysPlugin onMenuKeyDown={onMenuKeyDown} />
+            <SubmitKeyPlugin
+              disabled={disabled}
+              onSubmit={submit}
+              onMenuKeyDown={onMenuKeyDown}
+              onFileMenuKeyDown={onFileMenuKeyDown}
+            />
+            <MenuArrowKeysPlugin onMenuKeyDown={(event) =>
+              onFileMenuKeyDown(event) || onMenuKeyDown(event)} />
             <PasteFilesPlugin onFiles={addFiles} />
+            <AtTriggerPlugin onToken={setAtToken} />
           </div>
         </LexicalComposer>
         <div className={css.row}>
@@ -532,6 +690,20 @@ function composerCandidates(catalogue: readonly ComposerCommandEntry[]): readonl
 }
 
 /**
+ * Projects the gateway's file candidates onto the menu's one 'file' group.
+ * A directory row keeps its trailing slash and takes the folder glyph, so the
+ * row reads as drillable; the pick inserts the same slash-terminated path,
+ * which is what makes descending another level work by plain typing.
+ */
+function fileCandidates(files: readonly FileCandidate[]): readonly MenuCandidate[] {
+  return files.map((file) => ({
+    name: file.path,
+    ...(file.directory ? { icon: 'folder' as const } : {}),
+    value: 'file',
+  }))
+}
+
+/**
  * Publishes the editor instance to the parent's ref at mount. OnChangePlugin
  * cannot serve this: its listener only fires on real content updates (and
  * skips empty-prev-state ones), so a command-menu pick landing before the
@@ -554,10 +726,11 @@ function EditorRefPlugin({ editorRef }: {
  * also an Enter — submitting then would eat the candidate, so composing
  * events pass through untouched.
  */
-function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown }: {
+function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown, onFileMenuKeyDown }: {
   disabled: boolean
   onSubmit: () => void
   onMenuKeyDown: (event: KeyboardEvent) => boolean
+  onFileMenuKeyDown: (event: KeyboardEvent) => boolean
 }) {
   const [editor] = useLexicalComposerContext()
   useEffect(() => {
@@ -567,6 +740,7 @@ function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown }: {
         if (event == null) return false
         // The open "+" menu owns Enter while it is open (combobox pattern:
         // focus stays here, so the menu's key handling rides this hook).
+        if (onFileMenuKeyDown(event)) return true
         if (onMenuKeyDown(event)) return true
         if (disabled) return false
         if (event.isComposing || event.keyCode === 229) return false
@@ -577,7 +751,7 @@ function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown }: {
       },
       COMMAND_PRIORITY_CRITICAL,
     )
-  }, [editor, disabled, onSubmit, onMenuKeyDown])
+  }, [editor, disabled, onSubmit, onMenuKeyDown, onFileMenuKeyDown])
   return null
 }
 

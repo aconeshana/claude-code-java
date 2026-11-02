@@ -616,6 +616,41 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SpinnerVerbs' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/file-suggestions:
+    get:
+      tags: [Commands]
+      summary: Workspace path candidates for the composer's @ completion
+      description: |
+        The webui composer's `@` menu candidates, backed by the same
+        workspace enumeration the TUI typeahead uses (git ls-files, nested
+        repo aggregation, `rg --files`, then a bounded walk) and the same
+        ranking function, so both surfaces list the same paths in the same
+        order.
+
+        Rows carry **paths only**. Selecting a candidate never reads or
+        attaches file contents — the pick inserts an `@path` token, and the
+        submission-time attachment provider resolves that token and reads
+        the file then. This mirrors dsh's host file-reference contract, which
+        the web client requires because it has no browser-side filesystem.
+
+        A blank `q` lists the workspace root's entries; a path-like `q`
+        (`~/`, `/`, `./`, `../`, or any query containing a separator) lists
+        that directory so the client can descend; anything else ranks the
+        workspace's files with the subsequence scorer. A directory row's
+        `path` carries a trailing slash.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: The live query after the `@` token.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ranked path candidates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileSuggestions' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/session/context:
     get:
       tags: [Sessions]
@@ -1492,6 +1527,24 @@ components:
         commands:
           type: array
           items: { $ref: '#/components/schemas/CommandEntry' }
+    FileSuggestions:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, directory]
+            properties:
+              path:
+                type: string
+                description: >
+                  Workspace-relative path, or absolute for a `~/` / `/` rooted
+                  query. A directory row ends with `/`.
+              directory:
+                type: boolean
+                description: True when the row names a directory (drillable).
     SpinnerVerbs:
       type: object
       required: [active, tools]

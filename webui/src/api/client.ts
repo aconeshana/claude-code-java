@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -213,6 +213,15 @@ export function fetchComposerCommands(): Promise<CommandsListing> {
  */
 export function fetchSpinnerVerbs(): Promise<SpinnerVerbsListing> {
   return requestJson('GET', '/api/spinner-verbs')
+}
+
+/**
+ * GET /api/file-suggestions: workspace path candidates for the composer's
+ * `@` completion menu, ranked by the same scorer the TUI typeahead uses.
+ */
+export function fetchFileSuggestions(query: string): Promise<FileSuggestionsListing> {
+  const suffix = query === '' ? '' : `?q=${encodeURIComponent(query)}`
+  return requestJson('GET', `/api/file-suggestions${suffix}`)
 }
 
 /**

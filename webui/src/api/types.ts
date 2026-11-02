@@ -422,6 +422,26 @@ export interface CommandsListing {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/file-suggestions — composer @ completion candidates
+// ---------------------------------------------------------------------------
+
+/**
+ * One `@` menu candidate. Rows carry paths only: selecting one never reads
+ * or attaches file contents (the backend resolves the inserted `@path` token
+ * at submission time).
+ */
+export interface FileCandidate {
+  /** Workspace-relative path, or absolute for a `~/` / `/` rooted query. */
+  readonly path: string
+  /** True when the row names a directory, so the client can offer a drill. */
+  readonly directory: boolean
+}
+
+export interface FileSuggestionsListing {
+  readonly files: readonly FileCandidate[]
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/spinner-verbs — the TUI spinner's verb vocabulary
 // ---------------------------------------------------------------------------
 

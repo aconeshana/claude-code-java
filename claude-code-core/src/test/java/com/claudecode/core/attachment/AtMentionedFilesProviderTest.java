@@ -71,6 +71,43 @@ class AtMentionedFilesProviderTest {
         assertEquals(6, attachment.dimensions().originalHeight());
     }
 
+    /**
+     * The webui `@` menu's wire form, transcribed from
+     * `webui/src/views/atReference.ts`'s `formatMention`. The two sides are
+     * one contract: the client inserts this text and this provider parses it,
+     * so a change to either escaping rule has to fail here.
+     */
+    private static String formatMention(String path) {
+        return "@" + path.replace(" ", "\\ ");
+    }
+
+    /**
+     * The client's pick for a path containing spaces must be read back as the
+     * file it names. Reasoning about the two regexes independently is not
+     * enough — this asserts the closed loop the feature actually depends on,
+     * because a mismatch means the model receives the mention as literal text.
+     */
+    @Test
+    void webClientMentionFormatForASpacedPathResolves(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("my file with spaces.txt");
+        Files.writeString(file, "MENTION_PROBE_TOKEN_42");
+        List<AttachmentPayload> out = new AtMentionedFilesProvider()
+            .collect(ctx("please read " + formatMention(file.getFileName().toString()) + " now", dir));
+        assertEquals(1, out.size());
+        FileContentAttachment a = (FileContentAttachment) out.getFirst();
+        assertEquals(file.toString(), a.filename());
+        assertEquals("MENTION_PROBE_TOKEN_42", a.content());
+    }
+
+    /** A directory row's trailing slash is not a file; it yields nothing. */
+    @Test
+    void webClientMentionFormatForADirectoryYieldsNoAttachment(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src"));
+        List<AttachmentPayload> out = new AtMentionedFilesProvider()
+            .collect(ctx("descend into " + formatMention("src/") + " please", dir));
+        assertTrue(out.isEmpty());
+    }
+
     private static AttachmentContext ctx(String input, Path cwd) {
         Set<String> empty = ConcurrentHashMap.newKeySet();
         return AttachmentContext.builder(cwd.toString())

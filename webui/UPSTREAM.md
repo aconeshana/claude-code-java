@@ -52,14 +52,69 @@ Product-scope deviations (documented, not gaps):
   draft; that ghost-text mechanism is part of the claim machine above.
 - **No `/`-typed trigger.** Upstream opens the same menu from a typed `/`
   under the caret (the ui-input-trigger detect pipeline). This composer opens
-  the menu from the "+" button only; a typed `/` stays plain text. The detect
-  pipeline is upstream's most cordis-coupled layer (per-hit candidate fetch
-  with generation gating over a service store) and is the one piece that
-  would need a real port rather than a trim if it is ever wanted.
+  the "+" menu from the "+" button only; a typed `/` stays plain text. (The
+  typed **`@`** half of that pipeline IS now ported — see the `@`-reference
+  section below; the `/` half remains unported, so `+` stays the only way in
+  for commands.)
 - **No fuzzy query filtering.** Upstream's empty-query menu shows sections;
   a typed query ranks every row by name/label (`rankByName` from
   ui-primitives). The "+" menu here opens with an empty query and no search
   input — it is a pick list, not a search box.
+
+### `@`-file references (typed trigger, 2026-11-02)
+
+The composer's `@` completion — upstream's `ui-reference` source over the
+`ui-input-trigger` detect pipeline, which this app previously lacked entirely.
+Typing `@` opens a files menu; picking a row inserts an `@path` mention the
+backend reads at submit time. This also restores the two blocks the composer
+menu's first pass cut as "serving `@`-reference directory descent this menu
+has no equivalent for": the drill verb is back (Tab on a directory row), and
+with it a files-only group under the same vendored shell.
+
+**The port is a real port, not a trim.** Upstream's detect layer is
+cordis-coupled (per-hit candidate fetch with generation gating over a service
+store); this app's equivalent is small and hand-written against the same
+semantics: `src/views/atReference.ts` (grammar), `src/views/AtTriggerPlugin.tsx`
+(the Lexical update listener that reports the caret's active token),
+`src/store/fileSuggestions.ts` (one request per query, superseded answers
+dropped by generation), and the `fileMenu` state in `InputBar.tsx` driving the
+already-vendored `ComposerMenu`.
+
+**Wire contract — client and backend are one grammar.** The mention form is
+*our* provider's, not dsh's. dsh quotes a spaced path (`@"my file"`); this
+app's `AtMentionedFilesProvider` matches `(?:^|\s)@((?:[^\s\\]|\\ )+)`,
+so `formatMention` escapes spaces (`@my\ file.ts`). Inserting dsh's form
+would produce a token the provider cannot resolve, and the mention would reach
+the model as literal text with no attachment. The two sides are pinned by
+`webui/src/views/atReference.test.ts` (which transcribes the provider pattern
+and asserts the round trip) and `AtMentionedFilesProviderTest`, which feeds
+the client's exact `formatMention` output through the real provider.
+
+**Backend surface: `GET /api/file-suggestions?q=`** (`GatewayFileSuggestionsHandler`
+over `GatewayFileSuggestionsPort`, wired in the CLI composition root). Rows are
+`{path, directory}` — **paths only**. Selecting a candidate never reads or
+attaches file contents, matching dsh's host file-reference contract ("the
+browser cannot fall back to its own filesystem", and a pick "never reads or
+attaches"); the read happens at submit time in `AtMentionedFilesProvider`.
+Enumeration and ranking are shared, not duplicated: `claude-code-tools`'
+`WorkspaceFileSearch` owns the fallback chain (git ls-files → nested-repo
+aggregation → `rg --files` → bounded walk) and the `subsequenceScore` ranking,
+and the TUI's `FileSuggestionService` now delegates its scoring there, so the
+typeahead and the web menu cannot drift.
+
+Two recorded deviations:
+
+- **Drilled rows carry the full path, not the bare entry name.** Upstream's
+  drilled listing names no parent because its breadcrumb header supplies the
+  context. This port renders no breadcrumb (the header half was not restored),
+  so a bare `brand/` would insert a mention resolving against the workspace
+  root instead of the walked directory. Rows therefore carry the typed
+  directory prefix verbatim (`webui/src/views/brand/`), which is also what
+  makes the drill work by plain typing.
+- **No breadcrumb header.** The drill works (Tab descends, and the path in the
+  draft is its own crumb), but upstream's crumb row above the viewport is not
+  restored. Adding it later is additive — it needs a header slot in the
+  vendored `ComposerMenu` and a `header()`-equivalent source hook.
 
 ### `vendor/dsh-model-select/` — the composer's model seat
 

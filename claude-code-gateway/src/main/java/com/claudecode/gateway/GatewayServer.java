@@ -90,6 +90,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayModelsHandler modelsApi;
     private final GatewayCommandsHandler commandsApi;
     private final GatewaySpinnerVerbsHandler spinnerVerbsApi;
+    private final GatewayFileSuggestionsHandler fileSuggestionsApi;
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final ContextTimelineLedger contextTimeline;
@@ -190,7 +191,7 @@ public final class GatewayServer implements AutoCloseable {
             GatewayPermissionModePort permissionMode) {
         this(config, token, registry, catalog, headless, interactions, sessionMessages,
             settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            new GatewaySpinnerVerbsPort() {});
+            new GatewaySpinnerVerbsPort() {}, new GatewayFileSuggestionsPort() {});
     }
 
     public GatewayServer(Config config, String token, SessionHostRegistry registry,
@@ -201,6 +202,20 @@ public final class GatewayServer implements AutoCloseable {
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, actions, permissionMode,
+            spinnerVerbs, new GatewayFileSuggestionsPort() {});
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
+            GatewayFileSuggestionsPort fileSuggestions) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -268,6 +283,7 @@ public final class GatewayServer implements AutoCloseable {
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
         this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
+        this.fileSuggestionsApi = new GatewayFileSuggestionsHandler(fileSuggestions);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
@@ -700,6 +716,17 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             serve(exchange, () -> commandsApi.handleGet(exchange));
+            return;
+        }
+        if (get && Strings.CS.equals("/api/file-suggestions", targetPath)) {
+            if (!auth.authenticated(exchange)) {
+                try (exchange) {
+                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
+                        "Provide the launch token as Authorization: Bearer or ?token="));
+                }
+                return;
+            }
+            serve(exchange, () -> fileSuggestionsApi.handleGet(exchange));
             return;
         }
         if (get && Strings.CS.equals("/api/spinner-verbs", targetPath)) {
