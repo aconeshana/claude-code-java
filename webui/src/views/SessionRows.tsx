@@ -10,8 +10,8 @@
  *   upstream's `sessionMenuItems`.
  * - `sessionStatuses` — the pending-interaction-first status ordering, for the
  *   two kinds this gateway produces (approval, question). `plan-review` and the
- *   running/subagent counts have no wire equivalent, so the remainder folds to
- *   the active/headless readings described on `sessionStatus`.
+ *   subagent counts have no wire equivalent; `running` and `completed` do, via
+ *   {@link SessionActivity} — see `sessionStatus` and `showSessionStatus`.
  * - `timeLabel`/`displayTitle` helpers (search-result and hover-card variants
  *   dropped — no search, no HoverCard in this port).
  * Dropped by subtraction (no backend surface): workspace rename/delete menus,
@@ -32,6 +32,7 @@ import {
 import type { MenuEntry, StateDotState } from '@primitives'
 import type { CatalogSession } from '../api/types'
 import type { PendingInteraction } from '../store/approvals'
+import type { SessionActivity } from '../store/sessions'
 import css from '@chat-styles/WorkspaceRows.module.css'
 import localCss from './Sidebar.module.css'
 
@@ -49,26 +50,58 @@ export function timeLabel(updatedAt: number, now: number, t: RowTranslate): stri
 }
 
 /**
- * Session status presentation, reduced from upstream's sessionStatuses: a
- * pending interaction is primary and outranks everything, exactly as upstream
- * orders it — a session waiting on the user is the one state you must not have
- * to hunt for. Below that this gateway exposes only active (the TUI's
- * conversation) and headless_open (a gateway headless session); running/idle
- * have no wire equivalent. The selected headless session shows as ongoing — it
- * is the one live mirror stream the webui is attached to.
+ * Session status presentation, reduced from upstream's `sessionStatuses`.
+ *
+ * The precedence is upstream's, in upstream's order: a pending interaction
+ * outranks everything (a session waiting on the user is the one state you must
+ * not have to hunt for), then a turn in flight, then an unacknowledged
+ * completion, then idle.
+ *
+ * The `completed` green dot is NOT "this session finished a task" — it is
+ * upstream's `completionUnread`, a "ran to completion while you were looking
+ * elsewhere, come see it" reminder that the act of opening the session clears.
+ * That is why it comes from {@link SessionActivity} rather than from a catalog
+ * field: only a client watching the stream can see the transition that creates
+ * it, and only the client knows whether the user has since looked.
+ *
+ * `active` (the TUI's current session) deliberately does NOT map to a status:
+ * being the TUI's session says nothing about whether a turn is running. It
+ * survives here only as the idle fallback below, which is this port's one
+ * deviation from upstream — see {@link showSessionStatus}.
  */
 export function sessionStatus(
-  session: CatalogSession,
-  selected: boolean,
+  activity: SessionActivity | undefined,
   pending?: PendingInteraction,
 ): { state: StateDotState; labelKey: string } {
   if (pending === 'approval') return { state: 'warning', labelKey: 'status.waitingApproval' }
   if (pending === 'question') return { state: 'warning', labelKey: 'status.waitingAnswer' }
-  if (session.active) return { state: 'done', labelKey: 'status.completed' }
-  if (session.headless_open) {
-    return { state: selected ? 'ongoing' : 'done', labelKey: selected ? 'status.running' : 'status.idle' }
-  }
-  return { state: 'done', labelKey: 'status.idle' }
+  if (activity?.running === true) return { state: 'ongoing', labelKey: 'status.running' }
+  if (activity?.completed === true) return { state: 'done', labelKey: 'status.completed' }
+  return { state: 'idle', labelKey: 'status.idle' }
+}
+
+/**
+ * Whether the row draws its status dot at all.
+ *
+ * Upstream hides the dot when the primary status is idle (`primaryStatus.state
+ * !== 'idle'`), leaving the 16px slot blank — an idle row says nothing rather
+ * than showing a grey dot. That rule is kept.
+ *
+ * Deviation: the TUI's current session keeps a dot while idle. Upstream has no
+ * such session (its sidebar is the whole product, not a window onto a TUI), so
+ * there is nothing to preserve there; here the TUI's session is otherwise
+ * indistinguishable from any old row, and the grey dot keeps it locatable.
+ * {@link sessionStatus} already returns `idle` for it, so this is the only
+ * place the case exists.
+ */
+export function showSessionStatus(
+  session: CatalogSession,
+  activity: SessionActivity | undefined,
+  pending?: PendingInteraction,
+): boolean {
+  if (pending != null) return true
+  if (activity?.running === true || activity?.completed === true) return true
+  return session.active
 }
 
 /**
@@ -113,11 +146,16 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle }: {
  * own action (closing a headless session) rendered with upstream's bare 16px
  * trailing-icon grammar, outside the menu.
  */
-export function SessionNodeItem({ session, selected, now, pending, onOpen, onClose, onRename, onFork, onArchive, onDelete, t }: {
+export function SessionNodeItem({ session, selected, now, activity, pending, onOpen, onClose, onRename, onFork, onArchive, onDelete, t }: {
   session: CatalogSession
   selected: boolean
   /** Epoch ms for relative-time formatting. */
   now: number
+  /**
+   * This session's live turn state, upstream's `node.running`/`node.completed`.
+   * Absent for a session the stream has said nothing about.
+   */
+  activity?: SessionActivity | undefined
   /**
    * What this session is waiting on, upstream's `node.pendingInteraction`. It
    * arrives as a prop because this gateway's catalog rows carry no interaction
@@ -136,10 +174,8 @@ export function SessionNodeItem({ session, selected, now, pending, onOpen, onClo
   onDelete: (session: CatalogSession) => void
   t: RowTranslate
 }) {
-  const status = sessionStatus(session, selected, pending)
-  // A session waiting on the user lights up whether or not it is live: the ask
-  // can only be answered here, so hiding the dot would strand it.
-  const showStatus = pending != null || session.active || session.headless_open
+  const status = sessionStatus(activity, pending)
+  const showStatus = showSessionStatus(session, activity, pending)
   const [menuOpen, setMenuOpen] = useState(false)
   const title = displayTitle(session)
   const menuItems: readonly MenuEntry[] = [

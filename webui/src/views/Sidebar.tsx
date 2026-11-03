@@ -7,6 +7,7 @@ import triggerCss from '@chat-styles/SettingsRoot.module.css'
 import localCss from './Sidebar.module.css'
 import { SIDEBAR_WIDTH } from './AppFrame'
 import { useSessions } from '../store/sessions'
+import type { SessionActivity } from '../store/sessions'
 import { pendingInteractions, useApprovals } from '../store/approvals'
 import type { PendingInteraction } from '../store/approvals'
 import { useSidebarCollapse } from '../store/sidebarCollapse'
@@ -208,6 +209,12 @@ export function Sidebar() {
   const asks = useApprovals((state) => state.asks)
   const pending = useMemo(() => pendingInteractions(asks), [asks])
 
+  // Live per-session turn state for the rows' status dots. Unlike `pending`,
+  // this arrives already keyed by session id — the store folds the mirror
+  // frames itself (see `applyTurnActivity`), so there is nothing to derive
+  // here beyond reading it out of the store.
+  const activity = useSessions((state) => state.activity)
+
   // Groups auto-expand to reveal the selected session (upstream's
   // groupExpansion effect on the current group).
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
@@ -320,6 +327,7 @@ export function Sidebar() {
                     selectedId={selectedId}
                     now={now}
                     pending={pending}
+                    activity={activity}
                     containsCurrent={project.project_path === selectedProject?.project_path}
                     onToggle={() => {
                       setCollapsedGroups((keys) => (
@@ -472,7 +480,7 @@ function toggled(list: readonly string[], key: string): string[] {
 }
 
 /** One project group: the 34px header row plus its 32px session rows. */
-function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pending, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onOverflowToggle, t }: {
+function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pending, activity, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onOverflowToggle, t }: {
   project: CatalogProject
   expanded: boolean
   /** Rows unfolded past the 5-row limit (upstream's sessionsExpanded). */
@@ -481,6 +489,8 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pe
   now: number
   /** Session id → the interaction it is waiting on, for the rows' status dots. */
   pending: ReadonlyMap<string, PendingInteraction>
+  /** Session id → its live turn state, for the rows' status dots. */
+  activity: Readonly<Record<string, SessionActivity>>
   containsCurrent: boolean
   onToggle: () => void
   onOpen: (session: CatalogSession) => void
@@ -530,6 +540,7 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pe
           selected={session.id === selectedId}
           now={now}
           pending={pending.get(session.id)}
+          activity={activity[session.id]}
           onOpen={onOpen}
           onClose={onClose}
           onRename={onRename}

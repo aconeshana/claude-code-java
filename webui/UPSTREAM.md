@@ -502,9 +502,8 @@ Two recorded deviations:
   off the session node itself; this gateway's `CatalogSession` carries no such
   field, so the status comes from the mirror stream's `PermissionAsk.session_id`
   via `store/approvals.ts`'s `pendingInteractions()` and arrives as a
-  `SessionNodeItem` prop. `showStatus` was widened to `pending != null ||
-  session.active || session.headless_open`, so a waiting session lights up even
-  when it is neither live nor selected.
+  `SessionNodeItem` prop. A session waiting on the user lights up whether or not
+  it is live, so hiding the dot would strand the ask.
 - **`plan-review` is still missing.** Upstream's third pending kind has no wire
   equivalent here; `PendingInteraction` is the two-value union `'approval' |
   'question'`. Upstream's `runningSubagentCount` secondary status and the
@@ -515,6 +514,70 @@ outside its own session: `App.tsx` reads `pendingAskFor(asks, selectedId)`,
 which has no fallback to another session's ask. An earlier `?? asks[0]`
 fallback rendered session B's approval under session A's composer, so opening
 a fresh session hijacked an authorization the user never triggered there.
+
+**Session row running/completed status (2026-11-02).** The status dot used to
+be driven by the wrong fact. `sessionStatus()` read `session.active` (the
+**TUI's current** session — `registry.isCurrent`) and `session.headless_open`
+(an open headless session) and mapped both to `done`. Neither says a turn is in
+flight, so *every open session was permanently green* and a finished session
+was indistinguishable from a running one. Upstream has two distinct facts, now
+both ported:
+
+`packages/client/ui-workspace/src/client/tree.ts`'s `SessionNode`:
+```ts
+running: boolean    // a turn is in flight right now
+completed: boolean  // "Finished running while not selected and not yet opened"
+```
+derived from `ui-session/src/client/index.ts`'s `completionUnread`, set on a
+running→false transition unless `isMain(sessionId)` (`retainedBy.mainView > 0`)
+and cleared when the main view retains the session. Upstream's `Rows.tsx`
+renders `node.running → 'ongoing'` (blue chase), then `node.completed → 'done'`
+(green), else `'idle'`, with `showStatus = primaryStatus.state !== 'idle'` —
+idle draws nothing and leaves the 16px slot blank.
+
+Ported verbatim: the **precedence** (pending interaction → running → completed
+→ idle), the two state/label pairs (`status.running`, `status.completed` — both
+keys already existed in `i18n/dictionaries/workspace.ts`), the idle-draws-nothing
+rule, and the `isMain` analogue (the stop transition raises the reminder only
+for a session that is **not** the selected one — looking at the session you
+already had open is not news).
+
+`running` comes from the wire: `GatewayServer.sessionsBody` now stamps
+`running: true` (omit-when-false, like `active`) from `MirrorHub#runningSince`
+— the same synchronous fact that already feeds the messages snapshot's
+`running_since`, a `turnStartClocks` entry that exists only while the turn
+runs. Being a same-module lookup this needed no new port. Its authority is
+bounded exactly like `active`/`headless_open`: `turnStartClocks` is filled only
+for hub-followed sessions, so an untouched on-disk session correctly reports
+"not running".
+
+Three recorded deviations:
+
+1. **`completed` is a client-only in-memory fact.** Upstream's
+   `completionUnread` is a browser `Set`, and it has to be: it needs a
+   running→false **transition** plus knowledge of whether *this* client has
+   looked since. A stateless `sessionsBody` pull sees only an instant, so a
+   server-side field would carry the wrong meaning ("finished at some point"
+   rather than "finished and unread"). `store/sessions.ts`'s `activity` map
+   folds it from mirror frames. **Consequence, and upstream has it too:**
+   reloading the page loses every unread reminder.
+2. **The TUI's session keeps a grey dot while idle.** Upstream strictly draws
+   nothing for idle, and that rule is kept for every other row. But upstream
+   has no TUI — its sidebar *is* the product — whereas here the TUI's session
+   would otherwise be indistinguishable from any old row. `showSessionStatus`
+   therefore returns true for `session.active`, rendering the `idle`
+   (`label-tertiary`) dot. This is the one place `active` still touches the dot;
+   it keeps its two real consumers (`Sidebar.tsx`'s open-vs-resume choice and
+   `selectActiveOrFirst`).
+3. **Subagent statuses are not ported.** Upstream's `runningSubagentCount`
+   drives a multi-dot rendering; this gateway's catalog rows carry no such
+   fact. Recorded as not ported rather than silently dropped.
+
+Interaction with the 10-second catalog poll (`refresh()`): the poll replaces
+`projects` wholesale but may only **seed** `running` for a session this client
+has never observed (a page opened mid-turn). It never lowers a stream-reported
+`running` — reading the snapshot's silence as "stopped" would flicker the dot
+off every ten seconds — and never clears a `completed` reminder.
 
 ### `vendor/chat-styles/` — reasoning row & tool-call row
 

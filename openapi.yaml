@@ -144,8 +144,9 @@ paths:
       summary: Full two-level session catalog (aligned with the TUI /resume picker)
       description: |
         Every project and every session on disk, not only open ones. Rows carry
-        active:true for the current TUI session and headless_open:true for
-        sessions routable right now without an open round-trip. Each project's
+        active:true for the current TUI session, headless_open:true for
+        sessions routable right now without an open round-trip, and running:true
+        while a turn is in flight. Each project's
         sessions are paged to its most recent per_project rows (session_count
         keeps the total); grow the page with a larger per_project.
       parameters:
@@ -984,6 +985,14 @@ components:
         headless_open:
           type: boolean
           description: True when routable right now via metadata.session_id without an open round-trip
+        running:
+          type: boolean
+          description: |
+            True while a turn is in flight for this session; omitted when not
+            running. Distinct from active (the TUI's current session) and
+            headless_open (routable): a session can be open and idle, or running
+            while not the one on screen. Only sessions the gateway follows (the
+            active session and open headless sessions) can report it.
     OpenedSession:
       type: object
       properties:

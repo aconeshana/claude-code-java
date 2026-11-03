@@ -21,10 +21,30 @@ import { useConversations } from './conversations'
  * choice in this client ends that — see `followActive`.
  */
 
+/**
+ * One session's live activity, as the sidebar's status dot needs it.
+ *
+ * `running` is a turn in flight. `completed` is upstream's `completionUnread`:
+ * a session that finished running while you were not looking at it — the green
+ * "come see the result" reminder — cleared the moment the session is selected.
+ * Both are observed from mirror frames rather than derived from the catalog,
+ * because a stateless catalog pull cannot see the running→stopped transition
+ * that defines `completed`.
+ */
+export interface SessionActivity {
+  readonly running: boolean
+  readonly completed: boolean
+}
+
 export interface SessionsStore {
   readonly projects: readonly CatalogProject[]
   readonly loading: boolean
   readonly error: string | null
+  /**
+   * Live per-session turn state, keyed by session id. Carries ids that are not
+   * in the catalog (a session can start running before its row lands).
+   */
+  readonly activity: Readonly<Record<string, SessionActivity>>
   /** The conversation the UI is currently showing. */
   readonly selectedSessionId: string | null
   /** Sessions fetched per project so far (null = the gateway's default page). */
@@ -55,6 +75,7 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   projects: [],
   loading: false,
   error: null,
+  activity: {},
   selectedSessionId: null,
   perPage: null,
   followActive: true,
@@ -63,7 +84,18 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     set({ loading: true })
     try {
       const catalog = await fetchCatalog(get().perPage ?? undefined)
-      set({ projects: catalog.projects, loading: false, error: null })
+      // The poll replaces `projects` wholesale, so the local activity map must
+      // survive it. What the catalog is allowed to change: seed `running` for
+      // a session this client has never observed (a page opened mid-turn). It
+      // may never lower a running flag the stream reported, nor clear a
+      // completed reminder — the poll is a lagging snapshot, and treating its
+      // silence as "stopped" would flicker the dot off every 10 seconds.
+      set((state) => ({
+        projects: catalog.projects,
+        activity: seedRunning(state.activity, catalog.projects),
+        loading: false,
+        error: null,
+      }))
     } catch (failure) {
       set({ loading: false, error: messageOf(failure) })
     }
@@ -89,8 +121,16 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     // nothing, the chat pane shows something else, and a re-click is a
     // no-op. Requiring a loaded conversation makes the repair click work.
     const alreadyLoaded = useConversations.getState().conversations[sessionId] != null
-    if (get().selectedSessionId === sessionId && alreadyLoaded) return
-    set({ selectedSessionId: sessionId })
+    // Opening a session is the "I have seen it" gesture, so its completed
+    // reminder clears here — BEFORE the redundant-click guard below, which
+    // would otherwise swallow the acknowledgement for an already-loaded
+    // session (the common case). Upstream's isMain clears it the same way.
+    const cleared = clearCompleted(get().activity, sessionId)
+    if (get().selectedSessionId === sessionId && alreadyLoaded) {
+      if (cleared !== get().activity) set({ activity: cleared })
+      return
+    }
+    set({ selectedSessionId: sessionId, activity: cleared })
     await useConversations.getState().loadSnapshot(sessionId).catch((failure: unknown) => {
       // Snapshot failure leaves the conversation live-only; mirror frames
       // keep streaming in the meantime. The selection stays latched, but the
@@ -113,6 +153,10 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   },
 
   applyFrame(frame: MirrorFrame) {
+    // Turn frames move the row's status dot. They arrive for every session the
+    // gateway follows (the mirror stream is not session-filtered), which is
+    // what lets a row light up while a different session is on screen.
+    if (applyTurnActivity(get, set, frame)) return
     if (frame.event !== 'session.activated') return
     // REMOTE is this client's own open/create echoing back; those paths have
     // already selected, and re-selecting would race their in-flight `select`
@@ -264,4 +308,75 @@ function removeSession(
 
 function messageOf(failure: unknown): string {
   return failure instanceof Error ? failure.message : String(failure)
+}
+
+/** The idle activity entry, reused so untouched sessions compare by identity. */
+const IDLE: SessionActivity = { running: false, completed: false }
+
+/**
+ * Folds one mirror frame into the activity map.
+ *
+ * A single frame event is the unit here, so this reports whether it consumed
+ * the frame rather than leaving the caller to re-test the event name.
+ *
+ * `turn.started` opens a turn and drops any standing reminder (a new run
+ * supersedes "come look at the last one"). The three stop events are treated
+ * as one trigger deliberately: `running` must fall on whichever arrives, not
+ * only on the one a given terminal path happens to publish.
+ *
+ * The stop transition sets `completed` only for a session that is NOT the one
+ * on screen — upstream's `isMain` rule, "running finished while not
+ * selected". Looking at the session you already had open is not news.
+ */
+function applyTurnActivity(
+  get: () => SessionsStore, set: (partial: Partial<SessionsStore>) => void, frame: MirrorFrame,
+): boolean {
+  const sessionId = frame.data.session_id
+  if (typeof sessionId !== 'string' || sessionId === '') return false
+  const previous = get().activity[sessionId] ?? IDLE
+  let next: SessionActivity
+  if (frame.event === 'turn.started') {
+    next = { running: true, completed: false }
+  } else if (frame.event === 'turn.completed' || frame.event === 'turn.cancelled'
+    || frame.event === 'session.idle') {
+    if (!previous.running) return true
+    next = {
+      running: false,
+      completed: sessionId !== get().selectedSessionId,
+    }
+  } else {
+    return false
+  }
+  set({ activity: { ...get().activity, [sessionId]: next } })
+  return true
+}
+
+/** Clears one session's completed reminder, returning the map unchanged when absent. */
+function clearCompleted(
+  activity: Readonly<Record<string, SessionActivity>>, sessionId: string,
+): Readonly<Record<string, SessionActivity>> {
+  const entry = activity[sessionId]
+  if (entry == null || !entry.completed) return activity
+  return { ...activity, [sessionId]: { running: entry.running, completed: false } }
+}
+
+/**
+ * Seeds `running` for sessions this client has never observed, from catalog
+ * rows. Only an absent entry is filled: a session the stream has already
+ * reported must keep the stream's value, so a lagging poll can neither start
+ * nor stop a dot. Completed reminders are never touched.
+ */
+function seedRunning(
+  activity: Readonly<Record<string, SessionActivity>>,
+  projects: readonly CatalogProject[],
+): Readonly<Record<string, SessionActivity>> {
+  let next: Record<string, SessionActivity> | null = null
+  for (const project of projects) {
+    for (const session of project.sessions) {
+      if (session.running !== true || activity[session.id] != null) continue
+      next ??= { ...activity }
+      next[session.id] = { running: true, completed: false }
+    }
+  }
+  return next ?? activity
 }

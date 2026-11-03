@@ -74,6 +74,7 @@ function groupFlatSessions(sessions: FlatSessionCatalog['sessions']): readonly C
       first_prompt: null,
       active: session.active ?? false,
       headless_open: session.headless_open ?? false,
+      ...(session.running === true ? { running: true } : {}),
     }
     if (existing == null) {
       byWorkDir.set(path, {

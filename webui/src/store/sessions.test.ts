@@ -420,3 +420,139 @@ describe('sessions store following the TUI', () => {
     expect(urls[0]).toContain('/api/sessions')
   })
 })
+
+/**
+ * The rows' status dots. `running` is a turn in flight; `completed` is the
+ * green "finished while you were elsewhere" reminder, which opening the
+ * session clears. Both are folded from mirror frames rather than read from
+ * the catalog — a stateless poll cannot see the running→stopped transition
+ * that creates the reminder.
+ */
+describe('sessions store activity', () => {
+  beforeEach(() => {
+    sessionStorage.setItem('gateway-token', 'fake-token')
+    useSessions.setState({ projects: [], loading: false, error: null, selectedSessionId: null, perPage: null, followActive: true, activity: {} })
+    useConversations.setState({ conversations: {} })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => (
+      urlOf(input).includes('/messages')
+        ? Promise.resolve(jsonResponse(EMPTY_SNAPSHOT))
+        : Promise.resolve(jsonResponse(CATALOG))
+    )))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.clear()
+  })
+
+  function frame(event: string, sessionId: string): MirrorFrame {
+    return { event, id: 1, data: { session_id: sessionId } } as MirrorFrame
+  }
+
+  it('turn.started marks the session running and drops a standing reminder', () => {
+    useSessions.setState({ activity: { 'closed-1': { running: false, completed: true } } })
+
+    useSessions.getState().applyFrame(frame('turn.started', 'closed-1'))
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: true, completed: false })
+  })
+
+  it('turn.completed marks a NOT-selected session completed', () => {
+    useSessions.setState({ selectedSessionId: 'active-1' })
+    useSessions.getState().applyFrame(frame('turn.started', 'closed-1'))
+
+    useSessions.getState().applyFrame(frame('turn.completed', 'closed-1'))
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: false, completed: true })
+  })
+
+  it('turn.completed on the selected session leaves no reminder', () => {
+    // Looking at the session you already had open is not news — upstream's
+    // isMain rule.
+    useSessions.setState({ selectedSessionId: 'closed-1' })
+    useSessions.getState().applyFrame(frame('turn.started', 'closed-1'))
+
+    useSessions.getState().applyFrame(frame('turn.completed', 'closed-1'))
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: false, completed: false })
+  })
+
+  it.each(['turn.cancelled', 'session.idle'])(
+    '%s also ends the turn, so the dot falls on whichever stop lands first', (event) => {
+      useSessions.setState({ selectedSessionId: 'active-1' })
+      useSessions.getState().applyFrame(frame('turn.started', 'closed-1'))
+
+      useSessions.getState().applyFrame(frame(event, 'closed-1'))
+
+      expect(useSessions.getState().activity['closed-1']).toEqual({ running: false, completed: true })
+    })
+
+  it('a stop frame for a session that was not running changes nothing', () => {
+    useSessions.getState().applyFrame(frame('turn.completed', 'closed-1'))
+
+    expect(useSessions.getState().activity['closed-1']).toBeUndefined()
+  })
+
+  it('ignores frames that carry no session id', () => {
+    useSessions.getState().applyFrame({ event: 'turn.started', id: 1, data: {} } as MirrorFrame)
+
+    expect(useSessions.getState().activity).toEqual({})
+  })
+
+  it('select clears the reminder even when the session is already loaded', async () => {
+    // The redundant-click guard returns early for an already-loaded session,
+    // and a click is exactly the "I have seen it" gesture — so the clear has
+    // to happen before that guard, or the dot would stick.
+    useSessions.setState({
+      activity: { 'closed-1': { running: false, completed: true } },
+      selectedSessionId: 'closed-1',
+    })
+    useConversations.setState({ conversations: { 'closed-1': { sessionId: 'closed-1' } } as never })
+
+    await useSessions.getState().select('closed-1')
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: false, completed: false })
+  })
+
+  it('select clears the reminder for a fresh session too', async () => {
+    useSessions.setState({ activity: { 'closed-1': { running: false, completed: true } } })
+
+    await useSessions.getState().select('closed-1')
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: false, completed: false })
+  })
+
+  it('refresh seeds running for an unobserved session without touching reminders', async () => {
+    // A page opened mid-turn sees the turn already in flight: the catalog is
+    // the only source for that first reading.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      projects: [{
+        project_path: '/repo',
+        project_name: 'repo',
+        session_count: 1,
+        sessions: [{
+          id: 'closed-1', summary: 'b', message_count: 1, modified_at: '2026-09-08',
+          git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null,
+          active: false, headless_open: false, running: true,
+        }],
+      }],
+    })))
+    useSessions.setState({ activity: { 'active-1': { running: false, completed: true } } })
+
+    await useSessions.getState().refresh()
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: true, completed: false })
+    expect(useSessions.getState().activity['active-1']).toEqual({ running: false, completed: true })
+  })
+
+  it('refresh never lowers a running flag the stream reported', async () => {
+    // The poll is a lagging snapshot; treating its silence as "stopped" would
+    // flicker the dot off every ten seconds.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(CATALOG)))
+    useSessions.getState().applyFrame(frame('turn.started', 'closed-1'))
+
+    await useSessions.getState().refresh()
+
+    expect(useSessions.getState().activity['closed-1']).toEqual({ running: true, completed: false })
+  })
+})

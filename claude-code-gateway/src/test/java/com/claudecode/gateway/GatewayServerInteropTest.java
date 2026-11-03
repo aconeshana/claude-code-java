@@ -246,6 +246,53 @@ class GatewayServerInteropTest {
 
     @Test
     @Timeout(20)
+    void sessionsEndpointFlagsRunningOnlyWhileATurnRuns() throws Exception {
+        // Every open session used to look permanently green because the row
+        // carried only `active`/`headless_open`, which describe attachment,
+        // not a turn in flight. `running` is the fact the status dot needs.
+        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
+            new GatewaySessionCatalogPort() {
+                @Override public List<ProjectEntry> listProjects() {
+                    return List.of(new ProjectEntry(
+                        "/work/project-a", "project-a", 2, 1_700_000_000_000L,
+                        List.of(
+                            new SessionEntry(activeSessionId, "active session", 3,
+                                1_700_000_000_001L, "main", "/work/project-a", "", ""),
+                            new SessionEntry("sess-idle", "an idle session", 2,
+                                1_700_000_000_000L, "main", "/work/project-a", "", ""))));
+                }
+            });
+        server.start();
+        registry.activateLocal(new SessionHostSession(
+            new SessionHostInfo(activeSessionId, "/work", "a session", 3,
+                Instant.now(), "main"),
+            hub, _ -> CompletableFuture.completedFuture(null)));
+
+        // Idle: the field is omitted, not false (the method's omit-when-false
+        // convention), and being the TUI's session does not imply running.
+        assertThat(sessionsBody()).doesNotContain("\"running\"");
+
+        hub.onTurnStart(UserInput.of("hello", "hello", null, "default"));
+        String running = sessionsBody();
+        assertThat(running).contains("\"running\":true");
+        // Only the running session's row carries it.
+        assertThat(StringUtils.countMatches(running, "\"running\":true")).isEqualTo(1);
+
+        hub.onTurnComplete(new TurnOutcome(
+            false, false, false, false, false, 5L, null, null, null, null));
+        assertThat(sessionsBody()).doesNotContain("\"running\"");
+    }
+
+    private String sessionsBody() throws IOException {
+        try (Response authed = client.newCall(new Request.Builder()
+                .url(url("/api/sessions?token=" + TOKEN)).build()).execute()) {
+            assertThat(authed.code()).isEqualTo(200);
+            return authed.body().string();
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void mirrorStreamStreamsLiveEventsThroughARealEventSource() throws Exception {
         startServer();
         LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();

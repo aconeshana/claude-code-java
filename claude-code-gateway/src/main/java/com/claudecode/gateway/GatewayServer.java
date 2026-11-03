@@ -859,6 +859,17 @@ public final class GatewayServer implements AutoCloseable {
      * live sessions are folded in first ({@link LiveSessionMerge}); without
      * that a session created moments ago carries no row for {@code active} or
      * {@code headless_open} to land on.
+     *
+     * <p>{@code running} marks a session with a turn in flight right now,
+     * which is a different fact from {@code active} (the TUI's current
+     * session) and {@code headless_open} (a session the client can route to).
+     * It is read from {@link MirrorHub#runningSince}, the same turn clock the
+     * message snapshot serves as {@code running_since}. That clock is
+     * populated only for sessions the hub follows — the active session and
+     * every open headless session — so the flag is authoritative for exactly
+     * the population that already receives {@code active}/{@code
+     * headless_open}, and an on-disk-only history row legitimately reports
+     * not-running. Omitted rather than false, matching the other two flags.
      */
     private ObjectNode sessionsBody(int perProjectLimit) {
         ObjectNode body =
@@ -892,6 +903,9 @@ public final class GatewayServer implements AutoCloseable {
                     // A session row the client can route to right now via
                     // metadata.session_id without a further open round-trip.
                     if (headless.isOpen(entry.id())) sessionNode.put("headless_open", true);
+                    if (mirror.runningSince(entry.id()).isPresent()) {
+                        sessionNode.put("running", true);
+                    }
                     sessionArray.add(sessionNode);
                 }
                 projectArray.add(projectNode);
@@ -914,6 +928,7 @@ public final class GatewayServer implements AutoCloseable {
             if (!info.gitBranch().isEmpty()) node.put("git_branch", info.gitBranch());
             if (registry.isCurrent(info.id())) node.put("active", true);
             if (headless.isOpen(info.id())) node.put("headless_open", true);
+            if (mirror.runningSince(info.id()).isPresent()) node.put("running", true);
             array.add(node);
         }
         return body;

@@ -20,8 +20,17 @@ export interface CatalogSession {
   readonly cwd: string | null
   readonly custom_title: string | null
   readonly first_prompt: string | null
+  /** The TUI's current session — NOT a statement that a turn is running. */
   readonly active: boolean
+  /** Routable right now via metadata.session_id without an open round-trip. */
   readonly headless_open: boolean
+  /**
+   * A turn is in flight for this session right now. Omitted when not running
+   * (the gateway never stamps `false`). Only sessions the gateway follows —
+   * the active session and open headless sessions — can report it, which is
+   * the sidebar's population; an on-disk-only history row is always absent.
+   */
+  readonly running?: boolean
 }
 
 export interface CatalogProject {
@@ -49,6 +58,8 @@ export interface FlatSession {
   readonly git_branch: string | null
   readonly active: boolean | undefined
   readonly headless_open: boolean | undefined
+  /** See {@link CatalogSession.running}; omitted when not running. */
+  readonly running?: boolean | undefined
 }
 
 export interface FlatSessionCatalog {
