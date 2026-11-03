@@ -1,13 +1,15 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayResponses.errorBody;
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -119,23 +121,5 @@ final class GatewayContextTimelineHandler {
                 URLDecoder.decode(pair.substring(split + 1), StandardCharsets.UTF_8));
         }
         return result;
-    }
-
-    private static ObjectNode errorBody(String type, String message) {
-        ObjectNode body = JsonUtils.getMapper().createObjectNode();
-        ObjectNode error = body.putObject("error");
-        error.put("type", type);
-        error.put("message", message);
-        return body;
-    }
-
-    private static void respondJson(HttpExchange exchange, int status, ObjectNode body)
-            throws IOException {
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream output = exchange.getResponseBody()) {
-            output.write(bytes);
-        }
     }
 }

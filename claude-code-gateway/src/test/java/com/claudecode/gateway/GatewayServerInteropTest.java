@@ -105,6 +105,19 @@ class GatewayServerInteropTest {
         try (Response anonymous = client.newCall(new Request.Builder()
                 .url(url("/api/sessions")).build()).execute()) {
             assertThat(anonymous.code()).isEqualTo(401);
+            // Every gated route rejects through the one shared helper, so its
+            // shape and its verbatim message are pinned here: a client reading
+            // `error.type` must be told the token is missing, not that the
+            // route does not exist.
+            assertThat(anonymous.header("Content-Type")).isEqualTo("application/json");
+            String body = anonymous.body().string();
+            JsonNode error = JsonUtils.getMapper().readTree(body).path("error");
+            assertThat(error.path("type").asText()).isEqualTo("authentication_required");
+            assertThat(error.path("message").asText())
+                .isEqualTo("Provide the launch token as Authorization: Bearer or ?token=");
+            // Field order is part of the pinned shape, not an accident.
+            assertThat(body).isEqualTo("{\"error\":{\"type\":\"authentication_required\","
+                + "\"message\":\"Provide the launch token as Authorization: Bearer or ?token=\"}}");
         }
         try (Response authed = client.newCall(new Request.Builder()
                 .url(url("/api/sessions?token=" + TOKEN)).build()).execute()) {

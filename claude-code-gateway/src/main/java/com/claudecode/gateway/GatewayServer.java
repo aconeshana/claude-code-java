@@ -1,5 +1,9 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayResponses.errorBody;
+import static com.claudecode.gateway.GatewayResponses.rejectIfUnauthenticated;
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.interaction.InteractionFeatures;
@@ -494,57 +498,27 @@ public final class GatewayServer implements AutoCloseable {
         // exchange open past this handler's return; every other exchange is
         // closed here.
         if (get && Strings.CS.equals("/api/events", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             streamMirror(exchange);
             return;
         }
         if (post && Strings.CS.equals("/v1/messages", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             messages.handle(exchange);
             return;
         }
         if (post && Strings.CS.equals("/v1/chat/completions", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             chat.handle(exchange);
             return;
         }
         if (post && Strings.CS.equals("/v1/responses", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             responses.handle(exchange);
             return;
         }
         if (get && Strings.CS.equals("/api/sessions", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             // The fingerprint-validated catalog listing may block on transcript
             // reads; respond off the exchange thread and own the exchange there.
             listSessions(exchange);
@@ -552,13 +526,7 @@ public final class GatewayServer implements AutoCloseable {
         }
         if (post && (Strings.CS.equals("/api/sessions/open", targetPath)
                 || Strings.CS.equals("/api/sessions/close", targetPath))) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             // The open path assembles an engine (slow I/O) off the exchange thread.
             serveAsync(exchange, () -> sessionsApi.handle(exchange,
                 Strings.CS.equals("/api/sessions/open", targetPath)));
@@ -566,13 +534,7 @@ public final class GatewayServer implements AutoCloseable {
         }
         if (get && Strings.CS.startsWith(targetPath, "/api/sessions/")
                 && Strings.CS.endsWith(targetPath, "/messages")) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String sessionId = URLDecoder.decode(
                 targetPath.substring("/api/sessions/".length(),
                     targetPath.length() - "/messages".length()), StandardCharsets.UTF_8);
@@ -589,13 +551,7 @@ public final class GatewayServer implements AutoCloseable {
         if (post && Strings.CS.startsWith(targetPath, "/api/sessions/") && (Strings.CS.endsWith(
             targetPath, "/rename")
                 || Strings.CS.endsWith(targetPath, "/fork") || Strings.CS.endsWith(targetPath, "/archive"))) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String suffix = Strings.CS.endsWith(targetPath, "/rename") ? "/rename"
                 : Strings.CS.endsWith(targetPath, "/fork") ? "/fork" : "/archive";
             String sessionId = URLDecoder.decode(
@@ -621,13 +577,7 @@ public final class GatewayServer implements AutoCloseable {
         }
         if (delete && Strings.CS.startsWith(targetPath, "/api/sessions/") && !Strings.CS.contains(
                 targetPath.substring("/api/sessions/".length()), "/")) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String sessionId = URLDecoder.decode(
                 targetPath.substring("/api/sessions/".length()), StandardCharsets.UTF_8);
             if (sessionId.isEmpty()) {
@@ -643,13 +593,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if (post && Strings.CS.equals("/api/permissions/respond", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             if (permissionsApi == null) {
                 try (exchange) {
                     respondJson(exchange, NOT_FOUND, errorBody("not_found",
@@ -661,13 +605,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/settings", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
                 if (get) {
                     settingsApi.handleGet(exchange);
@@ -678,13 +616,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/schedule", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
                 if (get) {
                     scheduleApi.handleGet(exchange);
@@ -695,59 +627,29 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if (delete && Strings.CS.startsWith(targetPath, "/api/schedule/")) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String taskId = URLDecoder.decode(
                 targetPath.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
             serve(exchange, () -> scheduleApi.handleDelete(exchange, taskId));
             return;
         }
         if (get && Strings.CS.equals("/api/commands", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> commandsApi.handleGet(exchange));
             return;
         }
         if (get && Strings.CS.equals("/api/file-suggestions", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> fileSuggestionsApi.handleGet(exchange));
             return;
         }
         if (get && Strings.CS.equals("/api/spinner-verbs", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> spinnerVerbsApi.handleGet(exchange));
             return;
         }
         if (get && Strings.CS.startsWith(targetPath, "/api/session/context/")) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String face = targetPath.substring("/api/session/context/".length());
             serve(exchange, () -> {
                 switch (face) {
@@ -762,13 +664,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/session/context", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
                 if (get) {
                     sessionContextApi.handleGet(exchange);
@@ -779,13 +675,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/session/permission-mode", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
                 if (get) {
                     permissionModeApi.handleGet(exchange);
@@ -796,13 +686,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/models", targetPath)) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
                 if (get) {
                     modelsApi.handleGet(exchange);
@@ -813,13 +697,7 @@ public final class GatewayServer implements AutoCloseable {
             return;
         }
         if (delete && Strings.CS.startsWith(targetPath, "/api/models/")) {
-            if (!auth.authenticated(exchange)) {
-                try (exchange) {
-                    respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",
-                        "Provide the launch token as Authorization: Bearer or ?token="));
-                }
-                return;
-            }
+            if (rejectIfUnauthenticated(auth, exchange)) return;
             String modelName = URLDecoder.decode(
                 targetPath.substring("/api/models/".length()), StandardCharsets.UTF_8);
             serve(exchange, () -> modelsApi.handleDelete(exchange, modelName));
@@ -844,8 +722,7 @@ public final class GatewayServer implements AutoCloseable {
         // Off the exchange thread: the fingerprint-validated listing may block
         // on transcript reads. See {@link #serveAsync} for the close discipline
         // that keeps a failure answerable there.
-        serveAsync(exchange, () -> respondJson(exchange, 200,
-            sessionsBody(perProjectLimit).toString()));
+        serveAsync(exchange, () -> respondJson(exchange, 200, sessionsBody(perProjectLimit)));
     }
 
     /**
@@ -1060,27 +937,9 @@ public final class GatewayServer implements AutoCloseable {
         }
     }
 
-    private static void respondJson(HttpExchange exchange, int status, String body)
-            throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream out = exchange.getResponseBody()) {
-            out.write(bytes);
-        }
-    }
-
     /** {@code SessionInfo}'s catalog-backed fields (summary, customTitle, ...) are nullable. */
     private static boolean hasText(String value) {
         return StringUtils.isNotEmpty(value);
-    }
-
-    private static String errorBody(String code, String message) {
-        ObjectNode body = JsonUtils.getMapper().createObjectNode();
-        ObjectNode error = body.putObject("error");
-        error.put("type", code);
-        error.put("message", message);
-        return body.toString();
     }
 
     private static void drain(HttpExchange exchange) throws IOException {

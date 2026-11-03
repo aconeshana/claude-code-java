@@ -1,11 +1,11 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
 import com.sun.net.httpserver.HttpExchange;
@@ -36,15 +36,6 @@ final class GatewaySpinnerVerbsHandler {
         for (Map.Entry<String, String> entry : new TreeMap<>(verbs.toolVerbs()).entrySet()) {
             tools.put(entry.getKey(), entry.getValue());
         }
-        respondJson(exchange, response);
-    }
-
-    private static void respondJson(HttpExchange exchange, ObjectNode body) throws IOException {
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, bytes.length);
-        try (OutputStream output = exchange.getResponseBody()) {
-            output.write(bytes);
-        }
+        respondJson(exchange, 200, response);
     }
 }

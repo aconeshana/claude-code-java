@@ -3,10 +3,8 @@ package com.claudecode.gateway;
 import com.claudecode.api.StreamEvent;
 import com.claudecode.api.StreamEventSseCodec;
 import com.claudecode.core.message.SDKMessage;
-import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -190,11 +188,7 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         private AnthropicErrors() {}
 
         static String body(int status, String message) {
-            ObjectNode body = JsonUtils.getMapper().createObjectNode();
-            ObjectNode error = body.putObject("error");
-            error.put("type", errorType(status));
-            error.put("message", message);
-            return body.toString();
+            return GatewayResponses.errorBody(errorType(status), message).toString();
         }
 
         private static String errorType(int status) {

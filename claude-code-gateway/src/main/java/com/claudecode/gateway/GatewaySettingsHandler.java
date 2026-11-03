@@ -1,12 +1,13 @@
 package com.claudecode.gateway;
 
-import com.claudecode.core.serialization.JsonUtils;
+import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.text;
+import static com.claudecode.gateway.GatewayResponses.errorBody;
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
@@ -39,17 +40,8 @@ final class GatewaySettingsHandler {
 
     /** Handles one {@code POST} exchange. */
     void handlePost(HttpExchange exchange) throws IOException {
-        String body;
-        try (var input = exchange.getRequestBody()) {
-            body = new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
-        JsonNode request;
-        try {
-            request = JsonUtils.parseTree(body);
-        } catch (RuntimeException _) {
-            respondJson(exchange, 400, errorBody("invalid_request", "body is not valid JSON"));
-            return;
-        }
+        JsonNode request = readJson(exchange);
+        if (request == null) return;
         String op = text(request, "op");
         try {
             switch (StringUtils.defaultString(op)) {
@@ -127,26 +119,4 @@ final class GatewaySettingsHandler {
         return result;
     }
 
-    private static String text(JsonNode request, String field) {
-        JsonNode value = request.path(field);
-        return value.isTextual() ? value.asText() : null;
-    }
-
-    private static ObjectNode errorBody(String type, String message) {
-        ObjectNode body = JsonUtils.getMapper().createObjectNode();
-        ObjectNode error = body.putObject("error");
-        error.put("type", type);
-        error.put("message", message);
-        return body;
-    }
-
-    private static void respondJson(HttpExchange exchange, int status, ObjectNode body)
-            throws IOException {
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream output = exchange.getResponseBody()) {
-            output.write(bytes);
-        }
-    }
 }

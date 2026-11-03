@@ -1,12 +1,13 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
@@ -57,13 +58,4 @@ final class GatewayFileSuggestionsHandler {
         return "";
     }
 
-    private static void respondJson(HttpExchange exchange, int status, ObjectNode body)
-            throws IOException {
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream output = exchange.getResponseBody()) {
-            output.write(bytes);
-        }
-    }
 }

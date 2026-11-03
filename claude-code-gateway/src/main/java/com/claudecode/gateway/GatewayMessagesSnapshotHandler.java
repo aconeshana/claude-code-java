@@ -1,5 +1,8 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayResponses.errorBody;
+import static com.claudecode.gateway.GatewayResponses.respondJson;
+
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
@@ -20,8 +23,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -452,23 +453,5 @@ final class GatewayMessagesSnapshotHandler {
             node.put(pairs[i], pairs[i + 1]);
         }
         return node;
-    }
-
-    private static ObjectNode errorBody(String type, String message) {
-        ObjectNode body = JsonUtils.getMapper().createObjectNode();
-        ObjectNode error = body.putObject("error");
-        error.put("type", type);
-        error.put("message", message);
-        return body;
-    }
-
-    private static void respondJson(HttpExchange exchange, int status, ObjectNode body)
-            throws IOException {
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream output = exchange.getResponseBody()) {
-            output.write(bytes);
-        }
     }
 }
