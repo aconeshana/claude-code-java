@@ -151,7 +151,8 @@ class CronSchedulerTest {
     }
 
     @Test
-    void recurringTaskExpiresAtOfficialBoundaryButPermanentTaskDoesNot() {
+    void recurringTaskExpiresAtOfficialBoundaryButPermanentTaskDoesNot(@TempDir Path projectRoot) {
+        CronStore.configureProjectRootForTest(projectRoot);
         List<CronScheduler.FiredTask> fired = new ArrayList<>();
         long created = now.get() - CronScheduler.DEFAULT_MAX_AGE_MS;
         CronStore.add("1 8 * * *", "aged", true, false,

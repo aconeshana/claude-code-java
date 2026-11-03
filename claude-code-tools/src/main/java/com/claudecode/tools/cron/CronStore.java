@@ -6,6 +6,7 @@ import com.claudecode.core.state.CwdState;
 import com.claudecode.core.git.GitUtils;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -40,6 +41,24 @@ public final class CronStore {
     private static final CopyOnWriteArrayList<CronJob> JOBS = new CopyOnWriteArrayList<>();
     private static volatile Path projectRootOverride;
     private static volatile boolean scheduledTasksEnabled;
+
+    /**
+     * Whether a test harness is on the stack, detected from the call stack rather
+     * than an opt-in flag: a test that forgets to declare itself is exactly the
+     * case this guard must catch. Production never sees a test runner frame.
+     */
+    private static boolean isTestRuntime() {
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            String name = frame.getClassName();
+            if (Strings.CS.startsWith(name, "org.junit.")
+                || Strings.CS.startsWith(name, "junit.")
+                || Strings.CS.startsWith(name, "org.gradle.")
+                || Strings.CS.startsWith(name, "worker.org.gradle.")) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private CronStore() {}
 
@@ -284,6 +303,19 @@ public final class CronStore {
     }
 
     private static void persist() {
+        // Nothing durable to record: skip the write entirely rather than truncating
+        // the file. remove()/removeWhere() persist unconditionally so a session-only
+        // store would otherwise blank out durable jobs owned by another process.
+        if (JOBS.stream().noneMatch(CronJob::durable)) return;
+        if (projectRootOverride == null && isTestRuntime()) {
+            // A durable task reaching persist() without an injected root would be
+            // written into the real checkout's .claude/scheduled_tasks.json and then
+            // executed by every later session. Fail loudly instead: the writing test
+            // forgot configureProjectRootForTest(...).
+            throw new IllegalStateException(
+                "refusing to persist durable cron tasks into the real project root; "
+                    + "call CronStore.configureProjectRootForTest(tempDir) first");
+        }
         Path path = durablePath();
         try {
             Files.createDirectories(path.getParent());
