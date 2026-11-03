@@ -7,6 +7,7 @@ import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
+import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
 import com.claudecode.gateway.GatewaySessionActionsPort;
@@ -267,6 +268,16 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         server = created;
         url = "http://127.0.0.1:" + created.port() + "/?token=" + token;
         return new Started(url);
+    }
+
+    /**
+     * The running server's mirror hub, or null when the gateway is not up.
+     * Publishers that fan state changes out to mirror clients (e.g. a
+     * permission-mode broadcast) drop their frame while this is null.
+     */
+    MirrorHub mirrorOrNull() {
+        GatewayServer current = server;
+        return current == null ? null : current.mirror();
     }
 
     @Override

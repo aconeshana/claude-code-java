@@ -99,6 +99,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1509,6 +1510,34 @@ public class LanternaReplScreen implements SlashHost {
             autoModeEntryWarning.onPermissionModeChanged(mode);
         }
         if (statusLineController != null) statusLineController.scheduleUpdate();
+    }
+
+    /**
+     * Applies an externally-driven permission-mode change (another surface
+     * wrote the shared gate) to the composer. The change may arrive on a
+     * gateway virtual thread, so it hops to the GUI thread; a no-op when the
+     * composer already shows {@code mode}, which keeps a locally-driven
+     * change (Shift+Tab, /permission) from double-applying.
+     */
+    @Override public void applyPermissionModeFromGate(String mode) {
+        gui.getGUIThread().invokeLater(() -> {
+            if (inputPanel == null || Strings.CS.equals(mode, inputPanel.getPermissionMode())) {
+                return;
+            }
+            inputPanel.setPermissionMode(mode);
+            permissionModeSynchronized(mode);
+        });
+    }
+
+    /**
+     * The composer this screen renders into, so a local command that mutated the
+     * shared gate reaches it through {@link com.claudecode.ui.lanterna.slash.SlashHost}'s
+     * default apply — the same contract the external-writer path above honors. The
+     * stub screens used in tests own no composer and inherit the null default.
+     */
+    @Override
+    public SlashHost.PermissionModeSink permissionModeSink() {
+        return inputPanel;
     }
 
     // Turn construction (typed / remote / slash-expanded / prompt command / queue drain /

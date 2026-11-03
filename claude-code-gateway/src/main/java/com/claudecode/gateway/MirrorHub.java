@@ -17,6 +17,7 @@ import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.paste.PastedRefParser;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.turn.SessionSink;
@@ -305,6 +306,20 @@ public final class MirrorHub {
     /** Publishes the resolution of one earlier permission ask. */
     public void publishPermissionResolved(String sessionId, ObjectNode payload) {
         publish(sessionId, "permission.resolved", payload);
+    }
+
+    /**
+     * Publishes one session's new permission mode so a mirror client (the
+     * webui composer chip) can follow a change made on another surface — the
+     * shared gate's TUI side. The payload is the same projection
+     * {@code GET /api/session/permission-mode} answers with, so the live frame
+     * and the polled body cannot drift.
+     */
+    public void publishPermissionMode(String sessionId, SessionHostPermissionState state) {
+        ObjectNode payload = object();
+        ObjectNode mode = payload.putObject("permission_mode");
+        GatewayPermissionModeHandler.writeState(mode, state);
+        publish(sessionId, "permission.mode", payload);
     }
 
     private SessionSink attributedSink(String sessionId, BooleanSupplier live) {

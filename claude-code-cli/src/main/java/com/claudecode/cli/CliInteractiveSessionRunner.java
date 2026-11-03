@@ -44,6 +44,7 @@ import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
+import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
@@ -52,12 +53,14 @@ import com.claudecode.gateway.GatewaySettingsPort;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.permissions.PermissionBehavior;
 import com.claudecode.permissions.PermissionGate;
+import com.claudecode.permissions.PermissionModeListener;
 import com.claudecode.permissions.RuleSource;
 import com.claudecode.runtime.hooks.HookConfigurationPort;
 import com.claudecode.runtime.doctor.DoctorPort;
 import com.claudecode.runtime.session.SessionLifecycle;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionOptions;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -607,6 +610,18 @@ final class CliInteractiveSessionRunner {
             LanternaReplScreen lanternaRepl =
                 new LanternaReplScreen(engine, cmdRegistry, cmdContext, wiring);
             screenRef.set(lanternaRepl);
+            // The gate is a shared holder: a gateway/webui session on the same
+            // gate can change the mode without going through the composer, so
+            // mirror every gate change back onto the TUI. Registered before the
+            // gateway starts so no early change is missed.
+            Runnable permissionModeSync = permissionGate.addModeListener(
+                mode -> lanternaRepl.applyPermissionModeFromGate(mode.external()));
+            // The other direction: a TUI-side change (Shift+Tab, /permission)
+            // reaches a mirror client as a live frame, so the webui chip follows
+            // without waiting for its next poll. A change the webui itself made
+            // echoes back and the store's session-id guard makes it idempotent.
+            Runnable permissionModeBroadcast = permissionModeBroadcast(
+                permissionGate, sessionHostRuntime.registry(), gatewayRuntime);
             hookEffects.bindUi(lanternaRepl::postSystemMessage,
                 lanternaRepl::applyHookSessionTitle);
             CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
@@ -655,6 +670,8 @@ final class CliInteractiveSessionRunner {
                 shutdownPort.awaitCompletion(SHUTDOWN_COMPLETION_TIMEOUT);
                 return 0;
             } finally {
+                permissionModeBroadcast.run();
+                permissionModeSync.run();
                 sessionHostRuntime.close();
                 gatewayRuntime.close();
             }
@@ -893,14 +910,6 @@ final class CliInteractiveSessionRunner {
         };
     }
 
-    /**
-     * Projects the interactive command registry onto the gateway's composer
-     * menu port: every non-hidden command the TUI offers (skills included —
-     * they register as commands through {@code CliSkillCommandSync}) becomes
-     * one webui "+" menu row. Reads the live registry snapshot per request,
-     * so menu rows follow hook/plugin-driven registry changes without a
-     * restart.
-     */
     /**
      * Projects the TUI {@code @}-completion workspace enumeration onto the
      * gateway, so the webui composer's {@code @} menu lists the same paths the
@@ -1262,6 +1271,28 @@ final class CliInteractiveSessionRunner {
                 }
             }
         };
+    }
+
+    /**
+     * Bridges the shared gate's mode changes onto the gateway mirror stream, so
+     * a mirror client (the webui composer chip) follows a TUI-side change live
+     * instead of on its next poll. The gate is the same instance the TUI writes
+     * through, so one subscription covers both directions; a change the webui
+     * itself requested echoes back and the client's session-id guard drops it.
+     * Frames are addressed to the active session and dropped when none is live.
+     */
+    static Runnable permissionModeBroadcast(
+            PermissionGate permissionGate, SessionHostRegistry registry,
+            CliGatewayRuntime gatewayRuntime) {
+        PermissionModeListener listener = _ -> {
+            MirrorHub mirror = gatewayRuntime.mirrorOrNull();
+            if (mirror == null || permissionGate == null) return;
+            registry.currentActivation()
+                .map(SessionHostRegistry.ActivationResult::session)
+                .ifPresent(session -> mirror.publishPermissionMode(
+                    session.info().id(), SessionHostPermissionOptions.build(permissionGate)));
+        };
+        return permissionGate.addModeListener(listener);
     }
 
     /**

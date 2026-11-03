@@ -40,6 +40,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import com.claudecode.ui.lanterna.slash.SlashHost;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -66,7 +67,7 @@ import org.apache.commons.lang3.Strings;
  *       entries restore their pasted contents and keep their mode with the prefix stripped.</li>
  * </ul>
  */
-public class InputPanel extends Panel {
+public class InputPanel extends Panel implements SlashHost.PermissionModeSink {
 
     private static final int PROMPT_INPUT_COLUMN_OVERHEAD = 3;
 
@@ -866,14 +867,14 @@ public class InputPanel extends Panel {
     }
 
     /** Returns the current permission mode (e.g. "bypass", "auto", "plan"). */
-    public String getPermissionMode() { return this.permMode; }
+    @Override public String getPermissionMode() { return this.permMode; }
 
     public String getVimMode() {
         return vim.modeName();
     }
 
     /** Programmatically set the permission mode and refresh the hint row. */
-    public void setPermissionMode(String mode) {
+    @Override public void setPermissionMode(String mode) {
         this.permMode = mode;
         updateHint();
     }

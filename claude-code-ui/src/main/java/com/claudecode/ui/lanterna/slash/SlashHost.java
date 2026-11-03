@@ -57,6 +57,40 @@ public interface SlashHost {
      */
     default void permissionModeSynchronized(String mode) { }
 
+    /**
+     * The permission-mode prompt widget this host renders into, or {@code null}
+     * when the host has none. The mode sink that owns a composer returns it here
+     * so a mode change made anywhere reaches the composer without the chat
+     * dispatcher having to know which surface owns one.
+     */
+    default PermissionModeSink permissionModeSink() { return null; }
+
+    /**
+     * Synchronize the composer to the gate's current mode — the single entry
+     * point shared by a local command that mutated the gate and an external
+     * writer (a gateway/webui session on the same shared gate). The owning
+     * screen compares against its cached mode before applying, so a redundant
+     * call is a no-op.
+     */
+    default void applyPermissionModeFromGate(String mode) {
+        PermissionModeSink sink = permissionModeSink();
+        if (sink != null) sink.setPermissionMode(mode);
+        permissionModeSynchronized(mode);
+    }
+
+    /**
+     * The composer surface a permission-mode change is applied to. Implemented
+     * by the prompt widget itself ({@code InputPanel}), so a host that renders
+     * one gets the apply for free and a host that owns no composer just leaves
+     * {@link #permissionModeSink()} null.
+     */
+    interface PermissionModeSink {
+        /** The mode currently shown, for a caller's redundant-update check. */
+        String getPermissionMode();
+        /** Show {@code mode}; a same-value set is the implementation's no-op. */
+        void setPermissionMode(String mode);
+    }
+
     void stop();
 
     /**

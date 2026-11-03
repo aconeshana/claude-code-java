@@ -8,7 +8,7 @@
  */
 import { create } from 'zustand'
 import { fetchPermissionMode, selectPermissionMode } from '../api/client'
-import type { SessionPermissionMode } from '../api/types'
+import type { MirrorFrame, SessionPermissionMode } from '../api/types'
 
 export interface PermissionModeStore {
   readonly state: SessionPermissionMode | null
@@ -17,6 +17,12 @@ export interface PermissionModeStore {
   refresh(sessionId?: string | null): Promise<void>
   /** Applies one permission-mode selection; resolves to an error string when rejected. */
   select(mode: string): Promise<string | null>
+  /**
+   * Applies one `permission.mode` mirror frame — a mode change another surface
+   * (the TUI) made on the shared gate. Ignored for a session this store is not
+   * bound to, and for a frame the store itself caused (select echoes back).
+   */
+  applyFrame(frame: MirrorFrame): void
 }
 
 export const usePermissionMode = create<PermissionModeStore>((set, get) => ({
@@ -46,5 +52,15 @@ export const usePermissionMode = create<PermissionModeStore>((set, get) => ({
     } catch (failure) {
       return failure instanceof Error ? failure.message : String(failure)
     }
+  },
+
+  applyFrame(frame) {
+    if (frame.event !== 'permission.mode') return
+    // A null sessionId follows the active TUI session; the frame is always
+    // addressed to that session, so an unbound store accepts it. A store bound
+    // to a specific session takes only its own frames.
+    const bound = get().sessionId
+    if (bound != null && bound !== frame.data.session_id) return
+    set({ state: frame.data.permission_mode })
   },
 }))

@@ -210,6 +210,11 @@ export type MirrorFrame =
       readonly request_id: string
       readonly origin: string
     } }
+  | { readonly event: 'permission.mode'; readonly id: number; readonly data: {
+      readonly session_id: string
+      /** Mirrors GET /api/session/permission-mode; null when the session exposes no gate. */
+      readonly permission_mode: SessionPermissionMode | null
+    } }
   | { readonly event: 'session.activated'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly id2?: string

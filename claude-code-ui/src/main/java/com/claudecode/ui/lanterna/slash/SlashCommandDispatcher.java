@@ -327,11 +327,16 @@ public final class SlashCommandDispatcher {
 
     /** Local UI commands mutate application state before completing. */
     private void synchronizePermissionMode() {
-        if (refs.permissionGate() == null || refs.inputPanel() == null
-                || refs.permissionGate().currentMode() == null) return;
+        if (refs.permissionGate() == null || refs.permissionGate().currentMode() == null) return;
         String mode = refs.permissionGate().currentMode().external();
-        if (Strings.CS.equals(mode, refs.inputPanel().getPermissionMode())) return;
-        refs.inputPanel().setPermissionMode(mode);
+        // The dispatcher owns the widget it was handed, so it applies there and
+        // notifies through the host; the host's own entry point exists for the
+        // external writer (a gateway/webui session on the same shared gate) and
+        // a screen that owns the composer routes both here.
+        if (refs.inputPanel() != null
+                && !Strings.CS.equals(mode, refs.inputPanel().getPermissionMode())) {
+            refs.inputPanel().setPermissionMode(mode);
+        }
         host.permissionModeSynchronized(mode);
     }
 

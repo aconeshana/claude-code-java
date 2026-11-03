@@ -3,7 +3,6 @@ package com.claudecode.cli;
 import com.claudecode.core.message.Message;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
-import com.claudecode.permissions.PermissionMode;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.session.SessionManager;
@@ -81,7 +80,6 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         // exists for `id`, so a genuinely new session is unaffected.
         List<Message> priorMessages = resumeMessages(id, projectPath);
         boolean resumed = !priorMessages.isEmpty();
-        factory.gateFor(projectPath).setMode(PermissionMode.DEFAULT);
         CliHeadlessSessionFactory.Assembled assembled =
             factory.assemble(id, projectPath, priorMessages);
         TaskState task = TaskRegistry.global().store()

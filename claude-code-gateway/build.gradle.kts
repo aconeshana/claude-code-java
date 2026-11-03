@@ -11,4 +11,8 @@ dependencies {
     // the same OkHttp EventSource stack the product uses as an API client.
     testImplementation(libs.okhttp)
     testImplementation(libs.okhttp.sse)
+    // The shared permission gate is a composition-root type the gateway never
+    // names; only the broadcast test builds a real one to prove the mirror
+    // frame and the polled state are one projection of the same gate.
+    testImplementation(project(":claude-code-permissions"))
 }

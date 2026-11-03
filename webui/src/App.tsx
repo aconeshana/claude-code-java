@@ -10,6 +10,7 @@ import { useAuth } from './store/auth'
 import { useContextTimeline } from './store/contextTimeline'
 import { useConversations } from './store/conversations'
 import { useConversationView } from './store/conversationView'
+import { usePermissionMode } from './store/permissionMode'
 import { useSessions } from './store/sessions'
 import { useSidebarCollapse } from './store/sidebarCollapse'
 import { AppFrame } from './views/AppFrame'
@@ -51,6 +52,7 @@ export function App() {
       useApprovals.getState().applyFrame(frame)
       useContextTimeline.getState().applyFrame(frame)
       useSessions.getState().applyFrame(frame)
+      usePermissionMode.getState().applyFrame(frame)
     }, setConnected)
 
     // Session switches from the TUI arrive as `session.activated` frames and
