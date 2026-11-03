@@ -3,7 +3,10 @@ package com.claudecode.gateway;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
+import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.time.Duration;
@@ -33,11 +36,11 @@ class GatewayFileSuggestionsInteropTest {
 
     private final SessionHostRegistry registry = new SessionHostRegistry(
         new SessionHostRegistry.Activator() {
-            @Override public CompletableFuture<com.claudecode.runtime.sessionhost.SessionHostSession>
-                    activate(com.claudecode.runtime.sessionhost.SessionOpenRequest request) {
+            @Override public CompletableFuture<SessionHostSession>
+                    activate(SessionOpenRequest request) {
                 throw new UnsupportedOperationException("not used by these tests");
             }
-            @Override public List<com.claudecode.runtime.sessionhost.SessionHostInfo> list() {
+            @Override public List<SessionHostInfo> list() {
                 return List.of();
             }
         });

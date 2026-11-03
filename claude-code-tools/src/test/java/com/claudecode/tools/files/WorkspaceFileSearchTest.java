@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,7 +29,7 @@ class WorkspaceFileSearchTest {
                 .containsExactlyInAnyOrder("src/", "README.md");
             // A directory row keeps the trailing slash the client renders and
             // the pick inserts; that is what makes the drill work by typing.
-            assertThat(rows.stream().filter(r -> r.path().equals("src/")).findFirst()
+            assertThat(rows.stream().filter(r -> Strings.CS.equals("src/", r.path())).findFirst()
                 .orElseThrow().directory()).isTrue();
         } finally {
             deleteRecursively(root);
@@ -115,7 +117,7 @@ class WorkspaceFileSearchTest {
     private static void deleteRecursively(Path root) throws IOException {
         if (!Files.exists(root)) return;
         try (var walk = Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException _) {

@@ -123,7 +123,8 @@ public final class WorkspaceFileSearch {
                     boolean directory = Files.isDirectory(path);
                     return new Candidate(directory ? name + "/" : name, directory);
                 })
-                .filter(row -> row.path().toLowerCase(Locale.ROOT).startsWith(prefixLower))
+                .filter(row -> Strings.CI.startsWith(
+                    row.path().toLowerCase(Locale.ROOT), prefixLower))
                 .sorted((left, right) -> left.directory() != right.directory()
                     ? (left.directory() ? -1 : 1)
                     : left.path().compareTo(right.path()))
