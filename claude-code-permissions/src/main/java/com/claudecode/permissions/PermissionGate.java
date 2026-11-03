@@ -19,10 +19,12 @@ import java.util.Set;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.function.BooleanSupplier;
+import java.util.function.UnaryOperator;
 
 /**
  * Mutable facade combining a {@link PermissionEngine} with a current {@link ToolPermissionContext}.
@@ -47,6 +49,9 @@ public final class PermissionGate {
     private volatile String autoModeCurrentModel;
     private final Object planAutoRulesLock = new Object();
     private final List<IndexedPermissionRule> strippedPlanAutoRules = new ArrayList<>();
+    /** Mode-change observers; the shared holder's other surfaces (TUI, webui) subscribe here. */
+    private final CopyOnWriteArrayList<PermissionModeListener> modeListeners =
+        new CopyOnWriteArrayList<>();
 
     public PermissionGate(ToolPermissionContext initialContext) {
         this(initialContext, PermissionPaths.EMPTY);
@@ -99,7 +104,7 @@ public final class PermissionGate {
         PermissionMode effective = requested == PermissionMode.BYPASS_PERMISSIONS
             && !bypassPermissionsModeAvailable
             ? PermissionMode.DEFAULT : requested;
-        contextRef.updateAndGet(ctx -> reconcileClassifierRules(transitionMode(ctx, effective)));
+        applyModeChange(ctx -> reconcileClassifierRules(transitionMode(ctx, effective)));
     }
 
     /** Convenience setter accepting the UI-level string. */
@@ -110,7 +115,7 @@ public final class PermissionGate {
 
     public void applyPermissionUpdateMode(PermissionMode mode) {
         PermissionMode requested = mode == null ? PermissionMode.DEFAULT : mode;
-        contextRef.updateAndGet(ctx -> reconcileClassifierRules(transitionMode(ctx, requested)));
+        applyModeChange(ctx -> reconcileClassifierRules(transitionMode(ctx, requested)));
     }
 
 
@@ -121,9 +126,9 @@ public final class PermissionGate {
             restore = PermissionMode.DEFAULT;
         }
         PermissionMode target = restore;
-        ToolPermissionContext updated = contextRef.updateAndGet(ctx -> reconcileClassifierRules(
+        applyModeChange(ctx -> reconcileClassifierRules(
             ctx.mode() == PermissionMode.PLAN ? ctx.setMode(target) : ctx));
-        return updated.mode();
+        return currentMode();
     }
 
     /** Records a successful ExitPlanMode so the next plan entry can emit one-time guidance. */
@@ -142,8 +147,7 @@ public final class PermissionGate {
     public void setBypassPermissionsModeAvailable(boolean available) {
         bypassPermissionsModeDisabledByPolicy = false;
         bypassPermissionsModeAvailable = available;
-        contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(available));
-        leaveBypassIfUnavailable();
+        applyBypassAvailability(available);
     }
 
     /**
@@ -154,9 +158,7 @@ public final class PermissionGate {
     public void configureBypassPermissionsMode(boolean launchAllowed, boolean disabledByPolicy) {
         bypassPermissionsModeDisabledByPolicy = disabledByPolicy;
         bypassPermissionsModeAvailable = launchAllowed && !disabledByPolicy;
-        boolean available = bypassPermissionsModeAvailable;
-        contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(available));
-        leaveBypassIfUnavailable();
+        applyBypassAvailability(bypassPermissionsModeAvailable);
     }
 
     /**
@@ -166,16 +168,59 @@ public final class PermissionGate {
         bypassPermissionsModeDisabledByPolicy = disabledByPolicy;
         if (disabledByPolicy) {
             bypassPermissionsModeAvailable = false;
-            contextRef.updateAndGet(ctx -> ctx.setBypassPermissionsModeAvailable(false));
-            leaveBypassIfUnavailable();
+            applyBypassAvailability(false);
         }
     }
 
-    private void leaveBypassIfUnavailable() {
-        if (!bypassPermissionsModeAvailable) {
-            contextRef.updateAndGet(ctx -> ctx.mode() == PermissionMode.BYPASS_PERMISSIONS
-                ? ctx.setMode(PermissionMode.DEFAULT) : ctx);
+    /**
+     * Re-applies the context's bypass availability and, when it is no longer
+     * available, pulls an active BYPASS mode back to DEFAULT — the same
+     * "leave bypass if unavailable" step the setters applied inline before
+     * the broadcast was introduced.
+     */
+    private void applyBypassAvailability(boolean available) {
+        applyModeChange(ctx -> {
+            ToolPermissionContext updated = ctx.setBypassPermissionsModeAvailable(available);
+            return !available && updated.mode() == PermissionMode.BYPASS_PERMISSIONS
+                ? updated.setMode(PermissionMode.DEFAULT) : updated;
+        });
+    }
+
+    /**
+     * Applies one context transformation and broadcasts when the effective
+     * mode changed. Callbacks run after the atomic update, never under a lock,
+     * so a listener cannot deadlock the setter.
+     */
+    private void applyModeChange(UnaryOperator<ToolPermissionContext> update) {
+        PermissionMode before = currentMode();
+        ToolPermissionContext updated =
+            contextRef.updateAndGet(ctx -> reconcileClassifierRules(update.apply(ctx)));
+        if (updated.mode() != before) {
+            dispatchModeChanged(updated.mode());
         }
+    }
+
+    private void dispatchModeChanged(PermissionMode mode) {
+        for (PermissionModeListener listener : modeListeners) {
+            try {
+                listener.onModeChanged(mode);
+            } catch (RuntimeException _) {
+                // A listener's own failure must not break the mode setter or
+                // suppress the remaining listeners.
+            }
+        }
+    }
+
+    /**
+     * Registers a mode-change observer; the returned handle removes it. The
+     * listener fires on the changing thread and must marshal to its own UI
+     * thread and must not re-enter this gate's mode setters. Calling the
+     * returned handle more than once is harmless.
+     */
+    public Runnable addModeListener(PermissionModeListener listener) {
+        if (listener == null) return () -> {};
+        modeListeners.add(listener);
+        return () -> modeListeners.remove(listener);
     }
 
     /** Returns whether this session may enter bypassPermissions. */
