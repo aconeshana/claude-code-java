@@ -598,6 +598,21 @@ export interface SessionPermissionModeResponse {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/session/cancel — stop the addressed session's running turn
+// ---------------------------------------------------------------------------
+
+/**
+ * The gateway accepted the stop. `cancelling` is the request's own
+ * acknowledgement, not the turn's outcome: cancellation unwinds the turn
+ * asynchronously and the session's event stream reports how it ended.
+ * `session_id` is absent when the active TUI session was addressed.
+ */
+export interface SessionCancelResponse {
+  readonly session_id?: string
+  readonly cancelling: boolean
+}
+
+// ---------------------------------------------------------------------------
 // Task board — the to-do dock (GET /api/session/tasks + `task_board` frames)
 // ---------------------------------------------------------------------------
 

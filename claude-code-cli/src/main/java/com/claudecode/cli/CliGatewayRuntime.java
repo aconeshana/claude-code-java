@@ -2,17 +2,18 @@ package com.claudecode.cli;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.gateway.GatewayCommandsPort;
-import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.MirrorHub;
+import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
 import com.claudecode.gateway.GatewayTaskBoardPort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
+import com.claudecode.gateway.GatewaySessionCancelPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
@@ -74,6 +75,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayPermissionModePort permissionMode;
     private final GatewaySpinnerVerbsPort spinnerVerbs;
     private final GatewayFileSuggestionsPort fileSuggestions;
+    private final GatewaySessionCancelPort sessionCancel;
     private final GatewayTaskBoardPort taskBoard;
     private final GatewayFileDiffPort fileDiff;
     /**
@@ -188,7 +190,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewayFileSuggestionsPort fileSuggestions) {
         this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
             models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
-            fileSuggestions, null, null);
+            fileSuggestions, null, null, null);
     }
 
     CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
@@ -198,7 +200,20 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions,
+            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel) {
+        this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
+            models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
+            fileSuggestions, sessionCancel, null, null);
+    }
+
+    CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
+            CliHeadlessGatewaySessions headless, InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
+            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel,
             GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
@@ -214,6 +229,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         this.permissionMode = permissionMode;
         this.spinnerVerbs = spinnerVerbs;
         this.fileSuggestions = fileSuggestions;
+        this.sessionCancel = sessionCancel;
         this.taskBoard = taskBoard;
         this.fileDiff = fileDiff;
     }
@@ -285,6 +301,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             permissionMode != null ? permissionMode : new GatewayPermissionModePort() {},
             spinnerVerbs != null ? spinnerVerbs : new GatewaySpinnerVerbsPort() {},
             fileSuggestions != null ? fileSuggestions : new GatewayFileSuggestionsPort() {},
+            sessionCancel != null ? sessionCancel : _ -> false,
             taskBoard != null ? taskBoard : _ -> Optional.empty(),
             fileDiff != null ? fileDiff : GatewayFileDiffPort.none());
         created.start();

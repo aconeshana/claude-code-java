@@ -225,7 +225,11 @@ final class CliHeadlessSessionFactory {
                     }
                     return SessionHostPermissionOptions.build(gate);
                 }
-            });
+            },
+            // Same engine interrupt the TUI Ctrl+C and the SDK interrupt
+            // control request drive (reason user-cancel); a no-op when the
+            // headless turn already ended.
+            () -> engine.submission().interrupt());
         return new Assembled(host, engine, abort, projectPath);
     }
 

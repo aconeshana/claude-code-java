@@ -16,7 +16,7 @@ import {
   type EditorState,
   type LexicalEditor,
 } from 'lexical'
-import { IconPaperclipOutline16, IconPlusOutline16, IconSendOutline16, IconSkillOutline16 } from '@primitives'
+import { IconPaperclipOutline16, IconPlusOutline16, IconSendOutline16, IconSkillOutline16, IconStopFill16 } from '@primitives'
 import type { FileCandidate, UserContentBlock } from '../api/types'
 import { fetchComposerCommands, type ComposerCommandEntry } from '../api/client'
 import {
@@ -82,11 +82,35 @@ import css from '@chat-styles/InputBar.module.css'
  * edge. 'steer' has no backend turn-injection route in this gateway, so it
  * falls through to today's immediate-send behavior.
  */
-export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onClientCommand }: {
+/**
+ * The composer's primary control is a two-form button: Stop while a turn is
+ * running, Send otherwise. Stop wins only on an empty composer, so a
+ * queued/steered click over an actionable draft always reaches submit. The
+ * rule is the local projection of upstream ui-conversation's `primaryStops`
+ * (skeleton/InputBar.tsx); exported so the decision is testable without
+ * mounting the Lexical composer.
+ *
+ * @param input the composer's live state
+ * @return true when the primary control should render as Stop
+ */
+export function resolvesToStop(input: {
+  busy: boolean
+  stopAvailable: boolean
+  hasContent: boolean
+}): boolean {
+  return input.busy && input.stopAvailable && !input.hasContent
+}
+
+export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessionId, onClientCommand }: {
   disabled: boolean
   busy: boolean
   placeholder: string
   onSubmit: (content: string | readonly UserContentBlock[]) => void
+  /**
+   * Stops the running turn. Absent on surfaces that expose no cancellation —
+   * the primary control then never renders its stop form.
+   */
+  onStop?: () => void
   /** The conversation this composer addresses; the model seat and meter follow it. */
   sessionId?: string | null
   /**
@@ -476,6 +500,14 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
     onSubmit(content)
   }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, sessionId, onClientCommand])
 
+  // Stop is offered only where a cancellation callback is wired; a composer
+  // with no onStop never renders a stop affordance whose click does nothing.
+  const stop = resolvesToStop({
+    busy,
+    stopAvailable: onStop != null,
+    hasContent: hasSubmittableContent(draftText, attachments),
+  })
+
   const onChange = useCallback((state: EditorState) => {
     state.read(() => {
       setDraftText($getRoot().getTextContent())
@@ -615,11 +647,11 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, sessionId, onC
             <button
               type="button"
               className={css.primary}
-              disabled={disabled || !hasSubmittableContent(draftText, attachments)}
-              onClick={submit}
-              aria-label="发送"
+              disabled={stop ? false : disabled || !hasSubmittableContent(draftText, attachments)}
+              onClick={stop ? onStop : submit}
+              aria-label={stop ? '停止' : '发送'}
             >
-              <IconSendOutline16 />
+              {stop ? <IconStopFill16 /> : <IconSendOutline16 />}
             </button>
           </div>
         </div>

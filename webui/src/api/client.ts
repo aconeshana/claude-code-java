@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
 import { currentToken } from './token'
 
 /**
@@ -334,6 +334,22 @@ export function selectPermissionMode(input: {
 }
 
 /**
+ * POST /api/session/cancel: stops the addressed session's running turn — the
+ * composer's stop control (the primary button's stop form). The cancellation
+ * is the same `user-cancel` interrupt the TUI's Ctrl+C drives, so the
+ * transcript records it identically. A blank session id addresses the active
+ * TUI session; an id no live session answers to is a 404.
+ */
+export function cancelTurn(input: {
+  readonly session_id?: string | null
+}): Promise<SessionCancelResponse> {
+  const body = input.session_id == null || input.session_id === ''
+    ? {}
+    : input
+  return requestJson('POST', '/api/session/cancel', body)
+}
+
+/**
  * GET /api/session/tasks: one session's current to-do board, for the dock's
  * cold load. The live board also arrives as `task_board` mirror frames; this
  * answers the state a client connecting mid-session has not yet seen. The
@@ -429,8 +445,6 @@ export async function submitTurn(
   // Drain without parsing: the mirror stream owns rendering.
   await response.body.cancel()
 }
-
-
 
 /**
  * GET /api/changes.diff — one changed file's diff, in unified-diff coordinates.

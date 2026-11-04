@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { submitTurn } from './api/client'
+import { cancelTurn, submitTurn } from './api/client'
 import { subscribeMirror, type MirrorConnection } from './api/events'
 import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
-import type { UserContentBlock } from './api/types'
+import { ApiError, type UserContentBlock } from './api/types'
 import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
 import { useTranslate } from './i18n/useTranslate'
 import { pendingAskFor, useApprovals } from './store/approvals'
@@ -16,7 +16,6 @@ import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
-import { ChangesModal } from './views/ChangesModal'
 import { ChatView } from './views/ChatView'
 import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
@@ -25,6 +24,7 @@ import { Sidebar } from './views/Sidebar'
 import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
+import { ChangesModal } from './views/ChangesModal'
 import { ContextView } from './views/context/ContextView'
 
 /**
@@ -90,6 +90,16 @@ export function App() {
   const onSubmit = useCallback((content: string | readonly UserContentBlock[]) => {
     void submitTurn(selectedId, content).catch((failure: unknown) => {
       console.error('turn submission failed', failure)
+    })
+  }, [selectedId])
+
+  // The composer's stop control: the same user-cancel interrupt the TUI's
+  // Ctrl+C drives. The 404 for an id no live session answers to is a benign
+  // race (the turn ended between render and click), so it is not surfaced.
+  const onStop = useCallback(() => {
+    void cancelTurn({ session_id: selectedId }).catch((failure: unknown) => {
+      if (failure instanceof ApiError && failure.status === 404) return
+      console.error('turn cancellation failed', failure)
     })
   }, [selectedId])
 
@@ -167,21 +177,22 @@ export function App() {
               busy={conversation?.turnRunning === true}
               placeholder={selectedId == null ? '先在侧栏选择一个会话' : '输入消息，Enter 发送'}
               onSubmit={onSubmit}
+              onStop={onStop}
               sessionId={selectedId}
               onClientCommand={onClientCommand}
             />
           </div>
         }
       />
-      {/* The produced-files viewer. It owns its own open/closed state (the
-          selection lives in the store), so it mounts unconditionally and
-          renders null while nothing is open. */}
-      <ChangesModal />
       <ContextModal
         sessionId={selectedId}
         open={contextModalOpen}
         onClose={() => { setContextModalOpen(false) }}
       />
+      {/* The produced-files viewer. It owns its own open/closed state (the
+          selection lives in the store), so it mounts unconditionally and
+          renders null while nothing is open. */}
+      <ChangesModal />
       <ContextDashboard />
     </AppFrame>
   )

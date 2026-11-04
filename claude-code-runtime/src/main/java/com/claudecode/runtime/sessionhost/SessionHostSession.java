@@ -17,7 +17,8 @@ public record SessionHostSession(
         SessionHostModelController models,
         SessionHostEffortController efforts,
         SessionHostCompactController compacts,
-        SessionHostPermissionController permissions) {
+        SessionHostPermissionController permissions,
+        SessionHostCancelController cancels) {
 
     public SessionHostSession(
             SessionHostInfo info,
@@ -25,7 +26,7 @@ public record SessionHostSession(
             Function<SessionHostSubmission, CompletionStage<Void>> submitter) {
         this(info, events, submitter, SessionHostModelController.unsupported(),
             SessionHostEffortController.unsupported(), SessionHostCompactController.unsupported(),
-            SessionHostPermissionController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
     }
 
     public SessionHostSession(
@@ -34,7 +35,8 @@ public record SessionHostSession(
             Function<SessionHostSubmission, CompletionStage<Void>> submitter,
             SessionHostModelController models) {
         this(info, events, submitter, models, SessionHostEffortController.unsupported(),
-            SessionHostCompactController.unsupported(), SessionHostPermissionController.unsupported());
+            SessionHostCompactController.unsupported(), SessionHostPermissionController.unsupported(),
+            SessionHostCancelController.unsupported());
     }
 
     public SessionHostSession(
@@ -44,7 +46,7 @@ public record SessionHostSession(
             SessionHostModelController models,
             SessionHostEffortController efforts) {
         this(info, events, submitter, models, efforts, SessionHostCompactController.unsupported(),
-            SessionHostPermissionController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
     }
 
     public SessionHostSession(
@@ -55,7 +57,7 @@ public record SessionHostSession(
             SessionHostEffortController efforts,
             SessionHostCompactController compacts) {
         this(info, events, submitter, models, efforts, compacts,
-            SessionHostPermissionController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
     }
 
     public SessionHostSession {
@@ -66,9 +68,20 @@ public record SessionHostSession(
         Objects.requireNonNull(efforts, "efforts");
         Objects.requireNonNull(compacts, "compacts");
         Objects.requireNonNull(permissions, "permissions");
+        Objects.requireNonNull(cancels, "cancels");
     }
 
     public CompletionStage<Void> submit(SessionHostSubmission submission) {
         return submitter.apply(Objects.requireNonNull(submission, "submission"));
+    }
+
+    /**
+     * Stops this session's running turn — the same user-cancel interrupt the
+     * TUI's Ctrl+C drives. Delegates to the session kind's controller; a kind
+     * that exposes none throws, which the gateway's stop endpoint maps to an
+     * unknown target rather than a failed cancellation.
+     */
+    public void cancel() {
+        cancels.cancel();
     }
 }

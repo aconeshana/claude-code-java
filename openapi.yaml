@@ -759,6 +759,42 @@ paths:
               schema: { $ref: '#/components/schemas/SessionPermissionModeResponse' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/cancel:
+    post:
+      tags: [Sessions]
+      summary: Stop the active turn on one session
+      description: |
+        Drives the webui composer's stop button — the remote counterpart of
+        the TUI's Ctrl+C and the SDK `interrupt` control request. The
+        addressed session follows the same routing as
+        /api/session/permission-mode: an open headless session id, the active
+        TUI session's own id, or blank for the active TUI session. An id no
+        live session answers to is 404 — a closed session has no turn to stop.
+        The response is an acknowledgement, not a completion: cancellation
+        unwinds the turn asynchronously and the mirror stream reports the
+        outcome (stop_reason `cancelled` on the protocol faces).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionCancelRequest' }
+      responses:
+        '200':
+          description: Cancellation accepted for the addressed session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionCancelResponse' }
+        '404':
+          description: No live session answers to the addressed id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500':
+          description: The session resolved and the cancellation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /api/session/tasks:
     get:
       tags: [Sessions]
@@ -1952,6 +1988,22 @@ components:
         mode:
           type: string
           enum: [default, plan, acceptEdits, bypassPermissions, dontAsk]
+    SessionCancelRequest:
+      type: object
+      properties:
+        session_id:
+          type: string
+          description: The session to address; absent means the active TUI session
+    SessionCancelResponse:
+      type: object
+      required: [cancelling]
+      properties:
+        session_id:
+          type: string
+          description: Echoed for an explicit id; absent when the active session was targeted
+        cancelling:
+          type: boolean
+          description: Always true — the request was accepted; the mirror stream reports the outcome
     SessionTaskBoardResponse:
       type: object
       required: [list_id, revision, hidden, source, tasks]

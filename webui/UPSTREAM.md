@@ -258,6 +258,36 @@ Corrected against the actually-fetched source:
   headless id = that session). Copy: `src/i18n/dictionaries/permissionMode.ts`
   (own namespace — not a translation of any dsh dictionary).
 
+**Primary-control stop form (ported 2026-11-03).** Upstream's
+`ui-conversation/src/client/skeleton/InputBar.tsx` gives the composer's
+primary circle two forms: Stop while a turn is running, Send otherwise.
+`src/views/InputBar.tsx`'s `resolvesToStop` is the same decision
+(upstream's `primaryStops`) exported as a pure function so it is testable
+without mounting the Lexical composer, and pinned by
+`src/views/inputBarPrimary.test.ts`:
+
+- Stop wins **only on an empty composer** (`busy && stopAvailable &&
+  !hasContent`). A click over an actionable draft reaches submit even while
+  running, so a queued/steered send is never swallowed by a stop the user did
+  not aim at.
+- `stopAvailable` is `onStop != null` — a surface that wires no cancellation
+  callback never renders a stop affordance whose click does nothing.
+- Glyph: `IconStopFill16` (already vendored in
+  `vendor/ui-primitives/icons/index.tsx:529`); the aria-label flips
+  send→stop with the form.
+
+Backend surface: `POST /api/session/cancel` (`GatewaySessionCancelHandler` →
+`GatewaySessionCancelPort`), addressed like the other session endpoints
+(blank `session_id` = active TUI session, a known headless id = that
+session; an id no live session answers to is a 404). The cancellation is the
+same `user-cancel` interrupt the TUI's Ctrl+C drives — the TUI path binds it
+through `SessionHostPublisher`'s `SessionHostCancelController`
+(`queryEngine.submission().interrupt()`), the headless path through
+`CliHeadlessSessionFactory` (`engine.submission().interrupt()`) — so the
+transcript records a remote stop exactly like a local one. A session kind
+that exposes no cancellation throws, which the endpoint maps to an unknown
+target rather than a failed cancellation.
+
 ### `vendor/dsh-stats-pills/` — session-stat pills & turn-tail pills
 
 Two pill groups from ui-chat: the composer-dock **StatsPills** (session

@@ -230,7 +230,7 @@ class GatewayChangesInteropTest {
             new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
             new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
             new GatewaySpinnerVerbsPort() {}, new GatewayFileSuggestionsPort() {},
-            _ -> Optional.empty(), fileDiff);
+            _ -> false, _ -> Optional.empty(), fileDiff);
         server.start();
         // The session is activated after the server is up, so the blank-id case
         // resolves the same active session the catalog endpoints would see.

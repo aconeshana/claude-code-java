@@ -97,6 +97,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayFileSuggestionsHandler fileSuggestionsApi;
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
+    private final GatewaySessionCancelHandler sessionCancelApi;
     private final GatewayTaskBoardHandler taskBoardApi;
     private final GatewayChangesHandler changesApi;
     private final ContextTimelineLedger contextTimeline;
@@ -224,7 +225,21 @@ public final class GatewayServer implements AutoCloseable {
             GatewayFileSuggestionsPort fileSuggestions) {
         this(config, token, registry, catalog, headless, interactions, sessionMessages,
             settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            spinnerVerbs, fileSuggestions, _ -> Optional.empty(),
+            spinnerVerbs, fileSuggestions, _ -> false);
+    }
+
+    public GatewayServer(Config config, String token, SessionHostRegistry registry,
+            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
+            InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
+            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort cancel) {
+        this(config, token, registry, catalog, headless, interactions, sessionMessages,
+            settings, schedule, models, commands, sessionContext, actions, permissionMode,
+            spinnerVerbs, fileSuggestions, cancel, _ -> Optional.empty(),
             GatewayFileDiffPort.none());
     }
 
@@ -236,7 +251,7 @@ public final class GatewayServer implements AutoCloseable {
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions,
+            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort cancel,
             GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
@@ -308,6 +323,7 @@ public final class GatewayServer implements AutoCloseable {
         this.fileSuggestionsApi = new GatewayFileSuggestionsHandler(fileSuggestions);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
+        this.sessionCancelApi = new GatewaySessionCancelHandler(cancel);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
         this.changesApi = new GatewayChangesHandler(fileDiff);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
@@ -705,6 +721,11 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
+        if (post && Strings.CS.equals("/api/session/cancel", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> sessionCancelApi.handlePost(exchange));
+            return;
+        }
         if (get && Strings.CS.equals("/api/session/tasks", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> taskBoardApi.handleGet(exchange));
@@ -720,7 +741,6 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> changesApi.handleOpen(exchange));
             return;
         }
-        
         if ((get || post) && Strings.CS.equals("/api/models", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {

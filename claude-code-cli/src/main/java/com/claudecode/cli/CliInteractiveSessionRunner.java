@@ -39,7 +39,6 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayCommandsPort;
-import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
@@ -48,8 +47,10 @@ import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
+import com.claudecode.gateway.GatewaySessionCancelPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
+import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
 import com.claudecode.gateway.GatewayTaskBoardPort;
 import com.claudecode.gateway.GatewaySettingsPort;
@@ -410,6 +411,7 @@ final class CliInteractiveSessionRunner {
                 gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
                 gatewaySpinnerVerbs(),
                 gatewayFileSuggestions(interactiveCwd),
+                gatewaySessionCancel(sessionHostRuntime.registry(), headlessSessions),
                 gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()),
                 gatewayFileDiff(headlessSessions.messagesPort(interactiveCwd),
                     engine.conversation().getSessionId()));
@@ -1282,6 +1284,38 @@ final class CliInteractiveSessionRunner {
                         failure.getMessage(), "permission mode is not available for this session"));
                 }
             }
+        };
+    }
+
+    /**
+     * The webui composer's stop button: resolves the addressed session with
+     * the same precedence {@link #gatewayPermissionMode} uses and delegates to
+     * its {@link SessionHostCancelController} — which each session kind wires
+     * to its engine's {@code interrupt()} (the TUI Ctrl+C path). A blank id
+     * that resolves to no active session, or an id no live session answers to,
+     * returns false so the endpoint answers 404.
+     */
+    static GatewaySessionCancelPort gatewaySessionCancel(
+            SessionHostRegistry registry, GatewayHeadlessSessions headless) {
+        return sessionId -> {
+            Optional<SessionHostSession> found = StringUtils.isBlank(sessionId)
+                ? Optional.empty()
+                : (headless != null ? headless.find(sessionId) : Optional.empty());
+            SessionHostSession session = found.orElseGet(() -> registry.currentActivation()
+                .map(SessionHostRegistry.ActivationResult::session)
+                .filter(active -> StringUtils.isBlank(sessionId)
+                    || Strings.CS.equals(active.info().id(), sessionId))
+                .orElse(null));
+            if (session == null) return false;
+            try {
+                session.cancel();
+            } catch (UnsupportedOperationException _) {
+                // A session kind that exposes no stop control: nothing was
+                // asked to stop, which the endpoint reports as an unknown
+                // target rather than a failed cancellation.
+                return false;
+            }
+            return true;
         };
     }
 

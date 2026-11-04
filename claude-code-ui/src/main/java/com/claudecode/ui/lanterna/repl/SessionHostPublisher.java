@@ -280,7 +280,11 @@ final class SessionHostPublisher {
                 @Override public SessionHostPermissionState set(String selected) {
                     return setSessionPermissionMode(sessionId, selected);
                 }
-            });
+            },
+            // Same engine interrupt the TUI's Ctrl+C drives (the SDK interrupt
+            // control request too), so a remote stop lands in the transcript
+            // exactly like a local one. A no-op when the turn already ended.
+            () -> queryEngine.submission().interrupt());
     }
 
     private SessionHostModelState currentSessionModelState(String expectedSessionId) {
