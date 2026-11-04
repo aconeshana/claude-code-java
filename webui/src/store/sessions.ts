@@ -161,7 +161,11 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     // REMOTE is this client's own open/create echoing back; those paths have
     // already selected, and re-selecting would race their in-flight `select`
     // and undo the user's choice right after they made it.
-    if (frame.data.origin !== 'LOCAL') return
+    // Lowercase: the gateway sends `event.origin().name().toLowerCase()`, so
+    // the wire value is `local`/`remote`. An uppercase comparison here matched
+    // nothing and silently disabled every TUI-side switch (the frames were
+    // accepted, reduced, and then dropped on this line).
+    if (frame.data.origin !== 'local') return
     if (!get().followActive) return
     const target = frame.data.session_id
     if (target === '' || target === get().selectedSessionId) return

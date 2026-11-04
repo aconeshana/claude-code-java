@@ -351,7 +351,12 @@ describe('sessions store following the TUI', () => {
     sessionStorage.clear()
   })
 
-  function activated(sessionId: string, origin: string): MirrorFrame {
+  // The origin is the wire value verbatim: the gateway sends
+  // `event.origin().name().toLowerCase()`, i.e. the lowercase enum name. A
+  // test that spells it uppercase pins the test against a value the server
+  // never sends, which is how the case mismatch that disabled session
+  // following first shipped green.
+  function activated(sessionId: string, origin: 'local' | 'remote'): MirrorFrame {
     return {
       event: 'session.activated',
       id: 1,
@@ -359,20 +364,20 @@ describe('sessions store following the TUI', () => {
     } as MirrorFrame
   }
 
-  it('follows a LOCAL activation while the user has not chosen', async () => {
+  it('follows a local activation while the user has not chosen', async () => {
     useSessions.setState({ selectedSessionId: 'closed-1' })
 
-    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+    useSessions.getState().applyFrame(activated('active-1', 'local'))
 
     await vi.waitFor(() => {
       expect(useSessions.getState().selectedSessionId).toBe('active-1')
     })
   })
 
-  it('ignores a REMOTE activation, which is this client\'s own echo', async () => {
+  it('ignores a remote activation, which is this client\'s own echo', async () => {
     useSessions.setState({ selectedSessionId: 'closed-1' })
 
-    useSessions.getState().applyFrame(activated('active-1', 'REMOTE'))
+    useSessions.getState().applyFrame(activated('active-1', 'remote'))
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(useSessions.getState().selectedSessionId).toBe('closed-1')
@@ -382,7 +387,7 @@ describe('sessions store following the TUI', () => {
     await useSessions.getState().selectByUser('closed-1')
     expect(useSessions.getState().followActive).toBe(false)
 
-    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+    useSessions.getState().applyFrame(activated('active-1', 'local'))
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(useSessions.getState().selectedSessionId).toBe('closed-1')
@@ -412,7 +417,7 @@ describe('sessions store following the TUI', () => {
         : Promise.resolve(jsonResponse(CATALOG))
     }))
 
-    useSessions.getState().applyFrame(activated('active-1', 'LOCAL'))
+    useSessions.getState().applyFrame(activated('active-1', 'local'))
 
     await vi.waitFor(() => {
       expect(useSessions.getState().selectedSessionId).toBe('active-1')

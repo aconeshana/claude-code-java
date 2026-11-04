@@ -10,6 +10,7 @@ import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.model.ModelApiProtocol;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,7 @@ class CompactForkToolNarrowingTest {
     /** A catalog containing the tools compaction keeps plus several it must drop. */
     private record CatalogToolExecutor() implements ToolExecutor {
         @Override
-        public ToolResult execute(String toolName, com.fasterxml.jackson.databind.JsonNode input,
+        public ToolResult execute(String toolName, JsonNode input,
                                    ToolExecutionContext context) {
             return ToolResult.success("unused");
         }
