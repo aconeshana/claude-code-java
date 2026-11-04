@@ -134,18 +134,19 @@ class GatewayServerInteropTest {
             throws Exception {
         // The catalog adapter mirrors the /resume project picker's shape:
         // projects[] each containing their own sessions[].
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {
-                @Override public List<ProjectEntry> listProjects() {
-                    return List.of(new ProjectEntry(
-                        "/work/project-a", "project-a", 2, 1_700_000_000_000L,
-                        List.of(
-                            new SessionEntry("sess-a1", "first session", 10,
-                                1_700_000_000_000L, "main", "/work/project-a", "", "hello"),
-                            new SessionEntry(activeSessionId, "active session", 3,
-                                1_700_000_000_001L, "main", "/work/project-a", "custom", ""))));
-                }
-            });
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+               return List.of(new ProjectEntry(
+                   "/work/project-a", "project-a", 2, 1_700_000_000_000L,
+                   List.of(
+                       new SessionEntry("sess-a1", "first session", 10,
+                           1_700_000_000_000L, "main", "/work/project-a", "", "hello"),
+                       new SessionEntry(activeSessionId, "active session", 3,
+                           1_700_000_000_001L, "main", "/work/project-a", "custom", ""))));
+            }
+            })
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work", "a session", 3,
@@ -176,15 +177,16 @@ class GatewayServerInteropTest {
         // catalog cannot see one that was just created. Without folding the
         // live session in, no row carries `active` and the web client selects
         // an arbitrary historical session instead of the one on screen.
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {
-                @Override public List<ProjectEntry> listProjects() {
-                    return List.of(new ProjectEntry(
-                        "/work/older", "older", 1, 1_700_000_000_000L,
-                        List.of(new SessionEntry("sess-old", "an older session", 10,
-                            1_700_000_000_000L, "main", "/work/older", "", "hello"))));
-                }
-            });
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+               return List.of(new ProjectEntry(
+                   "/work/older", "older", 1, 1_700_000_000_000L,
+                   List.of(new SessionEntry("sess-old", "an older session", 10,
+                       1_700_000_000_000L, "main", "/work/older", "", "hello"))));
+            }
+            })
+            .build();
         server.start();
         registry.activateLocal(new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work/fresh", "a session", 0,
@@ -216,19 +218,20 @@ class GatewayServerInteropTest {
             rows.add(new GatewaySessionCatalogPort.SessionEntry("sess-" + i, "session " + i, i,
                 1_700_000_000_000L + i, "main", "/work/project-a", "", "row " + i));
         }
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {
-                @Override public List<GatewaySessionCatalogPort.ProjectEntry> listProjects(
-                        int perProjectLimit) {
-                    seenLimits.add(perProjectLimit);
-                    List<GatewaySessionCatalogPort.SessionEntry> visible =
-                        perProjectLimit <= 0 || perProjectLimit >= rows.size()
-                            ? rows : rows.subList(0, perProjectLimit);
-                    return List.of(new GatewaySessionCatalogPort.ProjectEntry(
-                        "/work/project-a", "project-a", rows.size(),
-                        1_700_000_000_000L, visible));
-                }
-            });
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<GatewaySessionCatalogPort.ProjectEntry> listProjects(
+                   int perProjectLimit) {
+               seenLimits.add(perProjectLimit);
+               List<GatewaySessionCatalogPort.SessionEntry> visible =
+                   perProjectLimit <= 0 || perProjectLimit >= rows.size()
+                       ? rows : rows.subList(0, perProjectLimit);
+               return List.of(new GatewaySessionCatalogPort.ProjectEntry(
+                   "/work/project-a", "project-a", rows.size(),
+                   1_700_000_000_000L, visible));
+            }
+            })
+            .build();
         server.start();
 
         // Default: the paged default (5 rows), session_count keeps the total.
@@ -263,18 +266,19 @@ class GatewayServerInteropTest {
         // Every open session used to look permanently green because the row
         // carried only `active`/`headless_open`, which describe attachment,
         // not a turn in flight. `running` is the fact the status dot needs.
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {
-                @Override public List<ProjectEntry> listProjects() {
-                    return List.of(new ProjectEntry(
-                        "/work/project-a", "project-a", 2, 1_700_000_000_000L,
-                        List.of(
-                            new SessionEntry(activeSessionId, "active session", 3,
-                                1_700_000_000_001L, "main", "/work/project-a", "", ""),
-                            new SessionEntry("sess-idle", "an idle session", 2,
-                                1_700_000_000_000L, "main", "/work/project-a", "", ""))));
-                }
-            });
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+               return List.of(new ProjectEntry(
+                   "/work/project-a", "project-a", 2, 1_700_000_000_000L,
+                   List.of(
+                       new SessionEntry(activeSessionId, "active session", 3,
+                           1_700_000_000_001L, "main", "/work/project-a", "", ""),
+                       new SessionEntry("sess-idle", "an idle session", 2,
+                           1_700_000_000_000L, "main", "/work/project-a", "", ""))));
+            }
+            })
+            .build();
         server.start();
         registry.activateLocal(new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work", "a session", 3,
@@ -864,18 +868,15 @@ class GatewayServerInteropTest {
         // The webui running status words its row from the TUI spinner's
         // vocabulary: the active list in its resolved order, plus the fixed
         // per-tool verbs (sorted so the body is byte-stable).
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
-            new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
-            new GatewaySpinnerVerbsPort() {
-                @Override public List<String> activeVerbs() { return List.of("Brewing", "Zesting"); }
-                @Override public Map<String, String> toolVerbs() {
-                    return Map.of("Read", "Reading", "Bash", "Running");
-                }
-            });
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .spinnerVerbs(new GatewaySpinnerVerbsPort() {
+            @Override public List<String> activeVerbs() { return List.of("Brewing", "Zesting"); }
+            @Override public Map<String, String> toolVerbs() {
+               return Map.of("Read", "Reading", "Bash", "Running");
+            }
+            })
+            .build();
         server.start();
 
         try (Response anonymous = client.newCall(new Request.Builder()
@@ -897,10 +898,10 @@ class GatewayServerInteropTest {
         // The settings panel's port: one snapshot read, one op-based mutation
         // that answers with the refreshed snapshot, and 400s for malformed
         // requests the adapter never sees.
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new RecordingSettingsPort(),
-            new GatewaySchedulePort() {});
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .settings(new RecordingSettingsPort())
+            .build();
         server.start();
 
         try (Response anonymous = client.newCall(new Request.Builder()
@@ -950,14 +951,15 @@ class GatewayServerInteropTest {
     @Test
     @Timeout(20)
     void settingsEndpointSurfacesPersistenceFailuresAs500() throws Exception {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {
-                @Override public void writeUserValue(String key,
-                        JsonNode value) {
-                    throw new RuntimeException("disk full");
-                }
-            }, new GatewaySchedulePort() {});
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .settings(new GatewaySettingsPort() {
+            @Override public void writeUserValue(String key,
+                   JsonNode value) {
+               throw new RuntimeException("disk full");
+            }
+            })
+            .build();
         server.start();
 
         try (Response failure = client.newCall(new Request.Builder()
@@ -974,9 +976,10 @@ class GatewayServerInteropTest {
     @Timeout(20)
     void scheduleEndpointListsAddsAndRemovesTasks() throws Exception {
         RecordingSchedulePort schedule = new RecordingSchedulePort();
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {}, schedule);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .schedule(schedule)
+            .build();
         server.start();
 
         try (Response anonymous = client.newCall(new Request.Builder()
@@ -1046,10 +1049,10 @@ class GatewayServerInteropTest {
     @Timeout(20)
     void modelsEndpointListsSavesWithApiKeyTriStateAndRemoves() throws Exception {
         RecordingModelsPort models = new RecordingModelsPort();
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, models);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .models(models)
+            .build();
         server.start();
 
         try (Response anonymous = client.newCall(new Request.Builder()
@@ -1143,11 +1146,10 @@ class GatewayServerInteropTest {
         RecordingSessionContextPort context = new RecordingSessionContextPort();
         context.messages = List.of(new AssistantMessage(UUID.randomUUID().toString(),
             new AssistantContent("msg_usage", List.of(new TextBlock("hi")), null)));
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
 
         try (Response anonymous = client.newCall(new Request.Builder()
@@ -1212,11 +1214,10 @@ class GatewayServerInteropTest {
         // body field (POST); a blank id keeps the active-session default the
         // earlier interop case exercises.
         RecordingSessionContextPort context = new RecordingSessionContextPort();
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
 
         try (Response targeted = client.newCall(new Request.Builder()
@@ -1258,11 +1259,10 @@ class GatewayServerInteropTest {
                 "claude-sonnet-5", "end_turn", null)));
         context.breakdown = new GatewaySessionContextPort.ContextBreakdown(
             5_000L, 5_000L, 21_000L);
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
 
         try (Response snapshot = client.newCall(new Request.Builder()
@@ -1293,11 +1293,10 @@ class GatewayServerInteropTest {
         context.metrics = new SessionMetricsSnapshot(
             true, 3, 5, 12_000, 4_000, 900, 5, 6_000, 400,
             1_000, 800, 200, 9_000);
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
 
         try (Response snapshot = client.newCall(new Request.Builder()
@@ -1495,11 +1494,10 @@ class GatewayServerInteropTest {
     }
 
     private void startServer(GatewaySessionContextPort context) throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work", "a session", 3,

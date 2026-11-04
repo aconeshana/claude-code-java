@@ -418,7 +418,8 @@ class MessagesHandlerInteropTest {
     }
 
     private void startServer() throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry);
+        server = GatewayServer.builder(
+            new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry).build();
         server.start();
     }
 

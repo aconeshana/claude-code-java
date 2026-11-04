@@ -235,7 +235,8 @@ class ChatResponsesHandlerInteropTest {
     /** Installs the active session; the scripted turn body runs on submit. */
     private void startServerWithTurn(Consumer<String> turnBody)
             throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry);
+        server = GatewayServer.builder(
+            new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry).build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(sessionId, "/work", "", 0, Instant.now(), ""),

@@ -345,11 +345,10 @@ class GatewayContextTimelineInteropTest {
     }
 
     private void startServer(GatewaySessionContextPort context) throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, context);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionContext(context)
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work", "a session", 3, Instant.now(), "main"),

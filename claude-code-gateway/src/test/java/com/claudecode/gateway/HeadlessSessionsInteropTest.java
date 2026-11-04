@@ -131,8 +131,9 @@ class HeadlessSessionsInteropTest {
     }
 
     private void startServer() throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0),
-            TOKEN, registry, new GatewaySessionCatalogPort() {}, headless);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(headless)
+            .build();
         server.start();
     }
 
@@ -280,20 +281,20 @@ class HeadlessSessionsInteropTest {
     void catalogAnnotatesOpenHeadlessSessions() throws Exception {
         // The two-level /api/sessions catalog carries the full ProjectCatalog
         // listing; open headless sessions are annotated on their rows.
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN,
-            registry,
-            new GatewaySessionCatalogPort() {
-                @Override public List<ProjectEntry> listProjects() {
-                    return List.of(new ProjectEntry(
-                        "/work", "work", 2, 1_700_000_000_000L,
-                        List.of(
-                            new SessionEntry("ws-a", "a session", 3, 1_700_000_000_000L,
-                                "main", "/work", "", ""),
-                            new SessionEntry("sess-disk", "disk only", 8, 1_699_000_000_000L,
-                                "main", "/work", "", ""))));
-                }
-            },
-            headless);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+               return List.of(new ProjectEntry(
+                   "/work", "work", 2, 1_700_000_000_000L,
+                   List.of(
+                       new SessionEntry("ws-a", "a session", 3, 1_700_000_000_000L,
+                           "main", "/work", "", ""),
+                       new SessionEntry("sess-disk", "disk only", 8, 1_699_000_000_000L,
+                           "main", "/work", "", ""))));
+            }
+            })
+            .headless(headless)
+            .build();
         server.start();
         post("/api/sessions/open", "{\"session_id\":\"ws-a\"}");
         try (Response response = client.newCall(new Request.Builder()

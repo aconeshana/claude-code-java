@@ -338,11 +338,11 @@ class GatewaySessionActionsInteropTest {
 
     private void startServer(GatewaySessionActionsPort actions,
             GatewaySessionCatalogPort catalog) throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            catalog, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, new GatewaySessionContextPort() {}, actions);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(catalog)
+            .headless(new GatewayHeadlessSessions() {})
+            .actions(actions)
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(activeSessionId, "/work", "a session", 3, Instant.now(), "main"),

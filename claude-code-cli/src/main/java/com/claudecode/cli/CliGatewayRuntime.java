@@ -200,19 +200,6 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewayModelsPort models, GatewayCommandsPort commands,
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel) {
-        this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
-            models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
-            fileSuggestions, sessionCancel, null, null);
-    }
-
-    CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
-            CliHeadlessGatewaySessions headless, InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
             GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel,
             GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -286,24 +273,26 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         }
         String token = newToken();
         int port = findAvailablePort("127.0.0.1", DEFAULT_PORT, PORT_SEARCH_ATTEMPTS);
-        GatewayServer created = new GatewayServer(
-            new GatewayServer.Config("127.0.0.1", port), token, registry, catalog,
-            headless != null ? headless : new GatewayHeadlessSessions() {},
-            interactions,
-            sessionMessages != null ? sessionMessages
-                : new GatewaySessionMessagesPort() {},
-            settings != null ? settings : new GatewaySettingsPort() {},
-            schedule != null ? schedule : new GatewaySchedulePort() {},
-            models != null ? models : new GatewayModelsPort() {},
-            commands != null ? commands : new GatewayCommandsPort() {},
-            sessionContext != null ? sessionContext : new GatewaySessionContextPort() {},
-            actions != null ? actions : new GatewaySessionActionsPort() {},
-            permissionMode != null ? permissionMode : new GatewayPermissionModePort() {},
-            spinnerVerbs != null ? spinnerVerbs : new GatewaySpinnerVerbsPort() {},
-            fileSuggestions != null ? fileSuggestions : new GatewayFileSuggestionsPort() {},
-            sessionCancel != null ? sessionCancel : _ -> false,
-            taskBoard != null ? taskBoard : _ -> Optional.empty(),
-            fileDiff != null ? fileDiff : GatewayFileDiffPort.none());
+        GatewayServer created = GatewayServer.builder(
+            new GatewayServer.Config("127.0.0.1", port), token, registry)
+            .catalog(catalog)
+            .headless(headless != null ? headless : new GatewayHeadlessSessions() {})
+            .interactions(interactions)
+            .sessionMessages(sessionMessages != null ? sessionMessages
+                : new GatewaySessionMessagesPort() {})
+            .settings(settings != null ? settings : new GatewaySettingsPort() {})
+            .schedule(schedule != null ? schedule : new GatewaySchedulePort() {})
+            .models(models != null ? models : new GatewayModelsPort() {})
+            .commands(commands != null ? commands : new GatewayCommandsPort() {})
+            .sessionContext(sessionContext != null ? sessionContext : new GatewaySessionContextPort() {})
+            .actions(actions != null ? actions : new GatewaySessionActionsPort() {})
+            .permissionMode(permissionMode != null ? permissionMode : new GatewayPermissionModePort() {})
+            .spinnerVerbs(spinnerVerbs != null ? spinnerVerbs : new GatewaySpinnerVerbsPort() {})
+            .fileSuggestions(fileSuggestions != null ? fileSuggestions : new GatewayFileSuggestionsPort() {})
+            .cancel(sessionCancel != null ? sessionCancel : _ -> false)
+            .taskBoard(taskBoard != null ? taskBoard : _ -> Optional.empty())
+            .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
+            .build();
         created.start();
         server = created;
         url = "http://127.0.0.1:" + created.port() + "/?token=" + token;

@@ -136,13 +136,10 @@ class GatewayFileSuggestionsInteropTest {
     }
 
     private void startServer(GatewayFileSuggestionsPort files) throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
-            new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
-            new GatewaySpinnerVerbsPort() {}, files);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .fileSuggestions(files)
+            .build();
         server.start();
     }
 

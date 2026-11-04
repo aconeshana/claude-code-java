@@ -107,152 +107,160 @@ public final class GatewayServer implements AutoCloseable {
     private final AtomicBoolean started = new AtomicBoolean();
     private volatile HttpServer server;
 
-    public GatewayServer(Config config, String token, SessionHostRegistry registry) {
-        this(config, token, registry, new GatewaySessionCatalogPort() {});
+    /**
+     * Assembles a server from its required facts plus the optional capability
+     * ports, each defaulting to an inert implementation.
+     *
+     * <p>The wiring used to be a fifteen-rung telescoping constructor chain
+     * whose full arity reached nineteen positional arguments. That shape made
+     * every added port a change to every rung above it and to every call site
+     * below it — twenty-eight call sites spread over thirteen distinct
+     * argument counts, each one an opportunity to hand a port to the wrong
+     * slot, which is exactly how two interop tests broke when cancellation was
+     * added. Here a port is named, added once, and existing call sites are
+     * untouched.
+     *
+     * <p>{@code config}, {@code token} and {@code registry} have no defaults:
+     * a server without them has nothing to serve and no one to serve.
+     */
+    public static Builder builder(Config config, String token, SessionHostRegistry registry) {
+        return new Builder(config, token, registry);
     }
 
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog) {
-        this(config, token, registry, catalog, new GatewayHeadlessSessions() {});
+    /** Named-port builder for {@link GatewayServer}; see {@link #builder}. */
+    public static final class Builder {
+        private final Config config;
+        private final String token;
+        private final SessionHostRegistry registry;
+        private GatewaySessionCatalogPort catalog = new GatewaySessionCatalogPort() {};
+        private GatewayHeadlessSessions headless = new GatewayHeadlessSessions() {};
+        private InteractionCoordinator interactions;
+        private GatewaySessionMessagesPort sessionMessages = new GatewaySessionMessagesPort() {};
+        private GatewaySettingsPort settings = new GatewaySettingsPort() {};
+        private GatewaySchedulePort schedule = new GatewaySchedulePort() {};
+        private GatewayModelsPort models = new GatewayModelsPort() {};
+        private GatewayCommandsPort commands = new GatewayCommandsPort() {};
+        private GatewaySessionContextPort sessionContext = new GatewaySessionContextPort() {};
+        private GatewaySessionActionsPort actions = new GatewaySessionActionsPort() {};
+        private GatewayPermissionModePort permissionMode = new GatewayPermissionModePort() {};
+        private GatewaySpinnerVerbsPort spinnerVerbs = new GatewaySpinnerVerbsPort() {};
+        private GatewayFileSuggestionsPort fileSuggestions = new GatewayFileSuggestionsPort() {};
+        private GatewaySessionCancelPort cancel = _ -> false;
+        private GatewayTaskBoardPort taskBoard = _ -> Optional.empty();
+        private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
+
+        private Builder(Config config, String token, SessionHostRegistry registry) {
+            this.config = Objects.requireNonNull(config, "config");
+            this.token = Objects.requireNonNull(token, "token");
+            this.registry = Objects.requireNonNull(registry, "registry");
+        }
+
+        public Builder catalog(GatewaySessionCatalogPort value) {
+            this.catalog = Objects.requireNonNull(value, "catalog");
+            return this;
+        }
+
+        public Builder headless(GatewayHeadlessSessions value) {
+            this.headless = Objects.requireNonNull(value, "headless");
+            return this;
+        }
+
+        /** Absent is a supported state: the permission routes are then not mounted. */
+        public Builder interactions(InteractionCoordinator value) {
+            this.interactions = value;
+            return this;
+        }
+
+        public Builder sessionMessages(GatewaySessionMessagesPort value) {
+            this.sessionMessages = Objects.requireNonNull(value, "sessionMessages");
+            return this;
+        }
+
+        public Builder settings(GatewaySettingsPort value) {
+            this.settings = Objects.requireNonNull(value, "settings");
+            return this;
+        }
+
+        public Builder schedule(GatewaySchedulePort value) {
+            this.schedule = Objects.requireNonNull(value, "schedule");
+            return this;
+        }
+
+        public Builder models(GatewayModelsPort value) {
+            this.models = Objects.requireNonNull(value, "models");
+            return this;
+        }
+
+        public Builder commands(GatewayCommandsPort value) {
+            this.commands = Objects.requireNonNull(value, "commands");
+            return this;
+        }
+
+        public Builder sessionContext(GatewaySessionContextPort value) {
+            this.sessionContext = Objects.requireNonNull(value, "sessionContext");
+            return this;
+        }
+
+        public Builder actions(GatewaySessionActionsPort value) {
+            this.actions = Objects.requireNonNull(value, "actions");
+            return this;
+        }
+
+        public Builder permissionMode(GatewayPermissionModePort value) {
+            this.permissionMode = Objects.requireNonNull(value, "permissionMode");
+            return this;
+        }
+
+        public Builder spinnerVerbs(GatewaySpinnerVerbsPort value) {
+            this.spinnerVerbs = Objects.requireNonNull(value, "spinnerVerbs");
+            return this;
+        }
+
+        public Builder fileSuggestions(GatewayFileSuggestionsPort value) {
+            this.fileSuggestions = Objects.requireNonNull(value, "fileSuggestions");
+            return this;
+        }
+
+        public Builder cancel(GatewaySessionCancelPort value) {
+            this.cancel = Objects.requireNonNull(value, "cancel");
+            return this;
+        }
+
+        public Builder taskBoard(GatewayTaskBoardPort value) {
+            this.taskBoard = Objects.requireNonNull(value, "taskBoard");
+            return this;
+        }
+
+        public Builder fileDiff(GatewayFileDiffPort value) {
+            this.fileDiff = Objects.requireNonNull(value, "fileDiff");
+            return this;
+        }
+
+        public GatewayServer build() {
+            return new GatewayServer(this);
+        }
     }
 
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless) {
-        this(config, token, registry, catalog, headless, null);
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions) {
-        this(config, token, registry, catalog, headless, interactions,
-            new GatewaySessionMessagesPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            new GatewaySettingsPort() {}, new GatewaySchedulePort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, new GatewayModelsPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, new GatewayCommandsPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, new GatewaySessionContextPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, new GatewaySessionActionsPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, actions,
-            new GatewayPermissionModePort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            new GatewaySpinnerVerbsPort() {}, new GatewayFileSuggestionsPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            spinnerVerbs, new GatewayFileSuggestionsPort() {});
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            spinnerVerbs, fileSuggestions, _ -> false);
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort cancel) {
-        this(config, token, registry, catalog, headless, interactions, sessionMessages,
-            settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            spinnerVerbs, fileSuggestions, cancel, _ -> Optional.empty(),
-            GatewayFileDiffPort.none());
-    }
-
-    public GatewayServer(Config config, String token, SessionHostRegistry registry,
-            GatewaySessionCatalogPort catalog, GatewayHeadlessSessions headless,
-            InteractionCoordinator interactions,
-            GatewaySessionMessagesPort sessionMessages,
-            GatewaySettingsPort settings, GatewaySchedulePort schedule,
-            GatewayModelsPort models, GatewayCommandsPort commands,
-            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
-            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
-            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort cancel,
-            GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
+    private GatewayServer(Builder builder) {
+        Config config = builder.config;
+        String token = builder.token;
+        SessionHostRegistry registry = builder.registry;
+        GatewaySessionCatalogPort catalog = builder.catalog;
+        GatewayHeadlessSessions headless = builder.headless;
+        InteractionCoordinator interactions = builder.interactions;
+        GatewaySessionMessagesPort sessionMessages = builder.sessionMessages;
+        GatewaySettingsPort settings = builder.settings;
+        GatewaySchedulePort schedule = builder.schedule;
+        GatewayModelsPort models = builder.models;
+        GatewayCommandsPort commands = builder.commands;
+        GatewaySessionContextPort sessionContext = builder.sessionContext;
+        GatewaySessionActionsPort actions = builder.actions;
+        GatewayPermissionModePort permissionMode = builder.permissionMode;
+        GatewaySpinnerVerbsPort spinnerVerbs = builder.spinnerVerbs;
+        GatewayFileSuggestionsPort fileSuggestions = builder.fileSuggestions;
+        GatewaySessionCancelPort cancel = builder.cancel;
+        GatewayTaskBoardPort taskBoard = builder.taskBoard;
+        GatewayFileDiffPort fileDiff = builder.fileDiff;
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;

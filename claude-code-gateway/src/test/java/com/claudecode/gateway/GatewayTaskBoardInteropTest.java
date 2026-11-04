@@ -163,14 +163,10 @@ class GatewayTaskBoardInteropTest {
             if (StringUtils.isNotBlank(id) && !id.equals(sessionId)) return Optional.empty();
             return Optional.of(snapshot);
         };
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry,
-            new GatewaySessionCatalogPort() {}, new GatewayHeadlessSessions() {}, null,
-            new GatewaySessionMessagesPort() {}, new GatewaySettingsPort() {},
-            new GatewaySchedulePort() {}, new GatewayModelsPort() {},
-            new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
-            new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
-            new GatewaySpinnerVerbsPort() {}, new GatewayFileSuggestionsPort() {},
-            _ -> false, taskBoard, GatewayFileDiffPort.none());
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .taskBoard(taskBoard)
+            .build();
         server.start();
         // The session is activated after the server is up, so the blank-id case
         // resolves the same active session the catalog endpoints would see.

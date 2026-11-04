@@ -143,9 +143,9 @@ class MirrorLivenessLatchTest {
     }
 
     private void startServer() throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN,
-            registry, new GatewaySessionCatalogPort() {},
-            new GatewayHeadlessSessions() {}, null);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(sessionId, "/work", "a session", 3,

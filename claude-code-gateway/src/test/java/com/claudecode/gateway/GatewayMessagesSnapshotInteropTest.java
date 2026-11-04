@@ -240,9 +240,10 @@ class GatewayMessagesSnapshotInteropTest {
     }
 
     private void startServer(GatewaySessionMessagesPort messages) throws IOException {
-        server = new GatewayServer(new GatewayServer.Config("127.0.0.1", 0), TOKEN,
-            registry, new GatewaySessionCatalogPort() {},
-            new GatewayHeadlessSessions() {}, null, messages);
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .headless(new GatewayHeadlessSessions() {})
+            .sessionMessages(messages)
+            .build();
         server.start();
         SessionHostSession session = new SessionHostSession(
             new SessionHostInfo(sessionId, "/work", "a session", 3,
