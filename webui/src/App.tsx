@@ -13,6 +13,7 @@ import { useConversationView } from './store/conversationView'
 import { usePermissionMode } from './store/permissionMode'
 import { useSessions } from './store/sessions'
 import { useSidebarCollapse } from './store/sidebarCollapse'
+import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
 import { ChatView } from './views/ChatView'
@@ -20,6 +21,7 @@ import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
 import { QuestionCard } from './views/QuestionCard'
 import { Sidebar } from './views/Sidebar'
+import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
 import { ContextView } from './views/context/ContextView'
@@ -53,6 +55,7 @@ export function App() {
       useContextTimeline.getState().applyFrame(frame)
       useSessions.getState().applyFrame(frame)
       usePermissionMode.getState().applyFrame(frame)
+      useTaskBoard.getState().applyFrame(frame)
     }, setConnected)
 
     // Session switches from the TUI arrive as `session.activated` frames and
@@ -68,6 +71,16 @@ export function App() {
   }, [token])
 
   const selectedId = useSessions((state) => state.selectedSessionId)
+
+  // The to-do board's cold load: mirror frames only carry revisions the model
+  // produced after this client connected, so a switch to a session whose list
+  // is already standing needs its own read. The endpoint answers with the same
+  // shape the frames carry, and a stale answer for a session we have left is
+  // discarded by the store's own binding.
+  useEffect(() => {
+    void useTaskBoard.getState().load(selectedId)
+  }, [selectedId])
+
   const conversation = useConversations((state) =>
     state.conversations[selectedId ?? ''])
   const asks = useApprovals((state) => state.asks)
@@ -91,6 +104,7 @@ export function App() {
     return true
   }, [])
   const contextT = useTranslate(CONTEXT_NS, contextDicts)
+  const board = useTaskBoard((state) => state.board)
 
   if (token == null) {
     return <MissingToken />
@@ -146,6 +160,7 @@ export function App() {
                 }}
               />
             )}
+            {board != null && !board.hidden && <TodoPanel tasks={board.tasks} />}
             <InputBar
               disabled={selectedId == null}
               busy={conversation?.turnRunning === true}

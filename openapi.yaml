@@ -759,6 +759,37 @@ paths:
               schema: { $ref: '#/components/schemas/SessionPermissionModeResponse' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/tasks:
+    get:
+      tags: [Sessions]
+      summary: One session's current to-do board
+      description: |
+        Feeds the webui to-do dock's cold load — the remote counterpart of the
+        TUI's task panel, over the same runtime board the Task* tools maintain.
+        The addressed session follows the same routing as
+        /api/session/permission-mode: blank means the active TUI session. An id
+        the served board does not answer to renders the empty list
+        (`tasks: []`) rather than another session's to-dos, because serving
+        wrong data under the requested id is worse than serving none.
+
+        The same board is also pushed as the `task_board` mirror frame; this
+        endpoint only supplies the state a client that connects mid-session
+        has not yet seen. Both carry the identical `tasks` array shape, so a
+        consumer must read the list without branching on the frame or endpoint
+        it arrived through.
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active TUI session
+      responses:
+        '200':
+          description: The board's current list, empty when nothing is bound to the id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionTaskBoardResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/session/context/timeline:
     get:
       tags: [Sessions]
@@ -1847,6 +1878,54 @@ components:
         mode:
           type: string
           enum: [default, plan, acceptEdits, bypassPermissions, dontAsk]
+    SessionTaskBoardResponse:
+      type: object
+      required: [list_id, revision, hidden, source, tasks]
+      properties:
+        list_id:
+          type: string
+          description: Stable identifier of the addressed board; empty when none is bound
+        revision:
+          type: integer
+          description: Monotonic change token — equal revisions mean an unchanged board
+        hidden:
+          type: boolean
+          description: True when the board holds no visible task; consumers render no panel
+        source:
+          type: string
+          enum: [snapshot, event]
+          description: >
+            Which transport produced this body: `snapshot` for this endpoint's
+            cold load, `event` for a pushed `task_board` mirror frame. Purely
+            informational — `tasks` is identical either way, and consumers must
+            not branch rendering on it.
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/SessionTaskBoardItem' }
+    SessionTaskBoardItem:
+      type: object
+      required: [id, subject, status, blocks, blocked_by]
+      properties:
+        id: { type: string }
+        subject: { type: string }
+        description:
+          type: string
+          description: The long-form body the model recorded, empty when it recorded none
+        active_form:
+          type: string
+          description: Present-continuous label shown while the task is in progress
+        owner: { type: string }
+        status:
+          type: string
+          enum: [pending, in_progress, completed]
+        blocks:
+          type: array
+          items: { type: string }
+          description: Ids of tasks this one must precede
+        blocked_by:
+          type: array
+          items: { type: string }
+          description: Ids of tasks that must precede this one
     CommandEntry:
       type: object
       required: [name, kind]

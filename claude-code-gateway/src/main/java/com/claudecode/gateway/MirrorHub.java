@@ -20,6 +20,7 @@ import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
@@ -320,6 +321,24 @@ public final class MirrorHub {
         ObjectNode mode = payload.putObject("permission_mode");
         GatewayPermissionModeHandler.writeState(mode, state);
         publish(sessionId, "permission.mode", payload);
+    }
+
+    /**
+     * Publishes one session's to-do board so a mirror client (the webui to-do
+     * dock above the composer) follows the list the model maintains, without
+     * polling. The payload is the same projection
+     * {@code GET /api/session/tasks} answers with, so the live frame and the
+     * cold-loaded body cannot drift.
+     *
+     * <p>Like {@code permission.mode} this is a whole snapshot, not a delta:
+     * the board's own {@code revision} lets a client ignore a frame it has
+     * already applied, and a snapshot keeps a client that missed frames from
+     * drifting out of sync.
+     */
+    public void publishTaskBoard(String sessionId, TaskBoardPort.Snapshot snapshot) {
+        ObjectNode payload = object();
+        GatewayTaskBoardHandler.writeSnapshot(payload, snapshot, GatewayTaskBoardHandler.SOURCE_EVENT);
+        publish(sessionId, "task_board", payload);
     }
 
     private SessionSink attributedSink(String sessionId, BooleanSupplier live) {
@@ -811,6 +830,11 @@ public final class MirrorHub {
             case "Write" -> "write_to_file_tool_result";
             case "Edit", "NotebookEdit" -> "replace_in_file_tool_result";
             case "Task", "Agent" -> "task_tool_result";
+            // The legacy single-shot to-do list. The live board the webui dock
+            // renders is the v2 task board (TaskBoardPort, pushed as
+            // `task_board`); this discriminator only keeps a v1 result from
+            // rendering as a generic I/O card when that path is re-enabled.
+            case "TodoWrite" -> "todo_write_tool_result";
             default -> "tool_result";
         };
     }

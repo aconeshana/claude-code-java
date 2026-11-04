@@ -1136,6 +1136,39 @@ only ever saw whole blocks (the TUI printed them as they streamed).
   Deltas carry no step id, so the draft joins the open step while it has no
   tool call yet, else stands in its own row until its block settles.
 
+### `vendor/ui-conversation/skeleton/TodoPanel` — the composer to-do dock
+
+The current to-do plan, rendered as a collapsible dock above the input bar.
+Nothing in this app showed the plan before: the TUI's `Task*` calls reached
+the web only as tool-call rows, so "what is this turn working through" was
+invisible. Upstream seats this panel at the `conversation.input.dock` slot;
+this app has no slot registry, so `App.tsx` mounts it directly.
+
+| File here | Upstream source | Notes |
+|-----------|----------------|-------|
+| `src/views/todo/TodoPanel.tsx` | `ui-conversation/src/client/skeleton/TodoPanel.tsx` | Kept: the collapsed-by-default fold, `aria-expanded` on the header button, `null` when there are no tasks, the `[done · active · pending]` progress label listing only non-zero segments joined by `\u2002·\u2002`, the per-row `StateDot` (`completed→done` / `in_progress→ongoing` / `pending→idle`) with its `aria-label`, the 180px scrolling `.list`, and the single-line ellipsis on each row. Cut: the cordis `ctx.slots.inject/register` plumbing (no slot registry here — see the mount deviation below), `useProjection` (the task list arrives as one plain `tasks` prop), and `PropsLocale` `t` injection (replaced by this app's `useTranslate(ns, dicts)`, the `todo.*` strings lifted verbatim into `src/i18n/dictionaries/todos.ts`). One field mapping: upstream's `TodoItem.content` is this project's board entry `subject`; the panel renders only the title, so `description`/`activeForm`/`owner` are not shown. Rows key on `item.id` (upstream keyed on `content`). |
+| `src/views/todo/TodoPanel.module.css` | `ui-conversation/src/client/skeleton/TodoPanel.module.css` | Verbatim: `.root` (the `--dsh-composer-side-clearance` / `--dsh-composer-dock-inset` / `--dsh-composer-card-max-width` width formula), `.body`, `.header`, `.lead`, `.title`, `.progress`, `.chevron`, `.list` (`max-height: 180px`), `.item`, `.glyph`, `.content`. No block was cut. All consumed `--dsw-*` tokens resolve in the vendored `theme/styles/`; the three `--dsh-composer-*` inputs are the ones `ConversationRoot.module.css` already declares. |
+
+Wiring (this app's half): `GET /api/session/tasks` for the cold load, plus the
+`task_board` mirror frame for pushes. Both carry the identical `tasks` shape and
+are declared together in `openapi.yaml`; the panel does not branch on the
+transport, only `store/taskBoard.ts` folds whichever arrived (whole-snapshot
+replace, never item-wise merge — a revision is the complete list).
+
+**Deviation — mount point.** Upstream registers this panel at the
+`conversation.input.dock` slot, a cordis seat this app has no equivalent of.
+The panel is instead mounted by `App.tsx` inside the same
+`display: flex; flex-direction: column` wrapper that holds `<InputBar>`,
+directly above it. The visual relationship is upstream's (a dock sitting on top
+of the input box); only the registration mechanism differs. Do not "fix" this
+into a slot registry — there isn't one.
+
+**Deviation — data source.** Upstream's panel reads the client-side projection
+of the host's to-do list. This app projects the runtime's own
+`TaskBoardPort.Snapshot` (the v2 `TodoStore` path, which is the live one here;
+v1 `TodoWrite` is gated off). `Snapshot.hidden()` maps onto upstream's "no
+visible tasks → render nothing", and `Snapshot.revision` is the change token.
+
 ### `vendor/ui-attachment/` — chat-history image gallery + lightbox
 
 Real image previews for pasted-image user turns, replacing the plain

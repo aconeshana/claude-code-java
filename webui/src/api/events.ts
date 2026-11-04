@@ -47,7 +47,7 @@ export function subscribeMirror(
     'turn.started', 'output.text', 'output.thinking', ...TRANSIENT_EVENTS, 'tool.started',
     'tool.progress', 'tool.completed', 'permission.asked',
     'permission.resolved', 'permission.mode', 'session.activated', 'session.error',
-    'session.idle', 'turn.cancelled', 'turn.completed',
+    'session.idle', 'turn.cancelled', 'turn.completed', 'task_board',
   ]) {
     source.addEventListener(name, forward(name) as EventListener)
   }

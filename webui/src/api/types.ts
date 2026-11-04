@@ -215,6 +215,11 @@ export type MirrorFrame =
       /** Mirrors GET /api/session/permission-mode; null when the session exposes no gate. */
       readonly permission_mode: SessionPermissionMode | null
     } }
+  | { readonly event: 'task_board'; readonly id: number; readonly data: SessionTaskBoard & {
+      readonly session_id: string
+      /** `snapshot` from GET /api/session/tasks, `event` for a pushed frame. */
+      readonly source: 'snapshot' | 'event'
+    } }
   | { readonly event: 'session.activated'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly id2?: string
@@ -562,5 +567,38 @@ export interface SessionPermissionMode {
 
 export interface SessionPermissionModeResponse {
   readonly permission_mode: SessionPermissionMode | null
+}
+
+// ---------------------------------------------------------------------------
+// Task board — the to-do dock (GET /api/session/tasks + `task_board` frames)
+// ---------------------------------------------------------------------------
+
+/** Wire spelling of a board entry's state; matches the runtime port's own enum. */
+export type TaskStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface SessionTaskBoardItem {
+  readonly id: string
+  readonly subject: string
+  readonly description: string
+  readonly active_form: string
+  readonly owner: string
+  readonly status: TaskStatus
+  /** Ids of tasks this one must precede. */
+  readonly blocks: readonly string[]
+  /** Ids of tasks that must precede this one. */
+  readonly blocked_by: readonly string[]
+}
+
+/**
+ * One board state. The pushed frame and the cold-load endpoint carry this
+ * identical shape — consumers read `tasks` and must not branch on which
+ * transport delivered it.
+ */
+export interface SessionTaskBoard {
+  readonly list_id: string
+  readonly revision: number
+  /** True when the board holds no visible task; consumers render no panel. */
+  readonly hidden: boolean
+  readonly tasks: readonly SessionTaskBoardItem[]
 }
 

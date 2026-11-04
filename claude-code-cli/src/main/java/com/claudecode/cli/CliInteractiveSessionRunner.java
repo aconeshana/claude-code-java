@@ -49,6 +49,7 @@ import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
+import com.claudecode.gateway.GatewayTaskBoardPort;
 import com.claudecode.gateway.GatewaySettingsPort;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.permissions.PermissionBehavior;
@@ -406,7 +407,8 @@ final class CliInteractiveSessionRunner {
                 gatewaySessionActions(),
                 gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
                 gatewaySpinnerVerbs(),
-                gatewayFileSuggestions(interactiveCwd));
+                gatewayFileSuggestions(interactiveCwd),
+                gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()));
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -622,6 +624,11 @@ final class CliInteractiveSessionRunner {
             // echoes back and the store's session-id guard makes it idempotent.
             Runnable permissionModeBroadcast = permissionModeBroadcast(
                 permissionGate, sessionHostRuntime.registry(), gatewayRuntime);
+            // The to-do board takes the same route: the board's own change feed
+            // reaches a mirror client as a live frame, so the webui dock follows
+            // without waiting for its next poll.
+            Runnable taskBoardBroadcast = taskBoardBroadcast(
+                taskBoard, sessionHostRuntime.registry(), gatewayRuntime);
             hookEffects.bindUi(lanternaRepl::postSystemMessage,
                 lanternaRepl::applyHookSessionTitle);
             CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
@@ -671,6 +678,7 @@ final class CliInteractiveSessionRunner {
                 return 0;
             } finally {
                 permissionModeBroadcast.run();
+                taskBoardBroadcast.run();
                 permissionModeSync.run();
                 sessionHostRuntime.close();
                 gatewayRuntime.close();
@@ -1274,6 +1282,24 @@ final class CliInteractiveSessionRunner {
     }
 
     /**
+     * The to-do board's gateway read: one session's current list, for the
+     * webui dock's cold load. The board here is the interactive session's own
+     * {@link TaskBoardPort}, so the addressed id only selects between it and
+     * "no board"; a mismatch answers empty rather than the active list, because
+     * serving another session's to-dos under the requested id would be wrong
+     * data rather than a fallback.
+     */
+    static GatewayTaskBoardPort gatewayTaskBoard(TaskBoardPort taskBoard, String sessionId) {
+        return requested -> {
+            if (taskBoard == null) return Optional.empty();
+            if (!StringUtils.isBlank(requested) && !Strings.CS.equals(requested, sessionId)) {
+                return Optional.empty();
+            }
+            return Optional.of(taskBoard.snapshot());
+        };
+    }
+
+    /**
      * Bridges the shared gate's mode changes onto the gateway mirror stream, so
      * a mirror client (the webui composer chip) follows a TUI-side change live
      * instead of on its next poll. The gate is the same instance the TUI writes
@@ -1293,6 +1319,42 @@ final class CliInteractiveSessionRunner {
                     session.info().id(), SessionHostPermissionOptions.build(permissionGate)));
         };
         return permissionGate.addModeListener(listener);
+    }
+
+    /**
+     * Bridges the task board's snapshots onto the gateway mirror stream, so a
+     * mirror client (the webui to-do dock) follows the list the model maintains
+     * live instead of on its next poll.
+     *
+     * <p>The port is the runtime's non-owning view: {@code TaskToolProvider}
+     * owns the concrete board, so this subscription only holds its own
+     * {@link TaskBoardPort#subscribe} token and releases exactly that. The
+     * returned {@link Runnable} unsubscribes; callers run it during teardown.
+     *
+     * <p>The board's first emission on subscribe (the current snapshot) means a
+     * client that connects mid-session still receives the standing list without
+     * waiting for the model to touch it again. Frames are addressed to the
+     * active session and dropped when none is live.
+     */
+    static Runnable taskBoardBroadcast(
+            TaskBoardPort taskBoard, SessionHostRegistry registry,
+            CliGatewayRuntime gatewayRuntime) {
+        if (taskBoard == null) return () -> { };
+        AutoCloseable subscription = taskBoard.subscribe(snapshot -> {
+            MirrorHub mirror = gatewayRuntime.mirrorOrNull();
+            if (mirror == null) return;
+            registry.currentActivation()
+                .map(SessionHostRegistry.ActivationResult::session)
+                .ifPresent(session -> mirror.publishTaskBoard(session.info().id(), snapshot));
+        });
+        return () -> {
+            try {
+                subscription.close();
+            } catch (Exception _) {
+                // Teardown must not fail the session; the subscription is the
+                // only thing not released and the board is being discarded too.
+            }
+        };
     }
 
     /**

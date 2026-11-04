@@ -10,6 +10,7 @@ import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
+import com.claudecode.gateway.GatewayTaskBoardPort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
@@ -25,6 +26,7 @@ import java.net.ServerSocket;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -71,6 +73,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayPermissionModePort permissionMode;
     private final GatewaySpinnerVerbsPort spinnerVerbs;
     private final GatewayFileSuggestionsPort fileSuggestions;
+    private final GatewayTaskBoardPort taskBoard;
     /**
      * Single-flight start state: null = never started, pending = start in
      * progress, done = running (or failed-and-resettable). Every concurrent
@@ -181,6 +184,20 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
             GatewayFileSuggestionsPort fileSuggestions) {
+        this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
+            models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
+            fileSuggestions, null);
+    }
+
+    CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
+            CliHeadlessGatewaySessions headless, InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
+            GatewayFileSuggestionsPort fileSuggestions,
+            GatewayTaskBoardPort taskBoard) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.headless = headless;
@@ -195,6 +212,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         this.permissionMode = permissionMode;
         this.spinnerVerbs = spinnerVerbs;
         this.fileSuggestions = fileSuggestions;
+        this.taskBoard = taskBoard;
     }
 
     @Override
@@ -263,7 +281,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             actions != null ? actions : new GatewaySessionActionsPort() {},
             permissionMode != null ? permissionMode : new GatewayPermissionModePort() {},
             spinnerVerbs != null ? spinnerVerbs : new GatewaySpinnerVerbsPort() {},
-            fileSuggestions != null ? fileSuggestions : new GatewayFileSuggestionsPort() {});
+            fileSuggestions != null ? fileSuggestions : new GatewayFileSuggestionsPort() {},
+            taskBoard != null ? taskBoard : _ -> Optional.empty());
         created.start();
         server = created;
         url = "http://127.0.0.1:" + created.port() + "/?token=" + token;

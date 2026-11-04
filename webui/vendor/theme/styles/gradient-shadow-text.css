@@ -17,6 +17,10 @@ body {
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l4);
   /* blur filter */
   --dsw-mask-blur: blur(2px);
+  /* Menu surfaces keep their blur where blocking masks dim the page (upstream
+     ui-theme/src/styles/gradient-shadow-text.css). Consumed by the vendored
+     To-do dock panel. */
+  --dsw-menu-backdrop-filter: blur(40px) saturate(150%);
 }
 
 /* 派生 elevation 值逐元素声明而非从 body 继承：继承传下来的是在 body 上就

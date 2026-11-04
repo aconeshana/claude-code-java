@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -333,6 +333,20 @@ export function selectPermissionMode(input: {
   return requestJson('POST', '/api/session/permission-mode', body)
 }
 
+/**
+ * GET /api/session/tasks: one session's current to-do board, for the dock's
+ * cold load. The live board also arrives as `task_board` mirror frames; this
+ * answers the state a client connecting mid-session has not yet seen. The
+ * addressed session follows the permission-mode routing: blank means the
+ * active TUI session.
+ */
+export function fetchSessionTasks(sessionId?: string | null): Promise<SessionTaskBoard> {
+  const query = sessionId == null || sessionId === ''
+    ? ''
+    : `?session_id=${encodeURIComponent(sessionId)}`
+  return requestJson('GET', `/api/session/tasks${query}`)
+}
+
 export type { ComposerCommandEntry } from './types'
 
 /**
@@ -415,3 +429,5 @@ export async function submitTurn(
   // Drain without parsing: the mirror stream owns rendering.
   await response.body.cancel()
 }
+
+

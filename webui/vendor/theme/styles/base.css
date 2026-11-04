@@ -12,4 +12,18 @@
   --ds-transition-duration: 0.2s;
   --ds-transition-duration-fast: 0.1s;
   --ds-transition-duration-slow: 0.3s;
+  /* Radius scale (upstream ui-theme/src/styles/base.css). Consumed by the
+   * vendored panel and card surfaces. */
+  --dsw-radius-xs: 4px;
+  --dsw-radius-sm: 8px;
+  --dsw-radius-md: 12px;
+  --dsw-radius-lg: 16px;
+  --dsw-radius-xl: 20px;
+  --dsw-radius-panel: 28px;
+  /* Controls own their offsets; dense tables and toolbars may keep a 1px ring.
+   * The colour fallback names the standard width so a control that disables
+   * its outline keeps `none` rather than inheriting Chromium's `auto 1px`
+   * ring (upstream ui-theme/src/styles/focus.css). */
+  --dsw-focus-ring-width: 2px;
+  --dsw-focus-ring-color: var(--dsw-alias-state-business-primary);
 }
