@@ -22,6 +22,8 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link CompactSummarizer} backed by a real model call.
@@ -35,11 +37,14 @@ import org.apache.commons.lang3.Strings;
     The original runs compaction as a real forked query (maxTurns:1) and therefore has to install \
     a deny-all canUseTool that answers every call with "Tool use is not allowed during \
     compaction". This port consumes the fork as a plain text stream with no execution loop, so \
-    tool calls cannot run at all and the deny-all has nothing to intercept. What the original \
-    gets for free and this port had to add explicitly is the diagnosis: a turn spent on tool \
-    calls used to surface as an empty summary, which the caller then reported as a network \
-    interruption.""")
+    tool calls cannot run at all and the deny-all has nothing to intercept. The 2.1.236 bundle \
+    guards that turn twice: it narrows the compaction fork's tool catalog to Read/ToolSearch/MCP \
+    (see DefaultQuerySession#narrowCompactForkTools), and it falls back to a plain compaction \
+    request when the cache-sharing fork yields no text. This port reproduces the narrowing at the \
+    request builder and the fallback here, by re-issuing the fork with an empty tool catalog.""")
 public final class LlmCompactSummarizer implements CompactSummarizer {
+
+    private static final Logger log = LoggerFactory.getLogger(LlmCompactSummarizer.class);
 
     private final StreamingClient streamingClient;
     private final Supplier<QuerySession> engineSupplier;
@@ -54,13 +59,33 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
                                 Supplier<QuerySession> engineSupplier) {
         this.streamingClient = Objects.requireNonNull(streamingClient, "streamingClient");
         this.engineSupplier = Objects.requireNonNull(engineSupplier, "engineSupplier");
-        this.forkBuilder = (messages, prompt, querySource) -> {
-            QuerySession engine = engineSupplier.get();
-            if (engine == null) {
-                throw new IllegalStateException(
-                    "Compact cache-sharing fork requires a live QuerySession");
+        // Both fork shapes are delegated rather than forwarded through one
+        // method reference: `buildWithoutTools` has a delegating default on
+        // CacheSharingForkBuilder, so a method reference to
+        // buildCacheSharingRequest alone would silently rebuild the tool
+        // catalog on what is supposed to be the tool-less retry.
+        this.forkBuilder = new CacheSharingForkBuilder() {
+            @Override
+            public StreamingClient.StreamRequest build(List<Message> messages, String prompt,
+                                                       String querySource) {
+                return engine().forks().buildCacheSharingRequest(messages, prompt, querySource);
             }
-            return engine.forks().buildCacheSharingRequest(messages, prompt, querySource);
+
+            @Override
+            public StreamingClient.StreamRequest buildWithoutTools(List<Message> messages,
+                                                                   String prompt,
+                                                                   String querySource) {
+                return engine().forks().buildWithoutTools(messages, prompt, querySource);
+            }
+
+            private QuerySession engine() {
+                QuerySession engine = engineSupplier.get();
+                if (engine == null) {
+                    throw new IllegalStateException(
+                        "Compact cache-sharing fork requires a live QuerySession");
+                }
+                return engine;
+            }
         };
     }
 
@@ -108,12 +133,30 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
     }
 
     private SummaryResult summarizeWithCacheSharingFork(List<Message> messages, String compactPrompt) {
-        StreamingClient.StreamRequest request =
-            forkBuilder.build(messages, compactPrompt, "compact");
-
+        StreamingClient client = Objects.requireNonNull(
+            streamingClient, "cache-sharing compact client");
         try {
-            StreamingClient client = Objects.requireNonNull(
-                streamingClient, "cache-sharing compact client");
+            return runFork(client, forkBuilder.build(messages, compactPrompt, "compact"));
+        } catch (ToolOnlySummaryException toolOnly) {
+            // The model spent its turn calling tools instead of writing the
+            // summary. The 2.1.236 bundle treats this as recoverable; re-issuing
+            // the fork with an empty tool catalog removes the option entirely.
+            log.warn("Compact fork produced no summary (tool calls: {}); retrying without tools",
+                String.join(", ", toolOnly.toolNames()));
+            try {
+                return runFork(client,
+                    forkBuilder.buildWithoutTools(messages, compactPrompt, "compact"));
+            } catch (ToolOnlySummaryException stillToolOnly) {
+                // Even with no catalog declared the model answered with a tool
+                // call. Report it as the original hard failure.
+                throw new CompactException(stillToolOnly.getMessage(), stillToolOnly.usage());
+            }
+        }
+    }
+
+    /** Runs one fork request to completion, recording cost and translating PTL. */
+    private SummaryResult runFork(StreamingClient client, StreamingClient.StreamRequest request) {
+        try {
             long startedAt = System.currentTimeMillis();
             Iterator<StreamingClient.StreamingEvent> stream = client.createStream(request);
             SummaryResult result = consumeTextStream(stream);
@@ -128,8 +171,34 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
                     completedAt - finalAttemptStartMs);
             }
             return result;
+        } catch (ToolOnlySummaryException toolOnly) {
+            throw toolOnly;
         } catch (RuntimeException e) {
             return translatePromptTooLong(e);
+        }
+    }
+
+    /**
+     * Signals a summarization turn that produced only tool calls. Distinct from a
+     * real API error or a malformed response so the caller retries exactly this
+     * recoverable case and nothing else.
+     */
+    private static final class ToolOnlySummaryException extends RuntimeException {
+        private final transient List<String> toolNames;
+        private final transient Usage usage;
+
+        ToolOnlySummaryException(String message, List<String> toolNames, Usage usage) {
+            super(message);
+            this.toolNames = List.copyOf(toolNames);
+            this.usage = usage;
+        }
+
+        List<String> toolNames() {
+            return toolNames;
+        }
+
+        Usage usage() {
+            return usage;
         }
     }
 
@@ -185,9 +254,9 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
                 "no assistant message in summarization response", usage);
         }
         if (text.isEmpty() && !requestedTools.isEmpty()) {
-            throw new CompactException(
+            throw new ToolOnlySummaryException(
                 "summarization turn was spent calling tools instead of writing a summary: "
-                    + String.join(", ", requestedTools), usage);
+                    + String.join(", ", requestedTools), requestedTools, usage);
         }
         return new SummaryResult(text.isEmpty() ? null : text.toString(), usage);
     }

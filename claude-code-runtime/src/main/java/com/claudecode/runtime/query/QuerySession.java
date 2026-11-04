@@ -199,6 +199,14 @@ public interface QuerySession {
         StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String forkPrompt, String querySource);
 
+        /**
+         * Same fork with no tool declarations — the compaction fallback for a
+         * model that answered the primary fork with a tool call instead of a
+         * summary. See {@link CacheSharingForkBuilder#buildWithoutTools}.
+         */
+        StreamingClient.StreamRequest buildWithoutTools(
+            List<Message> messages, String forkPrompt, String querySource);
+
         StreamingClient.StreamRequest getLastCacheSafeForkRequest();
         void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request);
         Map<String, String> getReadFileState();

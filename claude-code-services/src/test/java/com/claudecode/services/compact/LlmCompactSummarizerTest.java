@@ -22,6 +22,7 @@ import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -404,5 +405,124 @@ class LlmCompactSummarizerTest {
             List.of(new UserMessage("u1", MessageContent.ofText("hello"))), "COMPACT PROMPT");
 
         assertEquals("<summary>x</summary>", result.text());
+    }
+
+    /**
+     * The 2.1.236 bundle recovers from a text-free compaction turn by re-issuing
+     * the request; before this port did too, a weak instruction-following model
+     * hard-failed every auto-compact.
+     */
+    @Test
+    void textFreeTurnRetriesWithAnEmptyToolCatalogAndSucceeds() {
+        List<StreamingClient.StreamRequest> requests = new ArrayList<>();
+        StreamingClient client = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                requests.add(request);
+                if (requests.size() == 1) return toolOnlyTurn(request);
+                return textTurn(request, "<summary>recovered</summary>");
+            }
+
+            @Override
+            public String getModel() { return "fake"; }
+        };
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("qwen3.8-flash-next")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .build());
+
+        CompactSummarizer.SummaryResult result = new LlmCompactSummarizer(client, () -> engine)
+            .summarizeWithUsage(List.of(), "COMPACT PROMPT");
+
+        assertEquals("<summary>recovered</summary>", result.text());
+        assertEquals(2, requests.size(), "the text-free turn must be retried exactly once");
+        assertEquals(List.of("Read"), requests.getFirst().tools().stream()
+            .map(StreamingClient.StreamRequest.ToolDef::name).toList());
+        assertTrue(requests.get(1).tools().isEmpty(),
+            "the retry must declare no tools at all, so a tool call is not an option");
+    }
+
+    /** A real transport failure is not the recoverable no-text case and must not be retried. */
+    @Test
+    void apiErrorDuringForkDoesNotTriggerTheNoToolsRetry() {
+        List<StreamingClient.StreamRequest> requests = new ArrayList<>();
+        StreamingClient client = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                requests.add(request);
+                return List.<StreamingEvent>of(new StreamingEvent.ErrorEvent(
+                    new ApiException("API request failed: overloaded_error", 529))).iterator();
+            }
+
+            @Override
+            public String getModel() { return "fake"; }
+        };
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("claude-sonnet-5")
+            .maxTokens(32_000)
+            .build());
+
+        assertThrows(ApiException.class,
+            () -> new LlmCompactSummarizer(client, () -> engine)
+                .summarizeWithUsage(List.of(), "COMPACT PROMPT"));
+
+        assertEquals(1, requests.size(), "only the no-text case is worth a second request");
+    }
+
+    /** When even a tool-less retry answers with a tool call, the original failure stands. */
+    @Test
+    void textFreeTurnOnBothAttemptsStillFailsWithTheToolNames() {
+        List<StreamingClient.StreamRequest> requests = new ArrayList<>();
+        StreamingClient client = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                requests.add(request);
+                return toolOnlyTurn(request);
+            }
+
+            @Override
+            public String getModel() { return "fake"; }
+        };
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("qwen3.8-flash-next")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .build());
+
+        CompactException failure = assertThrows(CompactException.class,
+            () -> new LlmCompactSummarizer(client, () -> engine)
+                .summarizeWithUsage(List.of(), "COMPACT PROMPT"));
+
+        assertTrue(Strings.CS.contains(failure.getMessage(), "Bash"), failure.getMessage());
+        assertEquals(2, requests.size(), "exactly one retry, never a loop");
+    }
+
+    private static Iterator<StreamingClient.StreamingEvent> toolOnlyTurn(
+            StreamingClient.StreamRequest request) {
+        return List.<StreamingClient.StreamingEvent>of(
+            new StreamingClient.StreamingEvent.MessageStartEvent(
+                "msg-compact", request.model(), List.of(), Usage.EMPTY),
+            new StreamingClient.StreamingEvent.ContentBlockStartEvent(0, "tool_use", "tu-1", "Bash"),
+            new StreamingClient.StreamingEvent.ContentBlockStopEvent(0),
+            new StreamingClient.StreamingEvent.MessageDeltaEvent("tool_use", Usage.EMPTY),
+            new StreamingClient.StreamingEvent.MessageStopEvent()
+        ).iterator();
+    }
+
+    private static Iterator<StreamingClient.StreamingEvent> textTurn(
+            StreamingClient.StreamRequest request, String text) {
+        return List.<StreamingClient.StreamingEvent>of(
+            new StreamingClient.StreamingEvent.MessageStartEvent(
+                "msg-compact", request.model(), List.of(), Usage.EMPTY),
+            new StreamingClient.StreamingEvent.ContentBlockStartEvent(0, "text", null, null),
+            new StreamingClient.StreamingEvent.ContentBlockDeltaEvent(0, "text_delta", text),
+            new StreamingClient.StreamingEvent.ContentBlockStopEvent(0),
+            new StreamingClient.StreamingEvent.MessageDeltaEvent("end_turn", Usage.EMPTY),
+            new StreamingClient.StreamingEvent.MessageStopEvent()
+        ).iterator();
     }
 }

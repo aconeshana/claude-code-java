@@ -778,6 +778,18 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     @Override
     public StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String forkPrompt, String querySource) {
+        return buildFork(messages, forkPrompt, querySource, true);
+    }
+
+    @Override
+    public StreamingClient.StreamRequest buildWithoutTools(
+            List<Message> messages, String forkPrompt, String querySource) {
+        return buildFork(messages, forkPrompt, querySource, false);
+    }
+
+    private StreamingClient.StreamRequest buildFork(
+            List<Message> messages, String forkPrompt, String querySource,
+            boolean includeTools) {
         List<Message> forkMessages = new ArrayList<>(messages.size() + 1);
         forkMessages.addAll(messages);
         forkMessages.add(new UserMessage(
@@ -792,10 +804,9 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
                 this, forkMessages, claudeMdContext, resolvedModel, List.of());
         ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(
             this, resolvedModel);
-        List<StreamingClient.StreamRequest.ToolDef> toolDefs = ToolSearchGate.isEnabled(resolvedModel)
-            ? config.toolExecutor().getToolDefinitions(
-                ToolSearchGate.extractDiscoveredToolNames(forkMessages), toolPromptContext)
-            : config.toolExecutor().getToolDefinitions(toolPromptContext);
+        List<StreamingClient.StreamRequest.ToolDef> toolDefs = includeTools
+            ? forkToolDefs(forkMessages, resolvedModel, toolPromptContext, querySource)
+            : List.of();
         String effortValue = getEffortOverride() != null
             ? getEffortOverride() : config.effortValue();
         String resolvedEffort = EffortHelpers.resolveAppliedEffort(resolvedModel, effortValue);
@@ -810,6 +821,82 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
             true, querySource, getAbortController(), config.thinkingBudgetTokens(),
             config.fastModeController().isFastRequest(resolvedModel),
             config.fastModeController().failureHandler());
+    }
+
+    /**
+     * The tool catalog a fork declares. Compaction gets the narrowed set; every
+     * other fork keeps the session's full catalog (or its deferred-discovery
+     * view when tool search is on for this model).
+     */
+    private List<StreamingClient.StreamRequest.ToolDef> forkToolDefs(
+            List<Message> forkMessages, String resolvedModel,
+            ToolExecutionContext toolPromptContext, String querySource) {
+        if (isCompactFork(querySource)) {
+            return narrowCompactForkTools(resolvedModel, toolPromptContext);
+        }
+        return ToolSearchGate.isEnabled(resolvedModel)
+            ? config.toolExecutor().getToolDefinitions(
+                ToolSearchGate.extractDiscoveredToolNames(forkMessages), toolPromptContext)
+            : config.toolExecutor().getToolDefinitions(toolPromptContext);
+    }
+
+    /** The {@code querySource} of the compaction fork. */
+    private static final String COMPACT_QUERY_SOURCE = "compact";
+
+    /**
+     * The two tools a compaction fork is still allowed to keep, plus every MCP
+     * tool. Authoritative rule from the 2.1.236 bundle ({@code Nhf}'s
+     * {@code C0([k0, n5n, ...tools.filter(isMcp)], "name")}, where {@code k0} is
+     * the Read tool and {@code n5n} the ToolSearch tool).
+     */
+    private static final String COMPACT_FORK_READ_TOOL = "Read";
+    private static final String COMPACT_FORK_TOOL_SEARCH = "ToolSearch";
+    private static final String COMPACT_FORK_MCP_PREFIX = "mcp__";
+
+    /**
+     * Whether this fork is the compaction fork.
+     *
+     * <p>The same builder also serves {@code /recap} ({@code "away_summary"}) and
+     * sub-agent compaction, which must keep the session's full tool catalog.
+     */
+    private static boolean isCompactFork(String querySource) {
+        return Strings.CS.equals(COMPACT_QUERY_SOURCE, querySource);
+    }
+
+    /**
+     * Narrows the compaction fork's tool catalog.
+     *
+     * <p>A compaction prompt asks for text only, but a model with weak
+     * instruction-following still reaches for a tool if one is declared — and
+     * this fork consumes the response as a plain text stream with no execution
+     * loop, so a tool call spends the turn and the summary is never written.
+     * Narrowing the catalog is what the 2.1.236 bundle does instead of relying
+     * on the prompt alone: Read plus ToolSearch plus MCP servers when tool
+     * search is on for this model, and bare Read otherwise. Bash and every
+     * other writer are dropped.
+     */
+    private List<StreamingClient.StreamRequest.ToolDef> narrowCompactForkTools(
+            String resolvedModel, ToolExecutionContext toolPromptContext) {
+        boolean toolSearchEnabled = ToolSearchGate.isEnabled(resolvedModel);
+        // Deliberately the unfiltered catalog: the deferred-tool discovery pass
+        // exists to hide schemas the *conversation* has not surfaced yet, but
+        // compaction wants a fixed Read/ToolSearch/MCP set regardless of what
+        // this history already discovered.
+        List<StreamingClient.StreamRequest.ToolDef> all =
+            config.toolExecutor().getToolDefinitions(toolPromptContext);
+        List<StreamingClient.StreamRequest.ToolDef> narrowed = new ArrayList<>();
+        for (StreamingClient.StreamRequest.ToolDef def : all) {
+            String name = def.name();
+            if (name == null) continue;
+            if (Strings.CS.equals(name, COMPACT_FORK_READ_TOOL)) {
+                narrowed.add(def);
+            } else if (toolSearchEnabled
+                    && (Strings.CS.equals(name, COMPACT_FORK_TOOL_SEARCH)
+                        || Strings.CS.startsWith(name, COMPACT_FORK_MCP_PREFIX))) {
+                narrowed.add(def);
+            }
+        }
+        return narrowed;
     }
 
     @Override public void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request) {

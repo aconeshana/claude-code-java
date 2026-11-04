@@ -31,4 +31,23 @@ public interface CacheSharingForkBuilder {
      */
     StreamingClient.StreamRequest build(List<Message> messages, String forkPrompt,
                                         String querySource);
+
+    /**
+     * Builds the same fork with no tool declarations at all.
+     *
+     * <p>This is the compaction fallback: the primary fork still declares tools
+     * because a history containing {@code tool_use} blocks is only a valid
+     * request when those tools are present, but a model that answered it with a
+     * tool call instead of text leaves no summary behind. Re-issuing with the
+     * catalog emptied removes the temptation entirely.
+     *
+     * <p>The default delegates to {@link #build} so a builder that cannot vary
+     * its catalog — every sub-agent factory today — keeps its current behavior
+     * instead of failing to compile as a lambda.
+     */
+    default StreamingClient.StreamRequest buildWithoutTools(List<Message> messages,
+                                                            String forkPrompt,
+                                                            String querySource) {
+        return build(messages, forkPrompt, querySource);
+    }
 }
