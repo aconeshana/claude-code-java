@@ -98,6 +98,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final GatewayTaskBoardHandler taskBoardApi;
+    private final GatewayChangesHandler changesApi;
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
     /** The registry activation feed; released by {@link #close()}. */
@@ -223,7 +224,8 @@ public final class GatewayServer implements AutoCloseable {
             GatewayFileSuggestionsPort fileSuggestions) {
         this(config, token, registry, catalog, headless, interactions, sessionMessages,
             settings, schedule, models, commands, sessionContext, actions, permissionMode,
-            spinnerVerbs, fileSuggestions, _ -> Optional.empty());
+            spinnerVerbs, fileSuggestions, _ -> Optional.empty(),
+            GatewayFileDiffPort.none());
     }
 
     public GatewayServer(Config config, String token, SessionHostRegistry registry,
@@ -235,7 +237,7 @@ public final class GatewayServer implements AutoCloseable {
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
             GatewayFileSuggestionsPort fileSuggestions,
-            GatewayTaskBoardPort taskBoard) {
+            GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -307,6 +309,7 @@ public final class GatewayServer implements AutoCloseable {
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
+        this.changesApi = new GatewayChangesHandler(fileDiff);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -705,6 +708,16 @@ public final class GatewayServer implements AutoCloseable {
         if (get && Strings.CS.equals("/api/session/tasks", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> taskBoardApi.handleGet(exchange));
+            return;
+        }
+        if (get && Strings.CS.equals("/api/changes.diff", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> changesApi.handleDiff(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/changes.open", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> changesApi.handleOpen(exchange));
             return;
         }
         

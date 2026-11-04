@@ -1,0 +1,55 @@
+/* The changed-files viewer's chrome. The card, head and close button are the
+   shared `.lc-modal-*` classes from the vendored dsh-context modal sheet; only
+   the toolbar and the body belong to this surface. */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.reload,
+.host {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  padding: 3px 10px;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reload:hover:not(:disabled),
+.host:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.reload:disabled,
+.host:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The unavailable reason stays visible beside the disabled control (this
+   project's deliberate difference from upstream, which omits the control). */
+.hostNote {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.body {
+  /* The diff scrolls inside the card rather than growing it: the modal has a
+     max-height and the body is the part that overflows. */
+  max-height: min(64vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.truncated {
+  margin-bottom: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}

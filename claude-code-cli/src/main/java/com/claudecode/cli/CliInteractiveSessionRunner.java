@@ -39,6 +39,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.claudecode.gateway.GatewayCommandsPort;
+import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
@@ -49,6 +50,7 @@ import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
 import com.claudecode.gateway.GatewaySessionCatalogPort;
 import com.claudecode.gateway.GatewaySessionContextPort;
+import com.claudecode.gateway.GatewaySessionMessagesPort;
 import com.claudecode.gateway.GatewayTaskBoardPort;
 import com.claudecode.gateway.GatewaySettingsPort;
 import com.claudecode.keybindings.UserKeybindingsStore;
@@ -408,7 +410,9 @@ final class CliInteractiveSessionRunner {
                 gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
                 gatewaySpinnerVerbs(),
                 gatewayFileSuggestions(interactiveCwd),
-                gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()));
+                gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()),
+                gatewayFileDiff(headlessSessions.messagesPort(interactiveCwd),
+                    engine.conversation().getSessionId()));
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -1296,6 +1300,27 @@ final class CliInteractiveSessionRunner {
                 return Optional.empty();
             }
             return Optional.of(taskBoard.snapshot());
+        };
+    }
+
+    /**
+     * The changed-files viewer's gateway read: one file's before/after content
+     * from a session's own transcript.
+     *
+     * <p>The turn-aware source is {@code TurnDiffExtractor} in
+     * {@code claude-code-commands}, which the gateway cannot depend on, so the
+     * extraction happens here and only its result crosses the port. A blank id
+     * addresses the active session — the messages port answers nothing for a
+     * blank id, so the active id is substituted before the read.
+     */
+    static GatewayFileDiffPort gatewayFileDiff(
+            GatewaySessionMessagesPort messages, String activeSessionId) {
+        CliFileDiffAdapter adapter = new CliFileDiffAdapter(
+            sessionId -> messages.messages(sessionId, null));
+        return (sessionId, path) -> {
+            String addressed = StringUtils.isBlank(sessionId) ? activeSessionId : sessionId;
+            if (StringUtils.isBlank(addressed)) return Optional.empty();
+            return adapter.port().diff(addressed, path);
         };
     }
 

@@ -790,6 +790,80 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SessionTaskBoardResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/changes.diff:
+    get:
+      tags: [Sessions]
+      summary: One delivered file's recorded change
+      description: |
+        Feeds the webui delivered-files viewer — the diff a session's own
+        transcript recorded for one path, read back from the turn that last
+        wrote it. The change comes from the tool result the mutating call
+        produced, not from the file on disk, so it reports what this session
+        did rather than whatever the path holds now.
+
+        The addressed session follows the same routing as
+        /api/session/permission-mode: blank means the active session. The
+        response is a discriminated union on `kind`: a `text` diff carries its
+        two sides and, per hunk, the `+`/`-`/space-prefixed lines upstream's
+        hunk shape requires; `binary` and `oversized` carry no sides, only the
+        notice a viewer renders in their place. An absent `old_text` means
+        there is no previous version (a created file).
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active session
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+          description: The file path as the session recorded it
+      responses:
+        '200':
+          description: The recorded change for the path
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceFileDiff' }
+        '400':
+          description: The path is missing or blank
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No turn in the addressed session touched that path
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/changes.open:
+    post:
+      tags: [Sessions]
+      summary: Hand a file to the desktop host (unavailable in this client)
+      description: |
+        The native open-file action a delivered-files viewer offers. It
+        mirrors upstream's endpoint so the client's control and its
+        pending/failed state machine port over unchanged, but the web client
+        runs in a browser and cannot reach the local filesystem: this server
+        always answers 422 with a readable reason.
+
+        The client renders the control disabled from that answer rather than
+        hiding it. Upstream omits the native control entirely when no desktop
+        host is present; rendering it disabled with the reason is this
+        project's deliberate difference, so an alignment pass must not treat
+        the 422 as a defect to remove.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeOpenRequest' }
+      responses:
+        '422':
+          description: This host cannot open local files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/session/context/timeline:
     get:
       tags: [Sessions]
@@ -1926,6 +2000,73 @@ components:
           type: array
           items: { type: string }
           description: Ids of tasks that must precede this one
+    ChangeOpenRequest:
+      type: object
+      properties:
+        session_id:
+          type: string
+          description: The session to address; absent means the active session
+        path:
+          type: string
+          description: The file path as the session recorded it
+    WorkspaceFileDiff:
+      description: >
+        One delivered file's recorded change, discriminated on `kind`. `binary`
+        and `oversized` deliberately carry no sides: there is no line diff to
+        show, and an empty one would read as "the file did not change".
+      oneOf:
+        - $ref: '#/components/schemas/WorkspaceFileDiffText'
+        - $ref: '#/components/schemas/WorkspaceFileDiffNotice'
+    WorkspaceFileDiffText:
+      type: object
+      required: [kind, path, display, hunks, coarse, truncated]
+      properties:
+        kind: { type: string, enum: [text] }
+        path:
+          type: string
+          description: The path as recorded, verbatim
+        display:
+          type: string
+          description: The path a viewer labels the diff with
+        old_text:
+          type: string
+          nullable: true
+          description: >
+            The content before the change; null for a file the turn created,
+            which a viewer renders as "no removed lines"
+        new_text:
+          type: string
+          description: The content after the change
+        hunks:
+          type: array
+          items: { $ref: '#/components/schemas/StructuredPatchHunk' }
+        coarse:
+          type: boolean
+          description: True when the whole file is to be read as a single replacement
+        truncated:
+          type: boolean
+          description: True when the change was cut short at the viewer's line budget
+    WorkspaceFileDiffNotice:
+      type: object
+      required: [kind, path, display]
+      properties:
+        kind: { type: string, enum: [binary, oversized] }
+        path: { type: string }
+        display: { type: string }
+    StructuredPatchHunk:
+      type: object
+      required: [oldStart, oldLines, newStart, newLines, lines]
+      properties:
+        oldStart: { type: integer }
+        oldLines: { type: integer }
+        newStart: { type: integer }
+        newLines: { type: integer }
+        lines:
+          type: array
+          items: { type: string }
+          description: >
+            One entry per line, each prefixed with its own marker: `-` removed,
+            `+` added, a space for context. Consumers rely on that prefix.
     CommandEntry:
       type: object
       required: [name, kind]

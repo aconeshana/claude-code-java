@@ -115,6 +115,14 @@ export interface TurnProcessView {
    * turn still owes exactly one tail.
    */
   readonly tailAnchors: ReadonlySet<string>
+  /**
+   * The owning turn of every tail anchor, keyed by the anchor row's message id.
+   *
+   * The produced-files row aggregates over a whole turn, and the tail anchor
+   * is the one row that renders it, so the anchor must know which turn's rows
+   * to collect. `tailAnchors` alone cannot say that: it is a set.
+   */
+  readonly tailAnchorTurns: Readonly<Record<string, number>>
 }
 
 function emptyView(): TurnProcessView {
@@ -127,6 +135,7 @@ function emptyView(): TurnProcessView {
     compactAnswers: new Set(),
     inlineReasoningAnswers: new Set(),
     tailAnchors: new Set(),
+    tailAnchorTurns: {},
   }
 }
 
@@ -367,6 +376,7 @@ export function deriveTurnProcessView(
   const compactAnswers = new Set<string>()
   const inlineReasoningAnswers = new Set<string>()
   const tailAnchors = new Set<string>()
+  const tailAnchorTurns: Record<string, number> = {}
   const seenTurns = new Set<number>()
   // Rebuilt rather than mutated in place, so dropped turns drop their entries.
   const nextCache: TurnCache = new Map()
@@ -392,7 +402,10 @@ export function deriveTurnProcessView(
       ? cached.value
       : deriveContribution(slice)
     nextCache.set(slice.turn, { key, value: contribution })
-    if (contribution.tailAnchorId !== null) tailAnchors.add(contribution.tailAnchorId)
+    if (contribution.tailAnchorId !== null) {
+      tailAnchors.add(contribution.tailAnchorId)
+      tailAnchorTurns[contribution.tailAnchorId] = slice.turn
+    }
     if (contribution.process === null) continue
 
     const process = contribution.process
@@ -417,5 +430,6 @@ export function deriveTurnProcessView(
     compactAnswers: folding ? compactAnswers : new Set(),
     inlineReasoningAnswers: folding ? inlineReasoningAnswers : new Set(),
     tailAnchors,
+    tailAnchorTurns,
   }
 }

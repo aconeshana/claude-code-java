@@ -53,12 +53,23 @@ final class GatewayRequests {
 
     /** The addressed session id: {@code ?session_id=}, or null for the active TUI session. */
     static String sessionIdOf(HttpExchange exchange) {
+        return queryParam(exchange, "session_id");
+    }
+
+    /**
+     * One decoded query parameter, or null when absent.
+     *
+     * @param exchange the request
+     * @param name     the parameter name
+     * @return the decoded value, or null
+     */
+    static String queryParam(HttpExchange exchange, String name) {
         String query = exchange.getRequestURI().getRawQuery();
         if (StringUtils.isBlank(query)) return null;
         for (String pair : query.split("&")) {
             int split = pair.indexOf('=');
             if (split <= 0) continue;
-            if (!Strings.CS.equals("session_id", pair.substring(0, split))) continue;
+            if (!Strings.CS.equals(name, pair.substring(0, split))) continue;
             return URLDecoder.decode(pair.substring(split + 1), StandardCharsets.UTF_8);
         }
         return null;

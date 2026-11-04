@@ -16,6 +16,7 @@ import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
+import { ChangesModal } from './views/ChangesModal'
 import { ChatView } from './views/ChatView'
 import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
@@ -172,6 +173,10 @@ export function App() {
           </div>
         }
       />
+      {/* The produced-files viewer. It owns its own open/closed state (the
+          selection lives in the store), so it mounts unconditionally and
+          renders null while nothing is open. */}
+      <ChangesModal />
       <ContextModal
         sessionId={selectedId}
         open={contextModalOpen}

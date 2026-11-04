@@ -170,7 +170,7 @@ class GatewayTaskBoardInteropTest {
             new GatewayCommandsPort() {}, new GatewaySessionContextPort() {},
             new GatewaySessionActionsPort() {}, new GatewayPermissionModePort() {},
             new GatewaySpinnerVerbsPort() {}, new GatewayFileSuggestionsPort() {},
-            _ -> false, taskBoard, GatewayFileDiffPort.none());
+            taskBoard, GatewayFileDiffPort.none());
         server.start();
         // The session is activated after the server is up, so the blank-id case
         // resolves the same active session the catalog endpoints would see.

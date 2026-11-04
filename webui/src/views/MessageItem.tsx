@@ -12,6 +12,9 @@ import { ReasoningRow } from './ReasoningRow'
 import { ToolCallRow } from './ToolCallRow'
 import { useSessions } from '../store/sessions'
 import { ContextJumpButton } from './context/ContextJumpButton'
+import { ProducedFiles } from './ProducedFiles'
+import { useChangesViewer } from '../store/changesViewer'
+import { DELIVERABLES_NS, deliverablesDicts } from '../i18n/dictionaries/deliverables'
 import { MessageIconActions } from '../../vendor/dsh-stats-pills/MessageIconActions'
 import { TurnTimePanel, TurnUsagePanel } from '../../vendor/dsh-stats-pills/TurnUsagePanel'
 import { ImageGallery } from '../../vendor/ui-attachment/MessageImages'
@@ -27,7 +30,8 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * renders that row from a per-turn `turn-tail` node, so exactly one assistant
  * row of each turn carries it — never one per step.
  */
-export function MessageItem({ message, hideReasoning = false, showTail = false }: {
+export function MessageItem({ message, hideReasoning = false, showTail = false,
+  producedFiles = [], sessionId = null }: {
   message: MessageState
   /**
    * The turn-process fold's `inlineReasoning`: this row is a folded turn's
@@ -46,6 +50,13 @@ export function MessageItem({ message, hideReasoning = false, showTail = false }
    * `tailAnchors` reproduces that anchor decision here.
    */
   showTail?: boolean
+  /**
+   * The files this row's turn produced, aggregated over the whole turn — the
+   * vendored delivered-files chip row renders them on the tail anchor only.
+   */
+  producedFiles?: readonly string[]
+  /** The addressed session, for the viewer the chips open. */
+  sessionId?: string | null
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
@@ -72,15 +83,19 @@ export function MessageItem({ message, hideReasoning = false, showTail = false }
       t={statsT}
       hideReasoning={hideReasoning}
       showTail={showTail}
+      producedFiles={producedFiles}
+      sessionId={sessionId}
     />
   )
 }
 
-function AssistantItem({ message, t, hideReasoning, showTail }: {
+function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, sessionId }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
   showTail: boolean
+  producedFiles: readonly string[]
+  sessionId: string | null
 }) {
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   // One stable labels identity: MarkdownText's streaming cache resets when
@@ -90,7 +105,10 @@ function AssistantItem({ message, t, hideReasoning, showTail }: {
     () => message.textBlocks.join('\n\n'),
     [message.textBlocks],
   )
-  const sessionId = useSessions((state) => state.selectedSessionId)
+  const selectedSessionId = useSessions((state) => state.selectedSessionId)
+  const addressedSessionId = sessionId ?? selectedSessionId
+  const deliverablesT = useTranslate(DELIVERABLES_NS, deliverablesDicts)
+  const openDiff = useChangesViewer((state) => state.open)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
@@ -112,7 +130,24 @@ function AssistantItem({ message, t, hideReasoning, showTail }: {
       {message.toolCalls.map((call) => (
         <ToolCallRow key={call.toolUseId} call={call} defaultOpen={defaultOpen} />
       ))}
+      {/* The per-message chip row below this row's own tool calls (upstream's
+          per-step produced list). Kept as-is; the turn-wide row above the tail
+          is the vendored ui-deliverables one. */}
       <DeliverablesRow toolCalls={message.toolCalls} />
+      {/* The delivered-files row — vendored from upstream ui-deliverables and
+          mounted on the turn's tail anchor, the one row that carries the tail.
+          Upstream seats it at `conversation.chat.turnTail`; this project has no
+          such hole, so the anchor renders it with the paths aggregated over the
+          whole turn (see ChatView.producedByTurn). */}
+      {showTail && !message.open && producedFiles.length > 0 && (
+        <ProducedFiles
+          paths={producedFiles}
+          openFile={(path) => {
+            if (addressedSessionId != null) openDiff(addressedSessionId, path)
+          }}
+          t={deliverablesT}
+        />
+      )}
       {/* The settled turn tail: the full vendored icon row — copy action,
           then the usage pill (provider buckets) and the time pill (turn
           wall time), then the trailing clock. Exactly one assistant row of
@@ -129,7 +164,7 @@ function AssistantItem({ message, t, hideReasoning, showTail }: {
           className={turnTailCss.actions}
           usageAction={(
             <>
-              <ContextJumpButton sessionId={sessionId} time={message.time} turn={message.turn} />
+              <ContextJumpButton sessionId={addressedSessionId} time={message.time} turn={message.turn} />
               {message.turnUsage !== undefined && (
                 <TurnUsagePanel usage={message.turnUsage} t={t} />
               )}

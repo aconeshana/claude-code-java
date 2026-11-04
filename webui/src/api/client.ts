@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
+import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
 import { currentToken } from './token'
 
 /**
@@ -431,3 +431,30 @@ export async function submitTurn(
 }
 
 
+
+/**
+ * GET /api/changes.diff — one changed file's diff, in unified-diff coordinates.
+ *
+ * The path is passed as a query parameter rather than a path segment: a
+ * workspace path contains slashes and, on some platforms, characters that a
+ * path segment cannot carry unescaped.
+ */
+export async function fetchWorkspaceFileDiff(
+  sessionId: string,
+  path: string,
+): Promise<WorkspaceFileDiff> {
+  const query = new URLSearchParams({ session_id: sessionId, path })
+  return await requestJson<WorkspaceFileDiff>('GET', `/api/changes.diff?${query.toString()}`)
+}
+
+/**
+ * POST /api/changes.open — hand a file to the host's desktop to open.
+ *
+ * Upstream routes this to the Host desktop. This app's web client runs in a
+ * browser with no filesystem access, so the endpoint answers an explicit
+ * unavailable error (HTTP 422) instead of silently succeeding; callers render
+ * a disabled control with that reason rather than a no-op button.
+ */
+export async function openFileInHost(sessionId: string, path: string): Promise<void> {
+  await requestJson<unknown>('POST', '/api/changes.open', { session_id: sessionId, path })
+}

@@ -18,6 +18,7 @@ cordis/Typert RPC).
 | `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`, `conversation-nodes/turn-tail.ts`) | The turn-process fold rules + the per-turn tail anchor — see the section below |
 | `vendor/dsh-running-status/` | `packages/client/ui-chat/src/client/chat/` (`RunningStatus.tsx`, `message-chrome.ts`, `accessibility.module.css`) | The running-turn indicator (shimmer + live elapsed clock, worded with the TUI spinner verbs; whale icon dropped), **at commit `ce7073d`** — see the section below |
 | `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
+| `ui-deliverables` (not a tree — two files, re-seated) | `packages/client/ui-deliverables/src/client/` (`ProducedFiles.tsx`, `ProducedFiles.module.css`) | The turn-tail delivered-files chip row. Upstream ships **no** diff viewer; the viewer here wraps the already-vendored `ui-primitives/DiffBlock` — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
 
@@ -1168,6 +1169,66 @@ of the host's to-do list. This app projects the runtime's own
 `TaskBoardPort.Snapshot` (the v2 `TodoStore` path, which is the live one here;
 v1 `TodoWrite` is gated off). `Snapshot.hidden()` maps onto upstream's "no
 visible tasks → render nothing", and `Snapshot.revision` is the change token.
+
+### `ui-deliverables` — the delivered-files chip row and its viewer
+
+The turn-tail row naming the files a turn produced, plus the viewer an
+individual chip opens. Before this, a turn's writes were visible only as
+tool-call rows; nothing summed them up, and no file's diff could be read back.
+
+**Deliberately not vendored: there is no diff viewer upstream to port.** The
+plan for this work assumed upstream ships one. It does not, and the assumption
+was falsified against the pinned source before any code was written:
+
+- No `changes-review` package exists in the pinned tree.
+- `ui-sidebar-textpreview` is a **paginated plain-text reader**, not a diff
+  viewer.
+- The only diff primitive upstream has is
+  `ui-primitives/DiffBlock` — an inline, collapsible card that caps the diff at
+  `SHOWN_LIMIT = 6` hunks and `DEFAULT_DIFF_MAX_LINES = 16` lines, with **no
+  side-by-side mode, no scroll synchronisation and no wrap toggle**. It was
+  already vendored here byte-identical and is used verbatim as this viewer's
+  body.
+
+So the absent side-by-side/scroll-sync is recorded as **upstream never had it**,
+not as a deviation this project introduced. Do not build it.
+
+| File here | Upstream source | Notes |
+|-----------|----------------|-------|
+| `src/views/ProducedFiles.tsx` | `ui-deliverables/src/client/ProducedFiles.tsx` | Kept: the chip row — one `LinkIcon` + `basename` per path, `title={path}` as the disambiguator, `aria-label` from the `produced.open` string, and the container-query bands (687/583/479/375/271px, each budgeting 96px per chip) that decide how many chips fit before the remainder collapses. Cut: the cordis `PropsLocale` `t` injection (replaced by `useTranslate(ns, dicts)`, the `produced.*` strings lifted verbatim into `src/i18n/dictionaries/deliverables.ts`) and the upstream `basename` import (that helper is a local function here). |
+| `src/views/ProducedFiles.module.css` | `ui-deliverables/src/client/ProducedFiles.module.css` | Verbatim, all 159 lines. No block cut. Every consumed `--dsw-*` token (`--dsw-alias-border-l3`, `--dsw-alias-label-tertiary`, `--dsw-alias-link`) resolves in the vendored `theme/styles/`. |
+| `src/views/ChangesModal.tsx` + `.module.css` | *(no upstream counterpart)* | The viewer body is the vendored `DiffBlock`; this file is only the surrounding modal. Not a port — see the deviation below. |
+
+**Deviation — the host is a modal, not a sidebar tab.** Upstream opens a file as
+a tab in the right Sidebar's resource registry (`dsh-resource://file/...`,
+routed to the `textpreview` tab type). This app has no sidebar tab registry and
+no resource system, so the viewer is a modal over the conversation column —
+the same host pattern `/context` already established — with one file open at a
+time. The viewer's own behaviour (one file at a time, a reload affordance, a
+failure that stays visible) is upstream's; only the host differs.
+
+**Deviation — the open-in-host control renders disabled rather than absent.**
+The native open-file action goes through `/api/changes.open` to a desktop host.
+This client runs in a browser and cannot reach the local filesystem, so the
+endpoint always answers `422` with a readable reason. Upstream **omits the
+native control entirely** when no desktop host is present; this project
+deliberately renders it **disabled with the reason visible**, and the reason
+stays on screen until the next attempt (upstream's failure semantics). This is
+a chosen difference, not a defect — an alignment pass must not "fix" it back to
+a hidden button, and must not treat the 422 as something to implement away.
+Recorded in `openapi.yaml` on `/api/changes.open` as well.
+
+**Deviation — no hover preview.** Upstream's chip row opens a 500ms hover
+preview layered on Shiki highlighting and a full compare store. Neither exists
+here (line-level highlighting is likewise not ported), so the preview is not
+built; clicking a chip opens the modal instead.
+
+Wiring (this app's half): `GET /api/changes.diff` reads one path's recorded
+change out of the session transcript — from the mutating call's own tool result,
+not from disk, so the diff reports what the session did rather than whatever the
+file holds now. The turn-scoped aggregation lives in
+`src/views/turnDeliverables.ts` (`collectTurnDeliverables`); a failed or
+still-running call contributes nothing, because it wrote nothing.
 
 ### `vendor/ui-attachment/` — chat-history image gallery + lightbox
 

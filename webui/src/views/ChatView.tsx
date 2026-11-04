@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@primitives'
-import type { ConversationState } from '../store/conversations'
+import type { ConversationState, ToolCallState } from '../store/conversations'
 import { deriveTurnProcessView, openTurnsOf, useTurnProcess } from '../store/turnProcess'
 import { useTranscriptView } from '../store/transcriptView'
 import { useSpinnerVerbs } from '../store/spinnerVerbs'
@@ -11,6 +11,7 @@ import { RunningStatus } from '@vendor/dsh-running-status/RunningStatus.tsx'
 import css from '@chat-styles/ChatView.module.css'
 import { MessageItem } from './MessageItem'
 import { TurnProcessControl } from './TurnProcessControl'
+import { collectTurnDeliverables } from './turnDeliverables'
 import { runningVerb } from './runningVerb'
 
 /**
@@ -124,6 +125,26 @@ export function ChatView(
   const draft = conversation?.streaming
   const rendered = useMemo(() => withStreamingDraft(messages, draft), [messages, draft])
 
+  // Per-turn produced-file paths, collected for the turn tail's row. Upstream
+  // mounts its delivered-files row at the `conversation.chat.turnTail` seat
+  // with a whole-turn scope; this project's tail anchor is the one row that
+  // renders it, so the paths are aggregated by turn here and looked up by the
+  // anchor's own turn number.
+  const producedByTurn = useMemo(() => {
+    const byTurn = new Map<number, readonly (readonly ToolCallState[])[]>()
+    for (const message of messages) {
+      if (message.kind !== 'assistant' || message.turn === undefined) continue
+      const rows = byTurn.get(message.turn) ?? []
+      byTurn.set(message.turn, [...rows, message.toolCalls])
+    }
+    const collected = new Map<number, readonly string[]>()
+    for (const [turn, rows] of byTurn) collected.set(turn, collectTurnDeliverables(rows))
+    return collected
+    // The whole-turn aggregation reads every assistant row's tool calls, so a
+    // completed tool on any row of any turn must re-derive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the messages array identity the reducer rebuilds
+  }, [messages])
+
   return (
     <div
       className={css.scroll}
@@ -163,6 +184,10 @@ export function ChatView(
                 message={message}
                 hideReasoning={foldView.inlineReasoningAnswers.has(message.id)}
                 showTail={foldView.tailAnchors.has(message.id)}
+                producedFiles={foldView.tailAnchorTurns[message.id] !== undefined
+                  ? producedByTurn.get(foldView.tailAnchorTurns[message.id]) ?? []
+                  : []}
+                sessionId={sessionId}
               />
             </div>,
           )
