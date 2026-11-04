@@ -929,12 +929,30 @@ public class CompactService implements MessageCompactor {
     private static final Pattern SUMMARY_HEADER = Pattern.compile("(?m)^\\s*Summary:");
 
     /**
+     * A Markdown heading that names the section as a summary, in either language the port is used
+     * in. The prompt asks for an XML block, but a model that ignores that format often still
+     * produces the same content under a heading, and rejecting it makes compaction unusable on
+     * that model.
+     */
+    private static final Pattern SUMMARY_MARKDOWN_HEADING =
+        Pattern.compile("(?m)^#{1,6}[ \\t]*(?:Summary|SUMMARY|summary|摘要)[ \\t]*$");
+
+    /**
+     * Minimum characters a Markdown summary must carry to count. A length floor is used rather than
+     * a line count because a whole summary may be one long line; it is set low because a CJK
+     * summary carries far more meaning per character than an English one.
+     */
+    private static final int MARKDOWN_SUMMARY_MIN_BODY_CHARS = 24;
+
+    /**
      * Reports whether the model actually produced the summary section the compact prompt asks for.
      *
      * <p>A well-formed response carries a {@code <summary>} block; a response that has already been
      * run through {@link #formatCompactSummary} carries the rewritten {@code Summary:} header
-     * instead. Anything else — most importantly a refusal, which is non-blank, free of API-error
-     * markers, and therefore invisible to every other check — is not a summary.
+     * instead; a model that ignores the requested format may emit the same content under a
+     * {@code ## Summary} or {@code ## 摘要} heading. Anything else — most importantly a refusal,
+     * which is non-blank, free of API-error markers, and therefore invisible to every other check —
+     * is not a summary.
      */
     @Explanation("""
         The original only rejects empty or API-error responses, so a refusal is persisted as \
@@ -943,10 +961,22 @@ public class CompactService implements MessageCompactor {
         compaction prompt itself as a third one and answered with a 1467-character refusal. \
         Replaying the check over that session's 56 stored summaries rejects exactly two — the \
         refusal and one summary cut off mid-sentence with no closing tag, whose raw <summary> tag \
-        the formatter had already leaked into the next context for the same reason.""")
+        the formatter had already leaked into the next context for the same reason. \
+        The Markdown heading form is additionally accepted: 2.1.236 accepts any non-empty \
+        assistant text, so requiring the exact XML/`Summary:` spelling made every weak-model \
+        /compact fail with "the model answered without a summary section" even when the model \
+        had written a complete, usable summary under a different heading.""")
     static boolean containsSummarySection(String summary) {
         if (StringUtils.isBlank(summary)) return false;
-        return SUMMARY_SECTION.matcher(summary).find() || SUMMARY_HEADER.matcher(summary).find();
+        if (SUMMARY_SECTION.matcher(summary).find() || SUMMARY_HEADER.matcher(summary).find()) {
+            return true;
+        }
+        Matcher heading = SUMMARY_MARKDOWN_HEADING.matcher(summary);
+        while (heading.find()) {
+            String body = summary.substring(heading.end());
+            if (body.strip().length() >= MARKDOWN_SUMMARY_MIN_BODY_CHARS) return true;
+        }
+        return false;
     }
 
     /**

@@ -86,6 +86,42 @@ class CompactSummaryValidationTest {
             "precondition: the formatter leaves the unclosed tag in place");
     }
 
+    /**
+     * A weak model often answers with a Markdown heading instead of the XML
+     * block the prompt asked for. The content is a real summary, so rejecting
+     * it makes {@code /compact} unusable on that model while 2.1.236 — which
+     * only requires non-empty assistant text — accepts it.
+     */
+    @Test
+    void acceptsAMarkdownSummaryHeading() {
+        String markdown = """
+            ## Summary
+
+            1. Primary Request: deploy strata to the 5090 host.
+            2. Key decisions: the gateway keeps ciphertext only.
+            """;
+        assertTrue(CompactService.containsSummarySection(markdown));
+    }
+
+    /** The Chinese heading is the same answer in the language of the request. */
+    @Test
+    void acceptsAChineseSummaryHeading() {
+        String markdown = """
+            ## 摘要
+
+            1. 用户目标：把推理服务部署到 5090 机器。
+            2. 关键约束：端点必须带 API key。
+            """;
+        assertTrue(CompactService.containsSummarySection(markdown));
+    }
+
+    /** A heading is a claim about the body; a bare heading with no body is not a summary. */
+    @Test
+    void rejectsAHeadingWithNoBody() {
+        assertFalse(CompactService.containsSummarySection("## Summary"));
+        assertFalse(CompactService.containsSummarySection("## 摘要\n\n"));
+    }
+
     @Test
     void compactRefusesToReplaceTheConversationWithARefusal() {
         DefaultManualCompactStrategy strategy =
@@ -97,6 +133,33 @@ class CompactSummaryValidationTest {
             strategy.compact(history, (_, _) -> REFUSAL, false, null, null, "claude-opus-5"));
 
         assertTrue(Strings.CS.contains(failure.getMessage(), "summary section"), failure.getMessage());
+    }
+
+    /**
+     * The whole manual-compact path for the shape a weak model actually emits.
+     * Requiring the XML spelling made every {@code /compact} against
+     * {@code qwen3.8-flash-next} fail with "the model answered without a
+     * summary section" even though the answer was a complete summary.
+     */
+    @Test
+    void compactAcceptsAMarkdownSummaryFromAWeakModel() {
+        DefaultManualCompactStrategy strategy =
+            new DefaultManualCompactStrategy(TokenEstimator.getInstance());
+        List<Message> history = List.of(
+            new UserMessage("u-1", MessageContent.ofText("Where does the port allocation happen?")));
+
+        String markdown = """
+            ## Summary
+
+            1. Primary Request: deploy strata to the 5090 host and keep the endpoint keyed.
+            2. Key decisions: the gateway stores ciphertext only; unlock uses wrapped_K.
+            3. Next step: finish the rclone webdav auth check before the ffmpeg roundtrip.
+            """;
+
+        var result = strategy.compact(history, (_, _) -> markdown, false, null, null,
+            "qwen3.8-flash-next-nvfp4-nvfp4");
+
+        assertTrue(result != null, "a Markdown summary must still compact");
     }
 
     @Test
