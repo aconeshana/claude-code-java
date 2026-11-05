@@ -810,16 +810,19 @@ final class PromptTextBox extends HighlightedTextBox {
         return null;
     }
 
-    /** Autocomplete consumes its navigation and Escape before normal bindings or request cancellation. */
+    /**
+     * Autocomplete consumes its navigation and Escape before normal bindings or request cancellation.
+     * A mid-input command ghost keeps the same context active without a dropdown.
+     */
     private Result tryHandleAutocompleteKeyStroke(KeyStroke key) {
-        if (!suggestions.isVisible()) return null;
+        if (!suggestions.isVisible() && !suggestions.hasGhost()) return null;
         if (customKeybindingsEnabled()) {
             Result resolved = dispatchViaResolver(key,
                 List.of("Chat", "Autocomplete", "Global"),
                 this::dispatchAutocompleteOrChatAction);
             if (resolved != null) return resolved;
         }
-        return suggestions.handleKey(key);
+        return suggestions.isVisible() ? suggestions.handleKey(key) : suggestions.handleGhostKey(key);
     }
 
     /**
@@ -1432,7 +1435,10 @@ final class PromptTextBox extends HighlightedTextBox {
         return switch (action) {
             case "autocomplete:previous" -> { suggestions.moveUp(); yield true; }
             case "autocomplete:next" -> { suggestions.moveDown(); yield true; }
-            case "autocomplete:accept" -> { suggestions.accept(); yield true; }
+            case "autocomplete:accept" -> {
+                if (suggestions.isVisible()) suggestions.accept(); else suggestions.acceptGhost();
+                yield true;
+            }
             case "autocomplete:dismiss" -> { suggestions.hide(); yield true; }
             default -> dispatchChatAction(action);
         };

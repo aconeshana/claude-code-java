@@ -11,11 +11,17 @@ import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.MouseActionType;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import com.claudecode.ui.lanterna.suggest.InlineCommandCompletion;
 import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
 
 /**
@@ -173,20 +179,110 @@ class InputPanelKeyRoutingTest {
     }
 
     @Test
-    void tabOnMidInputCommandSuggestionKeepsTextBeforeAndAfterTheToken() {
+    void tabOnMidInputCommandGhostKeepsTextBeforeAndAfterTheToken() {
         RecordingActions actions = new RecordingActions();
         InputPanel panel = panel(actions);
         panel.setText("see /comp for details");
-        panel.setCaretOffsetForTest("see /comp".length());
-        panel.showSuggestions(
-            List.of(new SuggestionPanel.Suggestion("/compact", "Compact")), 100);
+        panel.setCaretOffsetForTest("see /co".length());
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 9));
 
         assertEquals(TextBox.Result.HANDLED,
             panel.handleKeyForTest(new KeyStroke(KeyType.TAB)));
 
         assertEquals("see /compact  for details", panel.getText(),
-            "2.1.236 replaces only the mid-input /command token");
+            "2.1.236 replaces only the mid-input /command token, caret anywhere inside it");
+        assertEquals("see /compact ".length(), panel.caretCol());
         assertTrue(actions.submissions.isEmpty());
+    }
+
+    @Test
+    void tabWithAStaleGhostLeavesThePromptUntouched() {
+        InputPanel panel = panel(new RecordingActions());
+        panel.setText("see /co");
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 9));
+
+        panel.handleKeyForTest(new KeyStroke(KeyType.TAB));
+
+        assertEquals("see /co", panel.getText(),
+            "a ghost computed for other text must not splice into the current prompt");
+    }
+
+    @Test
+    void midInputGhostRendersOnlyWhenTheCaretSitsAtItsInsertPosition() {
+        InputPanel panel = panel(new RecordingActions());
+        panel.setText("看？/comp");
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 7));
+
+        assertEquals("act", panel.inlineGhostTextForTest());
+
+        panel.setText("x /comp thing");
+        panel.setCaretOffsetForTest("x /comp".length());
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 7));
+        assertNull(panel.inlineGhostTextForTest(),
+            "236 paints the ghost only when the caret is at the end of the input");
+    }
+
+    @Test
+    void ghostSwallowsVerticalArrowsAndEscapeLike236sAutocompleteContext(@TempDir Path tmp) {
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = panel(actions);
+        PromptHistory history = seededHistory(tmp, "remember-this-line");
+        panel.setPromptHistory(history);
+        panel.setHistoryContext("s1", "/proj");
+        panel.setText("hello /comp");
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 11));
+
+        assertEquals(TextBox.Result.HANDLED, panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_UP)));
+        assertEquals(TextBox.Result.HANDLED, panel.handleKeyForTest(new KeyStroke(KeyType.ARROW_DOWN)));
+        assertEquals(TextBox.Result.HANDLED, panel.handleKeyForTest(ESCAPE));
+        assertEquals(TextBox.Result.HANDLED, panel.handleKeyForTest(ESCAPE));
+        pause();
+
+        assertEquals("hello /comp", panel.getText(),
+            "Up must not recall history and Escape must not arm the double-Escape clear");
+        assertEquals("act", panel.inlineGhostTextForTest(), "Escape leaves the ghost in place");
+
+        panel.handleKeyForTest(new KeyStroke(KeyType.TAB));
+        assertEquals("hello /compact ", panel.getText());
+    }
+
+    @Test
+    void enterWithAGhostSubmitsTheTypedTextUnchanged() {
+        RecordingActions actions = new RecordingActions();
+        InputPanel panel = panel(actions);
+        panel.setText("hello /comp");
+        panel.setInlineCommandGhost(new InlineCommandCompletion.Ghost("act", "compact", 11));
+
+        panel.handleKeyForTest(new KeyStroke(KeyType.ENTER));
+
+        assertEquals(List.of("hello /comp"), actions.submissions,
+            "236 binds the ghost to Tab only; Enter keeps submitting");
+    }
+
+    private static PromptHistory seededHistory(Path tmp, String entry) {
+        Path file = tmp.resolve("history.jsonl");
+        PromptHistory history = new PromptHistory(file);
+        history.addEntry(entry, "s1", "/proj");
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (Files.isRegularFile(file) && Strings.CS.contains(Files.readString(file), entry)) {
+                    return history;
+                }
+            } catch (IOException _) {
+                // Not flushed yet.
+            }
+            pause();
+        }
+        throw new AssertionError("history entry was not flushed");
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test

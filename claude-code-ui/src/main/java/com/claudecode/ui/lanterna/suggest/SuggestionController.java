@@ -30,13 +30,22 @@ import java.util.regex.Pattern;
  * active command token — a column-zero command the caret has not moved past, or a command whose
  * trailing space the caret sits on. Parking the caret inside a leading command that already has
  * arguments suppresses the dropdown rather than offering a completion that would replace the whole
- * input.
+ * input. The command token is read from the full input, as 2.1.236's {@code Rwr} and {@code Ams} do,
+ * so text glued after the caret is part of what gets matched rather than silently dropped on accept.
+ * A leading command that matches nothing shows 2.1.236's {@code No commands match "<input>"} notice.
+ *
+ * <p>A {@code /command} typed after other text never opens the dropdown; it completes as an inline
+ * ghost ({@link InlineCommandCompletion}, 2.1.236's {@code kms}/{@code xDc}) ranked like the
+ * dropdown, and the ghost closes any open dropdown while it shows.
  */
 public final class SuggestionController implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SuggestionController.class);
     private static final long METADATA_CACHE_TTL_MS = 60_000;
 
+
+    /** Command-name characters; 2.1.236's {@code IDc} rejects anything else. */
+    private static final Pattern COMMAND_TOKEN_RE = Pattern.compile("[a-zA-Z0-9.:\\-_]*");
 
     private static final Pattern AT_TOKEN_RE = Pattern.compile(
         "(?:^|(?<=\\s))@((?:[\\w\\p{L}\\p{N}\\p{M}_\\-./\\\\()\\[\\]~:]|\"[^\"]*\"?)*)$");
@@ -69,6 +78,9 @@ public final class SuggestionController implements AutoCloseable {
 
     /** Last active suggestion kind so we can clear stale results: "command" | "file" | "none". */
     private String lastSuggestionKind = "none";
+
+    /** The ghost last published to the input, so a stale one is cleared exactly once. */
+    private InlineCommandCompletion.Ghost lastGhost;
 
     private record SuggestionMetadata(List<Command> availableCommands,
                                       List<SkillEntry> skills,
@@ -147,10 +159,15 @@ public final class SuggestionController implements AutoCloseable {
 
         if (inputPanel.isSuppressingSuggestions()) {
             inputPanel.hideSuggestions();
+            publishGhost(null);
             lastSuggestionKind = "none";
             return;
         }
         boolean bashMode = inputPanel.isBashMode();
+        if (!bashMode && query.indexOf('/') >= 0 && showInlineCommandGhost(query, cursorOffset)) {
+            return;
+        }
+        publishGhost(null);
         // Plain prompt text cannot match either Java suggestion surface: slash
         // commands require column-zero '/', and file completion requires an
         // '@' token. When the controller is already idle, return before
@@ -160,7 +177,7 @@ public final class SuggestionController implements AutoCloseable {
         if (Strings.CS.equals("none", lastSuggestionKind)
                 && !bashMode
                 && !query.isEmpty()
-                && query.charAt(0) != '/'
+                && query.indexOf('/') < 0
                 && query.indexOf('@') < 0) {
             return;
         }
@@ -195,7 +212,8 @@ public final class SuggestionController implements AutoCloseable {
             inputPanel.setArgumentHint(null);
         }
 
-        if (Strings.CS.startsWith(beforeCursor, "/")) {
+        if (Strings.CS.startsWith(beforeCursor, "/")
+                && COMMAND_TOKEN_RE.matcher(commandToken(query)).matches()) {
             if (Strings.CS.equals("file", lastSuggestionKind)) cancelPathSuggestions();
             // ── Slash commands ────────────────────────────────────────
             // 2.1.236 gates the whole slash branch on the FULL input: the
@@ -268,15 +286,13 @@ public final class SuggestionController implements AutoCloseable {
                 } else {
                     // No known command — fall through to show filtered suggestions
                     String filter = afterSlash.toLowerCase(Locale.ROOT);
-                    List<SuggestionPanel.Suggestion> items = buildCommandSuggestions(filter);
-                    inputPanel.setArgumentHint(null);
-                    inputPanel.showSuggestions(items, termWidth, computeCommandColumnWidth());
+                    showCommandSuggestions(query, buildCommandSuggestions(filter));
                 }
             } else {
-                String filter = afterSlash.toLowerCase(Locale.ROOT);
-                List<SuggestionPanel.Suggestion> items = buildCommandSuggestions(filter);
-                inputPanel.setArgumentHint(null);
-                inputPanel.showSuggestions(items, termWidth, computeCommandColumnWidth());
+                // The caret is inside the token: match all of it, not just the part before
+                // the caret, or accepting a candidate would discard the rest of the token.
+                String filter = commandToken(query).toLowerCase(Locale.ROOT);
+                showCommandSuggestions(query, buildCommandSuggestions(filter));
             }
         } else {
             // ── @ file / directory suggestions ────────────────────────
@@ -311,6 +327,55 @@ public final class SuggestionController implements AutoCloseable {
                 }
             }
         }
+    }
+
+    /**
+     * Shows the dropdown rows, or 2.1.236's notice when none match: it requires more than the bare
+     * {@code /} and a token made only of command-name characters ({@code IDc}).
+     */
+    private void showCommandSuggestions(String query, List<SuggestionPanel.Suggestion> items) {
+        inputPanel.setArgumentHint(null);
+        if (items.isEmpty() && query.length() > 1
+                && COMMAND_TOKEN_RE.matcher(commandToken(query)).matches()) {
+            inputPanel.showSuggestionsEmptyMessage("No commands match \"" + query + "\"", termWidth);
+            return;
+        }
+        inputPanel.showSuggestions(items, termWidth, computeCommandColumnWidth());
+    }
+
+    /**
+     * Publishes the mid-input command ghost when the caret sits in one, closing every other
+     * suggestion surface; false leaves the query to the dropdown branches.
+     */
+    private boolean showInlineCommandGhost(String query, int cursorOffset) {
+        InlineCommandCompletion.Token token =
+            InlineCommandCompletion.locate(query, Math.min(cursorOffset, query.length()));
+        if (token == null || token.partial().isEmpty()) return false;
+        ensureMetadataLoading();
+        List<String> ranked = buildCommandSuggestions(token.partial().toLowerCase(Locale.ROOT))
+            .stream()
+            .map(s -> Strings.CS.removeStart(Strings.CS.removeStart(s.primary(), "* "), "/"))
+            .toList();
+        InlineCommandCompletion.Ghost ghost = InlineCommandCompletion.complete(token, ranked);
+        if (ghost == null) return false;
+        if (Strings.CS.equals("file", lastSuggestionKind)) cancelPathSuggestions();
+        lastSuggestionKind = "none";
+        inputPanel.hideSuggestions();
+        inputPanel.setArgumentHint(null);
+        publishGhost(ghost);
+        return true;
+    }
+
+    private void publishGhost(InlineCommandCompletion.Ghost ghost) {
+        if (Objects.equals(lastGhost, ghost)) return;
+        lastGhost = ghost;
+        inputPanel.setInlineCommandGhost(ghost);
+    }
+
+    /** The text after a leading {@code /} up to the first space, taken from the full input. */
+    private static String commandToken(String query) {
+        int space = query.indexOf(' ');
+        return space < 0 ? query.substring(1) : query.substring(1, space);
     }
 
     private void cancelPathSuggestions() {

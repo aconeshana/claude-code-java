@@ -10,6 +10,7 @@ import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -53,6 +54,8 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
     private int selectedIndex;
     private int lastTermWidth = 80;
     private int lastCommandColumnWidth = -1;
+    /** Dim one-row notice shown instead of rows, e.g. {@code No commands match "/zzz"}; null when absent. */
+    private String emptyMessage;
     private Consumer<Suggestion> onAccept;
 
     public void setOnAccept(Consumer<Suggestion> cb) {
@@ -61,9 +64,33 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
         }
     }
 
+    /** Rows or the empty-result notice are on screen. */
     @Override public boolean isVisible() {
         synchronized (stateLock) {
+            return !suggestions.isEmpty() || emptyMessage != null;
+        }
+    }
+
+    /** Selectable rows exist; the empty-result notice alone does not own any keys. */
+    public boolean hasSuggestions() {
+        synchronized (stateLock) {
             return !suggestions.isEmpty();
+        }
+    }
+
+    /**
+     * Replaces the rows with a dim notice, as 2.1.236's {@code suggestionsEmptyMessage} does when
+     * a command query matches nothing.
+     */
+    public void setEmptyMessage(String message, int terminalWidth) {
+        synchronized (stateLock) {
+            String next = StringUtils.isEmpty(message) ? null : message;
+            if (suggestions.isEmpty() && Objects.equals(emptyMessage, next)) return;
+            suggestions = List.of();
+            selectedIndex = 0;
+            emptyMessage = next;
+            lastTermWidth = Math.max(1, terminalWidth);
+            invalidate();
         }
     }
 
@@ -83,11 +110,13 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
                 ? List.of()
                 : List.copyOf(items);
             if (suggestions.equals(next)
+                    && emptyMessage == null
                     && lastTermWidth == terminalWidth
                     && lastCommandColumnWidth == commandColumnWidth) {
                 return;
             }
             suggestions = next;
+            emptyMessage = null;
             lastTermWidth = Math.max(1, terminalWidth);
             lastCommandColumnWidth = commandColumnWidth;
             selectedIndex = 0;
@@ -97,8 +126,9 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
 
     public void hide() {
         synchronized (stateLock) {
-            if (suggestions.isEmpty()) return;
+            if (suggestions.isEmpty() && emptyMessage == null) return;
             suggestions = List.of();
+            emptyMessage = null;
             selectedIndex = 0;
             invalidate();
         }
@@ -139,7 +169,9 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
     @Override
     protected TerminalSize calculatePreferredSize() {
         synchronized (stateLock) {
-            if (suggestions.isEmpty()) return TerminalSize.of(0, 0);
+            if (suggestions.isEmpty()) {
+                return emptyMessage == null ? TerminalSize.of(0, 0) : new TerminalSize(lastTermWidth, 1);
+            }
             return new TerminalSize(lastTermWidth, Math.min(suggestions.size(), MAX_VISIBLE));
         }
     }
@@ -167,6 +199,7 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
                 int rowCount = Math.min(rendered.length, graphics.getSize().getRows());
                 for (int i = 0; i < rowCount; i++) {
                     graphics.setForegroundColor(i + startIndex == component.selectedIndex
+                            && !component.suggestions.isEmpty()
                         ? LanternaTheme.suggestion()
                         : LanternaTheme.welcomeDim());
                     graphics.putString(0, i, FormatUtils.truncate(rendered[i], columns));
@@ -176,6 +209,9 @@ public class SuggestionPanel extends AbstractComponent<SuggestionPanel> {
     }
 
     String[] renderedRows(int availableWidth) {
+        if (suggestions.isEmpty()) {
+            return emptyMessage == null ? new String[0] : new String[] {"  " + emptyMessage};
+        }
         int width = availableWidth > 0 ? availableWidth : lastTermWidth;
         int startIndex = visibleStartIndex();
         int endIndex = Math.min(startIndex + MAX_VISIBLE, suggestions.size());

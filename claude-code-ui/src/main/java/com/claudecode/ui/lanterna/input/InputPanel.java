@@ -12,6 +12,7 @@ import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.workflows.WorkflowRunStore;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox;
 import com.claudecode.ui.lanterna.components.HighlightedTextBox.Highlight;
+import com.claudecode.ui.lanterna.suggest.InlineCommandCompletion;
 import com.claudecode.ui.lanterna.suggest.SuggestionPanel;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.googlecode.lanterna.CursorStyle;
@@ -824,6 +825,21 @@ public class InputPanel extends Panel implements SlashHost.PermissionModeSink {
         suggestions.hide();
     }
 
+    /** Replace the dropdown with a dim one-row notice such as {@code No commands match "/zzz"}. */
+    public void showSuggestionsEmptyMessage(String message, int termW) {
+        suggestions.showEmptyMessage(message, termW);
+    }
+
+    /**
+     * Publish the mid-input command completion (null clears it). It is painted after the caret
+     * only while the caret sits at the end of the text, and Tab accepts it from anywhere inside
+     * the token.
+     */
+    public void setInlineCommandGhost(InlineCommandCompletion.Ghost ghost) {
+        suggestions.setGhost(ghost);
+        textBox.invalidate();
+    }
+
     /** Current displayed input mode; bash text itself intentionally omits the leading {@code !}. */
     public boolean isBashMode() {
         return state.isBashMode();
@@ -838,6 +854,11 @@ public class InputPanel extends Panel implements SlashHost.PermissionModeSink {
     }
 
     private String inlineGhostText() {
+        InlineCommandCompletion.Ghost ghost = suggestions.ghost();
+        if (ghost != null) {
+            int length = textBox.getText().length();
+            return caretCol() == length && ghost.insertPosition() == length ? ghost.suffix() : null;
+        }
         String hint = argumentHint;
         if (StringUtils.isEmpty(hint)) return null;
         return Strings.CS.endsWith(state.text(), " ") ? hint : " " + hint;

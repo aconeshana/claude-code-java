@@ -319,6 +319,105 @@ class SuggestionControllerTest {
     }
 
     @Test
+    void midInputSlashPublishesTheInlineCommandGhost() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("see /cl here", "see /cl".length());
+
+        assertEquals(new InlineCommandCompletion.Ghost("ear", "clear", "see /cl".length()),
+            input.ghost, "2.1.236's kms/xDc complete a mid-input /command as ghost text");
+        controller.close();
+    }
+
+    @Test
+    void midInputGhostClosesAnOpenDropdownAndClearsWhenTheTokenEnds() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+        controller.onQueryChange("/cl", 3);
+        assertFalse(input.suggestions.isEmpty());
+
+        controller.onQueryChange("/model /cl", "/model /cl".length());
+        assertTrue(input.suggestions.isEmpty(), "236 clears suggestions while a ghost exists");
+        assertEquals("clear", input.ghost.fullCommand());
+
+        controller.onQueryChange("/model /cl ", "/model /cl ".length());
+        assertNull(input.ghost);
+        controller.close();
+    }
+
+    @Test
+    void removingTheSlashClearsAStaleGhost() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+        controller.onQueryChange("x /cl", 5);
+        assertNotNull(input.ghost);
+
+        controller.onQueryChange("x ", 2);
+
+        assertNull(input.ghost, "plain text must not keep the ghost of a deleted token");
+        controller.close();
+    }
+
+    @Test
+    void midInputGhostIsCaseInsensitiveAndSkipsExactOrBareTokens() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("x /CL", 5);
+        assertEquals(new InlineCommandCompletion.Ghost("ear", "clear", 5), input.ghost);
+
+        controller.onQueryChange("x /clear", 8);
+        assertNull(input.ghost, "an exact command has nothing left to complete");
+
+        controller.onQueryChange("x /", 3);
+        assertNull(input.ghost, "xDc returns null for an empty partial command");
+        controller.close();
+    }
+
+    @Test
+    void argumentTakingLeadingCommandSuppressesTheMidInputGhost() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        registry.register(new ResumeCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/resume foo /cl", "/resume foo /cl".length());
+        assertNull(input.ghost, "236 jIE excludes a leading /resume");
+
+        controller.onQueryChange("x /res", 6);
+        assertEquals(new InlineCommandCompletion.Ghost("ume", "resume", 6), input.ghost);
+        controller.close();
+    }
+
+    @Test
+    void unmatchedLeadingCommandShowsTheNoCommandsMatchMessage() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/zzz", 4);
+        assertEquals("No commands match \"/zzz\"", input.emptyMessage);
+
+        controller.onQueryChange("/cl", 3);
+        assertNull(input.emptyMessage, "a matching query replaces the message with rows");
+
+        controller.onQueryChange("/", 1);
+        assertNull(input.emptyMessage, "236 requires more than the bare slash");
+        controller.close();
+    }
+
+    @Test
     void caretInsideLeadingCommandTokenWithTrailingTextClosesTheDropdown() {
         CommandRegistry registry = new CommandRegistry();
         registry.register(new ClearCommand());
@@ -331,6 +430,61 @@ class SuggestionControllerTest {
             "2.1.236 skips its slash branch when a space follows the command and the caret is "
                 + "not on a trailing space, so parking the caret inside the command must not "
                 + "leave a dropdown that would replace the whole input on accept");
+        controller.close();
+    }
+
+    @Test
+    void asciiTailGluedToLeadingCommandOffersNoCompletionThatWouldDropIt() {
+        assertNoDropdownForGluedTail("hello");
+    }
+
+    @Test
+    void hyphenatedAsciiTailGluedToLeadingCommandOffersNoCompletionThatWouldDropIt() {
+        assertNoDropdownForGluedTail("hello-world");
+    }
+
+    @Test
+    void cjkTailGluedToLeadingCommandOffersNoCompletionThatWouldDropIt() {
+        assertNoDropdownForGluedTail("帮我看下这个问题");
+    }
+
+    @Test
+    void punctuationTailGluedToLeadingCommandOffersNoCompletionThatWouldDropIt() {
+        assertNoDropdownForGluedTail("(hello");
+    }
+
+    @Test
+    void tailCompletingTheCommandNameStillMatchesTheFullToken() {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/clear", "/cl".length());
+
+        assertTrue(input.suggestions.stream()
+            .anyMatch(s -> Strings.CS.equals(s.primary(), "/clear")),
+            "2.1.236 matches the full token, so a tail that finishes the name keeps the command");
+        controller.close();
+    }
+
+    /**
+     * Typing {@code /cl} in front of existing text leaves the caret inside a token that
+     * runs on into that text. 2.1.236 matches the full input, so nothing matches and Tab
+     * has nothing to accept; matching only the text before the caret offers {@code /clear},
+     * and accepting it replaces the whole input and loses the tail.
+     */
+    private static void assertNoDropdownForGluedTail(String tail) {
+        CommandRegistry registry = new CommandRegistry();
+        registry.register(new ClearCommand());
+        CapturingInputPanel input = new CapturingInputPanel();
+        SuggestionController controller = controller(registry, input);
+
+        controller.onQueryChange("/cl" + tail, "/cl".length());
+
+        assertTrue(input.suggestions.isEmpty(),
+            "the tail \"" + tail + "\" is part of the token 2.1.236 matches, so no command "
+                + "may be offered; got " + input.suggestions);
         controller.close();
     }
 
@@ -483,19 +637,35 @@ class SuggestionControllerTest {
         private String argumentHint;
         private volatile List<SuggestionPanel.Suggestion> suggestions = List.of();
         private int hideCalls;
+        private InlineCommandCompletion.Ghost ghost;
+        private String emptyMessage;
 
         @Override public boolean isSuppressingSuggestions() { return false; }
-        @Override public void hideSuggestions() { hideCalls++; suggestions = List.of(); }
+        @Override public void hideSuggestions() {
+            hideCalls++;
+            suggestions = List.of();
+            emptyMessage = null;
+        }
         @Override public void setArgumentHint(String hint) { argumentHint = hint; }
+        @Override public void setInlineCommandGhost(InlineCommandCompletion.Ghost next) {
+            ghost = next;
+        }
+        @Override public void showSuggestionsEmptyMessage(String message, int width) {
+            suggestions = List.of();
+            emptyMessage = message;
+        }
         @Override public void showSuggestions(List<SuggestionPanel.Suggestion> items, int width) {
             suggestions = List.copyOf(items);
+            emptyMessage = null;
         }
         @Override public void showBashPathSuggestions(
                 List<SuggestionPanel.Suggestion> items, int width) {
             suggestions = List.copyOf(items);
+            emptyMessage = null;
         }
         @Override public void showSuggestions(List<SuggestionPanel.Suggestion> items, int width, int commandColumnWidth) {
             suggestions = List.copyOf(items);
+            emptyMessage = null;
         }
     }
 }

@@ -1,8 +1,6 @@
 package com.claudecode.ui.lanterna.suggest;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +30,29 @@ class SuggestionPanelTest {
         assertTrue(panel.isVisible());
         assertEquals(2, panel.getPreferredSize().getRows());
 
+        panel.hide();
+        assertFalse(panel.isVisible());
+        assertEquals(0, panel.getPreferredSize().getRows());
+    }
+
+    @Test
+    void emptyMessageOccupiesOneRowWithoutOfferingASelection() {
+        SuggestionPanel panel = new SuggestionPanel();
+
+        panel.setEmptyMessage("No commands match \"/zzz\"", 80);
+
+        assertFalse(panel.hasSuggestions(), "the message is not a selectable suggestion");
+        assertTrue(panel.isVisible());
+        assertEquals(1, panel.getPreferredSize().getRows());
+        assertEquals(List.of("  No commands match \"/zzz\""), List.of(panel.renderedRows(80)));
+        assertNull(panel.acceptSelected());
+
+        panel.setSuggestions(List.of(new SuggestionPanel.Suggestion("/clear", "Clear")), 80);
+        assertTrue(panel.hasSuggestions());
+        assertEquals(1, panel.renderedRows(80).length);
+        assertFalse(Strings.CS.contains(panel.renderedRows(80)[0], "No commands match"));
+
+        panel.setEmptyMessage("No commands match \"/q\"", 80);
         panel.hide();
         assertFalse(panel.isVisible());
         assertEquals(0, panel.getPreferredSize().getRows());
