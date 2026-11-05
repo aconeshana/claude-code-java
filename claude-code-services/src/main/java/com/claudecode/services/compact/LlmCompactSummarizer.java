@@ -144,11 +144,16 @@ public final class LlmCompactSummarizer implements CompactSummarizer {
             log.warn("Compact fork produced no summary (tool calls: {}); retrying without tools",
                 String.join(", ", toolOnly.toolNames()));
             try {
-                return runFork(client,
-                    forkBuilder.buildWithoutTools(messages, compactPrompt, "compact"));
+                SummaryResult retryResult =
+                    runFork(client, forkBuilder.buildWithoutTools(messages, compactPrompt, "compact"));
+                log.debug("Compact tool-less retry returned {} text char(s)",
+                    retryResult.text() == null ? 0 : retryResult.text().length());
+                return retryResult;
             } catch (ToolOnlySummaryException stillToolOnly) {
                 // Even with no catalog declared the model answered with a tool
                 // call. Report it as the original hard failure.
+                log.warn("Compact tool-less retry still returned tool calls: {}",
+                    String.join(", ", stillToolOnly.toolNames()));
                 throw new CompactException(stillToolOnly.getMessage(), stillToolOnly.usage());
             }
         }

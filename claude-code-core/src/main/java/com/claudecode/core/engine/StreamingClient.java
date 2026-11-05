@@ -326,6 +326,32 @@ public interface StreamingClient {
                 fastMode, onFastModeFailure);
         }
 
+        /**
+         * Copy of this request with its tool catalog emptied.
+         *
+         * <p>This is the compaction fallback. A compaction fork consumes the
+         * response as a plain text stream with no execution loop, so a model
+         * that answers it with a tool call spends the whole turn and leaves no
+         * summary behind. Every other component is kept, which is what makes
+         * the retry a cache-sharing request rather than a fresh one: the
+         * conversation prefix, system prompt and cache breakpoint are
+         * unchanged, so it still reads the session's cached prefix.
+         *
+         * <p>Expressed by clearing {@code tools} rather than by setting
+         * {@code toolChoice} to {@code "none"} because an empty catalog is the
+         * portable spelling: {@code tool_choice: "none"} is rejected outright
+         * by several OpenAI-compatible servers, while a declared-tool-free
+         * request is universally valid.
+         */
+        public StreamRequest withoutTools() {
+            return new StreamRequest(
+                model, maxTokens, systemPrompt, messages, stream, List.of(), jsonSchema,
+                effort, fallbackModel, maxOutputTokensOverride, taskBudget, toolChoice,
+                onStreamingFallback, thinkingEnabled, sessionId, agentId,
+                skipCacheWrite, querySource, abortController, thinkingBudgetTokens,
+                fastMode, onFastModeFailure);
+        }
+
         public record RequestMessage(String role, Object content) {}
 
         /**

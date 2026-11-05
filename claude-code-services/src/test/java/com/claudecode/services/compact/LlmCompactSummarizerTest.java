@@ -3,12 +3,14 @@ package com.claudecode.services.compact;
 import org.apache.commons.lang3.Strings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.api.ApiException;
+import com.claudecode.core.engine.CacheSharingForkBuilder;
 import com.claudecode.runtime.query.DefaultQuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.core.engine.SessionIdentity;
@@ -499,6 +501,100 @@ class LlmCompactSummarizerTest {
 
         assertTrue(Strings.CS.contains(failure.getMessage(), "Bash"), failure.getMessage());
         assertEquals(2, requests.size(), "exactly one retry, never a loop");
+    }
+
+    /**
+     * The sub-agent path reaches the fork through a {@link CacheSharingForkBuilder},
+     * and that builder has a delegating default for {@code buildWithoutTools}.
+     * A one-method implementation — which is what a lambda gives you — therefore
+     * builds the "tool-less" retry with the full catalog still declared, so the
+     * retry re-issues the very request that just failed and the fallback can
+     * never recover. This pins the two-method requirement.
+     */
+    @Test
+    void delegatingForkBuilderStillEmitsAnEmptyCatalogOnTheRetry() {
+        List<StreamingClient.StreamRequest> requests = new ArrayList<>();
+        StreamingClient client = new StreamingClient() {
+            @Override
+            public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                requests.add(request);
+                if (requests.size() == 1) return toolOnlyTurn(request);
+                return textTurn(request, "<summary>recovered</summary>");
+            }
+
+            @Override
+            public String getModel() { return "fake"; }
+        };
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .model("qwen3.8-flash-next")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .build());
+
+        // The shape DefaultSubAgentFactory wires: both methods delegated by hand
+        // rather than letting buildWithoutTools fall through to build.
+        CacheSharingForkBuilder builder = new CacheSharingForkBuilder() {
+            @Override
+            public StreamingClient.StreamRequest build(
+                    List<Message> messages, String prompt, String querySource) {
+                return engine.forks().buildCacheSharingRequest(messages, prompt, querySource);
+            }
+
+            @Override
+            public StreamingClient.StreamRequest buildWithoutTools(
+                    List<Message> messages, String prompt, String querySource) {
+                return engine.forks().buildWithoutTools(messages, prompt, querySource);
+            }
+        };
+
+        CompactSummarizer.SummaryResult result =
+            new LlmCompactSummarizer(client, builder).summarizeWithUsage(List.of(), "COMPACT PROMPT");
+
+        assertEquals("<summary>recovered</summary>", result.text());
+        assertEquals(2, requests.size(), "the text-free turn must be retried exactly once");
+        assertEquals(List.of("Read"), requests.getFirst().tools().stream()
+            .map(StreamingClient.StreamRequest.ToolDef::name).toList());
+        assertTrue(requests.get(1).tools().isEmpty(),
+            "the fallback must drop every tool; a delegating default would keep Read here");
+    }
+
+    /**
+     * {@code List.of()} is immutable, so an emptied catalog cannot be mutated
+     * afterwards, and every other component of the fork — including the
+     * session's system prompt, the conversation prefix and the cache-marker
+     * flag — has to survive the copy. Otherwise the retry stops being a
+     * cache-sharing request and re-reads the whole conversation uncached.
+     */
+    @Test
+    void withoutToolsKeepsEveryOtherForkComponent() {
+        DefaultQuerySession engine = new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(new FakeStreamingClient())
+            .model("glm-5.2")
+            .systemPrompt("full-main-system-prompt")
+            .maxTokens(32_000)
+            .toolExecutor(new OneToolExecutor())
+            .claudeMdContentSupplier(() -> "PROJECT MEMORY")
+            .sessionIdentity(SessionIdentity.of("session-fallback"))
+            .build());
+        engine.forks();
+
+        StreamingClient.StreamRequest withTools = engine.forks()
+            .buildCacheSharingRequest(List.of(), "COMPACT PROMPT", "compact");
+        StreamingClient.StreamRequest noTools = engine.forks()
+            .buildWithoutTools(List.of(), "COMPACT PROMPT", "compact");
+
+        assertFalse(withTools.tools().isEmpty(), "the primary fork still declares the narrowed set");
+        assertTrue(noTools.tools().isEmpty(), "the fallback declares nothing");
+        assertEquals(withTools.systemPrompt(), noTools.systemPrompt());
+        assertEquals(withTools.messages(), noTools.messages());
+        assertEquals(withTools.model(), noTools.model());
+        assertEquals(withTools.maxTokens(), noTools.maxTokens());
+        assertEquals(withTools.sessionId(), noTools.sessionId());
+        assertEquals(withTools.querySource(), noTools.querySource());
+        assertEquals(withTools.skipCacheWrite(), noTools.skipCacheWrite());
+        assertTrue(noTools.skipCacheWrite(),
+            "the fallback is still a fork and must not move the main loop's cache breakpoint");
     }
 
     private static Iterator<StreamingClient.StreamingEvent> toolOnlyTurn(

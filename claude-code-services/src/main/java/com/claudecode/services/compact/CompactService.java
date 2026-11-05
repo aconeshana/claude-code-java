@@ -938,6 +938,12 @@ public class CompactService implements MessageCompactor {
         Pattern.compile("(?m)^#{1,6}[ \\t]*(?:Summary|SUMMARY|summary|摘要)[ \\t]*$");
 
     /**
+     * Any Markdown heading, at any level. Used to end the body a summary heading governs: a
+     * {@code ## Summary} owns everything up to the next heading, not the whole rest of the answer.
+     */
+    private static final Pattern MARKDOWN_ANY_HEADING = Pattern.compile("(?m)^#{1,6}[ \\t]+\\S");
+
+    /**
      * Minimum characters a Markdown summary must carry to count. A length floor is used rather than
      * a line count because a whole summary may be one long line; it is set low because a CJK
      * summary carries far more meaning per character than an English one.
@@ -965,7 +971,9 @@ public class CompactService implements MessageCompactor {
         The Markdown heading form is additionally accepted: 2.1.236 accepts any non-empty \
         assistant text, so requiring the exact XML/`Summary:` spelling made every weak-model \
         /compact fail with "the model answered without a summary section" even when the model \
-        had written a complete, usable summary under a different heading.""")
+        had written a complete, usable summary under a different heading. That heading must \
+        carry its own body: the text is taken up to the next heading, not to the end of the \
+        answer, so a section named "Summary" cannot borrow length from the sections after it.""")
     static boolean containsSummarySection(String summary) {
         if (StringUtils.isBlank(summary)) return false;
         if (SUMMARY_SECTION.matcher(summary).find() || SUMMARY_HEADER.matcher(summary).find()) {
@@ -974,7 +982,19 @@ public class CompactService implements MessageCompactor {
         Matcher heading = SUMMARY_MARKDOWN_HEADING.matcher(summary);
         while (heading.find()) {
             String body = summary.substring(heading.end());
-            if (body.strip().length() >= MARKDOWN_SUMMARY_MIN_BODY_CHARS) return true;
+            // The heading governs only its own section: the next heading starts a
+            // different section, so what follows it is not this heading's body.
+            // Without this bound a reply could pass on the strength of the rest of
+            // the answer rather than on a summary, which is what keeps a refusal
+            // from being persisted as isCompactSummary (see @Explanation above).
+            Matcher next = MARKDOWN_ANY_HEADING.matcher(body);
+            if (!next.find()) {
+                if (body.strip().length() >= MARKDOWN_SUMMARY_MIN_BODY_CHARS) return true;
+                continue;
+            }
+            if (body.substring(0, next.start()).strip().length() >= MARKDOWN_SUMMARY_MIN_BODY_CHARS) {
+                return true;
+            }
         }
         return false;
     }

@@ -7,6 +7,7 @@ import com.claudecode.core.agent.BuiltInAgentDefinitions;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.engine.AbortController;
+import com.claudecode.core.engine.CacheSharingForkBuilder;
 import com.claudecode.core.engine.CostCalculator;
 import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.NoOpToolExecutor;
@@ -655,12 +656,31 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         MessageCompactor subCompact = compactFactory != null
             ? compactFactory.createForSubAgent(agentId, sessionIdentity,
                 () -> engineBox[0].forks().getFileStateCache(),
-                // Compaction forks the sub-agent's own session, so it carries
-                // that session's system prompt and tool catalog — a sub-agent
-                // that has called a tool would otherwise compact into a request
-                // whose tool_use blocks have no declared tools.
-                (messages, prompt, querySource) -> engineBox[0].forks()
-                    .buildCacheSharingRequest(messages, prompt, querySource))
+                // Both fork shapes are delegated rather than forwarded through a
+                // single method reference: `buildWithoutTools` has a delegating
+                // default on CacheSharingForkBuilder, so a one-method lambda
+                // silently builds the tool-less fallback with the full catalog
+                // still declared and the retry can never succeed.
+                new CacheSharingForkBuilder() {
+                    @Override
+                    public StreamingClient.StreamRequest build(
+                            List<Message> messages, String prompt, String querySource) {
+                        // Compaction forks the sub-agent's own session, so it
+                        // carries that session's system prompt and tool catalog —
+                        // a sub-agent that has called a tool would otherwise
+                        // compact into a request whose tool_use blocks have no
+                        // declared tools.
+                        return engineBox[0].forks()
+                            .buildCacheSharingRequest(messages, prompt, querySource);
+                    }
+
+                    @Override
+                    public StreamingClient.StreamRequest buildWithoutTools(
+                            List<Message> messages, String prompt, String querySource) {
+                        return engineBox[0].forks()
+                            .buildWithoutTools(messages, prompt, querySource);
+                    }
+                })
             : null;
         QuerySessionFactory factory = Objects.requireNonNull(
             querySessionFactory, "QuerySessionFactory is not wired");

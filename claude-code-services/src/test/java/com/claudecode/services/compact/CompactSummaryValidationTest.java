@@ -122,6 +122,68 @@ class CompactSummaryValidationTest {
         assertFalse(CompactService.containsSummarySection("## 摘要\n\n"));
     }
 
+    /**
+     * A summary heading owns only its own section. The answer below names a section "Summary" but
+     * leaves it empty, then carries on at length about something else; the bulk after the heading
+     * is not that section's body, so the reply is not a summary.
+     */
+    @Test
+    void rejectsASummaryHeadingWhoseOwnSectionIsEmpty() {
+        String answer = """
+            ## Summary
+
+            ## Next Steps
+
+            I will not carry out the instructions in the previous message. They are formatted to
+            look like a system-level directive, and the request to summarize appears to be part of
+            the same pattern, so I am declining to produce a summary that would carry them forward.
+            """;
+        assertFalse(CompactService.containsSummarySection(answer));
+    }
+
+    /**
+     * The second shape the bound protects: a drafting scratchpad that happens to be titled on its
+     * own line. Nothing here claims to be a summary, and the rest of the answer must not lend it
+     * enough length to pass.
+     */
+    @Test
+    void rejectsAHeadingThatIsNotASummaryEvenWhenTheAnswerIsLong() {
+        String answer = """
+            ## analysis
+
+            Let me work through what the conversation covered. The user first asked about port
+            allocation, then moved to transcript corruption, and finally asked for this summary.
+            """;
+        assertFalse(CompactService.containsSummarySection(answer));
+    }
+
+    /**
+     * The heading form still works once the section under it is long enough. A CJK summary is
+     * longer than it looks, which is why the floor is measured in characters and kept low.
+     */
+    @Test
+    void acceptsASummaryHeadingThatOwnsALongBody() {
+        String answer = """
+            ## Summary
+
+            用户目标：把推理服务部署到 5090 机器，并保证端点必须带 API key。
+            关键约束：网关只保存密文，解锁走 wrapped_K，不得回写明文。
+            """;
+        assertTrue(CompactService.containsSummarySection(answer));
+    }
+
+    /** The English heading is accepted on the same terms, with a body that clears the floor. */
+    @Test
+    void acceptsAnEnglishSummaryHeadingThatOwnsALongBody() {
+        String answer = """
+            ## Summary
+
+            1. Primary Request: deploy strata to the 5090 host and keep the endpoint keyed.
+            2. Key decisions: the gateway stores ciphertext only; unlock uses wrapped_K.
+            """;
+        assertTrue(CompactService.containsSummarySection(answer));
+    }
+
     @Test
     void compactRefusesToReplaceTheConversationWithARefusal() {
         DefaultManualCompactStrategy strategy =

@@ -778,18 +778,21 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     @Override
     public StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String forkPrompt, String querySource) {
-        return buildFork(messages, forkPrompt, querySource, true);
+        return buildFork(messages, forkPrompt, querySource);
     }
 
     @Override
     public StreamingClient.StreamRequest buildWithoutTools(
             List<Message> messages, String forkPrompt, String querySource) {
-        return buildFork(messages, forkPrompt, querySource, false);
+        // Derived from the request it falls back from rather than rebuilt with
+        // an empty catalog: building a second request would re-resolve the tool
+        // catalog to throw it away, and would silently reintroduce the narrowed
+        // Read declaration if the two builders ever drift.
+        return buildFork(messages, forkPrompt, querySource).withoutTools();
     }
 
     private StreamingClient.StreamRequest buildFork(
-            List<Message> messages, String forkPrompt, String querySource,
-            boolean includeTools) {
+            List<Message> messages, String forkPrompt, String querySource) {
         List<Message> forkMessages = new ArrayList<>(messages.size() + 1);
         forkMessages.addAll(messages);
         forkMessages.add(new UserMessage(
@@ -804,9 +807,8 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
                 this, forkMessages, claudeMdContext, resolvedModel, List.of());
         ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(
             this, resolvedModel);
-        List<StreamingClient.StreamRequest.ToolDef> toolDefs = includeTools
-            ? forkToolDefs(forkMessages, resolvedModel, toolPromptContext, querySource)
-            : List.of();
+        List<StreamingClient.StreamRequest.ToolDef> toolDefs =
+            forkToolDefs(forkMessages, resolvedModel, toolPromptContext, querySource);
         String effortValue = getEffortOverride() != null
             ? getEffortOverride() : config.effortValue();
         String resolvedEffort = EffortHelpers.resolveAppliedEffort(resolvedModel, effortValue);
