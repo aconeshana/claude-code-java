@@ -187,6 +187,62 @@ class TranscriptLoaderTest {
             transcript.contentReplacements());
     }
 
+    /**
+     * A fork's prefix is structurally immune to a later parent rewind: the prefix is
+     * rebuilt by walking the parent chain <em>upward</em> from {@code parentLastUuid},
+     * and every row the parent wrote after the fork descends from that point, so none
+     * of them is reachable — whether or not the parent later rewound them away.
+     *
+     * <p>This matches 2.1.236 {@code vxT} ({@code B_t(parent, parentLastUuid)}), which
+     * likewise never consults the rewind anchor because the fork pointer already bounds
+     * the prefix.
+     */
+    @Test
+    void forkedAgentPrefixExcludesRowsTheParentWroteAfterTheFork() throws Exception {
+        String agentId = "a1234567890abcdef";
+        Path project = temp.resolve("project");
+        Path parent = project.resolve(SESSION + ".jsonl");
+        Path agent = project.resolve(SESSION).resolve("subagents")
+            .resolve("agent-" + agentId + ".jsonl");
+        // Parent forked at parent-a, then continued and later rewound that continuation
+        // away, leaving parent-abandoned stranded on disk below the anchor. Neither the
+        // continuation nor the anchor can reach the fork prefix, which walks upward from
+        // parent-a.
+        write(parent,
+            user("parent-u", null, "2026-01-01T00:00:00Z", "parent", false, null),
+            assistantText("parent-a", "parent-u", "2026-01-01T00:00:01Z", "parent", "answer"),
+            user("parent-abandoned-u", "parent-a", "2026-01-01T00:00:02Z",
+                "dangerous segment", false, null),
+            assistantText("parent-abandoned-a", "parent-abandoned-u", "2026-01-01T00:00:03Z",
+                "msg-abandoned", "flagged"),
+            // 236 rewinds to parent-a: anchor on the assistant preceding the target.
+            "{\"type\":\"last-prompt\",\"leafUuid\":\"parent-a\",\"explicit\":true,"
+                + "\"rewound\":true,\"sessionId\":\"" + SESSION + "\"}");
+        write(agent,
+            "{\"type\":\"fork-context-ref\",\"agentId\":\"" + agentId + "\","
+                + "\"parentSessionId\":\"" + SESSION + "\","
+                + "\"parentLastUuid\":\"parent-a\",\"contextLength\":2}",
+            user("agent-u", null, "2026-01-01T00:00:04Z", "child", true, agentId),
+            assistantText("agent-a", "agent-u", "2026-01-01T00:00:05Z", "child", "done",
+                true, agentId));
+
+        TranscriptLoader loader = new TranscriptLoader();
+        TranscriptLoader.TranscriptFile parentFile = loader.loadTranscriptFile(parent);
+        // The parent really does still hold the abandoned rows on disk, and the anchor
+        // really is recognized — the exclusion below is structural, not a parse artifact.
+        assertTrue(parentFile.messageEntries().keySet()
+            .containsAll(List.of("parent-abandoned-u", "parent-abandoned-a")));
+        assertEquals("parent-a", parentFile.rewindAnchorUuid());
+
+        TranscriptLoader.AgentTranscript transcript = loader
+            .getAgentTranscript(agent, agentId).orElseThrow();
+
+        assertEquals(List.of("parent-u", "parent-a", "agent-u", "agent-a"),
+            transcript.messages().stream().map(Message::uuid).toList(),
+            "the fork prefix walks upward from parentLastUuid, so nothing the parent wrote "
+                + "after the fork can enter the agent's context");
+    }
+
     @Test
     void removeTranscriptMessageMatchesUuidFieldAndRetainsMalformedRows() throws Exception {
         Path file = temp.resolve("remove.jsonl");

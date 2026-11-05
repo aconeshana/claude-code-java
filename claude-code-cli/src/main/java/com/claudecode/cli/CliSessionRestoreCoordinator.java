@@ -18,6 +18,7 @@ import com.claudecode.session.SessionInfo;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionSearch;
 import com.claudecode.session.SessionStorage;
+import com.claudecode.session.TranscriptLoader;
 import com.claudecode.session.TranscriptRecorder;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -178,7 +179,19 @@ final class CliSessionRestoreCoordinator {
             String sessionId,
             boolean continuing) {
         SessionStorage storage = new SessionStorage();
-        List<Message> messages = MessagesDeserializer.deserialize(storage.readMessages(transcript));
+        // Resolve the conversation through the persisted leaf chain, not by reading every
+        // row: a rewound session keeps its abandoned rows on disk as an alternate branch and
+        // records a rewound last-prompt anchor, so a flat read would pull the discarded
+        // branch back into the resumed context (197 omy/lZt anchor + 236 G6e chain walk).
+        // A transcript with no chain at all is tolerated here rather than refused: the
+        // loader reports it strictly, but resuming an empty session is an empty conversation.
+        List<Message> loaded;
+        try {
+            loaded = storage.loadTranscriptFromFile(transcript).messages();
+        } catch (TranscriptLoader.TranscriptFileFormatException noChain) {
+            loaded = List.of();
+        }
+        List<Message> messages = MessagesDeserializer.deserialize(loaded);
         if (StringUtils.isNotBlank(request.resumeSessionAt())) {
             int selected = -1;
             for (int i = 0; i < messages.size(); i++) {

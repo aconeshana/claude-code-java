@@ -290,7 +290,60 @@ public class TranscriptRecorder implements TranscriptSink {
         Path sessionFile = sessionFile(sessionId);
         List<Message> retained = retainedMessages == null
             ? List.of() : List.copyOf(retainedMessages);
-        enqueue(sessionFile, () -> rebaseConversationChain(sessionFile, retained));
+        String anchorUuid = rewindAnchorUuid(retained);
+        enqueue(sessionFile, () -> {
+            rebaseConversationChain(sessionFile, retained);
+            writeRewindAnchor(sessionId, sessionFile, anchorUuid);
+        });
+    }
+
+    /**
+     * The uuid to persist as the rewind anchor: the assistant the rewound turn
+     * started after, else the retained chain tail.
+     *
+     * <p>Authority: the 2.1.197 bundle's {@code omy} scan and the 2.1.236 bundle's
+     * {@code omy}/{@code peo} pair, which walk back from the rewound turn to the
+     * first assistant and fall back to the nearest user when no assistant precedes it.
+     * Persisting the anchor is what lets a later resume resolve the retained chain
+     * instead of reading the abandoned rows back.
+     */
+    private static String rewindAnchorUuid(List<Message> retained) {
+        String nearestUser = null;
+        String nearestAssistant = null;
+        // Walk the retained prefix back to front, mirroring 236's omy: the first
+        // assistant encountered is the turn boundary the rewound prompt followed,
+        // and the nearest user is the fallback when no assistant precedes it.
+        for (int index = retained.size() - 1; index >= 0; index--) {
+            Message message = retained.get(index);
+            if (message == null || StringUtils.isBlank(message.uuid())) continue;
+            String type = message.type();
+            if (Strings.CS.equals("assistant", type)) {
+                nearestAssistant = message.uuid();
+                break;
+            }
+            if (Strings.CS.equals("user", type) && nearestUser == null) {
+                nearestUser = message.uuid();
+            }
+        }
+        return nearestAssistant != null ? nearestAssistant : nearestUser;
+    }
+
+    /**
+     * Append the {@code {"type":"last-prompt", leafUuid, explicit, rewound}} row that
+     * records where the abandoned branch was cut. Both 197 and 236 write this on rewind;
+     * without it a resumed session has no durable boundary and reads the orphan branch.
+     */
+    private void writeRewindAnchor(String sessionId, Path sessionFile, String anchorUuid) {
+        if (StringUtils.isBlank(anchorUuid)) return;
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        entry.put("type", "last-prompt");
+        entry.put("leafUuid", anchorUuid);
+        entry.put("explicit", true);
+        entry.put("rewound", true);
+        entry.put("sessionId", sessionId);
+        writeCustom(sessionId, sessionFile, entry);
+        currentLeaves.put(sessionFile.toString(),
+            new LeafState(anchorUuid, Instant.now()));
     }
 
     @Override
