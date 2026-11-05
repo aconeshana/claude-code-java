@@ -106,13 +106,19 @@ export const useConversations = create<ConversationsStore>((set, get) => ({
     const { fetchSnapshot } = await import('../api/client')
     const snapshot: MessagesSnapshot = await fetchSnapshot(sessionId)
     const messages = snapshot.messages.map(toMessageState)
-    // The snapshot is authoritative for content; frames that raced ahead of
-    // it would duplicate, so the conversation resets wholesale and the next
-    // frame id (already monotonic server-side) re-baselines the cursor.
+    // The snapshot is authoritative for CONTENT, but the cursor it replaces
+    // must survive: resetting lastFrameId to 0 un-dedupes every journaled
+    // frame still inside the ring, so a turn.started replayed on reconnect
+    // (or on a session.activated re-select) appended a second copy of a user
+    // row the snapshot already carried. Frame ids are monotonic server-side,
+    // so carrying the previous cursor forward drops exactly that overlap.
     set((state) => ({
       conversations: {
         ...state.conversations,
-        [sessionId]: snapshotConversation(messages, snapshot.running_since, snapshot.streaming),
+        [sessionId]: snapshotConversation(
+          messages, snapshot.running_since, snapshot.streaming,
+          state.conversations[sessionId]?.lastFrameId ?? 0,
+        ),
       },
     }))
   },
@@ -140,15 +146,20 @@ export const useConversations = create<ConversationsStore>((set, get) => ({
  * its elapsed clock) before the next frame arrives. Likewise `streaming`
  * seeds the draft of a block caught mid-stream, so the next delta's offset
  * continues it rather than gapping.
+ *
+ * `lastFrameId` is the cursor the snapshot replaces, carried over rather than
+ * zeroed — see loadSnapshot. A first load for a session passes 0, which is
+ * correct because there is no prior state for a frame to overlap.
  */
 function snapshotConversation(
   messages: readonly MessageState[],
   runningSince: number | undefined,
   streaming: StreamingDraft | undefined,
+  lastFrameId: number,
 ): ConversationState {
   return {
     messages,
-    lastFrameId: 0,
+    lastFrameId,
     turnRunning: runningSince !== undefined,
     ...(runningSince !== undefined ? { turnStartedAt: runningSince } : {}),
     ...(streaming !== undefined ? { streaming: { kind: streaming.kind, content: streaming.content } } : {}),
@@ -207,10 +218,39 @@ function toMessageState(message: SnapshotMessage): MessageState {
 function reduceFrame(state: ConversationState, frame: MirrorFrame): ConversationState {
   switch (frame.event) {
     case 'turn.started': {
+      // A replay overlap the cursor could not catch (a frame replayed after a
+      // snapshot that already folded the same prompt) lands here. The live row
+      // and the snapshot row carry different id spaces (live-user-N vs the
+      // durable uuid), so identity is compared on the facts both sides share.
+      //
+      // Only the trailing user row is eligible: a genuine second prompt with
+      // the same wording is always appended AFTER the first, so it can never
+      // match a row that was there before this frame. Matching anywhere in the
+      // transcript would swallow it — and a repeated "继续吧" is exactly the
+      // case this guard must not eat.
+      const text: string = frame.data.display_text
+      const turnStartedAt = frame.data.time ?? Date.now()
+      let trailing: (MessageState & { readonly kind: 'user' }) | undefined
+      for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+        const candidate = state.messages[i]!
+        if (candidate.kind === 'user') { trailing = candidate; break }
+      }
+      const alreadyShown = trailing !== undefined
+        && trailing.text === text
+        // The two clocks are taken at different moments (the snapshot stamps
+        // the row when it is written, the frame when the turn is dispatched),
+        // so equality is a strong signal, not a requirement: the cursor fix in
+        // loadSnapshot is what normally prevents the overlap, and this only
+        // needs to catch the case where that cursor was lost.
+        && (frame.data.time === undefined || trailing.time === undefined
+          || frame.data.time === trailing.time)
+      if (alreadyShown) {
+        return { ...settleDraft(state), turnRunning: true, turnStartedAt, lastError: null }
+      }
       const userMessage: MessageState = {
         kind: 'user',
         id: `live-user-${frame.id}`,
-        text: frame.data.display_text,
+        text,
         ...(frame.data.time !== undefined ? { time: frame.data.time } : {}),
         ...(frame.data.images !== undefined ? { images: frame.data.images } : {}),
       }
@@ -218,7 +258,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         ...settleDraft(state),
         messages: [...state.messages, userMessage],
         turnRunning: true,
-        turnStartedAt: frame.data.time ?? Date.now(),
+        turnStartedAt,
         lastError: null,
       }
     }

@@ -538,4 +538,57 @@ describe('conversations frame reduction', () => {
     expect(conversation.messages[0]).toMatchObject({ kind: 'user', time: 1_700_000_000_000 })
     expect(conversation.messages[1]).toMatchObject({ kind: 'assistant', time: 1_700_000_005_000 })
   })
+
+  // The user row reached the transcript twice because the snapshot already
+  // carried it while the replayed turn.started appended a second live row
+  // under a different id space. The cursor is what stops that overlap.
+  it('keeps the frame cursor across a snapshot reload', async () => {
+    store().applyFrame(frame('output.text', 7, { content: '已落盘' }))
+    expect(store().conversations[SESSION].lastFrameId).toBe(7)
+
+    const { fetchSnapshot } = await import('../api/client')
+    vi.mocked(fetchSnapshot).mockResolvedValue({ session_id: SESSION, messages: [] })
+    await store().loadSnapshot(SESSION)
+
+    expect(store().conversations[SESSION].lastFrameId).toBe(7)
+  })
+
+  it('drops a turn.started replayed after the snapshot already folded its prompt', async () => {
+    const PROMPT_AT = 1_700_000_000_000
+    const { fetchSnapshot } = await import('../api/client')
+    vi.mocked(fetchSnapshot).mockResolvedValue({
+      session_id: SESSION,
+      messages: [{ id: 'm-1', role: 'user', complete: true, text: '继续吧', time: PROMPT_AT }],
+    })
+    await store().loadSnapshot(SESSION)
+    // The snapshot re-baselined the cursor past a frame the ring still holds,
+    // so this replay is no longer caught by the id check alone.
+    store().applyFrame(frame('turn.started', 2, {
+      display_text: '继续吧', permission_mode: 'ask', origin: 'tui', time: PROMPT_AT,
+    }))
+
+    const rows = useConversations.getState().conversations[SESSION].messages
+      .filter((row) => row.kind === 'user')
+    expect(rows).toHaveLength(1)
+    // Only the duplicate row is suppressed; the turn itself still opens.
+    expect(store().conversations[SESSION].turnRunning).toBe(true)
+  })
+
+  // The guard above must not swallow a genuine repeat of the same wording: a
+  // second "继续吧" is dispatched later and carries its own clock.
+  it('appends a second prompt that repeats the previous wording', () => {
+    store().applyFrame(frame('turn.started', 1, {
+      display_text: '继续吧', permission_mode: 'ask', origin: 'tui', time: 1_700_000_000_000,
+    }))
+    store().applyFrame(frame('turn.completed', 2, { done: true, elapsed_ms: 5 }))
+    store().applyFrame(frame('turn.started', 3, {
+      display_text: '继续吧', permission_mode: 'ask', origin: 'tui', time: 1_700_000_060_000,
+    }))
+
+    const rows = useConversations.getState().conversations[SESSION].messages
+      .filter((row) => row.kind === 'user')
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => (row.kind === 'user' ? row.time : undefined)))
+      .toEqual([1_700_000_000_000, 1_700_000_060_000])
+  })
 })
