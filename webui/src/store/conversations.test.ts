@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessagesSnapshot, MirrorFrame } from '../api/types'
+import type { ToolProgressEntry } from './conversations'
 import { useConversations } from './conversations'
 
 vi.mock('../api/client', () => ({ fetchSnapshot: vi.fn() }))
@@ -590,5 +591,178 @@ describe('conversations frame reduction', () => {
     expect(rows).toHaveLength(2)
     expect(rows.map((row) => (row.kind === 'user' ? row.time : undefined)))
       .toEqual([1_700_000_000_000, 1_700_000_060_000])
+  })
+})
+
+describe('sub-agent progress reduction', () => {
+  beforeEach(() => {
+    useConversations.setState({ conversations: {} })
+  })
+
+  /** Launch a Task call and hand back its accumulated progress log. */
+  function progressOf(toolUseId = 'tu-task'): readonly ToolProgressEntry[] {
+    const rows = useConversations.getState().conversations[SESSION].messages
+    for (const row of rows) {
+      if (row.kind !== 'assistant') continue
+      const call = row.toolCalls.find((entry) => entry.toolUseId === toolUseId)
+      if (call != null) return call.progress
+    }
+    throw new Error('no tool call ' + toolUseId)
+  }
+
+  it('appends one entry per frame, in arrival order', () => {
+    // The sub-agent's live channel is a discrete update log, not a token
+    // stream: each frame is one whole message or status line, so the entries
+    // concatenate by arrival rather than merge by character offset.
+    store().applyFrame(frame('tool.started', 1, {
+      name: 'Task', tool_use_id: 'tu-task', input: { description: 'audit the router' },
+    }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'reading files',
+    }))
+    store().applyFrame(frame('tool.progress', 3, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', message: '3 of 9',
+    }))
+    store().applyFrame(frame('tool.progress', 4, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'done',
+    }))
+
+    expect(progressOf()).toEqual([
+      { kind: 'agent_progress', agentId: 'a1', content: 'reading files' },
+      { kind: 'agent_progress', agentId: 'a1', message: '3 of 9' },
+      { kind: 'agent_progress', agentId: 'a1', content: 'done' },
+    ])
+  })
+
+  it('starts every call with an empty log, and leaves unrelated calls alone', () => {
+    store().applyFrame(frame('tool.started', 1, { name: 'Bash', tool_use_id: 'tu-bash', input: {} }))
+    store().applyFrame(frame('tool.started', 2, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 3, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'go',
+    }))
+
+    expect(progressOf('tu-bash')).toEqual([])
+    expect(progressOf('tu-task')).toHaveLength(1)
+  })
+
+  it('ignores a progress frame for a tool call that never started', () => {
+    // An agent keeps running across a turn boundary; its progress can reach
+    // the client after the row was re-baselined by a snapshot and dropped.
+    store().applyFrame(frame('tool.progress', 1, {
+      kind: 'agent_progress', tool_use_id: 'tu-gone', agent_id: 'a1', content: 'orphan',
+    }))
+    expect(useConversations.getState().conversations[SESSION].messages).toEqual([])
+  })
+
+  it('applies a replayed frame id once, not twice', () => {
+    // tool.progress is journalled with a real id (it is not a transient
+    // delta), so the cursor check in applyFrame is what keeps an SSE
+    // reconnect's replay from duplicating every entry.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'once',
+    }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'twice',
+    }))
+
+    expect(progressOf()).toEqual([
+      { kind: 'agent_progress', agentId: 'a1', content: 'once' },
+    ])
+  })
+
+  it('collapses a re-sent activity line instead of appending it twice', () => {
+    // The producer re-sends the current activity as the child works, so the
+    // same line arrives on several frames. The TUI reads those through an
+    // observed-id set; here the already-shown line is a no-op, so one activity
+    // is one line rather than the same line repeated down the row.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'Bash(find .)',
+    }))
+    store().applyFrame(frame('tool.progress', 3, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'Bash(find .)',
+    }))
+
+    expect(progressOf()).toEqual([
+      { kind: 'agent_progress', agentId: 'a1', content: 'Bash(find .)' },
+    ])
+  })
+
+  it('keeps a repeated line that is not the one on screen', () => {
+    // Only a repeat of the *current* line is redundant: a child that returns
+    // to an earlier activity has genuinely done something again, and dropping
+    // it would misreport the sequence.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    for (const [id, content] of [[2, 'Read(a)'], [3, 'Read(b)'], [4, 'Read(a)']] as const) {
+      store().applyFrame(frame('tool.progress', id, {
+        kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content,
+      }))
+    }
+
+    expect(progressOf().map((entry) => entry.content)).toEqual(['Read(a)', 'Read(b)', 'Read(a)'])
+  })
+
+  it('stores no entry for a frame that carried no text at all', () => {
+    // Some frames are pure routing — the agent id with nothing to say. An
+    // entry with neither `content` nor `message` would render as a blank line.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'real',
+    }))
+    store().applyFrame(frame('tool.progress', 3, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', prompt: '',
+    }))
+
+    expect(progressOf().map((entry) => entry.content)).toEqual(['real'])
+  })
+
+  it('drops an out-of-order frame that arrives behind the cursor', () => {
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 5, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'later',
+    }))
+    store().applyFrame(frame('tool.progress', 3, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'earlier',
+    }))
+    store().applyFrame(frame('tool.progress', 6, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'newest',
+    }))
+
+    expect(progressOf().map((entry) => entry.content)).toEqual(['later', 'newest'])
+  })
+
+  it('keeps the whole log when the call completes', () => {
+    // The result card and the live log are two sources for one row: the log
+    // is the running view, the result is the settled one. Dropping the log on
+    // completion would blank a still-expanded row.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', agent_id: 'a1', content: 'step',
+    }))
+    store().applyFrame(frame('tool.completed', 3, {
+      status: 'completed',
+      tool_use_id: 'tu-task',
+      result: { type: 'task_tool_result', data: 'the sub-agent summary' },
+    }))
+
+    expect(progressOf()).toEqual([
+      { kind: 'agent_progress', agentId: 'a1', content: 'step' },
+    ])
+    const rows = useConversations.getState().conversations[SESSION].messages
+    const call = rows.flatMap((row) => (row.kind === 'assistant' ? row.toolCalls : []))
+      .find((entry) => entry.toolUseId === 'tu-task')
+    expect(call).toMatchObject({ status: 'executed', ready: true, resultData: 'the sub-agent summary' })
+  })
+
+  it('carries an entry whose frame omitted the agent id', () => {
+    // A status line emitted before the agent registers has no agent_id; the
+    // entry must still land so the row can show the line.
+    store().applyFrame(frame('tool.started', 1, { name: 'Task', tool_use_id: 'tu-task', input: {} }))
+    store().applyFrame(frame('tool.progress', 2, {
+      kind: 'agent_progress', tool_use_id: 'tu-task', message: 'starting',
+    }))
+
+    expect(progressOf()).toEqual([{ kind: 'agent_progress', message: 'starting' }])
   })
 })

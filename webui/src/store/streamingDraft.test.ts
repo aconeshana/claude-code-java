@@ -61,6 +61,7 @@ describe('withStreamingDraft', () => {
     const call = {
       toolUseId: 'tu', name: 'Bash', args: null, status: 'executed' as const, ready: true,
       resultData: null, resultType: null, resultError: null, transcriptPath: null, locations: null,
+      progress: [],
     }
     const rows = withStreamingDraft([user, openRow({ toolCalls: [call] })], { kind: 'text', content: 'Done' })
     expect(rows).toHaveLength(3)

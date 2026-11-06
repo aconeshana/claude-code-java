@@ -188,7 +188,7 @@ final class CliSessionRestoreCoordinator {
         List<Message> loaded;
         try {
             loaded = storage.loadTranscriptFromFile(transcript).messages();
-        } catch (TranscriptLoader.TranscriptFileFormatException noChain) {
+        } catch (TranscriptLoader.TranscriptFileFormatException _) {
             loaded = List.of();
         }
         List<Message> messages = MessagesDeserializer.deserialize(loaded);

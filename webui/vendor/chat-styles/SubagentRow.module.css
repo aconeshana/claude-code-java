@@ -1,0 +1,183 @@
+/* Subagent row — the expanded body of a `Task`/`Agent` tool call.
+ *
+ * The row header itself reuses `ToolRow.module.css` (the shared 24px
+ * disclosure chrome: leading / title / sep / summary / summarySuffix), so the
+ * subagent row sits in the transcript's tool-row rhythm. This file adds only
+ * what a generic tool row has no place for: the description-first label
+ * treatment upstream gives a catalog row, and the live progress log.
+ *
+ * Metric type follows upstream's catalog row (`SubagentHeaderLineage.module.css`):
+ * the token and duration cells read at the caption tier, tabular, right-aligned. */
+
+/* The description-first label is the row's own text, not a tool argument
+   echo: it keeps the secondary tier (ToolRow's `.summary`) but reads at the
+   primary ink so the agent's own words lead the row. */
+.summary {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.row {
+  align-items: center;
+}
+
+/* Trailing metric cell: upstream's `.metrics` column, flattened to the row's
+   single line — a compact count sits beside the summary rather than above it,
+   since this row has one metric, not two. */
+.metrics {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 4px 4px;
+}
+
+/* The prompt block: the sub-agent's own instruction, quoted back. A left
+   hairline in the l2 border tone marks it as quoted rather than authored by
+   the parent turn, and it is capped so a long briefing never buries the log. */
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-markdown-code-block);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.promptLabel,
+.progressLabel {
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xs-13);
+}
+
+.promptText {
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-markdown-code-block-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The live progress log: one entry per `tool.progress` frame, in arrival
+   order. Separated from the prompt by a hairline so the two sources (a static
+   prompt vs. a growing stream) never read as one block. */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.progressLine {
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A status line ("3 of 9") is the producer's own progress note, not the
+   sub-agent's words — one tier dimmer than a message. */
+.progressLine[data-role='status'] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The settled sub-agent result renders through the shared ReadBlock card: that
+   one *is* a body of output, so it keeps its line numbers as any file read.
+   (A live activity line does not — it is one line saying what the child is
+   doing, so it renders as itself.) */
+.progressBlock {
+  margin: 0;
+}
+
+.progressEmpty {
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xs-13);
+}
+
+/* The restored conversation. Its toggle sits below the live log, separated by
+   the same hairline that divides the prompt from the log, because it opens a
+   different source: the sibling agents' *stored* sidechain, not this turn's
+   stream. */
+.transcriptSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.transcriptToggle {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: pointer;
+}
+
+.transcriptToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.transcriptToggle:focus-visible {
+  outline: 1px solid var(--dsw-alias-label-primary);
+  outline-offset: 1px;
+}
+
+/* The restored rows are the chat's own row components, so this only sets the
+   reading column: the sub-agent's conversation is inset once against the
+   parent transcript, and capped so expanding it cannot take over the view. */
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--dsw-alias-border-l1);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.transcriptNote {
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xs-13);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transcriptNote[data-role='error'] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The reason a read failed is diagnostic text, not copy: it reads one tier
+   down from the sentence above it. */
+.transcriptDetail {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.transcriptRetry {
+  padding: 1px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: pointer;
+}
+
+.transcriptRetry:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

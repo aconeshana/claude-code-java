@@ -12,6 +12,7 @@ function tool(name: string, toolUseId: string): ToolCallState {
   return {
     toolUseId, name, args: null, status: 'pending', ready: true,
     resultData: null, resultType: null, resultError: null, transcriptPath: null, locations: null,
+    progress: [],
   }
 }
 

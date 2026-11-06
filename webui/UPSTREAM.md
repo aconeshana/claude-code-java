@@ -21,6 +21,7 @@ cordis/Typert RPC).
 | `ui-deliverables` (not a tree — two files, re-seated) | `packages/client/ui-deliverables/src/client/` (`ProducedFiles.tsx`, `ProducedFiles.module.css`) | The turn-tail delivered-files chip row. Upstream ships **no** diff viewer; the viewer here wraps the already-vendored `ui-primitives/DiffBlock` — see the section below |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
+| `vendor/ui-subagent/` | `packages/client/ui-subagent/src/client/` (`SubagentHeaderLineage.tsx`, `SubagentHeaderLineage.module.css`, `locales.ts`) | The header subagent catalog: descendant-count trigger + subagent menu. Upstream browses **child sessions**; this product's subagents are in-session `Task`/`Agent` calls, so the tree is flattened and the child-session machinery is cut — see the section below |
 
 ### `vendor/dsh-composer-menu/` — the composer "+" menu
 
@@ -1300,6 +1301,172 @@ Product-scope deviations (documented, not gaps):
   layout formula. The visual outcome (never upscale past the natural
   size, cap the long edge, crop multi-image tiles to a square) is the
   same; only the mechanism (CSS vs. precomputed JS box) differs.
+
+### `vendor/ui-subagent/` — the header subagent catalog
+
+**Ported 2026-11-04.** Upstream `packages/client/ui-subagent/src/client/`, at
+the pinned commit.
+
+| Upstream file | Disposition |
+|---|---|
+| `SubagentHeaderLineage.tsx` | **rewritten** → `SubagentCatalogMenu.tsx`. The row vocabulary, the counts, the metric column and the a11y structure are upstream's; everything that assumed upstream's session model is replaced |
+| `SubagentHeaderLineage.module.css` | **kept, cut** → `SubagentCatalogMenu.module.css`. Same class names; two blocks removed (below) |
+| `locales.ts` | **mapped** → `src/i18n/dictionaries/subagent.ts`. Upstream ships 8 locales; this shell is zh/en only (the `stats.ts` status quo), so 6 are cut |
+| `IconUsersOutline` (`ui-primitives` sprite) | **rewritten** → `IconUsersOutline.tsx` (see Deviations) |
+| `src/index.ts`, `src/client/index.ts` | **cut** — cordis `apply(ctx)` plugin entry; the component is imported directly here |
+| `src/client/slots.ts` | **cut** — pure cordis slot declarations; this webui has no slot plumbing |
+| `SubagentReadOnlyComposer.tsx` | **cut** — a composer for a child conversation, which this product has none of |
+| `src/client/sidebar-chat/*` | **cut** — `ctx.effect`/`ctx.resources.register`/`ctx.sidebarRightTabs.register` wiring for a child-session sidebar pane this product has no seat for |
+| `locale/*.json` ×8, `package.json`, `tsconfig.json`, `tsdown.config.ts`, `css-modules.d.ts`, `tests/*` | **cut** — build scaffolding and locales; the tests are re-written for vitest |
+
+#### The structural fact that drives every cut
+
+Upstream's catalog is a **session tree**: it browses *child sessions* from a
+`subagentCatalog` projection, one entry per child, recursed with
+`toggleBranch` + breadcrumbs, addressable as
+`dsh-resource://subagentchat/session/<child>?parent=<parent>&mode=<mode>`, and
+continuable through `subagents/prompt`.
+
+This product's subagents are **in-session `Task`/`Agent` tool calls** — the
+same split the `vendor/dsh-turn-process/` section records under
+**`isSubagentDelegationTool` matches `Agent`/`Task`, not upstream's
+`subagent`/`subagent_*`**; that section is the authority on the delegation
+rule and the turn-level count. There is no child to expand into. So:
+
+| Upstream construct | Here |
+|---|---|
+| `CatalogRows` recursion, `toggleBranch`, `expandedBranches` | **cut** — every row is a leaf; the list is flat |
+| Breadcrumb switcher (`.switcherRoot`/`.switcherTrigger`/`.ancestorSwitcherTrigger`/`.switcherTitle`) | **cut** — no parent/child to switch between |
+| Disclosure gutter, tree left/right collapse-and-descend keys | **cut** — nothing to disclose. *List* navigation survives the flattening: `ArrowDown` on the trigger opens onto the first row, and `Home`/`End`/`ArrowUp`/`ArrowDown` walk the rows (see the keyboard note below — upstream's own binding is why the trigger is the key that matters) |
+| External-task leaves, shared-task footer | **cut** — this product has no shared/external task sessions |
+| `subagentCatalog` projection reads + loading/migration state machine | **replaced** — rows come from `AgentRecord[]`, this gateway's extension on `/api/session/context/detail`. There is no projection to migrate, so only two states remain: records arrived, or they have not |
+| "Open in sidebar" row action | **reserved empty** (`.sidebarSpace`) — no right-side pane for a subagent conversation. The slot keeps the metric column aligned; the current-row check uses it when applicable |
+| `openChild` / `refreshProjection` | **replaced** by the `onOpen(agentId)` / `onRetry` props |
+| `@position-try` blocks + `.menu`'s CSS anchor positioning | **cut** — the menu portals through React and positions itself; the surface's own look (6px padding, 360px card capped to the viewport, 560px height cap, prominent elevation + hairline, l2 scrollbar thumbs) is kept |
+
+**Kept verbatim in behaviour**: the 500ms hover tooltip; the 150ms hover-open
+dwell and 120ms hover-close grace; the click-to-pin rule (a click on an
+already-pinned menu dismisses, a hover-opened one pins); the click's focus
+hand-off into the menu and `changeOpen`'s `restoreFocus` on dismissal;
+outside-pointer and Escape dismissal; the trigger's `aria-haspopup="dialog"`/`aria-expanded`/
+`aria-describedby` wiring with the running count as the accessible
+description; the running-indicator slot; the two-line metric column
+(tokens over duration, with the exact duration on the cell's `title`); the
+current-row check; and the label formatters (`formatTokens`'s one-decimal-
+under-100 rule, `formatDuration`'s month/year branches, `tokenTotal`'s
+four-bucket sum).
+
+**Where the trigger seats**: the chat header's actions band
+(`ConversationRoot`'s `headerActions` → `.headerActions`), the position
+upstream gives it — after the title cluster, facing the background-task
+control. The count hides under the container query upstream declares
+(`@container (max-width: 460px)`), collapsing the trigger to a 28px icon.
+
+#### Deviations
+
+1. **`IconUsersOutline.tsx` is new.** Upstream resolves the glyph through a
+   `ui-theme` document `<symbol>` sprite (`productIcon('users-outline',
+   'regular')` → `<use href="#dsw-icon-users-outline-regular">`). The vendored
+   `ui-primitives` here carries hand-written inline-`<svg>` icons and no
+   sprite, so porting the catalog for one glyph would mean porting the whole
+   artwork pipeline. The paths are copied from that sprite's symbol and drawn
+   inline in the local convention. Recorded in-file.
+2. **Six locales cut.** Upstream ships `en`/`zh-Hans`/`zh-Hant`/`ja`/`ko`/`ru`/
+   `fr`/`de`; this shell is zh/en (`stats.ts` precedent). The key domain is
+   `SubagentKey`, typed off the zh dictionary so the two can never drift.
+3. **`readonly.*` composer keys not carried over.** They belong to the cut
+   `SubagentReadOnlyComposer`. Recorded in the dictionary's header comment.
+4. **The `--dsh-frame-overlay-top` reference was removed with the block that
+   used it.** It is a desktop-shell token (`ui-layout/AppFrame.module.css`,
+   darwin/windows titlebars only) that this webui never defines; it appeared
+   solely inside the cut `@position-try` block, so nothing consumes it.
+5. **Token audit.** Every `--dsw-*` name the vendored stylesheet consumes
+   resolves in `vendor/theme/styles/` (`design-platform.css` for the aliases,
+   `base.css` for the radii, `gradient-shadow-text.css` for
+   `--dsw-elevation-prominent`). `--dsh-scrollbar-thumb{,-hover}`,
+   `--dsh-scrollbar-width` and `--dsh-scrollbar-track-margin` are the shared
+   scrollbar sheet's rebind points (the same pattern
+   `dsh-composer-menu/ComposerMenu.module.css` uses). `--branch-anchor-y` and
+   `--dsw-elevation-stroke-color` are defined by the file itself.
+
+#### Keyboard reach, and an upstream bug worth stating
+
+Upstream declares list navigation twice over: `focusAt`/`navigate` at
+`SubagentHeaderLineage.tsx:673-699`, bound once as `onKeyDown={navigate}` on the
+**wrapper** (`:705`), and an `ArrowDown` handler on the trigger itself (`:750-754`)
+that opens the menu and focuses row 0.
+
+Only the trigger handler is reachable. Upstream portals the menu to the body
+(`createPortal(...)`, `:772`), so the menu sits **outside** the wrapper — a key
+pressed inside the menu never bubbles to the wrapper's handler, and `navigate`
+only ever runs for events originating on the trigger. Measured directly: a
+keydown inside the portalled menu fires a listener on the wrapper **0** times, a
+keydown on the trigger fires it **1** time.
+
+So this port reproduces upstream's *code* key for key (`focusAt`, `navigate`
+with its `closest('[role="tree"]')` guard, `Home`/`End`/`ArrowDown`/`ArrowUp`,
+the trigger's `ArrowDown`, the click's `queueMicrotask(menuRef.focus())`,
+`changeOpen`'s `restoreFocus`) without inventing the menu-level handler upstream
+does not have — adding one would silently diverge. What actually works here, as
+upstream: `ArrowDown` on the trigger opens onto the first row, after which the
+rows are ordinary tab stops. What does not, in upstream *or* here: arrows pressed
+once focus is already on a row. Recorded rather than patched, because a fix
+belongs upstream (bind `navigate` on the menu surface, or stop portalling) and
+guessing at it here would be the kind of divergence this file exists to prevent.
+
+#### The relay to the transcript
+
+The catalog lists every subagent a session launched, but only the ones whose
+launching call is currently rendered have a row to expand, and the row owns
+its own expansion state. `src/store/subagentFocus.ts` is the one-shot,
+session-scoped address between them: the catalog publishes `open(sessionId,
+agentId)`; the addressed `SubagentRow` claims it (destructively, guarded by
+the id) and opens both its body and its transcript. A request for an agent
+whose row is not rendered simply expires. A session switch drops a request
+addressed elsewhere, so an id that recurs in another session cannot expand an
+unrelated row.
+
+#### The live activity line (`SubagentRow`)
+
+The catalog indexes subagents; the **row** in the transcript is where a running
+one is watched. Its live region is fed by the gateway's `tool.progress` frames,
+keyed by the launching tool-use id. Three contract points, all of them places a
+plausible-looking implementation goes wrong:
+
+1. **One line per activity, de-duplicated at the store.** The producer re-sends
+   the current activity as the child works, so the same line arrives on more
+   than one frame. `src/store/conversations.ts` drops a frame whose text equals
+   the line already on screen — the same rule the TUI applies through
+   `AgentProgressPresenter.agentActivity`'s observed-id set. A *repeat after a
+   different line* is kept (the child really did return to it); only the
+   redundant re-send is collapsed. A frame carrying neither `content` nor
+   `message` stores nothing, rather than a blank line.
+2. **The line renders as itself.** It is not a file: no gutter label and no line
+   numbers. Rendering it through the shared `ReadBlock` put the agent id and a
+   line number in front of every activity (`a13b3868 复制 1 Copy(...)`), when the
+   agent id is the *row's* identity and one activity is not a numbered document.
+   The `.progressBlock` card style is still used for the **settled result**,
+   which genuinely is a body of output.
+3. **`content` is the child's activity, not its transcript.** What the subagent
+   produced in full lives in its sidechain, which the row loads separately via
+   the transcript endpoint. The frame carries one line on purpose.
+
+#### Honest boundaries
+
+What this port delivers: the session's subagents are **listed** (description,
+type, status dot, tokens, duration), each **watched live** while running, and
+each opens the **transcript** the
+gateway serves (`GET /api/sessions/{id}/agents/{agentId}/transcript`).
+
+What it does **not** deliver, and must not imply: dsh's child-session model.
+There are no subagent tabs, no `dsh-resource://subagentchat/...` addresses, no
+independent subagent conversation, and no read-only composer. Continuing or
+interrupting a subagent from this menu is **not** wired: the gateway exposes
+no such route, so `onOpen` opens the transcript and nothing else. A
+continuation entry point would need a `resumeAgent`/`interruptAgent` pair on
+`GatewaySessionContextPort` plus a CLI implementation that can reach the
+agent's `ToolExecutionContext` — the row menu must stay read-only until that
+exists.
 
 ## Local modifications
 

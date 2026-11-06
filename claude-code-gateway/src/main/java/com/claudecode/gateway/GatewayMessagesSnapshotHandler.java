@@ -97,7 +97,7 @@ final class GatewayMessagesSnapshotHandler {
                 "unknown session: " + sessionId));
             return;
         }
-        ObjectNode body = snapshot(sessionId, rows);
+        ObjectNode body = snapshot(sessionId, rows, true);
         runningSince.apply(sessionId)
             .ifPresent(started -> body.put("running_since", started));
         streaming.apply(sessionId).ifPresent(draft -> {
@@ -108,8 +108,45 @@ final class GatewayMessagesSnapshotHandler {
         respondJson(exchange, 200, body);
     }
 
-    /** Projects the message list into the snapshot shape. */
-    private static ObjectNode snapshot(String sessionId, List<Message> rows) {
+    /**
+     * Handles one sub-agent transcript exchange; both ids come from the URL
+     * path. A sub-agent's rows are projected through the same wire shape as
+     * the parent snapshot, so a client renders them with its ordinary row
+     * renderer.
+     *
+     * <p>Two things are deliberately absent. There is no turn numbering: a
+     * sub-agent's conversation is a conversation of its own, not a numbered
+     * turn of the parent, so {@code turn}/{@code turn_usage} stay off its
+     * rows. There is also no {@code running_since}/{@code streaming}: those
+     * describe the parent session's live turn, and a sub-agent's live work
+     * arrives instead as {@code tool.progress} frames keyed by its launching
+     * tool use id.
+     */
+    void handleAgent(HttpExchange exchange, String sessionId, String agentId) throws IOException {
+        List<Message> rows;
+        try {
+            rows = messages.agentMessages(sessionId, agentId).orElse(null);
+        } catch (RuntimeException _) {
+            rows = null;
+        }
+        if (rows == null) {
+            respondJson(exchange, 404, errorBody("not_found",
+                "unknown agent: " + agentId + " in session " + sessionId));
+            return;
+        }
+        ObjectNode body = snapshot(sessionId, rows, false);
+        body.put("agent_id", agentId);
+        respondJson(exchange, 200, body);
+    }
+
+    /**
+     * Projects the message list into the snapshot shape.
+     *
+     * @param numbered whether rows carry turn numbering; true for a session's
+     *        own conversation, false for a sub-agent's transcript (see
+     *        {@link #handleAgent})
+     */
+    private static ObjectNode snapshot(String sessionId, List<Message> rows, boolean numbered) {
         // Tool results pair with their tool_use entries by id; collect them
         // in one pass so each assistant message can look them up.
         Map<String, ToolOutcome> resultsByUseId = collectToolOutcomes(rows);
@@ -125,9 +162,10 @@ final class GatewayMessagesSnapshotHandler {
         long openTurn = 0;
         for (Message row : rows) {
             if (row instanceof AssistantMessage assistant) {
-                messagesNode.add(assistantEntry(assistant, resultsByUseId, openTurn));
+                messagesNode.add(assistantEntry(assistant, resultsByUseId,
+                    numbered ? openTurn : 0));
             } else if (row instanceof UserMessage user) {
-                if (opensTurn(user)) openTurn += 1;
+                if (numbered && opensTurn(user)) openTurn += 1;
                 ObjectNode entry = userEntry(user);
                 if (entry != null) messagesNode.add(entry);
             }

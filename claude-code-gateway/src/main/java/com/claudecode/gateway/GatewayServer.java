@@ -592,6 +592,39 @@ public final class GatewayServer implements AutoCloseable {
             messagesSnapshotApi.handle(exchange, sessionId);
             return;
         }
+        if (get && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && Strings.CS.endsWith(targetPath, "/transcript")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            // /api/sessions/{sessionId}/agents/{agentId}/transcript — a
+            // sub-agent's own conversation, restored from its sidechain
+            // transcript. Both ids are path segments, so the tail after
+            // /api/sessions/ splits on the fixed "/agents/" marker.
+            String tail = targetPath.substring("/api/sessions/".length(),
+                targetPath.length() - "/transcript".length());
+            int marker = tail.indexOf("/agents/");
+            if (marker <= 0 || marker + "/agents/".length() >= tail.length()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id and agent id are required"));
+                }
+                return;
+            }
+            String sessionId = URLDecoder.decode(tail.substring(0, marker), StandardCharsets.UTF_8);
+            String agentId = URLDecoder.decode(
+                tail.substring(marker + "/agents/".length()), StandardCharsets.UTF_8);
+            if (sessionId.isEmpty() || agentId.isEmpty()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id and agent id are required"));
+                }
+                return;
+            }
+            // Reading a sidechain transcript walks a JSONL file; run it off
+            // the exchange thread like the other session reads.
+            serveAsync(exchange, () -> messagesSnapshotApi.handleAgent(
+                exchange, sessionId, agentId));
+            return;
+        }
         if (post && Strings.CS.startsWith(targetPath, "/api/sessions/") && (Strings.CS.endsWith(
             targetPath, "/rename")
                 || Strings.CS.endsWith(targetPath, "/fork") || Strings.CS.endsWith(targetPath, "/archive"))) {

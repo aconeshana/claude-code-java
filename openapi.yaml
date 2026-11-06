@@ -246,6 +246,40 @@ paths:
               schema: { $ref: '#/components/schemas/MessageSnapshot' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/agents/{agentId}/transcript:
+    get:
+      tags: [Sessions]
+      summary: One sub-agent's own conversation
+      description: |
+        A sub-agent's work is not part of its parent's message list: it lives
+        in the session's sidecar tree
+        (`<project>/<sessionId>/subagents/agent-<agentId>.jsonl`), restored
+        with the same parser the terminal UI's local-agent viewer uses. The
+        rows come back in the MessageSnapshot shape, so a client renders a
+        sub-agent transcript with its ordinary row renderer — but with no
+        turn numbering (`turn`/`turn_usage` are absent: a sub-agent's
+        conversation is its own, not a numbered turn of the parent) and no
+        `running_since`/`streaming` (a sub-agent's live work arrives instead
+        as `tool.progress` frames keyed by its launching tool use id, whose
+        `agent_id` is this path's `agentId`).
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The sub-agent's transcript
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentTranscriptSnapshot' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
   /api/sessions/{sessionId}/rename:
     post:
       tags: [Sessions]
@@ -1162,6 +1196,21 @@ components:
         messages:
           type: array
           description: User text rows and assistant content[] rows, transcript order; both kinds stamp `time` (epoch ms) for their clock labels
+          items: { $ref: '#/components/schemas/AssistantMessageSnapshot' }
+    AgentTranscriptSnapshot:
+      type: object
+      description: |
+        One sub-agent's own conversation, restored from its sidechain
+        transcript. Same row shape as MessageSnapshot, minus turn numbering
+        and the parent-turn live fields.
+      properties:
+        session_id: { type: string }
+        agent_id:
+          type: string
+          description: The sub-agent id this transcript belongs to
+        messages:
+          type: array
+          description: User text rows and assistant content[] rows, in the sub-agent's own transcript order
           items: { $ref: '#/components/schemas/AssistantMessageSnapshot' }
     StreamingDraft:
       type: object

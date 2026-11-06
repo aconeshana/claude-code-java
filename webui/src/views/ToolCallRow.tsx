@@ -135,6 +135,11 @@ function renderBody(call: ToolCallState, state: ToolRowState) {
         />
       )
     case 'task_tool_result':
+      // A subagent call is not an ordinary tool: `SubagentRow` owns its own
+      // header (status dot, description-first label, metrics) and its live
+      // progress log. The dispatch is hoisted to `MessageItem`, so this
+      // branch is unreachable for `Task`/`Agent` calls — kept only so a
+      // `task_tool_result` from some other producer still renders its text.
       return (
         <ReadBlock
           label="任务输出"
@@ -173,6 +178,11 @@ function diffPathOf(call: ToolCallState): string {
   return typeof path === 'string' ? path : 'file'
 }
 
-function splitLines(data: string): { number: number; text: string }[] {
+/**
+ * One tool result's text as numbered lines for {@link ReadBlock}. Shared with
+ * `SubagentRow`, which renders a settled subagent's result through the same
+ * card — one definition of how a result's text becomes numbered lines.
+ */
+export function splitLines(data: string): { number: number; text: string }[] {
   return data.split('\n').map((text, index) => ({ number: index + 1, text }))
 }

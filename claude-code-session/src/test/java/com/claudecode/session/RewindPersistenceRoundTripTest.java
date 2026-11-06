@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,8 +63,8 @@ class RewindPersistenceRoundTripTest {
         // The abandoned rows must remain on disk as an alternate branch: rewind
         // rebases, it does not delete.
         String raw = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(raw.contains("\"uuid\":\"u2\""), "abandoned rows are retained on disk");
-        assertTrue(raw.contains("\"uuid\":\"a2\""), "abandoned rows are retained on disk");
+        assertTrue(Strings.CS.contains(raw, "\"uuid\":\"u2\""), "abandoned rows are retained on disk");
+        assertTrue(Strings.CS.contains(raw, "\"uuid\":\"a2\""), "abandoned rows are retained on disk");
     }
 
     /**
@@ -136,11 +137,11 @@ class RewindPersistenceRoundTripTest {
         assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
 
         String raw = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(raw.contains("\"type\":\"last-prompt\""),
+        assertTrue(Strings.CS.contains(raw, "\"type\":\"last-prompt\""),
             "the anchor is a last-prompt row, matching 197/236");
-        assertTrue(raw.contains("\"rewound\":true"),
+        assertTrue(Strings.CS.contains(raw, "\"rewound\":true"),
             "rewind must persist an explicit anchor row; in-memory rebase alone is lost on restart");
-        assertTrue(raw.contains("\"leafUuid\":\"a1\""),
+        assertTrue(Strings.CS.contains(raw, "\"leafUuid\":\"a1\""),
             "the anchor points at the assistant preceding the rewound turn");
     }
 

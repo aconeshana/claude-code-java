@@ -755,6 +755,95 @@ class GatewayServerInteropTest {
     }
 
     /**
+     * A running sub-agent's activity is usually a *tool call*, not prose: an agent
+     * reading files emits assistant turns whose content is a tool use. A
+     * text-only projection drops every one of those, so the live progress channel
+     * carried no `content` at all across a whole sub-agent run and a web reader
+     * saw an empty progress region until the call settled.
+     */
+    @Test
+    @Timeout(20)
+    void assistantToolUseBecomesSubAgentActivityContent() throws Exception {
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+        awaitReady(events);
+
+        AssistantMessage childTurn = new AssistantMessage("u1",
+            AssistantContent.of(List.of(new ToolUseBlock("t1", "Read",
+                JsonUtils.parseTree("{\"file_path\":\"/tmp/notes.md\"}")))));
+        hub.onMessage(new SDKMessage.Progress(new ProgressMessage(
+            UUID.randomUUID().toString(), null, null, null,
+            "toolu_agent_2", null,
+            new ProgressMessage.ProgressData("agent_progress",
+                null, null, null, null, null, null, null, null,
+                childTurn, "read some files", "a2b3c4",
+                null, null, null, null, null, null))));
+
+        String frame = pollUntilFrameFor(events, "toolu_agent_2",
+            f -> Strings.CS.contains(f, "tool.progress"));
+        assertThat(frame).contains("\"tool_use_id\":\"toolu_agent_2\"")
+            .contains("\"agent_id\":\"a2b3c4\"")
+            .as("the child's tool call is the activity line")
+            .contains("\"content\":\"Read(/tmp/notes.md)\"");
+        source.cancel();
+    }
+
+    /**
+     * An assistant turn with no tool call still has prose, and that prose is the
+     * activity. Without it the frame would carry `prompt` alone and the progress
+     * region would read as "no output" for a sub-agent that is plainly talking.
+     */
+    @Test
+    @Timeout(20)
+    void assistantProseBecomesSubAgentActivityContent() throws Exception {
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+        awaitReady(events);
+
+        AssistantMessage childTurn = new AssistantMessage("u2",
+            AssistantContent.of(List.of(new TextBlock("found three files"))));
+        hub.onMessage(new SDKMessage.Progress(new ProgressMessage(
+            UUID.randomUUID().toString(), null, null, null,
+            "toolu_agent_3", null,
+            new ProgressMessage.ProgressData("agent_progress",
+                null, null, null, null, null, null, null, null,
+                childTurn, "find files", "a3c4d5",
+                null, null, null, null, null, null))));
+
+        String frame = pollUntilFrameFor(events, "toolu_agent_3",
+            f -> Strings.CS.contains(f, "tool.progress"));
+        assertThat(frame).contains("\"content\":\"found three files\"");
+        source.cancel();
+    }
+
+    /** A child message with nothing to say emits no `content` key rather than an empty one. */
+    @Test
+    @Timeout(20)
+    void emptyChildMessageEmitsNoContentKey() throws Exception {
+        startServer();
+        LinkedBlockingQueue<String> events = new LinkedBlockingQueue<>();
+        EventSource source = openMirror(null, events);
+        awaitReady(events);
+
+        AssistantMessage childTurn = new AssistantMessage("u3",
+            AssistantContent.of(List.of(new TextBlock(""))));
+        hub.onMessage(new SDKMessage.Progress(new ProgressMessage(
+            UUID.randomUUID().toString(), null, null, null,
+            "toolu_agent_4", null,
+            new ProgressMessage.ProgressData("agent_progress",
+                null, null, null, null, null, null, null, null,
+                childTurn, "think", "a4d5e6",
+                null, null, null, null, null, null))));
+
+        String frame = pollUntilFrameFor(events, "toolu_agent_4",
+            f -> Strings.CS.contains(f, "tool.progress"));
+        assertThat(frame).doesNotContain("\"content\"");
+        source.cancel();
+    }
+
+    /**
      * Waits for the connection.ready marker, proving the live subscription
      * registered in {@code streamMirror} is active — a test can only publish
      * a hub event after this without racing the subscription's own setup.

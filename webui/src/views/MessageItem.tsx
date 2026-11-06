@@ -9,6 +9,7 @@ import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
 import { markdownLabels } from './labels'
 import { DeliverablesRow } from './DeliverablesRow'
 import { ReasoningRow } from './ReasoningRow'
+import { SubagentRow, isSubagentCall } from './SubagentRow'
 import { ToolCallRow } from './ToolCallRow'
 import { useSessions } from '../store/sessions'
 import { ContextJumpButton } from './context/ContextJumpButton'
@@ -31,7 +32,7 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * row of each turn carries it — never one per step.
  */
 export function MessageItem({ message, hideReasoning = false, showTail = false,
-  producedFiles = [], sessionId = null }: {
+  producedFiles = [], sessionId = null, inSubagentTranscript = false }: {
   message: MessageState
   /**
    * The turn-process fold's `inlineReasoning`: this row is a folded turn's
@@ -57,6 +58,16 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
   producedFiles?: readonly string[]
   /** The addressed session, for the viewer the chips open. */
   sessionId?: string | null
+  /**
+   * This row belongs to a sub-agent's restored transcript, not the chat.
+   *
+   * The restored transcript is rendered with this same component (its rows
+   * come off the wire reduced by the same `toMessageState`), but a nested
+   * delegation inside it must render as a plain tool row: a sub-agents'
+   * sub-agent has its own sidechain file, and this row's id addresses the
+   * parent's session, so letting it expand would fetch the wrong transcript.
+   */
+  inSubagentTranscript?: boolean
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
@@ -85,17 +96,20 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
       showTail={showTail}
       producedFiles={producedFiles}
       sessionId={sessionId}
+      inSubagentTranscript={inSubagentTranscript}
     />
   )
 }
 
-function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, sessionId }: {
+function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, sessionId,
+  inSubagentTranscript }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
   showTail: boolean
   producedFiles: readonly string[]
   sessionId: string | null
+  inSubagentTranscript: boolean
 }) {
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   // One stable labels identity: MarkdownText's streaming cache resets when
@@ -128,7 +142,16 @@ function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, ses
         />
       ))}
       {message.toolCalls.map((call) => (
-        <ToolCallRow key={call.toolUseId} call={call} defaultOpen={defaultOpen} />
+        !inSubagentTranscript && isSubagentCall(call)
+          ? (
+            <SubagentRow
+              key={call.toolUseId}
+              call={call}
+              sessionId={addressedSessionId}
+              defaultOpen={defaultOpen}
+            />
+          )
+          : <ToolCallRow key={call.toolUseId} call={call} defaultOpen={defaultOpen} />
       ))}
       {/* The per-message chip row below this row's own tool calls (upstream's
           per-step produced list). Kept as-is; the turn-wide row above the tail

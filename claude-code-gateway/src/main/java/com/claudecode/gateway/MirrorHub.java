@@ -131,6 +131,14 @@ public final class MirrorHub {
     /** Bounded recent tool-use names by id, for typing later result frames. */
     private static final int REMEMBERED_TOOLS = 256;
 
+    /**
+     * Longest argument excerpt in a sub-agent activity line. The live progress
+     * channel is a ticker a reader follows while the child works, not a record
+     * of the calls themselves — the sidechain transcript is where those live in
+     * full — so one line stays one line.
+     */
+    private static final int AGENT_ACTIVITY_MAX_LEN = 120;
+
     private final SessionHostRegistry registry;
     private final ArrayDeque<MirrorFrame> ring = new ArrayDeque<>();
     private final AtomicLong nextId = new AtomicLong();
@@ -539,10 +547,21 @@ public final class MirrorHub {
 
     /**
      * Projects one tool/agent progress message — the sub-agent's live content
-     * channel. A web client follows a running sub-agent through these frames
-     * (its text output and progress line), keyed by {@code tool_use_id}; the
-     * agent id doubles as the sidechain transcript key for a client that
-     * wants the on-disk transcript instead.
+     * channel. A web client follows a running sub-agent through these frames,
+     * keyed by {@code tool_use_id}; the agent id doubles as the sidechain
+     * transcript key for a client that wants the on-disk transcript instead.
+     *
+     * Three fields answer three different questions, and a reader needs all
+     * three to follow a child honestly: {@code prompt} is what the sub-agent was
+     * asked, {@code content} is the one-line activity it is on *now* (see
+     * {@link #agentText} — a tool call reads as `Read(path)`, prose reads as
+     * prose), and {@code message} is the producer's own status line when it has
+     * one. {@code content} is an activity ticker, not a transcript: the child's
+     * full output lives in the sidechain, which is why the frame carries a single
+     * line and the client is expected to offer the transcript for the rest.
+     *
+     * {@code content} falls back to {@code output} only when no child message
+     * produced one, so the two projections never overwrite each other.
      */
     private void publishProgress(String sessionId, SDKMessage.Progress progress) {
         ProgressMessage message = progress.message();
@@ -567,8 +586,23 @@ public final class MirrorHub {
         publish(sessionId, "tool.progress", payload);
     }
 
-    /** The agent message's text blocks, or null when it carries none. */
+    /**
+     * One line of sub-agent activity for the live progress channel, or null when
+     * the message carries nothing a reader can follow.
+     *
+     * A running sub-agent's progress arrives as the child's own messages, and the
+     * useful line is not always prose: an assistant turn *calling* a tool is the
+     * activity, so it is projected as `Name(args)` — the same vocabulary the TUI's
+     * agent progress presenter renders, kept deliberately instead of dropped,
+     * because an agent that reads files emits tool calls rather than narration and
+     * a text-only projection shows the reader nothing at all.
+     *
+     * Only the first tool use becomes the line: one frame is one activity, and the
+     * subsequent blocks of the same assistant turn are separate frames' worth of
+     * work that the next message will carry.
+     */
     private static String agentText(Message message) {
+        if (message instanceof AssistantMessage assistant) return assistantActivity(assistant);
         if (!(message instanceof UserMessage user)) return null;
         MessageContent content = user.message();
         if (content == null) return null;
@@ -579,6 +613,46 @@ public final class MirrorHub {
             if (block instanceof TextBlock(String text1)) body.append(text1);
         }
         return body.isEmpty() ? null : body.toString();
+    }
+
+    /** An assistant turn's activity line: its first tool use, else its prose. */
+    private static String assistantActivity(AssistantMessage assistant) {
+        AssistantContent content = assistant.message();
+        if (content == null || content.content() == null) return null;
+        StringBuilder prose = new StringBuilder();
+        for (ContentBlock block : content.content()) {
+            if (block instanceof ToolUseBlock toolUse) {
+                String name = toolUse.name() == null ? "Tool" : toolUse.name();
+                String summary = toolArgsSummary(toolUse.input());
+                return summary.isEmpty() ? name : name + "(" + summary + ")";
+            }
+            // A turn with no tool call still said something; that text is the
+            // activity, so it is collected as the fallback rather than dropped.
+            if (block instanceof TextBlock(String text)) prose.append(text);
+        }
+        return prose.isEmpty() ? null : prose.toString();
+    }
+
+    /**
+     * The most telling string argument of a tool use, for the activity line — the
+     * first textual value in the input object, which for this product's tools is
+     * the command, path, pattern, or prompt that identifies the work. Kept short:
+     * this is a one-line progress tick, not a rendering of the call.
+     */
+    private static String toolArgsSummary(JsonNode input) {
+        if (input == null || !input.isObject()) return "";
+        Iterator<Map.Entry<String, JsonNode>> fields = input.fields();
+        while (fields.hasNext()) {
+            JsonNode value = fields.next().getValue();
+            if (value != null && value.isTextual()) {
+                String text = value.asText().replace('\n', ' ').strip();
+                if (!text.isEmpty()) {
+                    return text.length() <= AGENT_ACTIVITY_MAX_LEN
+                        ? text : text.substring(0, AGENT_ACTIVITY_MAX_LEN) + "…";
+                }
+            }
+        }
+        return "";
     }
 
     private void onError(String sessionId, Throwable error, boolean userCancel) {

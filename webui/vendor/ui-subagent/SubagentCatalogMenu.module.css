@@ -1,0 +1,489 @@
+/* Vendored from upstream `packages/client/ui-subagent/src/client/
+ * SubagentHeaderLineage.module.css` (deepseek-ai/deepseek-harness, MIT) and
+ * kept verbatim except where noted below. The component that consumes it is
+ * re-written (see `SubagentCatalogMenu.tsx`), so class names here are the
+ * upstream ones and the edits are confined to the two blocks that depend on
+ * upstream's `MenuSurface` primitive.
+ *
+ * Cuts, each recorded in `webui/UPSTREAM.md`:
+ *   - `.switcherRoot` / `.switcherTrigger` / `.ancestorSwitcherTrigger` /
+ *     `.switcherTitle` — the header *switcher* variant (breadcrumb navigation
+ *     between a child and its parent). This product has no child sessions, so
+ *     the variant is not ported.
+ *   - the `@position-try` blocks and `.menu`'s anchor-positioned placement —
+ *     upstream positions the menu with CSS anchor positioning against a
+ *     `MenuSurface`; this app portals through the shared `Menu` primitive and
+ *     keeps the surface's own look (see `.menu` below). `--dsh-frame-overlay-top`
+ *     is a desktop-shell token this webui does not define; it appears only in
+ *     the cut `@position-try` block, so nothing here consumes it. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.trigger {
+  gap: 4px;
+}
+
+.activitySlot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.trigger:focus-visible {
+  color: var(--dsw-alias-label-primary);
+}
+
+@media (hover: hover) {
+  .trigger:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.trigger .compactIcon {
+  display: none;
+}
+
+/* The title-row container drops passive preset text at 540px; this action yields later. */
+@container (max-width: 460px) {
+  .trigger .compactIcon {
+    display: block;
+  }
+
+  .trigger .textModeActivity {
+    display: none;
+  }
+
+  .trigger .count {
+    display: none;
+  }
+
+  .trigger {
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    justify-content: center;
+    color: var(--dsw-alias-label-secondary);
+  }
+
+  .trigger .activitySlot,
+  .trigger .activitySlot > svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .trigger:focus-visible {
+    color: var(--dsw-alias-label-secondary);
+  }
+
+  .trigger:active {
+    background: var(--dsw-alias-interactive-bg-active);
+  }
+
+  @media (hover: hover) {
+    .trigger:hover {
+      color: var(--dsw-alias-label-secondary);
+      background: var(--dsw-alias-interactive-bg-hover);
+    }
+  }
+}
+
+/* The surface: upstream's placement properties (`position: fixed`,
+ * `position-area`, `anchor()`/`clamp()` offsets, `position-try-fallbacks`) are
+ * cut because the vendored `Menu` primitive portals and places the card
+ * itself. Every visual property upstream declares here is kept: the 6px outer
+ * padding, the 360px card width capped to the viewport, the 560px / viewport
+ * height cap, the prominent elevation with a hairline stroke, and the l2
+ * scrollbar thumb tokens.
+ *
+ * The 32px viewport insets stay as the card's own width cap: upstream's
+ * `clamp()` also supplies a 16px window inset, which the primitive performs. */
+.menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(560px, calc(100dvh - 140px));
+  height: fit-content;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  overflow: hidden;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+}
+
+.menuBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  --dsh-scrollbar-track-margin: 6px;
+}
+
+/* Keep the shared WebKit scrollbar in the menu's right inset, not its content column. */
+@supports selector(::-webkit-scrollbar) {
+  .menuBody {
+    margin-right: calc(-1 * var(--dsh-scrollbar-width));
+  }
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 4px 7px 8px;
+}
+
+.sectionIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 14px;
+  height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sectionTitle {
+  flex: none;
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.sectionProgress {
+  margin-inline-start: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.sectionEmpty {
+  margin: 0;
+  padding: 0 7px 8px 28px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.node {
+  position: relative;
+  min-width: 0;
+}
+.menuBody > [role="tree"] > .node {
+  margin-left: -2px;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 6px 4px 9px;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 17px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.row:focus-visible > .clickarea {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+@media (hover: hover) {
+  .clickarea:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.clickarea {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  margin: -4px -6px -4px;
+  padding: 4px 6px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.rowActivitySlot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 17px;
+}
+
+.disclosure,
+.disclosureSpace {
+  flex: none;
+  width: 14px;
+  height: 17px;
+}
+
+.disclosure {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+/* The row owns this hit area; it ends before the status glyph and never rotates. */
+.disclosure::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28px;
+  z-index: 1;
+}
+
+.disclosure svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 120ms ease;
+}
+
+@media (hover: hover) {
+  .disclosure:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.disclosureOpen svg {
+  transform: rotate(90deg);
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.label,
+.secondaryLabel,
+.summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.currentLabel {
+  font-weight: 500;
+}
+
+.secondaryLabel {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.summary,
+.metrics {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-rows: 17px 15px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.metricToken {
+  grid-row: 1;
+  line-height: 17px;
+}
+
+.metricDuration {
+  grid-row: 2;
+}
+
+.sidebarButton,
+.sidebarSpace {
+  box-sizing: border-box;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: 4px 0;
+}
+
+.currentCheck {
+  display: grid;
+  place-items: center;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sidebarButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.sidebarButton:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+@media (hover: hover) {
+  .sidebarButton:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.children {
+  /* First-line marker center: row inset 4px + half of the 17px status column. */
+  --branch-anchor-y: 12.5px;
+  position: relative;
+  margin-left: 16px;
+  padding-left: 3px;
+}
+
+.children::before,
+.children > .node::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  border-left: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.children::before {
+  top: -23px;
+  height: 23px;
+}
+
+.children[aria-busy='true']::before {
+  content: none;
+}
+
+.children > .node::before {
+  top: 0;
+  bottom: 0;
+  left: -3px;
+}
+
+.children > .node:last-child::before {
+  bottom: auto;
+  height: var(--branch-anchor-y);
+}
+
+.children > .node > .row::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--branch-anchor-y) - 0.25px);
+  left: -3px;
+  width: 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* A leaf beside expandable siblings keeps their disclosure column before its status marker. */
+.children > .node > .row:has(> .disclosureSpace)::before {
+  width: 33px;
+}
+
+.notice,
+.error {
+  padding: 8px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.refresh {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.refresh svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (hover: hover) {
+  .refresh:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+

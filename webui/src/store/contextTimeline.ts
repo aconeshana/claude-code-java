@@ -18,13 +18,14 @@
  * demand through the two fetcher factories below and cached per session for
  * the page lifetime (the ledger's content is immutable per seq).
  */
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { fetchContextContent, fetchContextDetail, fetchContextTimeline } from '../api/client'
 import type { MirrorFrame } from '../api/types'
 import type { ContentFetcher, ConversationNodeLike, HeaderFetcher } from '@dsh-context/client/narrow'
 import { asRecord, timelineOf } from '@dsh-context/client/narrow'
-import { detailOf, type DetailFetcher } from '@dsh-context/client/timelineSource'
-import type { ContextTimeline, ContextTimelineDetail, HeaderEpochContent } from '@dsh-context/shared/types'
+import { detailOf, detailStoreOf, type DetailFetcher } from '@dsh-context/client/timelineSource'
+import type { AgentRecord, ContextTimeline, ContextTimelineDetail, HeaderEpochContent } from '@dsh-context/shared/types'
 
 export interface SessionTimelineState {
   /** The narrowed slim head; null before the first answer or while cold. */
@@ -184,6 +185,73 @@ export const detailFetcher: DetailFetcher = async (sessionId: string): Promise<C
   const detail = detailOf(raw)
   if (detail === null) throw new Error('context detail malformed')
   return detail
+}
+
+/**
+ * What the chat header's subagent catalog reads: this session's subagent
+ * records, trailing the same per-session detail ledger the Context tab uses.
+ *
+ * `open` registers a viewer, which is what makes the store poll the head at
+ * all — the catalog is a viewer in its own right, so a session whose Context
+ * tab was never opened still gets its agents. The detail read is the vendored
+ * `DetailStore`'s single-flight trailing fetch, shared with the tab and the
+ * modal, so a session with both open issues one read, not two.
+ *
+ * `agents` is `undefined` until a payload carrying the extension lands — the
+ * catalog renders its loading note for that case and its empty note only once
+ * a read has answered.
+ */
+export function useSessionAgents(sessionId: string | null): {
+  agents: readonly AgentRecord[] | undefined
+  failed: boolean
+  retry: () => void
+} {
+  const key = sessionId ?? ''
+  const openViewer = useContextTimeline((state) => state.open)
+  useEffect(() => {
+    if (key === '') return
+    return openViewer(key)
+  }, [key, openViewer])
+
+  const entry = useContextTimeline((state) => state.sessions[key])
+  const head = entry?.head ?? null
+  const store = useMemo(() => detailStoreOf(key, detailFetcher), [key])
+  const snap = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const headRev = head !== null && typeof head.detailRev === 'number' ? head.detailRev : null
+  useEffect(() => {
+    if (headRev !== null) store.request(headRev)
+  }, [store, headRev])
+
+  const detail = snap.detail
+  const agents: readonly AgentRecord[] | undefined = key === '' ? undefined : detail?.agents
+  return { agents, failed: snap.failed, retry: store.retry }
+}
+
+/**
+ * One subagent's record from this session's detail ledger, found by the
+ * tool-use id of the call that launched it.
+ *
+ * This is a **reader**, not a viewer: it registers nothing and requests
+ * nothing, so a transcript row can resolve its agent id without becoming a
+ * second poller beside the header catalog. The catalog is what keeps the
+ * ledger alive for a session — it is mounted for every session the reader has
+ * open — and a row that renders before the first read answers simply gets
+ * `null` and falls back, then re-renders when the ledger lands.
+ *
+ * The record's `agentId` is the only authoritative spelling of a sub-agent's
+ * identity: it is what the sidechain transcript endpoint is keyed by, and it
+ * survives a reload, where the live `tool.progress` frames that also carry it
+ * do not (a settled transcript's rows are rebuilt from the snapshot, which
+ * carries no progress). The launching tool-use id is a *different* id space
+ * and is never a valid substitute.
+ */
+export function useAgentRecord(sessionId: string | null, toolUseId: string): AgentRecord | null {
+  const key = sessionId ?? ''
+  const store = useMemo(() => detailStoreOf(key, detailFetcher), [key])
+  const snap = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const agents = snap.detail?.agents
+  if (key === '' || agents === undefined) return null
+  return agents.find((record) => record.id === toolUseId) ?? null
 }
 
 // ---- on-demand content -----------------------------------------------------

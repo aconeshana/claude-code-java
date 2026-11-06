@@ -59,6 +59,30 @@ export interface ToolCallState {
   readonly resultError: string | null
   readonly transcriptPath: string | null
   readonly locations: readonly string[] | null
+  /**
+   * Live sub-agent progress lines, in arrival order (empty for ordinary
+   * tools). `tool.progress` frames carry a sub-agent's own message text and
+   * status line keyed by the launching tool use id; each frame appends one
+   * entry, so this is a discrete update log rather than a token stream.
+   */
+  readonly progress: readonly ToolProgressEntry[]
+}
+
+/** One live sub-agent progress update (a `tool.progress` frame). */
+export interface ToolProgressEntry {
+  /** The frame's `kind` (the producer's data type, e.g. `agent_progress`). */
+  readonly kind: string
+  /** The sub-agent id, when the frame carried one — the sidechain key. */
+  readonly agentId?: string
+  /**
+   * One line of sub-agent activity, when the frame carried one — a tool call
+   * reads as `Read(path)`, a turn with no tool call reads as its prose. This is
+   * a ticker, not the child's transcript: what the sub-agent produced in full
+   * lives in its sidechain, which the row loads separately.
+   */
+  readonly content?: string
+  /** The producer's own progress status line, when the frame carried one. */
+  readonly message?: string
 }
 
 export type MessageState =
@@ -167,7 +191,14 @@ function snapshotConversation(
   }
 }
 
-function toMessageState(message: SnapshotMessage): MessageState {
+/**
+ * One wire row reduced to its view state. Shared deliberately: the parent
+ * snapshot and a sub-agent's restored transcript come off the wire in the
+ * same shape (the gateway projects both through one row builder), so the
+ * sub-agent viewer reduces them with this very function rather than a second
+ * projection that could drift from it.
+ */
+export function toMessageState(message: SnapshotMessage): MessageState {
   if (message.role === 'user') {
     return {
       kind: 'user',
@@ -196,6 +227,9 @@ function toMessageState(message: SnapshotMessage): MessageState {
         resultError: tool.result?.errorMessage ?? null,
         transcriptPath: tool.result?.transcript_path ?? null,
         locations: tool.result?.locations ?? null,
+        // The snapshot carries settled rows only: a live sub-agent's progress
+        // starts empty and fills from tool.progress frames after the pull.
+        progress: [],
       })
     }
   }
@@ -289,6 +323,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
         resultError: null,
         transcriptPath: null,
         locations: null,
+        progress: [],
       }
       const messages = appendBlock(state.messages, stepOf(frame.data), (last) => ({
         ...last,
@@ -324,10 +359,51 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
             resultError: frame.data.result.errorMessage ?? null,
             transcriptPath: frame.data.result.transcript_path ?? null,
             locations: frame.data.result.locations ?? null,
+            // The live progress log outlives the result: a settled sub-agent
+            // still shows the steps it took on the way there.
+            progress: call.progress,
           }
           return completed
         })
         return { ...message, toolCalls }
+      })
+      return { ...state, messages }
+    }
+    case 'tool.progress': {
+      // The sub-agent's live content channel: one frame per sub-agent
+      // message (or status update), keyed by the launching tool use id —
+      // not a token stream, so entries append rather than merge by offset.
+      //
+      // The producer re-sends the current activity: the frame is a ticker a
+      // reader follows, and the same tool call is announced by more than one
+      // frame as the child moves through steps. The TUI reads those re-sends
+      // through an observed-id set (`AgentProgressPresenter.agentActivity`)
+      // rather than printing them twice, and this reduction does the same —
+      // a repeat of the line already on screen is a no-op, not a new entry.
+      // Distinct explanation is kept in the store, not derived at render
+      // time, so the frame log and what the row shows cannot drift.
+      const content = frame.data.content
+      const message = frame.data.message
+      const body = content ?? message
+      if (body === undefined || body === '') return state
+      const entry: ToolProgressEntry = {
+        kind: frame.data.kind,
+        ...(frame.data.agent_id !== undefined ? { agentId: frame.data.agent_id } : {}),
+        ...(content !== undefined ? { content } : {}),
+        ...(message !== undefined ? { message } : {}),
+      }
+      const messages = state.messages.map((each) => {
+        if (each.kind !== 'assistant') return each
+        if (!each.toolCalls.some((call) => call.toolUseId === frame.data.tool_use_id)) {
+          return each
+        }
+        const toolCalls: ToolCallState[] = each.toolCalls.map((call) => {
+          if (call.toolUseId !== frame.data.tool_use_id) return call
+          const last = call.progress[call.progress.length - 1]
+          if (last !== undefined && (last.content ?? last.message ?? '') === body) return call
+          return { ...call, progress: [...call.progress, entry] }
+        })
+        return { ...each, toolCalls }
       })
       return { ...state, messages }
     }
@@ -364,7 +440,7 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
     }
     default:
       // permission.asked/resolved feed the approvals store; session.activated
-      // feeds `useSessions.applyFrame`; tool.progress is not rendered in v1.
+      // feeds `useSessions.applyFrame`.
       return state
   }
 }

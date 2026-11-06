@@ -7,6 +7,7 @@ import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
+import com.claudecode.session.TranscriptLoader;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
 import com.claudecode.tools.tasks.TaskStatus;
@@ -180,6 +181,30 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 if (!Files.isRegularFile(file)) return Optional.empty();
                 try {
                     return Optional.of(new SessionStorage().readMessages(file));
+                } catch (RuntimeException _) {
+                    return Optional.empty();
+                }
+            }
+
+            /**
+             * A sub-agent's transcript lives in the session's sidecar tree
+             * ({@code <project>/<sessionId>/subagents/agent-<agentId>.jsonl}).
+             * The resolution and the parse are deliberately the ones the TUI's
+             * local-agent viewer already uses
+             * ({@code CliInteractiveSessionAdapter.readAgentMessages}), so the
+             * two surfaces cannot drift on which rows belong to an agent.
+             */
+            @Override public Optional<List<Message>> agentMessages(
+                    String sessionId, String agentId) {
+                if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(agentId)) {
+                    return Optional.empty();
+                }
+                Path transcript = new SessionManager(mainCwd)
+                    .getAgentTranscriptPath(sessionId, agentId);
+                if (!Files.isRegularFile(transcript)) return Optional.empty();
+                try {
+                    return new SessionStorage().getAgentTranscript(transcript, agentId)
+                        .map(TranscriptLoader.AgentTranscript::messages);
                 } catch (RuntimeException _) {
                     return Optional.empty();
                 }

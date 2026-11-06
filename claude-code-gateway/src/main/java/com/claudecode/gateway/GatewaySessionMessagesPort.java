@@ -28,4 +28,30 @@ public interface GatewaySessionMessagesPort {
     default Optional<List<Message>> messages(String sessionId, String headlessSessionId) {
         return Optional.empty();
     }
+
+    /**
+     * One sub-agent's own conversation, restored from its sidechain transcript.
+     *
+     * <p>A sub-agent's work is not part of its parent's message list: it lives
+     * in the session's sidecar tree
+     * ({@code <project>/<sessionId>/subagents/agent-<agentId>.jsonl}), which the
+     * gateway cannot read for itself (it has no session-module dependency). The
+     * CLI composition root resolves the file and parses it with the same
+     * {@code SessionStorage.getAgentTranscript} the TUI's local-agent viewer
+     * uses, so both surfaces read one implementation.
+     *
+     * <p>The rows come back in the same {@link Message} shape the parent
+     * snapshot serves, so the gateway projects them through the identical
+     * wire projection and a client renders a sub-agent transcript with its
+     * ordinary row renderer.
+     *
+     * @param sessionId the owning session's id
+     * @param agentId the sub-agent id (the {@code agentId} a completed
+     *        {@code Task}/{@code Agent} result carried)
+     * @return the sub-agent's messages, or empty when the agent is unknown or
+     *         its transcript is absent/unreadable
+     */
+    default Optional<List<Message>> agentMessages(String sessionId, String agentId) {
+        return Optional.empty();
+    }
 }

@@ -1,4 +1,4 @@
-import { ApiError, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
+import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
 import { currentToken } from './token'
 
 /**
@@ -96,6 +96,25 @@ function groupFlatSessions(sessions: FlatSessionCatalog['sessions']): readonly C
 
 export function fetchSnapshot(sessionId: string): Promise<MessagesSnapshot> {
   return requestJson('GET', `/api/sessions/${encodeURIComponent(sessionId)}/messages`)
+}
+
+/**
+ * GET /api/sessions/{id}/agents/{agentId}/transcript: one sub-agent's own
+ * conversation, restored from its sidechain transcript.
+ *
+ * The answer is the same message-row shape as the parent snapshot — the
+ * gateway resolves and parses the sidechain with the same implementation the
+ * TUI's local-agent viewer uses, then projects it through
+ * `GatewayMessagesSnapshotHandler`'s row builder — so a client reduces it with
+ * its ordinary snapshot reducer. What it never carries is turn numbering
+ * (`turn`/`turn_usage`), because a sub-agent's conversation is its own, not a
+ * numbered turn of the parent.
+ */
+export function fetchAgentTranscript(sessionId: string, agentId: string): Promise<AgentTranscriptSnapshot> {
+  return requestJson(
+    'GET',
+    `/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}/transcript`,
+  )
 }
 
 export function openHeadlessSession(sessionId: string | null, projectPath: string | null): Promise<OpenSessionResponse> {

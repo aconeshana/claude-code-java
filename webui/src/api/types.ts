@@ -175,6 +175,24 @@ export interface MessagesSnapshot {
   }
 }
 
+/**
+ * GET /api/sessions/{id}/agents/{agentId}/transcript — one sub-agent's own
+ * conversation, restored from its sidechain transcript.
+ *
+ * The rows are the same `SnapshotMessage` union the parent snapshot serves
+ * (the gateway projects both through one row builder), so a client reduces
+ * them with its ordinary snapshot reducer. There is no `running_since` or
+ * `streaming`: a restored sidechain is a settled record, never a live turn.
+ * Rows carry no `turn`/`turn_usage` either — a sub-agent's conversation is
+ * not a numbered turn of its parent.
+ */
+export interface AgentTranscriptSnapshot {
+  readonly session_id: string
+  /** The sub-agent id this transcript belongs to (the sidechain file's key). */
+  readonly agent_id: string
+  readonly messages: readonly SnapshotMessage[]
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/events — mirror frames (SSE)
 // ---------------------------------------------------------------------------

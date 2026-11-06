@@ -10,11 +10,17 @@ import css from '@chat-styles/ConversationRoot.module.css'
  */
 export type ConversationView = 'chat' | 'context'
 
-export function ConversationRoot({ title, subtitle, transcript, composer, view, onView, context, tabLabels }: {
+export function ConversationRoot({ title, subtitle, transcript, composer, view, onView, context, tabLabels, headerActions }: {
   title: string
   subtitle?: string | undefined
   transcript: ReactNode
   composer: ReactNode
+  /**
+   * The header's actions band, trailing the title cluster — dsh's
+   * `conversation.session.header.actions` slot, where upstream seats the
+   * subagent descendant-count catalog beside the background-task control.
+   */
+  headerActions?: ReactNode | undefined
   /**
    * The active face of the column (dsh's `conversation.view` tab ring:
    * Chat beside the vendored dsh-context Context tab). Omitted = chat only,
@@ -65,6 +71,7 @@ export function ConversationRoot({ title, subtitle, transcript, composer, view, 
               {subtitle != null && <span className={css.crumbSubagent}>{subtitle}</span>}
             </nav>
           </div>
+          {headerActions != null && <div className={css.headerActions}>{headerActions}</div>}
         </div>
         {view != null && onView != null && (
           <div className={css.tabs} role="tablist">

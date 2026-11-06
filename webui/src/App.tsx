@@ -7,7 +7,8 @@ import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
 import { useTranslate } from './i18n/useTranslate'
 import { pendingAskFor, useApprovals } from './store/approvals'
 import { useAuth } from './store/auth'
-import { useContextTimeline } from './store/contextTimeline'
+import { useContextTimeline, useSessionAgents } from './store/contextTimeline'
+import { dropForeignSubagentFocus, useSubagentFocus } from './store/subagentFocus'
 import { useConversations } from './store/conversations'
 import { useConversationView } from './store/conversationView'
 import { usePermissionMode } from './store/permissionMode'
@@ -26,6 +27,7 @@ import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
 import { ChangesModal } from './views/ChangesModal'
 import { ContextView } from './views/context/ContextView'
+import { SubagentCatalogMenu } from '@vendor/ui-subagent/SubagentCatalogMenu.tsx'
 
 /**
  * App shell: sidebar + conversation column over the vendored dsh layout,
@@ -117,6 +119,19 @@ export function App() {
   const contextT = useTranslate(CONTEXT_NS, contextDicts)
   const board = useTaskBoard((state) => state.board)
 
+  // The subagent catalog in the header. Its record read is the same per-session
+  // detail ledger the Context tab trails, so the catalog is a viewer in its own
+  // right (a session whose tab was never opened still loads its agents).
+  const { agents, failed: agentsFailed, retry: retryAgents } = useSessionAgents(selectedId)
+  const openSubagent = useSubagentFocus((state) => state.open)
+  // The catalog's prop is "no mark" as `undefined`, its own vocabulary; the
+// store's is `null`. Convert here rather than widening the vendored prop.
+  const currentAgent = useSubagentFocus((state) => state.current)
+  const currentAgentId = currentAgent ?? undefined
+  // An address into a session the reader has left would expand an unrelated
+  // row that happens to reuse the id, so a switch drops it.
+  useEffect(() => { dropForeignSubagentFocus(selectedId) }, [selectedId])
+
   if (token == null) {
     return <MissingToken />
   }
@@ -129,6 +144,21 @@ export function App() {
         view={view}
         onView={(next) => { setView(selectedId, next) }}
         tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
+        headerActions={(
+          <SubagentCatalogMenu
+            agents={agents}
+            currentAgentId={currentAgentId}
+            failed={agentsFailed}
+            onRetry={retryAgents}
+            onOpen={(agentId) => {
+              if (selectedId === null) return
+              // Show the transcript the row lives in before addressing it, or
+              // the request lands on a hidden tab.
+              setView(selectedId, 'chat')
+              openSubagent(selectedId, agentId)
+            }}
+          />
+        )}
         context={<ContextView sessionId={selectedId} />}
         transcript={
           <ChatView key={selectedId ?? 'none'} conversation={conversation} sessionId={selectedId} />
