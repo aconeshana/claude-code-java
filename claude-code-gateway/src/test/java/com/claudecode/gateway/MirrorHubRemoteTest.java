@@ -41,4 +41,16 @@ class MirrorHubRemoteTest {
         assertThat(frame.data()).contains("\"result\":\"ok\"");
         assertThat(payload.has("session_id")).isFalse();
     }
+
+    @Test
+    void journalingDoesNotNeedTheHubMonitorHeldByDetach() throws InterruptedException {
+        MirrorHub hub = new MirrorHub(registry);
+        Thread publisher = Thread.ofVirtual().start(() ->
+            hub.publishRemote("remote-1", "tool.completed", null));
+
+        synchronized (hub) {
+            publisher.join(2_000);
+            assertThat(publisher.isAlive()).isFalse();
+        }
+    }
 }

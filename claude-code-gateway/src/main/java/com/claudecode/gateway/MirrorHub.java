@@ -140,6 +140,13 @@ public final class MirrorHub {
     private static final int AGENT_ACTIVITY_MAX_LEN = 120;
 
     private final SessionHostRegistry registry;
+    /**
+     * Guards the journal ring. Kept apart from this hub's monitor: session event
+     * callbacks publish into the ring while the session hub's lock is held, and
+     * {@link #detach()} holds this monitor while closing those subscriptions, so
+     * sharing the monitor would invert the lock order.
+     */
+    private final Object journalLock = new Object();
     private final ArrayDeque<MirrorFrame> ring = new ArrayDeque<>();
     private final AtomicLong nextId = new AtomicLong();
     private final CopyOnWriteArrayList<Consumer<MirrorFrame>> sinks =
@@ -280,18 +287,22 @@ public final class MirrorHub {
     }
 
     /** Frames after {@code lastEventId}, in id order; empty cursor replays nothing. */
-    public synchronized List<MirrorFrame> replayAfter(long lastEventId) {
+    public List<MirrorFrame> replayAfter(long lastEventId) {
         List<MirrorFrame> missed = new ArrayList<>();
-        for (MirrorFrame frame : ring) {
-            if (frame.id() > lastEventId) missed.add(frame);
+        synchronized (journalLock) {
+            for (MirrorFrame frame : ring) {
+                if (frame.id() > lastEventId) missed.add(frame);
+            }
         }
         return missed;
     }
 
     /** The latest journal id, for clients that want to start live. */
     public long latestId() {
-        MirrorFrame last = ring.peekLast();
-        return last == null ? 0 : last.id();
+        synchronized (journalLock) {
+            MirrorFrame last = ring.peekLast();
+            return last == null ? 0 : last.id();
+        }
     }
 
     /** Publishes one session-activation notice so mirrors can rebind. */
@@ -942,7 +953,7 @@ public final class MirrorHub {
         payload.put("session_id", sessionId);
         MirrorFrame frame = new MirrorFrame(
             nextId.incrementAndGet(), event, payload.toString());
-        synchronized (this) {
+        synchronized (journalLock) {
             ring.addLast(frame);
             while (ring.size() > RING_CAPACITY) ring.removeFirst();
         }
@@ -985,7 +996,9 @@ public final class MirrorHub {
         for (String sessionId : List.copyOf(subscriptions.keySet())) {
             closeSubscription(sessionId);
         }
-        ring.clear();
+        synchronized (journalLock) {
+            ring.clear();
+        }
     }
 
     private static ObjectNode object() {
