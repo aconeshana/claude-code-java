@@ -133,6 +133,31 @@ class RemoteWorkerGatewayInteropTest {
         assertThat(received).doesNotContain("session.model", "session.context");
     }
 
+    @Test
+    @Timeout(20)
+    void turnSubmittedToARemoteSessionIsAcceptedAndForwarded() throws Exception {
+        startGatewayAgainstWorkerDirectory();
+
+        try (Response response = post("/v1/chat/completions",
+                "{\"model\":\"sonnet\",\"stream\":false,"
+                    + "\"metadata\":{\"session_id\":\"s-1\"},"
+                    + "\"messages\":[{\"role\":\"user\",\"content\":\"hello remote\"}]}")) {
+            assertThat(response.code()).isEqualTo(202);
+        }
+        assertThat(received).contains("turn.submit");
+    }
+
+    @Test
+    @Timeout(20)
+    void remoteMessagesWithoutATranscriptAtTheReportedWorkDirAreNotFound() throws Exception {
+        startGatewayAgainstWorkerDirectory();
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/s-1/messages?token=" + TOKEN)).build()).execute()) {
+            assertThat(response.code()).isEqualTo(404);
+        }
+    }
+
     private void startGatewayAgainstWorkerDirectory() throws IOException {
         WebWorkerDirectory directory = new WebWorkerDirectory(root.resolve("workers"));
         directory.register(new WebWorkerRegistration(
