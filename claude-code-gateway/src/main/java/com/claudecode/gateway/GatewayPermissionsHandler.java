@@ -11,10 +11,19 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.interaction.InteractionEndpoint;
 import com.claudecode.runtime.interaction.InteractionFeatures;
+import com.claudecode.runtime.sessionlink.SessionLinkClient;
+import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
 
 /**
@@ -36,10 +45,14 @@ import com.sun.net.httpserver.HttpExchange;
 @Explanation("Web-side responder of the shared permission ask coordinator")
 final class GatewayPermissionsHandler {
 
-    private final InteractionCoordinator interactions;
+    private static final Duration REMOTE_TIMEOUT = Duration.ofSeconds(10);
 
-    GatewayPermissionsHandler(InteractionCoordinator interactions) {
+    private final InteractionCoordinator interactions;
+    private final Optional<RemoteWorkerPool> remoteWorkers;
+
+    GatewayPermissionsHandler(InteractionCoordinator interactions, Optional<RemoteWorkerPool> remoteWorkers) {
         this.interactions = interactions;
+        this.remoteWorkers = remoteWorkers;
     }
 
     /** Handles one respond exchange. */
@@ -69,8 +82,8 @@ final class GatewayPermissionsHandler {
                 "updated_input must be an object"));
             return;
         }
-        PermissionAskCallback.Result result = result(
-            allowedNode.asBoolean(), feedback, skip, updatedInput);
+        boolean allowed = allowedNode.asBoolean();
+        PermissionAskCallback.Result result = result(allowed, feedback, skip, updatedInput);
 
         // A user question and a permission ask share the respond channel; the
         // pending feature owns the request id, so try both in turn.
@@ -80,16 +93,66 @@ final class GatewayPermissionsHandler {
             || interactions.respond(
                 InteractionFeatures.PERMISSION, requestId, sessionId, result,
                 InteractionEndpoint.REMOTE);
-        if (!accepted) {
+        if (accepted) {
+            respondResponded(exchange);
+            return;
+        }
+        ObjectNode remotePayload = remotePayload(requestId, allowed, skip, feedback, updatedInput);
+        Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.flatMap(
+            pool -> pool.respondInteraction(sessionId, remotePayload));
+        if (forwarded.isEmpty()) {
             // Unknown id (404) vs. already answered (409): a known feature
             // request that no longer pends was answered by another observer.
             respondJson(exchange, 409, errorBody("already_responded",
                 "the ask was already answered by another observer"));
             return;
         }
+        respondForwarded(exchange, forwarded.get());
+    }
+
+    private static void respondResponded(HttpExchange exchange) throws IOException {
         ObjectNode response = JsonUtils.getMapper().createObjectNode();
         response.put("responded", true);
         respondJson(exchange, 200, response);
+    }
+
+    private static void respondForwarded(HttpExchange exchange, CompletableFuture<SessionLinkFrame> reply)
+            throws IOException {
+        try {
+            reply.get(REMOTE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            respondResponded(exchange);
+        } catch (ExecutionException failure) {
+            if (failure.getCause() instanceof SessionLinkClient.RemoteException remote
+                    && Strings.CS.equals(remote.code(), "stale_interaction")) {
+                respondJson(exchange, 409, errorBody("already_responded",
+                    "the ask was already answered by another observer"));
+                return;
+            }
+            respondJson(exchange, 502, errorBody("remote_rejected",
+                StringUtils.defaultIfBlank(failure.getCause() == null
+                    ? null : failure.getCause().getMessage(), "remote session rejected the answer")));
+        } catch (TimeoutException _) {
+            respondJson(exchange, 502, errorBody("remote_timeout",
+                "remote session did not answer in time"));
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            respondJson(exchange, 502, errorBody("remote_timeout",
+                "interrupted while waiting for the remote session"));
+        }
+    }
+
+    private static ObjectNode remotePayload(
+            String requestId, boolean allowed, boolean skip, String feedback, JsonNode updatedInput) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("request_id", requestId);
+        boolean allow = allowed && !skip;
+        payload.put("behavior", allow ? "allow" : "deny");
+        if (updatedInput != null && allow) payload.set("updated_input", updatedInput);
+        String message = skip
+            ? (StringUtils.isNotBlank(feedback) ? feedback : "skipped by web client")
+            : feedback;
+        if (StringUtils.isNotBlank(message)) payload.put("message", message);
+        return payload;
     }
 
     private static PermissionAskCallback.Result result(

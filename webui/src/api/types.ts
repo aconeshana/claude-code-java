@@ -31,6 +31,11 @@ export interface CatalogSession {
    * the sidebar's population; an on-disk-only history row is always absent.
    */
   readonly running?: boolean
+  /**
+   * The session is hosted by another running Claude Code process rather than
+   * this gateway's own TUI. Omitted for local sessions.
+   */
+  readonly remote?: boolean
 }
 
 export interface CatalogProject {
@@ -60,6 +65,8 @@ export interface FlatSession {
   readonly headless_open: boolean | undefined
   /** See {@link CatalogSession.running}; omitted when not running. */
   readonly running?: boolean | undefined
+  /** Hosted by another running Claude Code process; the gateway omits the field otherwise. */
+  readonly remote?: boolean | undefined
 }
 
 export interface FlatSessionCatalog {

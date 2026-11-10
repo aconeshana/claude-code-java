@@ -4,12 +4,14 @@ import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.rejectIfUnauthenticated;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
+import com.claudecode.core.message.Message;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
@@ -29,8 +31,12 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -105,6 +111,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayContextTimelineHandler contextTimelineApi;
     /** The registry activation feed; released by {@link #close()}. */
     private final AutoCloseable registrySubscription;
+    private final Optional<RemoteWorkerPool> remoteWorkers;
     private final AtomicBoolean started = new AtomicBoolean();
     private volatile HttpServer server;
 
@@ -150,11 +157,18 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayTaskBoardPort taskBoard = _ -> Optional.empty();
         private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
         private GatewayWorkspaceFilePort workspaceFile = GatewayWorkspaceFilePort.none();
+        private WebWorkerDirectory webWorkers;
 
         private Builder(Config config, String token, SessionHostRegistry registry) {
             this.config = Objects.requireNonNull(config, "config");
             this.token = Objects.requireNonNull(token, "token");
             this.registry = Objects.requireNonNull(registry, "registry");
+        }
+
+        /** Enables the sessions of every interactive process registered in {@code value}. */
+        public Builder webWorkers(WebWorkerDirectory value) {
+            this.webWorkers = Objects.requireNonNull(value, "webWorkers");
+            return this;
         }
 
         public Builder catalog(GatewaySessionCatalogPort value) {
@@ -274,6 +288,8 @@ public final class GatewayServer implements AutoCloseable {
         this.registry = registry;
         this.headless = headless;
         this.mirror = new MirrorHub(registry);
+        this.remoteWorkers = Optional.ofNullable(builder.webWorkers)
+            .map(directory -> new RemoteWorkerPool(directory, mirror));
         // The context-timeline ledger follows the same sessions the mirror
         // does: it must observe every hub message so compaction's in-place
         // rewrite of the live rows is archived before they are gone.
@@ -288,17 +304,26 @@ public final class GatewayServer implements AutoCloseable {
         // visible in /api/sessions, so a web client can address the TUI
         // conversation directly); absent id keeps the legacy behavior of
         // targeting whatever session is active.
-        ProtocolTurnRunner.SessionResolver resolver = sessionId -> {
-            if (sessionId == null) {
+        ProtocolTurnRunner.SessionResolver resolver = new ProtocolTurnRunner.SessionResolver() {
+            @Override public Optional<SessionHostSession> resolve(String sessionId) {
+                if (sessionId == null) {
+                    return registry.currentActivation()
+                        .map(SessionHostRegistry.ActivationResult::session);
+                }
+                Optional<SessionHostSession> headlessSession = headless.find(sessionId);
+                if (headlessSession.isPresent()) return headlessSession;
                 return registry.currentActivation()
+                    .filter(active -> Strings.CS.equals(active.session().info().id(),
+                        sessionId))
                     .map(SessionHostRegistry.ActivationResult::session);
             }
-            Optional<SessionHostSession> headlessSession = headless.find(sessionId);
-            if (headlessSession.isPresent()) return headlessSession;
-            return registry.currentActivation()
-                .filter(active -> Strings.CS.equals(active.session().info().id(),
-                    sessionId))
-                .map(SessionHostRegistry.ActivationResult::session);
+
+            @Override public Optional<CompletableFuture<Void>> submitRemote(
+                    String sessionId, String prompt, String messageId) {
+                return remoteWorkers
+                    .flatMap(pool -> pool.submit(sessionId, prompt, messageId))
+                    .map(accepted -> accepted.thenApply(_ -> (Void) null));
+            }
         };
         this.messages = new MessagesHandler(resolver, inFlight);
         this.chat = new ChatHandler(resolver, inFlight);
@@ -325,21 +350,23 @@ public final class GatewayServer implements AutoCloseable {
             GatewayInteractionPresenter presenter = new GatewayInteractionPresenter(mirror);
             interactions.register(InteractionFeatures.PERMISSION, presenter);
             interactions.register(InteractionFeatures.USER_QUESTION, presenter);
-            this.permissionsApi = new GatewayPermissionsHandler(interactions);
+            this.permissionsApi = new GatewayPermissionsHandler(interactions, remoteWorkers);
         } else {
             this.permissionsApi = null;
         }
         this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
-            sessionMessages, mirror::runningSince, mirror::streamingDraft);
+            withRemoteWorkDirFallback(sessionMessages,
+                sessionId -> remoteWorkers.flatMap(pool -> pool.workDirOf(sessionId))),
+            mirror::runningSince, mirror::streamingDraft);
         this.settingsApi = new GatewaySettingsHandler(settings);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
         this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
         this.fileSuggestionsApi = new GatewayFileSuggestionsHandler(fileSuggestions);
-        this.sessionContextApi = new GatewaySessionContextHandler(sessionContext);
+        this.sessionContextApi = new GatewaySessionContextHandler(sessionContext, remoteWorkers);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
-        this.sessionCancelApi = new GatewaySessionCancelHandler(cancel);
+        this.sessionCancelApi = new GatewaySessionCancelHandler(cancel, remoteWorkers);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
         this.changesApi = new GatewayChangesHandler(fileDiff);
         this.workspaceFileApi = new GatewayWorkspaceFileHandler(workspaceFile);
@@ -403,6 +430,7 @@ public final class GatewayServer implements AutoCloseable {
         mirror.detach();
         contextTimeline.close();
         sessionsApi.closeAll();
+        remoteWorkers.ifPresent(RemoteWorkerPool::close);
         // Drop the activation feed last: the handler above can publish into
         // the mirror on its way out, and the subscription must still be live
         // to carry those frames to any lane still open.
@@ -862,8 +890,12 @@ public final class GatewayServer implements AutoCloseable {
     private ObjectNode sessionsBody(int perProjectLimit) {
         ObjectNode body =
             JsonUtils.getMapper().createObjectNode();
+        List<SessionHostInfo> remote = remoteSessions();
+        Set<String> remoteIds = remote.stream()
+            .map(SessionHostInfo::id)
+            .collect(Collectors.toSet());
         List<GatewaySessionCatalogPort.ProjectEntry> projects = LiveSessionMerge.merge(
-            catalog.listProjects(perProjectLimit), liveSessions(), catalog::canonicalizeProjectPath);
+            catalog.listProjects(perProjectLimit), liveSessions(remote), catalog::canonicalizeProjectPath);
         if (!projects.isEmpty()) {
             ArrayNode projectArray = body.putArray("projects");
             for (GatewaySessionCatalogPort.ProjectEntry project : projects) {
@@ -887,6 +919,7 @@ public final class GatewayServer implements AutoCloseable {
                     if (hasText(entry.firstPrompt())) {
                         sessionNode.put("first_prompt", entry.firstPrompt());
                     }
+                    if (remoteIds.contains(entry.id())) sessionNode.put("remote", true);
                     if (registry.isCurrent(entry.id())) sessionNode.put("active", true);
                     // A session row the client can route to right now via
                     // metadata.session_id without a further open round-trip.
@@ -902,6 +935,7 @@ public final class GatewayServer implements AutoCloseable {
         }
         // Fallback: flat listing over the registry when no catalog is wired.
         List<SessionHostInfo> sessions = new ArrayList<>(registry.list());
+        sessions.addAll(remote);
         sessions.sort(Comparator.comparing(
             info -> info.modifiedAt() == null ? null : info.modifiedAt(),
             Comparator.nullsFirst(Comparator.reverseOrder())));
@@ -914,6 +948,7 @@ public final class GatewayServer implements AutoCloseable {
             node.put("message_count", info.messageCount());
             if (info.modifiedAt() != null) node.put("modified_at", info.modifiedAt().toString());
             if (!info.gitBranch().isEmpty()) node.put("git_branch", info.gitBranch());
+            if (remoteIds.contains(info.id())) node.put("remote", true);
             if (registry.isCurrent(info.id())) node.put("active", true);
             if (headless.isOpen(info.id())) node.put("headless_open", true);
             if (mirror.runningSince(info.id()).isPresent()) node.put("running", true);
@@ -930,7 +965,7 @@ public final class GatewayServer implements AutoCloseable {
      * listing with the same transcript search the catalog runs, so it is blind to exactly the
      * sessions this method exists to surface.
      */
-    private List<SessionHostInfo> liveSessions() {
+    private List<SessionHostInfo> liveSessions(List<SessionHostInfo> remote) {
         List<SessionHostInfo> live = new ArrayList<>();
         registry.currentActivation()
             .map(activation -> activation.session().info())
@@ -942,7 +977,36 @@ public final class GatewayServer implements AutoCloseable {
                 .map(SessionHostSession::info)
                 .ifPresent(live::add);
         }
+        live.addAll(remote);
         return live;
+    }
+
+    private List<SessionHostInfo> remoteSessions() {
+        return remoteWorkers.map(RemoteWorkerPool::liveSessions).orElse(List.of());
+    }
+
+    /**
+     * A session hosted by another interactive process lives under that process's
+     * project, so a local miss retries the transcript at the work directory the
+     * worker reported for it.
+     */
+    static GatewaySessionMessagesPort withRemoteWorkDirFallback(
+            GatewaySessionMessagesPort local, Function<String, Optional<String>> workDirOf) {
+        return new GatewaySessionMessagesPort() {
+            @Override public Optional<List<Message>> messages(
+                    String sessionId, String headlessSessionId) {
+                Optional<List<Message>> own =
+                    local.messages(sessionId, headlessSessionId);
+                if (own.isPresent()) return own;
+                return workDirOf.apply(sessionId)
+                    .flatMap(workDir -> local.messagesInWorkDir(sessionId, workDir));
+            }
+
+            @Override public Optional<List<Message>> agentMessages(
+                    String sessionId, String agentId) {
+                return local.agentMessages(sessionId, agentId);
+            }
+        };
     }
 
     private void streamMirror(HttpExchange exchange) throws IOException {

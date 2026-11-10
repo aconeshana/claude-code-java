@@ -2,11 +2,14 @@ package com.claudecode.cli;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.VersionInfo;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.*;
 import com.claudecode.runtime.sessionlink.SessionLinkServer;
+import com.claudecode.runtime.webworker.WebWorkerDirectory;
+import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.session.SessionSearch;
 import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import java.io.IOException;
@@ -55,6 +58,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
     private volatile Path runtimeDir;
     private volatile Path socketDir;
     private volatile SessionLinkServer server;
+    private volatile WebWorkerDirectory.Registration workerRegistration;
     private volatile Process sidecar;
     private volatile Process setupProcess;
 
@@ -125,9 +129,21 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             && hasSavedFeishuCredentials(sourceConfig);
     }
 
-    /** Starts the authenticated UDS before launching the sidecar process. */
+    /**
+     * Starts the authenticated UDS, then the cc-connect sidecar when one is
+     * configured.
+     *
+     * <p>The link endpoint is unconditional. It is the only live channel a
+     * standalone {@code claude web} supervisor has into this process, so the
+     * supervisor can list this TUI's sessions, follow their event streams, and
+     * answer their permission asks without the user having configured the IM
+     * sidecar. Only the sidecar itself — the cc-connect child process — is
+     * gated on {@link #enabled()}; when it is off the UDS still serves, and
+     * {@link #cleanupEndpoint()} must not tear it down.
+     */
     void start() {
-        if (!enabled() || !started.compareAndSet(false, true)) return;
+        if (!started.compareAndSet(false, true)) return;
+        boolean sidecarConfigured = enabled();
         try {
             Path dir = Files.createTempDirectory("claude-code-session-host-");
             restrict(dir, Set.of(PosixFilePermission.OWNER_READ,
@@ -142,6 +158,9 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
                 collaboration);
             createdServer.start();
             server = createdServer;
+            registerWorker(socket, token);
+
+            if (!sidecarConfigured) return;
 
             Path runtimeConfig = dir.resolve("cc-connect.toml");
             Files.copy(sourceConfig, runtimeConfig,
@@ -172,6 +191,26 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             started.set(false);
             cleanupEndpoint();
             throw new IllegalStateException("failed to start Session Host IM endpoint", failure);
+        }
+    }
+
+    /**
+     * Publishes this process's link endpoint for the {@code claude web} supervisor.
+     *
+     * <p>A failed registration is logged, not fatal: the TUI is fully usable
+     * without a supervisor, and refusing to start the interactive session
+     * because a discovery file could not be written would trade a missing web
+     * view for a dead terminal.
+     */
+    private void registerWorker(Path socket, String token) {
+        try {
+            WebWorkerDirectory directory =
+                new WebWorkerDirectory(ClaudePaths.currentClaudeHome().resolve("web-workers"));
+            workerRegistration = directory.register(new WebWorkerRegistration(
+                ProcessHandle.current().pid(), socket.toString(), token, workDir,
+                VersionInfo.version()));
+        } catch (IOException | RuntimeException failure) {
+            log.warn("Could not publish this session to claude web: {}", failure.toString());
         }
     }
 
@@ -514,6 +553,9 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
                 process.destroyForcibly();
             }
         }
+        WebWorkerDirectory.Registration registration = workerRegistration;
+        workerRegistration = null;
+        if (registration != null) registration.close();
         SessionLinkServer link = server;
         server = null;
         if (link != null) link.close();

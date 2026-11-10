@@ -15,9 +15,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.StringUtils;
 
@@ -100,9 +105,19 @@ final class ProtocolTurnRunner {
     /** Resolves the submit target for one turn: a headless id, or the activation. */
     interface SessionResolver {
         Optional<SessionHostSession> resolve(String sessionId);
+
+        /**
+         * Hands a turn to the interactive process that hosts {@code sessionId}; empty when no
+         * such process lists it. The accepted turn is observed through the mirror stream.
+         */
+        default Optional<CompletableFuture<Void>> submitRemote(
+                String sessionId, String prompt, String messageId) {
+            return Optional.empty();
+        }
     }
 
     private static final int TOO_MANY_REQUESTS = 429;
+    private static final Duration REMOTE_ACCEPT_TIMEOUT = Duration.ofSeconds(10);
 
     private final SessionResolver sessions;
     private final SessionHostSubmissionLedger ledger = new SessionHostSubmissionLedger();
@@ -146,6 +161,14 @@ final class ProtocolTurnRunner {
 
         String sessionId = projection.extractSessionId(request);
         SessionHostSession session = sessions.resolve(sessionId).orElse(null);
+        if (session == null && sessionId != null) {
+            Optional<CompletableFuture<Void>> remote =
+                sessions.submitRemote(sessionId, prompt, messageId);
+            if (remote.isPresent()) {
+                respondRemoteAccepted(remote.get(), sessionId, messageId, responder);
+                return;
+            }
+        }
         if (session == null) {
             responder.respondJsonError(sessionId == null ? 409 : 404,
                 sessionId == null
@@ -176,6 +199,26 @@ final class ProtocolTurnRunner {
             turnScope.fail(StringUtils.defaultIfBlank(failure.getMessage(),
                 "turn submission failed"));
         }
+    }
+
+    private static void respondRemoteAccepted(CompletableFuture<Void> accepted, String sessionId,
+            String messageId, ProtocolResponder responder) throws IOException {
+        try {
+            accepted.get(REMOTE_ACCEPT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (ExecutionException failure) {
+            responder.respondJsonError(502, StringUtils.defaultIfBlank(
+                failure.getCause() == null ? null : failure.getCause().getMessage(),
+                "remote session rejected the turn"));
+            return;
+        } catch (TimeoutException _) {
+            responder.respondJsonError(502, "remote session did not accept the turn in time");
+            return;
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            responder.respondJsonError(502, "interrupted while waiting for the remote session");
+            return;
+        }
+        responder.respondAccepted(sessionId, messageId);
     }
 
     private void submitPrompt(SessionHostSession session, String prompt,
@@ -209,6 +252,17 @@ final class ProtocolTurnRunner {
         SseConnection beginSse() throws IOException;
 
         void respondJsonError(int status, String message) throws IOException;
+
+        /** Acknowledges a turn that another process will run; its events arrive on the mirror stream. */
+        void respondAccepted(String sessionId, String messageId) throws IOException;
+
+        static String acceptedBody(String sessionId, String messageId) {
+            ObjectNode body = JsonUtils.getMapper().createObjectNode();
+            body.put("accepted", true);
+            body.put("session_id", sessionId);
+            body.put("message_id", messageId);
+            return body.toString();
+        }
     }
 
     /**

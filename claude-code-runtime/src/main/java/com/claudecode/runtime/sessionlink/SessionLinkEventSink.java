@@ -2,11 +2,16 @@ package com.claudecode.runtime.sessionlink;
 
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.message.AssistantContent;
+import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
+import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.serialization.JsonUtils;
@@ -15,6 +20,7 @@ import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +32,9 @@ import java.util.function.Consumer;
  */
 @Explanation("Semantic SDKMessage projection for collaboration endpoints")
 public final class SessionLinkEventSink implements SessionSink {
+
+    /** Activity-line truncation width, kept equal to the gateway's own constant. */
+    private static final int ACTIVITY_MAX_LEN = 120;
 
     private final String sessionId;
     private final Consumer<SessionLinkFrame> publisher;
@@ -72,8 +81,93 @@ public final class SessionLinkEventSink implements SessionSink {
             }
             case SDKMessage.Result result -> publishResult(result);
             case SDKMessage.Error error -> onError(error.exception(), false);
-            default -> { /* Progress/raw/control-only messages are not chat output. */ }
+            case SDKMessage.Progress progress -> publishProgress(progress);
+            default -> { /* Raw/control-only messages are not chat output. */ }
         }
+    }
+
+    /**
+     * Projects one sub-agent progress tick — the child's live activity line.
+     *
+     * <p>This mirrors the gateway's {@code tool.progress} frame field-for-field
+     * ({@code tool_use_id}/{@code kind}/{@code agent_id}/{@code prompt}/
+     * {@code progress}/{@code message}/{@code content}), because a supervisor
+     * following a remote TUI session has to reduce both sources into the same
+     * client-side shape. {@code content} falls back to {@code output} only when
+     * no child message produced an activity line, so the two projections never
+     * overwrite each other.
+     */
+    private void publishProgress(SDKMessage.Progress progress) {
+        ProgressMessage message = progress.message();
+        if (message == null || message.data() == null) return;
+        ProgressMessage.ProgressData data = message.data();
+        ObjectNode payload = object();
+        if (message.toolUseId() != null) payload.put("tool_use_id", message.toolUseId());
+        payload.put("kind", data.type() == null ? "" : data.type());
+        if (data.agentId() != null) payload.put("agent_id", data.agentId());
+        if (data.prompt() != null) payload.put("prompt", data.prompt());
+        if (data.progress() != null) payload.put("progress", data.progress());
+        if (data.progressMessage() != null) payload.put("message", data.progressMessage());
+        if (data.message() != null) {
+            String text = activityText(data.message());
+            if (text != null) payload.put("content", text);
+        }
+        if (data.output() != null && !payload.has("content")) {
+            payload.put("content", data.output());
+        }
+        publish("tool.progress", payload);
+    }
+
+    /**
+     * One line of activity for a child message: its first tool call, else its prose.
+     *
+     * <p>This repeats {@code GatewayMirrorHub}'s projection deliberately rather
+     * than sharing code across the module boundary: the runtime cannot depend
+     * on the gateway, and a supervisor merges both sources into one view, so the
+     * two must agree on tool-name fallbacks, argument selection, and truncation.
+     */
+    private static String activityText(Message message) {
+        if (message instanceof AssistantMessage assistant) return assistantActivity(assistant);
+        if (!(message instanceof UserMessage user) || user.message() == null) return null;
+        if (user.message().text() != null) return user.message().text();
+        if (user.message().blocks() == null) return null;
+        StringBuilder body = new StringBuilder();
+        for (ContentBlock block : user.message().blocks()) {
+            if (block instanceof TextBlock(String value)) body.append(value);
+        }
+        return body.isEmpty() ? null : body.toString();
+    }
+
+    private static String assistantActivity(AssistantMessage assistant) {
+        AssistantContent content = assistant.message();
+        if (content == null || content.content() == null) return null;
+        StringBuilder prose = new StringBuilder();
+        for (ContentBlock block : content.content()) {
+            if (block instanceof ToolUseBlock tool) {
+                String name = tool.name() == null ? "Tool" : tool.name();
+                String summary = argsSummary(tool.input());
+                return summary.isEmpty() ? name : name + "(" + summary + ")";
+            }
+            if (block instanceof TextBlock(String value)) prose.append(value);
+        }
+        return prose.isEmpty() ? null : prose.toString();
+    }
+
+    /** The first textual argument of a tool call, truncated to one line. */
+    private static String argsSummary(JsonNode input) {
+        if (input == null || !input.isObject()) return "";
+        Iterator<Map.Entry<String, JsonNode>> fields = input.fields();
+        while (fields.hasNext()) {
+            JsonNode value = fields.next().getValue();
+            if (value != null && value.isTextual()) {
+                String text = value.asText().replace('\n', ' ').strip();
+                if (!text.isEmpty()) {
+                    return text.length() <= ACTIVITY_MAX_LEN
+                        ? text : text.substring(0, ACTIVITY_MAX_LEN) + "…";
+                }
+            }
+        }
+        return "";
     }
 
     @Override

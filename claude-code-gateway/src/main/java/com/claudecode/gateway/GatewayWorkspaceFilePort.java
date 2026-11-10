@@ -54,6 +54,6 @@ public interface GatewayWorkspaceFilePort {
      * @return a port answering empty for every request
      */
     static GatewayWorkspaceFilePort none() {
-        return (sessionId, path) -> Optional.empty();
+        return (_, _) -> Optional.empty();
     }
 }

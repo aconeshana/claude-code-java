@@ -196,6 +196,9 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
         {showStatus && <StateDot state={status.state} />}
       </span>
       <span className={css.title}>{title}</span>
+      {session.remote === true && (
+        <span className={localCss.remoteTag}>{t('session.remote')}</span>
+      )}
       <span className={css.time}>{timeLabel(Date.parse(session.modified_at), now, t)}</span>
       <span className={css.rowActions}>
         <Menu

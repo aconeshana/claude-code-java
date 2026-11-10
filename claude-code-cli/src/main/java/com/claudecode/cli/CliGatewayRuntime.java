@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
@@ -22,10 +23,12 @@ import com.claudecode.gateway.GatewaySettingsPort;
 import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
+import com.claudecode.runtime.webworker.WebWorkerDirectory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Objects;
@@ -87,6 +90,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
      * race into two bindings.
      */
     private final AtomicReference<CompletableFuture<Started>> startFlight = new AtomicReference<>();
+    private Path gatewayRecordFile = ClaudePaths.WEB_GATEWAY_JSON;
+    private Path webWorkersDirectory = ClaudePaths.WEB_WORKERS_DIR;
     private volatile GatewayServer server;
     private volatile String url;
 
@@ -275,6 +280,10 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         if (existing != null) {
             return new Started(url);
         }
+        Optional<WebGatewayRecord> global = WebGatewayRecord.readLive(gatewayRecordFile);
+        if (global.isPresent()) {
+            return new Started(global.get().url());
+        }
         String token = newToken();
         int port = findAvailablePort("127.0.0.1", DEFAULT_PORT, PORT_SEARCH_ATTEMPTS);
         GatewayServer created = GatewayServer.builder(
@@ -297,11 +306,26 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .taskBoard(taskBoard != null ? taskBoard : _ -> Optional.empty())
             .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
             .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
+            .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
             .build();
         created.start();
+        String published = "http://127.0.0.1:" + created.port() + "/?token=" + token;
+        try {
+            WebGatewayRecord.write(gatewayRecordFile,
+                new WebGatewayRecord(ProcessHandle.current().pid(), published));
+        } catch (IOException failure) {
+            created.close();
+            throw failure;
+        }
         server = created;
-        url = "http://127.0.0.1:" + created.port() + "/?token=" + token;
+        url = published;
         return new Started(url);
+    }
+
+    /** Points the discovery record and worker directory under {@code claudeHome}; tests isolate state here. */
+    void useWebStateDirectory(Path claudeHome) {
+        gatewayRecordFile = claudeHome.resolve(ClaudePaths.WEB_GATEWAY_JSON.getFileName());
+        webWorkersDirectory = claudeHome.resolve(ClaudePaths.WEB_WORKERS_DIR.getFileName());
     }
 
     /**
@@ -323,7 +347,10 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         GatewayServer current = server;
         server = null;
         url = null;
-        if (current != null) current.close();
+        if (current != null) {
+            current.close();
+            WebGatewayRecord.removeIfOwnedBy(gatewayRecordFile, ProcessHandle.current().pid());
+        }
         if (headless != null) headless.closeAll();
     }
 

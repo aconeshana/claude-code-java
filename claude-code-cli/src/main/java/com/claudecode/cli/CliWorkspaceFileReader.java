@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.gateway.GatewayWorkspaceFilePort;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,7 +43,7 @@ final class CliWorkspaceFileReader {
     }
 
     static Optional<GatewayWorkspaceFilePort.TextFile> read(Path root, String path) {
-        if (path == null || path.isBlank()) {
+        if (StringUtils.isBlank(path)) {
             return Optional.empty();
         }
         try {

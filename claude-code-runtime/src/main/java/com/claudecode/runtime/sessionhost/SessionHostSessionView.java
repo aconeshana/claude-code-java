@@ -22,6 +22,8 @@ public interface SessionHostSessionView {
 
     SessionHostPermissionController permissions();
 
+    SessionHostCancelController cancels();
+
     static SessionHostSessionView of(SessionHostSession session) {
         Objects.requireNonNull(session, "session");
         return new SessionHostSessionView() {
@@ -35,6 +37,7 @@ public interface SessionHostSessionView {
             @Override public SessionHostPermissionController permissions() {
                 return session.permissions();
             }
+            @Override public SessionHostCancelController cancels() { return session.cancels(); }
         };
     }
 }

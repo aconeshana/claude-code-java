@@ -36,7 +36,7 @@ import picocli.CommandLine.Parameters;
     versionProvider = ClaudeCodeCli.BuildVersionProvider.class,
     description = "Claude Code — AI-powered CLI tool for software development",
     mixinStandardHelpOptions = true,
-    subcommands = {McpCliCommand.class}
+    subcommands = {McpCliCommand.class, WebCliCommand.class}
 )
 public class ClaudeCodeCli implements Callable<Integer> {
 

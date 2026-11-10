@@ -617,7 +617,8 @@ final class CliInteractiveSessionRunner {
                 ExternalTips::getNextTip,
                 sessionHostRuntime.registry(), sessionHostRuntime.interactions(),
                 sessionHostRuntime.collaboration(), sessionHostRuntime,
-                gatewayRuntime);
+                new DetachedWebGateway(ClaudePaths.WEB_GATEWAY_JSON,
+                    ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.log")));
             ReplWiring wiring = interactiveRuntime.assemble(
                 applicationPorts, featureRuntime, launchState,
                 new ReplStartupReadiness(startup.inputSemanticReady(),

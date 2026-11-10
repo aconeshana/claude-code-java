@@ -312,6 +312,17 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         }
 
         @Override
+        public void respondAccepted(String sessionId, String messageId) throws IOException {
+            byte[] bytes = ProtocolTurnRunner.ProtocolResponder.acceptedBody(sessionId, messageId)
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(202, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
+        }
+
+        @Override
         public void respondJsonError(int status, String message) throws IOException {
             ObjectNode body = JsonUtils.getMapper().createObjectNode();
             ObjectNode error = body.putObject("error");

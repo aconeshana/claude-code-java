@@ -6,10 +6,19 @@ import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionlink.SessionLinkClient;
+import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
 
 /**
@@ -26,10 +35,14 @@ import com.sun.net.httpserver.HttpExchange;
  */
 final class GatewaySessionCancelHandler {
 
-    private final GatewaySessionCancelPort cancel;
+    private static final Duration REMOTE_TIMEOUT = Duration.ofSeconds(10);
 
-    GatewaySessionCancelHandler(GatewaySessionCancelPort cancel) {
+    private final GatewaySessionCancelPort cancel;
+    private final Optional<RemoteWorkerPool> remoteWorkers;
+
+    GatewaySessionCancelHandler(GatewaySessionCancelPort cancel, Optional<RemoteWorkerPool> remoteWorkers) {
         this.cancel = cancel;
+        this.remoteWorkers = remoteWorkers;
     }
 
     /** Handles one {@code POST} exchange: stop the addressed session's turn. */
@@ -46,6 +59,14 @@ final class GatewaySessionCancelHandler {
                     failure.getMessage(), failure.toString())));
             return;
         }
+        if (!reached && sessionId != null) {
+            Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.flatMap(
+                pool -> pool.cancelTurn(sessionId));
+            if (forwarded.isPresent()) {
+                respondForwarded(exchange, sessionId, forwarded.get());
+                return;
+            }
+        }
         if (!reached) {
             respondJson(exchange, 404, errorBody("not_found",
                 sessionId == null
@@ -57,6 +78,36 @@ final class GatewaySessionCancelHandler {
         if (sessionId != null) result.put("session_id", sessionId);
         // The request is accepted, not completed: cancellation unwinds the
         // turn asynchronously and the mirror stream reports the outcome.
+        result.put("cancelling", true);
+        respondJson(exchange, 200, result);
+    }
+
+    private static void respondForwarded(HttpExchange exchange, String sessionId,
+            CompletableFuture<SessionLinkFrame> reply) throws IOException {
+        try {
+            reply.get(REMOTE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (ExecutionException failure) {
+            if (failure.getCause() instanceof SessionLinkClient.RemoteException remote
+                    && Strings.CS.equals(remote.code(), "invalid_request")) {
+                respondJson(exchange, 404, errorBody("not_found", "unknown session: " + sessionId));
+                return;
+            }
+            respondJson(exchange, 502, errorBody("remote_rejected",
+                StringUtils.defaultIfBlank(failure.getCause() == null
+                    ? null : failure.getCause().getMessage(), "remote session rejected the cancel")));
+            return;
+        } catch (TimeoutException _) {
+            respondJson(exchange, 502, errorBody("remote_timeout",
+                "remote session did not acknowledge the cancel in time"));
+            return;
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            respondJson(exchange, 502, errorBody("remote_timeout",
+                "interrupted while waiting for the remote session"));
+            return;
+        }
+        ObjectNode result = JsonUtils.getMapper().createObjectNode();
+        result.put("session_id", sessionId);
         result.put("cancelling", true);
         respondJson(exchange, 200, result);
     }

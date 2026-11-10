@@ -924,6 +924,20 @@ public final class MirrorHub {
         }
     }
 
+    /**
+     * Projects one event forwarded from another process's Session Link stream.
+     *
+     * <p>Remote TUI sessions reach this hub already in the wire vocabulary the
+     * local projection uses ({@code turn.started}, {@code output.text},
+     * {@code tool.progress}, ...), so the payload is republished unchanged and
+     * journaled like any local frame: a reconnecting browser replays it.
+     */
+    public void publishRemote(String sessionId, String event, JsonNode payload) {
+        ObjectNode copy = payload != null && payload.isObject()
+            ? ((ObjectNode) payload.deepCopy()) : JsonUtils.getMapper().createObjectNode();
+        publish(sessionId, event, copy);
+    }
+
     private void publish(String sessionId, String event, ObjectNode payload) {
         payload.put("session_id", sessionId);
         MirrorFrame frame = new MirrorFrame(

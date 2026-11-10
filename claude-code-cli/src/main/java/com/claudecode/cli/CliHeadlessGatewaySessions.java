@@ -192,6 +192,20 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 }
             }
 
+            @Override public Optional<List<Message>> messagesInWorkDir(
+                    String sessionId, String workDir) {
+                if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(workDir)) {
+                    return Optional.empty();
+                }
+                Path file = new SessionManager(workDir).getSessionFile(sessionId);
+                if (!Files.isRegularFile(file)) return Optional.empty();
+                try {
+                    return Optional.of(new SessionStorage().readMessages(file));
+                } catch (RuntimeException _) {
+                    return Optional.empty();
+                }
+            }
+
             /**
              * A sub-agent's transcript lives in the session's sidecar tree
              * ({@code <project>/<sessionId>/subagents/agent-<agentId>.jsonl}).

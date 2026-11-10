@@ -66,6 +66,14 @@ public final class ClaudePaths {
     public static final Path CACHE_DIR        = CLAUDE_HOME.resolve("cache");
     /** {@code ~/.claude/paste-cache/} */
     public static final Path PASTE_STORE_DIR  = CLAUDE_HOME.resolve("paste-cache");
+    /**
+     * {@code ~/.claude/web-workers/} — one JSON registration per live interactive
+     * process, so the standalone {@code claude web} supervisor can discover every
+     * running TUI and subscribe to its Session Link endpoint.
+     */
+    public static final Path WEB_WORKERS_DIR  = CLAUDE_HOME.resolve("web-workers");
+    /** {@code ~/.claude/web-gateway.json} — the singleton supervisor's handshake. */
+    public static final Path WEB_GATEWAY_JSON = CLAUDE_HOME.resolve("web-gateway.json");
 
 
 

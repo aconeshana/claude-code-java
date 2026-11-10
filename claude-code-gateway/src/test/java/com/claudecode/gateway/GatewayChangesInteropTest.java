@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.claudecode.core.diff.StructuredPatchHunk;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.serialization.JsonUtils;
-import com.claudecode.gateway.GatewayFileDiffPort.ChangedFile;
-import com.claudecode.gateway.GatewayFileDiffPort.ChangesSummary;
 import com.claudecode.gateway.GatewayFileDiffPort.FileDiff;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -115,7 +113,7 @@ class GatewayChangesInteropTest {
             @Override public Optional<FileDiff> diff(String sessionId, String path) {
                 return Optional.of(FileDiff.text(path, false, true, HUNKS, false));
             }
-            @Override public Optional<ChangesSummary> summary(String sessionId, int turn) {
+            @Override public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
                 return Optional.empty();
             }
         });
@@ -154,7 +152,7 @@ class GatewayChangesInteropTest {
             @Override public Optional<FileDiff> diff(String sessionId, String path) {
                 return Optional.of(FileDiff.text(sessionId, true, true, HUNKS, false));
             }
-            @Override public Optional<ChangesSummary> summary(String sessionId, int turn) {
+            @Override public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
                 return Optional.empty();
             }
         });
@@ -291,7 +289,7 @@ class GatewayChangesInteropTest {
             @Override public Optional<FileDiff> diff(String sessionId, String path) {
                 return Optional.of(FileDiff.text(path, true, true, HUNKS, false));
             }
-            @Override public Optional<ChangesSummary> summary(String sessionId, int turn) {
+            @Override public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
                 return Optional.empty();
             }
         };
@@ -303,7 +301,7 @@ class GatewayChangesInteropTest {
             @Override public Optional<FileDiff> diff(String sessionId, String path) {
                 return Optional.of(FileDiff.of(path, kind));
             }
-            @Override public Optional<ChangesSummary> summary(String sessionId, int turn) {
+            @Override public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
                 return Optional.empty();
             }
         };
@@ -315,11 +313,11 @@ class GatewayChangesInteropTest {
             @Override public Optional<FileDiff> diff(String sessionId, String path) {
                 return Optional.empty();
             }
-            @Override public Optional<ChangesSummary> summary(String sessionId, int turn) {
+            @Override public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
                 if (turn != 2) return Optional.empty();
-                return Optional.of(new ChangesSummary(2, List.of(
-                    new ChangedFile(TEXT_PATH, TEXT_PATH, 11, 3, false, false),
-                    new ChangedFile("assets/logo.png", "assets/logo.png", 3, 0, true, false)),
+                return Optional.of(new GatewayFileDiffPort.ChangesSummary(2, List.of(
+                    new GatewayFileDiffPort.ChangedFile(TEXT_PATH, TEXT_PATH, 11, 3, false, false),
+                    new GatewayFileDiffPort.ChangedFile("assets/logo.png", "assets/logo.png", 3, 0, true, false)),
                     2, 14, 3));
             }
         };

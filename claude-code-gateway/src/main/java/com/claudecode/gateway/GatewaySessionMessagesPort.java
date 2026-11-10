@@ -30,6 +30,21 @@ public interface GatewaySessionMessagesPort {
     }
 
     /**
+     * The on-disk transcript of a session that lives in another project directory.
+     *
+     * <p>Used for sessions hosted by a running interactive process elsewhere on the
+     * machine: their transcript is resolved through the work directory that process
+     * reported, not through this process's own project.
+     *
+     * @param sessionId the session id
+     * @param workDir the session's project working directory
+     * @return the messages, or empty when no readable transcript exists there
+     */
+    default Optional<List<Message>> messagesInWorkDir(String sessionId, String workDir) {
+        return Optional.empty();
+    }
+
+    /**
      * One sub-agent's own conversation, restored from its sidechain transcript.
      *
      * <p>A sub-agent's work is not part of its parent's message list: it lives

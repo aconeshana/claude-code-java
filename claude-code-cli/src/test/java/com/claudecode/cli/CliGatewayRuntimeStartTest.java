@@ -12,6 +12,7 @@ import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Start semantics of the interactive web-gateway runtime: idempotent starts,
@@ -32,9 +34,44 @@ class CliGatewayRuntimeStartTest {
 
     private CliGatewayRuntime runtime;
 
+    @TempDir
+    Path claudeHome;
+
     @AfterEach
     void tearDown() {
         if (runtime != null) runtime.close();
+    }
+
+    private CliGatewayRuntime isolatedRuntime() {
+        CliGatewayRuntime isolated = new CliGatewayRuntime(registry());
+        isolated.useWebStateDirectory(claudeHome);
+        return isolated;
+    }
+
+    @Test
+    @Timeout(20)
+    void startReusesALiveGlobalGatewayInsteadOfBinding() throws IOException {
+        String published = "http://127.0.0.1:1/?token=external";
+        WebGatewayRecord.write(claudeHome.resolve("web-gateway.json"),
+            new WebGatewayRecord(ProcessHandle.current().pid(), published));
+        runtime = isolatedRuntime();
+
+        assertThat(runtime.start().url()).isEqualTo(published);
+    }
+
+    @Test
+    @Timeout(20)
+    void startPublishesItsOwnGlobalGatewayRecord() throws IOException {
+        runtime = isolatedRuntime();
+
+        String url = runtime.start().url();
+
+        WebGatewayRecord record = WebGatewayRecord.readLive(claudeHome.resolve("web-gateway.json"))
+            .orElseThrow();
+        assertThat(record.url()).isEqualTo(url);
+        assertThat(record.pid()).isEqualTo(ProcessHandle.current().pid());
+        runtime.close();
+        assertThat(claudeHome.resolve("web-gateway.json")).doesNotExist();
     }
 
     private static SessionHostRegistry registry() {
@@ -52,7 +89,7 @@ class CliGatewayRuntimeStartTest {
     @Test
     @Timeout(20)
     void repeatedStartsReturnTheSameRunningGateway() {
-        runtime = new CliGatewayRuntime(registry());
+        runtime = isolatedRuntime();
 
         GatewaySupervisorPort.Started first = runtime.start();
         GatewaySupervisorPort.Started second = runtime.start();
@@ -64,7 +101,7 @@ class CliGatewayRuntimeStartTest {
     @Test
     @Timeout(20)
     void startAsyncWarmupSharesOneFlightWithConcurrentStart() throws Exception {
-        runtime = new CliGatewayRuntime(registry());
+        runtime = isolatedRuntime();
 
         CompletableFuture<GatewaySupervisorPort.Started> warmup = runtime.startAsync();
         // /web racing the warmup: it must join the same in-flight start
@@ -78,7 +115,7 @@ class CliGatewayRuntimeStartTest {
     @Test
     @Timeout(20)
     void startAfterExhaustedPortsFailsThenRetriesWhenPortFrees() throws Exception {
-        runtime = new CliGatewayRuntime(registry());
+        runtime = isolatedRuntime();
         // Occupy the whole probe range so the first start fails. Ports already
         // held by other processes (a running TUI's gateway, this test JVM's
         // own listener) need no blocker: they are busy for the probe anyway.

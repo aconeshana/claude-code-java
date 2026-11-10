@@ -44,9 +44,12 @@ import com.sun.net.httpserver.HttpExchange;
 final class GatewaySessionContextHandler {
 
     private final GatewaySessionContextPort context;
+    private final Optional<RemoteWorkerPool> remoteWorkers;
 
-    GatewaySessionContextHandler(GatewaySessionContextPort context) {
+    GatewaySessionContextHandler(GatewaySessionContextPort context,
+            Optional<RemoteWorkerPool> remoteWorkers) {
         this.context = context;
+        this.remoteWorkers = remoteWorkers;
     }
 
     /** Handles one {@code GET} exchange: selection plus usage in one body. */
@@ -54,11 +57,21 @@ final class GatewaySessionContextHandler {
         respondJson(exchange, 200, body(sessionIdOf(exchange)));
     }
 
-    /** Handles one {@code POST} exchange: select a model or an effort level. */
+    /**
+     * Handles one {@code POST} exchange: select a model or an effort level. A
+     * session hosted by another TUI process is refused as unsupported: its model
+     * and effort are owned by that process, and this gateway's selection shape is
+     * not the Session Link one, so forwarding would fail obscurely.
+     */
     void handlePost(HttpExchange exchange) throws IOException {
         JsonNode request = readJson(exchange);
         if (request == null) return;
         String sessionId = StringUtils.trimToNull(text(request, "session_id"));
+        if (sessionId != null && remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
+            respondJson(exchange, 501, errorBody("unsupported",
+                "model and effort can only be changed from the TUI that hosts this session"));
+            return;
+        }
         String model = StringUtils.trimToNull(text(request, "model"));
         String effort = StringUtils.trimToNull(text(request, "effort"));
         if (model != null && effort != null) {

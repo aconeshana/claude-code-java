@@ -308,8 +308,10 @@ public final class SessionLinkServer implements AutoCloseable {
                     case "link.hello" -> hello(request);
                     case "session.open" -> openSession(request);
                     case "session.list" -> listSessions(request);
+                    case "session.subscribe" -> subscribeSession(request);
                     case "session.detach" -> detachSession(request);
                     case "turn.submit" -> submitTurn(request);
+                    case "turn.cancel" -> cancelTurn(request);
                     case "interaction.respond" -> respondInteraction(request);
                     case "model.get" -> getModel(request);
                     case "model.set" -> setModel(request);
@@ -506,6 +508,51 @@ public final class SessionLinkServer implements AutoCloseable {
             sendResponse(request, response);
         }
 
+        /**
+         * Attaches this connection to a session the application already owns,
+         * without requesting an activation.
+         *
+         * <p>{@code session.open} asks the TUI to become the given session,
+         * which a remote supervisor must never do — it is a viewer, and moving
+         * someone's terminal out from under them because a browser tab opened
+         * is exactly the kind of side effect a read path may not have. This
+         * request instead borrows the registry's current session by id and
+         * subscribes to its event stream, which is the same attachment shape
+         * {@code session.open} ends with, minus the activation.
+         *
+         * <p>Only the session the application currently has active can be
+         * subscribed: its hub is the one the registry owns and keeps fed.
+         * A {@code session.activated} event tells a supervisor when the TUI
+         * switches, so it can re-subscribe rather than silently follow a
+         * stream that has gone quiet.
+         */
+        private void subscribeSession(SessionLinkFrame request) throws IOException {
+            payload(request, Set.of());
+            String sessionId = request.sessionId();
+            if (StringUtils.isBlank(sessionId)) {
+                throw new IllegalArgumentException("session_id is required");
+            }
+            SessionHostSession session = sessions.currentActivation()
+                .map(SessionHostRegistry.ActivationResult::session)
+                .filter(active -> Strings.CS.equals(active.info().id(), sessionId))
+                .orElseThrow(() -> new IllegalArgumentException(
+                    "session is not active: " + sessionId));
+            attach(session);
+            ObjectNode response = object();
+            response.put("session_id", session.info().id());
+            response.set("session", infoPayload(session.info()));
+            sendResponse(request, response);
+            for (InteractionRequest<?, ?> pending :
+                    interactions.pendingRequests(session.info().id())) {
+                if (pending.descriptor().kind() == InteractionKind.SUDO_PASSWORD) {
+                    sendEvent(interactionUnsupported(new InteractionUnsupported(
+                        pending.descriptor(), InteractionEndpoint.REMOTE, "complete_in_tui")));
+                } else {
+                    sendEvent(interactionRequested(permissionRequest(pending)));
+                }
+            }
+        }
+
         private void detachSession(SessionLinkFrame request) throws IOException {
             payload(request, Set.of());
             AttachedSessionView attachment = requireAttachment(request);
@@ -523,6 +570,12 @@ public final class SessionLinkServer implements AutoCloseable {
                 attachments(payload.get("images")), attachments(payload.get("attachments")));
             submissionLedger.submit(attachment.sessionId(), submission.messageId(),
                 () -> session.submit(submission)).toCompletableFuture().join();
+            sendResponse(request, object());
+        }
+
+        private void cancelTurn(SessionLinkFrame request) throws IOException {
+            payload(request, Set.of());
+            requireAttachment(request).activeView().cancels().cancel();
             sendResponse(request, object());
         }
 

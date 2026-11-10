@@ -60,3 +60,19 @@
 .closeGlyph {
   transform: rotate(45deg);
 }
+
+/*
+ * Marks a session hosted by another running Claude Code process (a remote
+ * worker reached through the web gateway) so it is not mistaken for a local TUI
+ * session in the row list.
+ */
+.remoteTag {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  opacity: 0.6;
+}
