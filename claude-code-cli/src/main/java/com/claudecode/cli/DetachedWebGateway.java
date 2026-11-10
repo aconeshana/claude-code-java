@@ -20,16 +20,31 @@ import java.util.Optional;
  */
 final class DetachedWebGateway implements GatewaySupervisorPort {
 
-    private static final long READY_TIMEOUT_MILLIS = 10_000;
+    private static final long DEFAULT_READY_TIMEOUT_MILLIS = 10_000;
     private static final long POLL_MILLIS = 100;
     private static final Path NOHUP = Path.of("/usr/bin/nohup");
 
+    /** Starts a detached process running {@code command}, appending its output to {@code logFile}. */
+    @FunctionalInterface
+    interface ProcessLauncher {
+        void launch(List<String> command, Path logFile) throws IOException;
+    }
+
     private final Path recordFile;
     private final Path logFile;
+    private final ProcessLauncher launcher;
+    private final long readyTimeoutMillis;
 
     DetachedWebGateway(Path recordFile, Path logFile) {
+        this(recordFile, logFile, DetachedWebGateway::spawn, DEFAULT_READY_TIMEOUT_MILLIS);
+    }
+
+    DetachedWebGateway(Path recordFile, Path logFile, ProcessLauncher launcher,
+            long readyTimeoutMillis) {
         this.recordFile = recordFile;
         this.logFile = logFile;
+        this.launcher = launcher;
+        this.readyTimeoutMillis = readyTimeoutMillis;
     }
 
     @Override
@@ -49,19 +64,23 @@ final class DetachedWebGateway implements GatewaySupervisorPort {
         command.addAll(CurrentCliCommand.resolve());
         command.add("web");
         try {
-            Files.createDirectories(logFile.getParent());
-            Process process = new ProcessBuilder(command)
-                .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
-                .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
-                .start();
-            process.getOutputStream().close();
+            launcher.launch(command, logFile);
         } catch (IOException failure) {
             throw new IllegalStateException("failed to launch claude web", failure);
         }
     }
 
+    private static void spawn(List<String> command, Path logFile) throws IOException {
+        Files.createDirectories(logFile.getParent());
+        Process process = new ProcessBuilder(command)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
+            .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
+            .start();
+        process.getOutputStream().close();
+    }
+
     private Optional<WebGatewayRecord> awaitPublished() {
-        long deadline = System.currentTimeMillis() + READY_TIMEOUT_MILLIS;
+        long deadline = System.currentTimeMillis() + readyTimeoutMillis;
         while (System.currentTimeMillis() < deadline) {
             Optional<WebGatewayRecord> published = WebGatewayRecord.readLive(recordFile);
             if (published.isPresent()) return published;
