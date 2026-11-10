@@ -1325,6 +1325,37 @@ class ToolRegistryTest {
         assertFalse(deferredDefinition.deferLoading());
     }
 
+    /**
+     * The /context analyzer bills whatever this view tags as deferred at zero, so
+     * the tag has to track what the request would really carry. A model whose
+     * protocol has no tool-search support sends every MCP schema in full, and
+     * reporting those as deferred is what made a 233-tool MCP server show up as
+     * {@code 0 tokens} while the wire carried ~69k of schema.
+     */
+    @Test
+    void getContextAnalysisToolDefinitions_mcpDeferTagFollowsTheGate() {
+        registry.register(new Tool<JsonNode, String>() {
+            @Override public ToolIdentity identity() { return new ToolIdentity("mcp__rea__inspect"); }
+            @Override public String description() { return "d"; }
+            @Override public JsonNode inputSchema() { return mapper.createObjectNode(); }
+            @Override public String call(JsonNode input, ToolExecutionContext context) { return "ok"; }
+            @Override public boolean isMcp() { return true; }
+        });
+
+        ToolSearchGate.configureProtocolResolver(_ -> ModelApiProtocol.OPENAI_RESPONSES);
+        assertFalse(registry.getContextAnalysisToolDefinitions("gpt-5.6-sol").getFirst().deferLoading(),
+            "no tool-search protocol means the schema is sent, so it is not deferred");
+
+        // First-party endpoint + Anthropic protocol: the mechanism is active.
+        ToolSearchGate.configureProtocolResolver(_ -> ModelApiProtocol.ANTHROPIC);
+        ToolSearchGate.configureResolvedBaseUrl("https://api.anthropic.com");
+        ToolSearchGate.configureBaseUrlResolver(_ -> "https://api.anthropic.com");
+        assertTrue(registry.getContextAnalysisToolDefinitions("claude-sonnet-4-6").getFirst().deferLoading(),
+            "with the mechanism active the MCP schema is withheld");
+        ToolSearchGate.configureBaseUrlResolver(null);
+        ToolSearchGate.configureResolvedBaseUrl(null);
+    }
+
     @Test
     void getToolDefinitions_usesDynamicPromptHookForWireDescription() {
         Tool<JsonNode, String> dynamic = new Tool<>() {

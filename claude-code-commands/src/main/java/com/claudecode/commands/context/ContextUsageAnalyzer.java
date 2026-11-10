@@ -171,18 +171,34 @@ public final class ContextUsageAnalyzer {
         List<ToolDef> deferredBuiltIns = builtInTools.stream().filter(ToolDef::deferLoading).toList();
         long builtInToolTokens = countToolsOrEstimate(eagerBuiltIns, model, false)
             + countToolsOrEstimate(deferredBuiltIns, model, false);
-        long mcpToolTokens = countToolsOrEstimate(mcpTools, model, true);
+
+        // MCP tools are billed at what the wire actually carries. The registry
+        // tags each definition with its effective defer state: when the
+        // tool-search gate is off (non-Anthropic protocol, or a third-party
+        // proxy), nothing is withheld and the full MCP schema is a real cost.
+        // Only the deferred subset is free, and only when it stays deferred.
+        List<ToolDef> eagerMcpTools = mcpTools.stream().filter(t -> !t.deferLoading()).toList();
+        long mcpToolTokens = countToolsOrEstimate(eagerMcpTools, model, true);
         if (mcpTools.isEmpty() && sources.tokenCounter() != null) {
 
             // primary endpoint and its `count` fallback even though the result
             // contributes zero MCP tokens.
             countExact(model, List.of(), List.of());
         }
-        long roughMcpTotal = mcpTools.stream().mapToLong(this::estimateToolDef).sum();
+        // Per-tool split of the group total. Rough share is derived from the
+        // serialized definition, so deferred tools inherit a proportional slice
+        // of the group's measured cost rather than the misleading hard zero the
+        // subtract-overhead path used to produce.
+        long roughTotal = mcpTools.stream().mapToLong(this::estimateToolDef).sum();
         for (ToolDef def : mcpTools) {
-            long rough = estimateToolDef(def);
-            long tokens = roughMcpTotal > 0
-                ? Math.round((double) rough / roughMcpTotal * mcpToolTokens) : 0;
+            long tokens;
+            if (def.deferLoading()) {
+                tokens = 0;
+            } else {
+                long rough = estimateToolDef(def);
+                tokens = roughTotal > 0
+                    ? Math.round((double) rough / roughTotal * mcpToolTokens) : 0;
+            }
             mcpDetails.add(new McpToolEntry(def.name(), serverName(def.name()), tokens));
         }
 

@@ -217,6 +217,34 @@ class ContextUsageAnalyzerTest {
     // ── MCP details ──────────────────────────────────────────────────────────
 
     @Test
+    void eagerMcpToolsAreBilledAtFullSchemaCost_deferredOnesAtZero() {
+        // The registry tags each definition with its effective defer state. When
+        // the tool-search gate is off, MCP schemas go out in full, so billing
+        // them at zero would hide the request's dominant cost.
+        List<ToolDef> tools = List.of(
+            new ToolDef("Bash", "run a command", null),
+            new ToolDef("mcp__rea__inspect_binary",
+                "inspects " + "a binary ".repeat(60), null, false),
+            new ToolDef("mcp__rea__list_names", "lists names", null, true));
+
+        ContextData data = new ContextUsageAnalyzer(sources(
+                tools, "", List.of(), List.of(), List.of(), true))
+            .analyze(List.of(), "m");
+
+        Category mcp = byName(data, "MCP tools");
+        assertNotEquals(0, mcp.tokens(),
+            "an eagerly-sent MCP schema must not be reported as free");
+
+        ContextData.McpToolEntry eager = data.mcpTools().stream()
+            .filter(e -> Strings.CS.equals(e.name(), "mcp__rea__inspect_binary")).findFirst().orElseThrow();
+        ContextData.McpToolEntry deferred = data.mcpTools().stream()
+            .filter(e -> Strings.CS.equals(e.name(), "mcp__rea__list_names")).findFirst().orElseThrow();
+        assertEquals(0, deferred.tokens(), "a withheld schema costs nothing");
+        assertTrue(eager.tokens() > deferred.tokens(),
+            "the eager schema must outweigh the withheld one");
+    }
+
+    @Test
     void mcpToolsGetServerNameFromPrefix() {
         List<ToolDef> tools = List.of(
             new ToolDef("mcp__github__create_issue", "d", null),

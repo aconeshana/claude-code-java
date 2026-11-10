@@ -1006,14 +1006,34 @@ public class ToolRegistry implements ToolExecutor {
      * Full enabled inventory for {@code analyzeContextUsage}. Unlike the model
      * request view, deferred definitions remain present and are tagged so the
      * analyzer can count the eager and deferred groups independently.
+     *
+     * <p>The {@code deferLoading} tag reports whether the tool is <em>actually</em>
+     * withheld from the request. When the tool-search gate is off — a non-Anthropic
+     * protocol, or a third-party proxy without {@code ENABLE_TOOL_SEARCH} — every
+     * tool is sent eagerly, so tagging MCP tools as deferred here would make the
+     * analyzer bill them at zero while the wire carries their full schema. The
+     * gate is judged per model because it depends on the request's resolved
+     * protocol and base URL.
      */
     public List<StreamingClient.StreamRequest.ToolDef> getContextAnalysisToolDefinitions() {
+        return toolDefinitionsForContext(null);
+    }
+
+    /** Model-aware form of {@link #getContextAnalysisToolDefinitions()}. */
+    public List<StreamingClient.StreamRequest.ToolDef> getContextAnalysisToolDefinitions(String model) {
+        return toolDefinitionsForContext(model);
+    }
+
+    private List<StreamingClient.StreamRequest.ToolDef> toolDefinitionsForContext(String model) {
+        boolean toolSearchActive = StringUtils.isNotBlank(model)
+            ? ToolSearchGate.isEnabled(model) : ToolSearchGate.isEnabled();
         return tools.values().stream()
             .filter(Tool::isEnabled)
             .sorted(Comparator.comparing(Tool::name))
             .map(t -> new StreamingClient.StreamRequest.ToolDef(
                 t.name(), t.prompt(null), modelVisibleSchema(t), null, null, null, null,
-                ToolSearchTool.isDeferredTool(t), t.strict(), eagerInputStreaming))
+                toolSearchActive && ToolSearchTool.isDeferredTool(t), t.strict(),
+                eagerInputStreaming))
             .toList();
     }
 
