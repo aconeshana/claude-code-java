@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { MarkdownText } from '@vendor/ui-primitives/markdown/MarkdownText'
 import type { MarkdownLabels } from '@vendor/ui-primitives/markdown/MarkdownText'
 import css from '@chat-styles/MessageItem.module.css'
@@ -13,8 +13,9 @@ import { SubagentRow, isSubagentCall } from './SubagentRow'
 import { ToolCallRow } from './ToolCallRow'
 import { useSessions } from '../store/sessions'
 import { ContextJumpButton } from './context/ContextJumpButton'
-import { ProducedFiles } from './ProducedFiles'
-import { useChangesViewer } from '../store/changesViewer'
+import { ChangedFiles } from '@vendor/ui-deliverables/ChangedFiles'
+import { changesDiffAccess, changesSummaryStore, useChangesSummary } from '../store/changes'
+import { useReviewSeat } from '../store/review'
 import { DELIVERABLES_NS, deliverablesDicts } from '../i18n/dictionaries/deliverables'
 import { MessageIconActions } from '../../vendor/dsh-stats-pills/MessageIconActions'
 import { TurnTimePanel, TurnUsagePanel } from '../../vendor/dsh-stats-pills/TurnUsagePanel'
@@ -32,7 +33,7 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * row of each turn carries it — never one per step.
  */
 export function MessageItem({ message, hideReasoning = false, showTail = false,
-  producedFiles = [], sessionId = null, inSubagentTranscript = false }: {
+  changesTurn, sessionId = null, inSubagentTranscript = false }: {
   message: MessageState
   /**
    * The turn-process fold's `inlineReasoning`: this row is a folded turn's
@@ -52,10 +53,12 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
    */
   showTail?: boolean
   /**
-   * The files this row's turn produced, aggregated over the whole turn — the
-   * vendored delivered-files chip row renders them on the tail anchor only.
+   * The turn this row anchors, when that turn changed files — the vendored
+   * changed-files card renders on the tail anchor only, and is addressed by
+   * this turn number. Undefined for a turn that changed nothing, and for every
+   * row that is not its turn's anchor.
    */
-  producedFiles?: readonly string[]
+  changesTurn?: number | undefined
   /** The addressed session, for the viewer the chips open. */
   sessionId?: string | null
   /**
@@ -94,20 +97,20 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
       t={statsT}
       hideReasoning={hideReasoning}
       showTail={showTail}
-      producedFiles={producedFiles}
+      changesTurn={changesTurn}
       sessionId={sessionId}
       inSubagentTranscript={inSubagentTranscript}
     />
   )
 }
 
-function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, sessionId,
+function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessionId,
   inSubagentTranscript }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
   showTail: boolean
-  producedFiles: readonly string[]
+  changesTurn: number | undefined
   sessionId: string | null
   inSubagentTranscript: boolean
 }) {
@@ -122,7 +125,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, ses
   const selectedSessionId = useSessions((state) => state.selectedSessionId)
   const addressedSessionId = sessionId ?? selectedSessionId
   const deliverablesT = useTranslate(DELIVERABLES_NS, deliverablesDicts)
-  const openDiff = useChangesViewer((state) => state.open)
+  const openReview = useReviewSeat((state) => state.openReview)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
@@ -162,12 +165,11 @@ function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, ses
           Upstream seats it at `conversation.chat.turnTail`; this project has no
           such hole, so the anchor renders it with the paths aggregated over the
           whole turn (see ChatView.producedByTurn). */}
-      {showTail && !message.open && producedFiles.length > 0 && (
-        <ProducedFiles
-          paths={producedFiles}
-          openFile={(path) => {
-            if (addressedSessionId != null) openDiff(addressedSessionId, path)
-          }}
+      {showTail && !message.open && changesTurn !== undefined && addressedSessionId != null && (
+        <ChangedFilesCard
+          sessionId={addressedSessionId}
+          turn={changesTurn}
+          openReview={(index) => { openReview(addressedSessionId, changesTurn, index) }}
           t={deliverablesT}
         />
       )}
@@ -212,5 +214,64 @@ function AssistantItem({ message, t, hideReasoning, showTail, producedFiles, ses
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The changed-files card for one turn, mounted on that turn's tail anchor.
+ *
+ * The card itself is the vendored `ChangedFiles`, verbatim in its drawing and
+ * hover logic. This wrapper owns only the read lifecycle the card's props
+ * assume: upstream receives an already-loaded summary through its slot props,
+ * whereas here the summary arrives from the vendored `ChangesSummaryStore`, so
+ * something has to issue the first read and hold the card back until it
+ * settles.
+ *
+ * Rendering nothing until the summary lands is deliberate, not a placeholder:
+ * the card's shape is derived from the summary (single-file card vs folded
+ * list), so there is no honest state to draw before it arrives. The membership
+ * test that got us here came from the transcript, but the counts and the file
+ * list come from the client — a turn whose summary is `missing` (the client no
+ * longer serves it) draws nothing rather than a card of zeros.
+ *
+ * @param props.sessionId - the viewed Session.
+ * @param props.turn - the 1-based turn number to summarise.
+ * @param props.openReview - open this turn's review on the file at an index.
+ * @param props.t - the card's copy.
+ * @returns the card, or null while the summary is unread or unavailable.
+ */
+function ChangedFilesCard({ sessionId, turn, openReview, t }: {
+  sessionId: string
+  turn: number
+  openReview: (index: number) => void
+  t: (key: string, params?: Readonly<Record<string, string | number>>) => string
+}) {
+  const summary = useChangesSummary(sessionId, turn)
+  useEffect(() => {
+    if (summary == null || summary === 'error') void changesSummaryStore.load(sessionId, turn)
+  }, [summary, sessionId, turn])
+  if (summary == null || typeof summary === 'string') {
+    // Drawing nothing until the summary settles makes "the read has not landed"
+    // and "this turn has no changed files" indistinguishable in the DOM. The
+    // marker keeps that seam observable so a test can tell the states apart
+    // without reaching into the store; `error` is the one state that reads
+    // again (a tab still carrying an earlier launch's token), so it must not
+    // be drawn as a final absence.
+    return (
+      <span
+        hidden
+        data-changes-state={summary ?? 'unread'}
+        data-changes-turn={turn}
+      />
+    )
+  }
+  return (
+    <ChangedFiles
+      changes={summary}
+      sessionId={sessionId}
+      openReview={openReview}
+      diff={changesDiffAccess}
+      t={t}
+    />
   )
 }

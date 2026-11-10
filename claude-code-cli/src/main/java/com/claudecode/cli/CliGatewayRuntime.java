@@ -9,6 +9,7 @@ import com.claudecode.gateway.GatewayModelsPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewayFileDiffPort;
+import com.claudecode.gateway.GatewayWorkspaceFilePort;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
 import com.claudecode.gateway.GatewayTaskBoardPort;
@@ -78,6 +79,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewaySessionCancelPort sessionCancel;
     private final GatewayTaskBoardPort taskBoard;
     private final GatewayFileDiffPort fileDiff;
+    private final GatewayWorkspaceFilePort workspaceFile;
     /**
      * Single-flight start state: null = never started, pending = start in
      * progress, done = running (or failed-and-resettable). Every concurrent
@@ -190,7 +192,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewayFileSuggestionsPort fileSuggestions) {
         this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
             models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
-            fileSuggestions, null, null, null);
+            fileSuggestions, null, null, null, null);
     }
 
     CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
@@ -201,7 +203,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
             GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
             GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel,
-            GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff) {
+            GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff,
+            GatewayWorkspaceFilePort workspaceFile) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.headless = headless;
@@ -219,6 +222,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         this.sessionCancel = sessionCancel;
         this.taskBoard = taskBoard;
         this.fileDiff = fileDiff;
+        this.workspaceFile = workspaceFile;
     }
 
     @Override
@@ -292,6 +296,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .cancel(sessionCancel != null ? sessionCancel : _ -> false)
             .taskBoard(taskBoard != null ? taskBoard : _ -> Optional.empty())
             .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
+            .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
             .build();
         created.start();
         server = created;

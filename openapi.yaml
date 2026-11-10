@@ -860,24 +860,77 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SessionTaskBoardResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/changes.summary:
+    get:
+      tags: [Sessions]
+      summary: One turn's changed files
+      description: |
+        Heads the webui changed-files card: the files one turn wrote, each
+        with its own added/deleted line counts, plus the totals the card
+        states before any diff has been read. Like /api/changes.diff the
+        numbers come from the turn's recorded tool results rather than from
+        the files on disk.
+
+        Turns are numbered the way the transcript numbers them — 1-based,
+        one per real user prompt — which is the same `turn` the webui stamps
+        on each row, so the card can address the turn it belongs to.
+
+        The addressed session follows the same routing as
+        /api/session/permission-mode: blank means the active session. An
+        unresolved turn is a 404 rather than an empty card, because the card
+        is only mounted for a turn that has files.
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active session
+        - name: turn
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+          description: The 1-based turn number to summarize
+      responses:
+        '200':
+          description: The turn's changed files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChangesSummary' }
+        '400':
+          description: The turn is missing, non-numeric, or below 1
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No turn with that number recorded any file change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/changes.diff:
     get:
       tags: [Sessions]
       summary: One delivered file's recorded change
       description: |
-        Feeds the webui delivered-files viewer — the diff a session's own
-        transcript recorded for one path, read back from the turn that last
-        wrote it. The change comes from the tool result the mutating call
-        produced, not from the file on disk, so it reports what this session
-        did rather than whatever the path holds now.
+        Feeds the webui diff viewer — the change a session's own transcript
+        recorded for one path, read back from the turn that last wrote it.
+        The change comes from the tool result the mutating call produced, not
+        from the file on disk, so it reports what this session did rather
+        than whatever the path holds now.
 
         The addressed session follows the same routing as
         /api/session/permission-mode: blank means the active session. The
-        response is a discriminated union on `kind`: a `text` diff carries its
-        two sides and, per hunk, the `+`/`-`/space-prefixed lines upstream's
-        hunk shape requires; `binary` and `oversized` carry no sides, only the
-        notice a viewer renders in their place. An absent `old_text` means
-        there is no previous version (a created file).
+        response is a discriminated union on `kind`: a `text` diff carries
+        the turn's `hunks` verbatim, plus the `before`/`after` flags that
+        name a created or deleted file; `binary` and `oversized` carry no
+        hunks, only the notice a viewer renders in their place.
+
+        The hunks are the `structuredPatch` the mutating tool recorded, in
+        upstream's `WorkspaceDiffHunk` shape. They are passed through rather
+        than flattened into two whole-file sides: the viewer draws line
+        numbers, hunk headers and a side-by-side pairing, all of which need
+        the per-hunk offsets (`old_start`/`new_start`) a flattened pair has
+        already discarded.
       parameters:
         - name: session_id
           in: query
@@ -906,30 +959,41 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /api/changes.open:
-    post:
+  /api/workspace-file:
+    get:
       tags: [Sessions]
-      summary: Hand a file to the desktop host (unavailable in this client)
+      summary: Read one workspace file in full, for the sidebar's file preview
       description: |
-        The native open-file action a delivered-files viewer offers. It
-        mirrors upstream's endpoint so the client's control and its
-        pending/failed state machine port over unchanged, but the web client
-        runs in a browser and cannot reach the local filesystem: this server
-        always answers 422 with a readable reason.
-
-        The client renders the control disabled from that answer rather than
-        hiding it. Upstream omits the native control entirely when no desktop
-        host is present; rendering it disabled with the reason is this
-        project's deliberate difference, so an alignment pass must not treat
-        the 422 as a defect to remove.
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ChangeOpenRequest' }
+        Serves the whole file behind a delivered-files row's open action. The
+        path is resolved inside the session's workspace, and symlinks are
+        followed only to targets that stay inside it. Text files come back as
+        `kind: text` with their full content, capped at 1 MiB. Files that
+        contain a NUL byte or are not valid UTF-8 come back as `kind: binary`,
+        and larger files as `kind: oversized`; neither carries `text`.
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: The session to address; absent means the active session
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+          description: The workspace-relative path as the session recorded it
       responses:
-        '422':
-          description: This host cannot open local files
+        '200':
+          description: The file's content or refusal notice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceFileContent' }
+        '400':
+          description: The path is blank
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: The path is not a regular file inside the workspace
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -2101,15 +2165,17 @@ components:
           type: array
           items: { type: string }
           description: Ids of tasks that must precede this one
-    ChangeOpenRequest:
+    WorkspaceFileContent:
       type: object
+      required: [path, kind]
       properties:
-        session_id:
+        path: { type: string }
+        kind:
           type: string
-          description: The session to address; absent means the active session
-        path:
+          enum: [text, binary, oversized]
+        text:
           type: string
-          description: The file path as the session recorded it
+          description: The full file content; present only when kind is text
     WorkspaceFileDiff:
       description: >
         One delivered file's recorded change, discriminated on `kind`. `binary`
@@ -2119,8 +2185,16 @@ components:
         - $ref: '#/components/schemas/WorkspaceFileDiffText'
         - $ref: '#/components/schemas/WorkspaceFileDiffNotice'
     WorkspaceFileDiffText:
+      description: >
+        A text file's recorded change, carried as the turn's own hunks rather
+        than as two whole-file sides: the webui renders it through the
+        vendored `FileDiff`, which draws line numbers, hunk headers and a
+        side-by-side pairing, and each of those needs the per-hunk offsets a
+        flattened pair has discarded. This mirrors the gateway's own
+        `GatewayFileDiffPort.FileDiff` contract, which is the authority for
+        what this response contains.
       type: object
-      required: [kind, path, display, hunks, coarse, truncated]
+      required: [kind, path, display, before, after, coarse, hunks]
       properties:
         kind: { type: string, enum: [text] }
         path:
@@ -2129,24 +2203,50 @@ components:
         display:
           type: string
           description: The path a viewer labels the diff with
-        old_text:
-          type: string
-          nullable: true
+        before:
+          type: boolean
           description: >
-            The content before the change; null for a file the turn created,
-            which a viewer renders as "no removed lines"
-        new_text:
-          type: string
-          description: The content after the change
-        hunks:
-          type: array
-          items: { $ref: '#/components/schemas/StructuredPatchHunk' }
+            Whether a prior version exists; false for a file the turn created,
+            which a viewer headings the diff as "created"
+        after:
+          type: boolean
+          description: >
+            Whether content remains after the change; false for a file the
+            turn deleted, which a viewer headings the diff as "deleted"
         coarse:
           type: boolean
-          description: True when the whole file is to be read as a single replacement
-        truncated:
-          type: boolean
-          description: True when the change was cut short at the viewer's line budget
+          description: >
+            True when the hunks approximate the whole file rather than record
+            an exact patch, as a synthesized create does. A viewer states the
+            comparison is approximate rather than presenting it as a patch.
+        hunks:
+          type: array
+          description: The changed regions, in file order
+          items: { $ref: '#/components/schemas/WorkspaceDiffHunk' }
+    WorkspaceDiffHunk:
+      description: >
+        One contiguous changed region, in the shape the mutating tool recorded
+        it. The line prefix on each entry of `lines` is the contract: `+`
+        added, `-` removed, a space for context.
+      type: object
+      required: [oldStart, oldLines, newStart, newLines, lines]
+      properties:
+        oldStart:
+          type: integer
+          description: 1-based first line of the region in the prior version
+        oldLines:
+          type: integer
+          description: Lines the region covers in the prior version; 0 for a pure addition
+        newStart:
+          type: integer
+          description: 1-based first line of the region in the new version
+        newLines:
+          type: integer
+          description: Lines the region covers in the new version; 0 for a pure deletion
+        lines:
+          type: array
+          items: { type: string }
+          description: The region's lines, each prefixed with `+`, `-` or a space
     WorkspaceFileDiffNotice:
       type: object
       required: [kind, path, display]
@@ -2154,20 +2254,37 @@ components:
         kind: { type: string, enum: [binary, oversized] }
         path: { type: string }
         display: { type: string }
-    StructuredPatchHunk:
+    ChangesSummary:
+      description: >
+        One turn's changed files, heading the webui changed-files card. The
+        totals are the sum over `files`, so a client can state the card's
+        header before reading any diff.
       type: object
-      required: [oldStart, oldLines, newStart, newLines, lines]
+      required: [turn, total, added, deleted, files]
       properties:
-        oldStart: { type: integer }
-        oldLines: { type: integer }
-        newStart: { type: integer }
-        newLines: { type: integer }
-        lines:
+        turn:
+          type: integer
+          description: The 1-based turn number, as the transcript numbers it
+        total: { type: integer, description: The number of changed files }
+        added: { type: integer, description: Added lines across all files }
+        deleted: { type: integer, description: Removed lines across all files }
+        files:
           type: array
-          items: { type: string }
-          description: >
-            One entry per line, each prefixed with its own marker: `-` removed,
-            `+` added, a space for context. Consumers rely on that prefix.
+          items: { $ref: '#/components/schemas/ChangedFile' }
+    ChangedFile:
+      type: object
+      required: [path, display, added, deleted]
+      properties:
+        path: { type: string, description: The path as recorded, verbatim }
+        display: { type: string, description: The path a viewer labels the row with }
+        added: { type: integer }
+        deleted: { type: integer }
+        binary:
+          type: boolean
+          description: Present and true only when the file was reported as binary
+        oversized:
+          type: boolean
+          description: Present and true only when the file exceeded the size budget
     CommandEntry:
       type: object
       required: [name, kind]

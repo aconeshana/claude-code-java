@@ -52,6 +52,12 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         return Optional.ofNullable(entry).map(Entry::host);
     }
 
+    /** The project directory an open headless session works in, or empty when none is open under that id. */
+    Optional<String> projectPathOf(String sessionId) {
+        Entry entry = sessionId == null ? null : sessions.get(sessionId);
+        return entry == null ? Optional.empty() : Optional.of(entry.assembled().projectPath());
+    }
+
     @Override
     public List<GatewayHeadlessSessions.SessionListing> list() {
         return sessions.entrySet().stream()

@@ -125,21 +125,30 @@ export function ChatView(
   const draft = conversation?.streaming
   const rendered = useMemo(() => withStreamingDraft(messages, draft), [messages, draft])
 
-  // Per-turn produced-file paths, collected for the turn tail's row. Upstream
-  // mounts its delivered-files row at the `conversation.chat.turnTail` seat
-  // with a whole-turn scope; this project's tail anchor is the one row that
-  // renders it, so the paths are aggregated by turn here and looked up by the
-  // anchor's own turn number.
-  const producedByTurn = useMemo(() => {
+  // Turn numbers that produced files, so the tail anchor knows whether to
+  // mount the changed-files card. Upstream mounts its card at the
+  // `conversation.chat.turnTail` seat with a whole-turn scope; this project's
+  // tail anchor is the one row that renders it, so the membership is collected
+  // here and looked up by the anchor's own turn number.
+  //
+  // Only membership is derived, not the counts: the card draws `+N -M` and the
+  // file list from the client's own `/api/changes.summary` (the vendored
+  // `ChangesSummaryStore`), which is authoritative — the transcript's tool-call
+  // stream is a projection of the same turn and can disagree with it (a path
+  // written outside the workspace, a file the turn reverted). Deriving the card
+  // from this set would render a second, conflicting answer.
+  const turnsWithDeliverables = useMemo(() => {
     const byTurn = new Map<number, readonly (readonly ToolCallState[])[]>()
     for (const message of messages) {
       if (message.kind !== 'assistant' || message.turn === undefined) continue
       const rows = byTurn.get(message.turn) ?? []
       byTurn.set(message.turn, [...rows, message.toolCalls])
     }
-    const collected = new Map<number, readonly string[]>()
-    for (const [turn, rows] of byTurn) collected.set(turn, collectTurnDeliverables(rows))
-    return collected
+    const turns = new Set<number>()
+    for (const [turn, rows] of byTurn) {
+      if (collectTurnDeliverables(rows).length > 0) turns.add(turn)
+    }
+    return turns
     // The whole-turn aggregation reads every assistant row's tool calls, so a
     // completed tool on any row of any turn must re-derive.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the messages array identity the reducer rebuilds
@@ -184,9 +193,10 @@ export function ChatView(
                 message={message}
                 hideReasoning={foldView.inlineReasoningAnswers.has(message.id)}
                 showTail={foldView.tailAnchors.has(message.id)}
-                producedFiles={foldView.tailAnchorTurns[message.id] !== undefined
-                  ? producedByTurn.get(foldView.tailAnchorTurns[message.id]) ?? []
-                  : []}
+                changesTurn={foldView.tailAnchorTurns[message.id] !== undefined
+                  && turnsWithDeliverables.has(foldView.tailAnchorTurns[message.id])
+                  ? foldView.tailAnchorTurns[message.id]
+                  : undefined}
                 sessionId={sessionId}
               />
             </div>,

@@ -25,3 +25,26 @@ body,
 body {
   --dsw-alias-separator-primary: var(--dsw-alias-label-caption);
 }
+
+/*
+ * Token shim for the vendored ui-primitives: overlay-top-margin.ts reads
+ * --dsh-frame-top-clearance off the root element to keep portalled overlays
+ * clear of the desktop frame's reserved top strip, and HoverCard's preview
+ * variant passes its anchor rect through it. Upstream declares the token on
+ * `html[data-platform='darwin']` (48px) and `html[data-windows-titlebar]`
+ * (the titlebar height) in ui-layout's AppFrame.module.css — a desktop shell
+ * this app does not have: webui runs in a plain browser tab, whose chrome is
+ * outside the viewport and reserves nothing inside it.
+ *
+ * Bound to 0px rather than omitted, and that choice is load-bearing.
+ * overlayTopMargin() treats an unparseable/absent value as "no frame" and
+ * returns its own 8px floor, while 0px resolves to `clearance + 20` = 20px.
+ * The token is what tells the overlay that the top strip EXISTS; the 20px is
+ * upstream's inset within it. In a browser tab the strip does not exist, so
+ * the true value is 0 — and the overlay still keeps its own margin on top.
+ * Remove when this app grows a desktop chrome that reserves strip height, at
+ * which point the value must come from that chrome instead.
+ */
+body {
+  --dsh-frame-top-clearance: 0px;
+}

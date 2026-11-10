@@ -414,7 +414,14 @@ final class CliInteractiveSessionRunner {
                 gatewaySessionCancel(sessionHostRuntime.registry(), headlessSessions),
                 gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()),
                 gatewayFileDiff(headlessSessions.messagesPort(interactiveCwd),
-                    engine.conversation().getSessionId()));
+                    engine.conversation().getSessionId()),
+                new CliWorkspaceFileReader(sessionId -> {
+                    String activeId = engine.conversation().getSessionId();
+                    if (StringUtils.isBlank(sessionId) || sessionId.equals(activeId)) {
+                        return Optional.of(Path.of(interactiveCwd));
+                    }
+                    return headlessSessions.projectPathOf(sessionId).map(Path::of);
+                }).port());
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =
@@ -1351,10 +1358,24 @@ final class CliInteractiveSessionRunner {
             GatewaySessionMessagesPort messages, String activeSessionId) {
         CliFileDiffAdapter adapter = new CliFileDiffAdapter(
             sessionId -> messages.messages(sessionId, null));
-        return (sessionId, path) -> {
-            String addressed = StringUtils.isBlank(sessionId) ? activeSessionId : sessionId;
-            if (StringUtils.isBlank(addressed)) return Optional.empty();
-            return adapter.port().diff(addressed, path);
+        GatewayFileDiffPort resolved = adapter.port();
+        return new GatewayFileDiffPort() {
+            @Override
+            public Optional<GatewayFileDiffPort.FileDiff> diff(String sessionId, String path) {
+                Optional<String> addressed = addressedSession(sessionId);
+                return addressed.isEmpty() ? Optional.empty() : resolved.diff(addressed.get(), path);
+            }
+
+            @Override
+            public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
+                Optional<String> addressed = addressedSession(sessionId);
+                return addressed.isEmpty() ? Optional.empty() : resolved.summary(addressed.get(), turn);
+            }
+
+            private Optional<String> addressedSession(String sessionId) {
+                String addressed = StringUtils.isBlank(sessionId) ? activeSessionId : sessionId;
+                return StringUtils.isBlank(addressed) ? Optional.empty() : Optional.of(addressed);
+            }
         };
     }
 

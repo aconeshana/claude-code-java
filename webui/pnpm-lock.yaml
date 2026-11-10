@@ -20,6 +20,9 @@ importers:
       clsx:
         specifier: ^2.0.0
         version: 2.1.1
+      immer:
+        specifier: ^10.1.1
+        version: 10.2.0
       katex:
         specifier: ^0.16.47
         version: 0.16.47
@@ -73,7 +76,7 @@ importers:
         version: 4.4.3
       zustand:
         specifier: ^4.5.0
-        version: 4.5.7(@types/react@18.3.31)(react@18.3.1)
+        version: 4.5.7(@types/react@18.3.31)(immer@10.2.0)(react@18.3.1)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4
@@ -1142,6 +1145,9 @@ packages:
 
   html-void-elements@3.0.0:
     resolution: {integrity: sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg==}
+
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
 
   is-potential-custom-element-name@1.0.1:
     resolution: {integrity: sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==}
@@ -2728,6 +2734,8 @@ snapshots:
 
   html-void-elements@3.0.0: {}
 
+  immer@10.2.0: {}
+
   is-potential-custom-element-name@1.0.1: {}
 
   isomorphic.js@0.2.5: {}
@@ -3470,11 +3478,12 @@ snapshots:
     dependencies:
       lib0: 0.2.117
 
-  zustand@4.5.7(@types/react@18.3.31)(react@18.3.1):
+  zustand@4.5.7(@types/react@18.3.31)(immer@10.2.0)(react@18.3.1):
     dependencies:
       use-sync-external-store: 1.6.0(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
+      immer: 10.2.0
       react: 18.3.1
 
   zwitch@2.0.4: {}

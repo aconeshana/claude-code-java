@@ -100,6 +100,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionCancelHandler sessionCancelApi;
     private final GatewayTaskBoardHandler taskBoardApi;
     private final GatewayChangesHandler changesApi;
+    private final GatewayWorkspaceFileHandler workspaceFileApi;
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
     /** The registry activation feed; released by {@link #close()}. */
@@ -148,6 +149,7 @@ public final class GatewayServer implements AutoCloseable {
         private GatewaySessionCancelPort cancel = _ -> false;
         private GatewayTaskBoardPort taskBoard = _ -> Optional.empty();
         private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
+        private GatewayWorkspaceFilePort workspaceFile = GatewayWorkspaceFilePort.none();
 
         private Builder(Config config, String token, SessionHostRegistry registry) {
             this.config = Objects.requireNonNull(config, "config");
@@ -236,6 +238,11 @@ public final class GatewayServer implements AutoCloseable {
             return this;
         }
 
+        public Builder workspaceFile(GatewayWorkspaceFilePort value) {
+            this.workspaceFile = Objects.requireNonNull(value, "workspaceFile");
+            return this;
+        }
+
         public GatewayServer build() {
             return new GatewayServer(this);
         }
@@ -261,6 +268,7 @@ public final class GatewayServer implements AutoCloseable {
         GatewaySessionCancelPort cancel = builder.cancel;
         GatewayTaskBoardPort taskBoard = builder.taskBoard;
         GatewayFileDiffPort fileDiff = builder.fileDiff;
+        GatewayWorkspaceFilePort workspaceFile = builder.workspaceFile;
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
         this.registry = registry;
@@ -334,6 +342,7 @@ public final class GatewayServer implements AutoCloseable {
         this.sessionCancelApi = new GatewaySessionCancelHandler(cancel);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
         this.changesApi = new GatewayChangesHandler(fileDiff);
+        this.workspaceFileApi = new GatewayWorkspaceFileHandler(workspaceFile);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -772,14 +781,19 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> taskBoardApi.handleGet(exchange));
             return;
         }
+        if (get && Strings.CS.equals("/api/changes.summary", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> changesApi.handleSummary(exchange));
+            return;
+        }
         if (get && Strings.CS.equals("/api/changes.diff", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> changesApi.handleDiff(exchange));
             return;
         }
-        if (post && Strings.CS.equals("/api/changes.open", targetPath)) {
+        if (get && Strings.CS.equals("/api/workspace-file", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
-            serve(exchange, () -> changesApi.handleOpen(exchange));
+            serve(exchange, () -> workspaceFileApi.handleGet(exchange));
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/models", targetPath)) {

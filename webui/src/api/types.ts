@@ -88,33 +88,13 @@ export interface ToolResult {
   readonly locations?: readonly string[]
 }
 
-/**
- * One hunk of a file's change, in unified-diff coordinates. `lines` carries
- * the hunk body with its `+`/`-`/space prefixes intact, which is what the
- * viewer colors by.
- */
-export interface WorkspaceFileDiffHunk {
-  readonly oldStart: number
-  readonly oldLines: number
-  readonly newStart: number
-  readonly newLines: number
-  readonly lines: readonly string[]
-}
-
-/**
- * One changed file's diff, as `/api/changes.diff` serves it. The union is
- * discriminated on `kind`: only `text` carries hunks, and a `binary` or
- * `oversized` file answers with its own kind rather than an empty diff, so the
- * viewer can say why it has nothing to draw instead of rendering a blank card.
- */
-export type WorkspaceFileDiff =
-  | { readonly kind: 'text'; readonly path: string; readonly display: string
-      readonly hunks: readonly WorkspaceFileDiffHunk[]
-      /** True when the whole file is treated as a replacement (no context). */
-      readonly coarse: boolean
-      readonly truncated: boolean }
-  | { readonly kind: 'binary'; readonly path: string; readonly display: string }
-  | { readonly kind: 'oversized'; readonly path: string; readonly display: string }
+// The changed-files wire types (`WorkspaceDiffHunk`, `WorkspaceFileDiff`,
+// `ChangesSummary`, `ChangedFile`) live in the vendored contract
+// `@vendor/ui-deliverables/changes`, which is where the stores and the viewer
+// that consume them read them from. They were duplicated here while the client
+// fetched these endpoints itself; the vendored `HostReadStore` does the reading
+// now, so a second declaration would only be one more thing to keep in step
+// with the server — the drift that blanked the viewer once already.
 
 export type SnapshotContent =
   | { readonly type: 'text'; readonly text: string }

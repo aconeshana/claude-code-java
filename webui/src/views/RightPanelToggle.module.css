@@ -1,0 +1,31 @@
+/* The header's icon control: the same quiet square the tabs use, sized to the
+   header band so it reads as part of the title row rather than a floating
+   button. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-alias-radius-md, 6px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.toggle[aria-pressed='true'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Mirrored: PanelLeft's rail sits on the left, and the open state must read as
+   the right column being out. */
+.icon {
+  transform: scaleX(-1);
+}

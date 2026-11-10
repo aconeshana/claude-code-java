@@ -3,9 +3,11 @@
  * and take {size, className}. Batch A mirrors the deepsuite icon library
  * (same figma source); batch B glyphs are harness-only figma extracts.
  */
-import type { IconProps } from './props.ts'
+import type { ReactNode } from 'react'
+import { PRODUCT_ICON_STROKE, type IconProps, type ProductIconWeight } from './props.ts'
 
-export type { IconProps } from './props.ts'
+export type { IconProps, ProductIconWeight } from './props.ts'
+export { PRODUCT_ICON_STROKE } from './props.ts'
 
 /** ic_ds_new_chat_outline_16 */
 export const IconNewChatOutline16 = ({ size = 16, className }: IconProps) => (
@@ -952,3 +954,82 @@ export const IconShieldOutline16 = ({ size = 16, className }: IconProps) => (
     <path d={SHIELD_OUTLINE_PATH} stroke="currentColor" strokeWidth={SHIELD_OUTLINE_STROKE} strokeLinejoin="round" />
   </svg>
 )
+
+/*
+ * Product icons, ported from upstream ui-primitives `icons/artwork.ts`.
+ *
+ * Upstream renders these as `<use href="#dsw-icon-<glyph>-<weight>">` against a
+ * symbol sprite that its ui-theme package injects into the document, so one
+ * glyph definition is shared by every weight and a theme can swap the artwork
+ * without touching callers. This app ships no sprite: the same path data is
+ * inlined per glyph, which is what every other icon in this tree already does.
+ *
+ * The weight split is kept as upstream has it (see {@link ProductIconWeight}):
+ * a stroke-width of 1 for `Regular`, 1.3 for `Medium`, and the glyph's own
+ * drawn size as the `size` default. Path data and viewBox are upstream's,
+ * verbatim; only the delivery differs.
+ */
+
+/** Shared props of the ported product icons. */
+export interface ProductIconProps extends IconProps {}
+
+function productIcon(
+  glyph: string, weight: ProductIconWeight, drawnSize: number, artwork: (stroke: number) => ReactNode,
+): (props: ProductIconProps) => ReactNode {
+  const stroke = PRODUCT_ICON_STROKE[weight]
+  return ({ size = drawnSize, className }: ProductIconProps) => (
+    <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none"
+      xmlns="http://www.w3.org/2000/svg" data-icon={`dsw-icon-${glyph}-${weight}`} aria-hidden="true">
+      {artwork(stroke)}
+    </svg>
+  )
+}
+
+/**
+ * Chevron pointing down on the 16 grid. Distinct from
+ * {@link IconChevronDownOutline14}: that one is a filled 14-box glyph, this is
+ * a 1px stroked 16-box one, and ReviewTab's unified/split menu draws this.
+ */
+export const IconChevronDownOutlineRegular = productIcon('chevron-down-outline', 'regular', 14,
+  (stroke) => <path d="M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6"
+    stroke="currentColor" strokeWidth={stroke} />)
+
+/** Medium-weight chevron-down; see {@link IconChevronDownOutlineRegular}. */
+export const IconChevronDownOutlineMedium = productIcon('chevron-down-outline', 'medium', 14,
+  (stroke) => <path d="M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6"
+    stroke="currentColor" strokeWidth={stroke} />)
+
+/** Wrap-long-lines toggle, on state: a line turning onto a second row between two margins. */
+export const IconWrapFillRegular = productIcon('wrap-fill', 'regular', 16, () => <>
+  <path d="M10.9999 8C10.9999 6.89543 10.1046 6 9 6H4.5V5H9C10.6568 5 11.9999 6.34315 11.9999 8C11.9999 9.65685 10.6568 11 9 11H6.20703L6.85351 11.6465L6.14648 12.3535L4.64652 10.8536C4.45126 10.6583 4.45126 10.3417 4.64652 10.1464L6.14648 8.64648L6.85351 9.35352L6.20703 10H9C10.1046 10 10.9999 9.10457 10.9999 8Z" fill="currentColor" />
+  <path d="M2 15H1V1H2V15Z" fill="currentColor" />
+  <path d="M15 15H14V1H15V15Z" fill="currentColor" />
+</>)
+
+/** Wrap-long-lines toggle, off state: the line stays clipped at the right margin. */
+export const IconNowrapFillRegular = productIcon('nowrap-fill', 'regular', 16, () => <>
+  <path d="M2 15H1V1H2V15Z" fill="currentColor" />
+  <path d="M12.3535 7.64645C12.5487 7.84171 12.5487 8.15829 12.3535 8.35355L9.85352 10.8535L9.14648 10.1465L10.793 8.5H3.5V7.5H10.793L9.14648 5.85352L9.85352 5.14648L12.3535 7.64645Z" fill="currentColor" />
+  <path d="M15 15H14V1H15V15Z" fill="currentColor" />
+</>)
+
+/**
+ * Open-the-file action: a stubby bracket pair around a content line, on the 16
+ * grid. Distinct from {@link IconInspectOutline12}, which is a differently
+ * drawn 12-box glyph; ReviewTab's open-file control draws this 16-box one.
+ */
+export const IconInspectOutlineRegular = productIcon('inspect-outline', 'regular', 12,
+  (stroke) => <>
+    <path d="M4.67398 4.25061L1.36094 7.86484C1.29085 7.9413 1.29085 8.05866 1.36094 8.13513L4.67398 11.7494"
+      stroke="currentColor" strokeWidth={stroke} />
+    <path d="M11.3262 4.25061L14.6392 7.86484C14.7093 7.9413 14.7093 8.05866 14.6392 8.13513L11.3262 11.7494"
+      stroke="currentColor" strokeWidth={stroke} />
+    <path d="M9.56222 3.62573L6.43774 12.3743" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+/** Unified/split view toggle: two panels side by side, drawn as stroked outlines. */
+export const IconCompareSplitOutlineRegular = productIcon('compare-split-outline', 'regular', 16,
+  (stroke) => <>
+    <path d="M6 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H6C6.55228 14.5 7 14.0523 7 13.5V2.5C7 1.94772 6.55228 1.5 6 1.5Z" stroke="currentColor" strokeWidth={stroke} />
+    <path d="M13.5 1.5H10C9.44772 1.5 9 1.94772 9 2.5V13.5C9 14.0523 9.44772 14.5 10 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor" strokeWidth={stroke} />
+  </>)

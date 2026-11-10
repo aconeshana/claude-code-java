@@ -16,13 +16,14 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The changed-files viewer's extraction: one file's before/after sides read out
- * of a session's transcript.
+ * The changed-files viewer's extraction: one turn's file summary and one file's
+ * hunk comparison read out of a session's transcript.
  *
- * <p>The sides come from the recorded hunks rather than from disk, so the
- * assertions are about reassembling a hunk's removed/added/context lines back
- * into the two documents a reader compares — including the created-file case,
- * whose old side must stay null so the viewer draws no removed lines.
+ * <p>The comparison is the tool record's own hunks, passed through rather than
+ * reassembled into two whole-file sides: the viewer draws line numbers, hunk
+ * headers and a side-by-side pairing, and each of those needs the per-hunk
+ * offsets a flattened pair has already discarded. The assertions are therefore
+ * about the offsets surviving intact, not about two documents reappearing.
  */
 class CliFileDiffAdapterTest {
 
@@ -63,30 +64,70 @@ class CliFileDiffAdapterTest {
         return FileChangeResult.edited(path, List.of(hunk(lines)));
     }
 
-    /** Context, removed and added lines reassemble into the two compared sides. */
+    /**
+     * The hunk reaches the viewer with every offset intact — the line-number
+     * bases, the counts and the verbatim lines. A flattened pair would satisfy
+     * a naive equality on the text while having lost all three.
+     */
     @Test
-    void readsBothSidesFromOneHunk() {
-        GatewayFileDiffPort.FileDiff diff = adapter(transcript(
-            edit(PATH, " package app;", "-class Old {", "+class New {")))
+    void passesTheHunksThroughIntact() {
+        StructuredPatchHunk hunk = new StructuredPatchHunk(12, 4, 13, 5, List.of(
+            " package app;", "-class Old {", "+class New {", " // tail", "+  void added() {}"));
+        GatewayFileDiffPort.FileDiff diff = adapter(
+            transcript(FileChangeResult.edited(PATH, List.of(hunk))))
             .port().diff(SESSION, PATH).orElseThrow();
 
         assertThat(diff.kind()).isEqualTo(GatewayFileDiffPort.FileDiff.Kind.TEXT);
-        assertThat(diff.oldText()).isEqualTo("package app;\nclass Old {\n");
-        assertThat(diff.newText()).isEqualTo("package app;\nclass New {\n");
+        assertThat(diff.hunks()).hasSize(1);
+        StructuredPatchHunk sent = diff.hunks().getFirst();
+        assertThat(sent.oldStart()).isEqualTo(12);
+        assertThat(sent.oldLines()).isEqualTo(4);
+        assertThat(sent.newStart()).isEqualTo(13);
+        assertThat(sent.newLines()).isEqualTo(5);
+        assertThat(sent.lines()).containsExactly(
+            " package app;", "-class Old {", "+class New {", " // tail", "+  void added() {}");
     }
 
     /**
-     * A created file has no old side: the viewer must draw no removed lines,
-     * which is what a null old side means to it.
+     * A created file has no prior version: the viewer names it from
+     * {@code before=false} rather than inferring it from an absent side.
      */
     @Test
-    void leavesTheOldSideNullForACreatedFile() {
+    void marksACreatedFileAsHavingNoBeforeSide() {
         GatewayFileDiffPort.FileDiff diff = adapter(
             transcript(FileChangeResult.created(PATH, "package app;\nclass New {}")))
             .port().diff(SESSION, PATH).orElseThrow();
 
-        assertThat(diff.oldText()).isNull();
-        assertThat(diff.newText()).contains("package app;");
+        assertThat(diff.kind()).isEqualTo(GatewayFileDiffPort.FileDiff.Kind.TEXT);
+        assertThat(diff.before()).isFalse();
+        assertThat(diff.after()).isTrue();
+        // `coarse` is the viewer's "line comparison timed out" notice; a
+        // synthesized create hunk is an exact whole-file addition, not a
+        // timed-out comparison, so the notice must stay off.
+        assertThat(diff.coarse()).isFalse();
+    }
+
+    /** An edit to an existing file has content on both sides. */
+    @Test
+    void marksAnEditAsHavingBothSides() {
+        GatewayFileDiffPort.FileDiff diff = adapter(transcript(edit(PATH, "-a", "+b")))
+            .port().diff(SESSION, PATH).orElseThrow();
+
+        assertThat(diff.before()).isTrue();
+        assertThat(diff.after()).isTrue();
+        assertThat(diff.coarse()).isFalse();
+    }
+
+    /** A patch that leaves no new-side lines removed the file: there is no after side. */
+    @Test
+    void marksAFullyRemovedFileAsHavingNoAfterSide() {
+        StructuredPatchHunk removal = new StructuredPatchHunk(1, 2, 0, 0, List.of("-a", "-b"));
+        GatewayFileDiffPort.FileDiff diff = adapter(
+            transcript(FileChangeResult.edited(PATH, List.of(removal))))
+            .port().diff(SESSION, PATH).orElseThrow();
+
+        assertThat(diff.before()).isTrue();
+        assertThat(diff.after()).isFalse();
     }
 
     /** A path no turn touched is absent, not an empty diff. */
@@ -126,8 +167,8 @@ class CliFileDiffAdapterTest {
         GatewayFileDiffPort.FileDiff diff = adapter(messages)
             .port().diff(SESSION, PATH).orElseThrow();
 
-        assertThat(diff.oldText()).isEqualTo("second\n");
-        assertThat(diff.newText()).isEqualTo("third\n");
+        assertThat(diff.hunks()).hasSize(1);
+        assertThat(diff.hunks().getFirst().lines()).containsExactly("-second", "+third");
     }
 
     /** A content line carrying a NUL is not text; it reports as binary. */
@@ -140,9 +181,64 @@ class CliFileDiffAdapterTest {
         assertThat(diff.kind()).isEqualTo(GatewayFileDiffPort.FileDiff.Kind.BINARY);
     }
 
-    /** The port's own empty instance answers nothing, so the route can 404. */
+    // ── summary ──────────────────────────────────────────────────────────────
+
+    /**
+     * A turn's summary lists its files with their own counts, and the totals
+     * the card heads itself with.
+     */
+    @Test
+    void readsATurnSummary() {
+        List<Message> messages = new ArrayList<>(transcript(
+            edit(PATH, " a", "-old", "+new"),
+            FileChangeResult.created("/src/New.java", "package app;\nclass New {}")));
+
+        GatewayFileDiffPort.ChangesSummary summary = adapter(messages)
+            .port().summary(SESSION, 1).orElseThrow();
+
+        assertThat(summary.turn()).isEqualTo(1);
+        assertThat(summary.total()).isEqualTo(2);
+        assertThat(summary.files()).extracting(GatewayFileDiffPort.ChangedFile::path)
+            .containsExactlyInAnyOrder(PATH, "/src/New.java");
+        // The header total is the sum of the rows, not an independent count.
+        assertThat(summary.added())
+            .isEqualTo(summary.files().stream().mapToInt(GatewayFileDiffPort.ChangedFile::added).sum());
+        assertThat(summary.deleted())
+            .isEqualTo(summary.files().stream().mapToInt(GatewayFileDiffPort.ChangedFile::deleted).sum());
+    }
+
+    /**
+     * Turn numbers are the transcript's own 1-based numbering — the same number
+     * the webui stamps on each row — so an unresolved turn is empty rather than
+     * a neighbouring turn's files.
+     */
+    @Test
+    void answersEmptyForATurnThatChangedNothing() {
+        CliFileDiffAdapter adapter = adapter(transcript(edit(PATH, "-a", "+b")));
+
+        assertThat(adapter.port().summary(SESSION, 2)).isEmpty();
+    }
+
+    /** Turn numbers below one address no turn at all. */
+    @Test
+    void answersEmptyForATurnBelowOne() {
+        CliFileDiffAdapter adapter = adapter(transcript(edit(PATH, "-a", "+b")));
+
+        assertThat(adapter.port().summary(SESSION, 0)).isEmpty();
+    }
+
+    /** An unknown session answers empty rather than another session's files. */
+    @Test
+    void answersEmptyForAnUnknownSessionSummary() {
+        CliFileDiffAdapter adapter = adapter(transcript(edit(PATH, "-a", "+b")));
+
+        assertThat(adapter.port().summary("no-such-session", 1)).isEmpty();
+    }
+
+    /** The port's own empty instance answers nothing, so the routes can 404. */
     @Test
     void theEmptyPortAnswersNothing() {
         assertThat(GatewayFileDiffPort.none().diff(SESSION, PATH)).isEmpty();
+        assertThat(GatewayFileDiffPort.none().summary(SESSION, 1)).isEmpty();
     }
 }

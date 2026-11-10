@@ -25,7 +25,8 @@ import { Sidebar } from './views/Sidebar'
 import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
-import { ChangesModal } from './views/ChangesModal'
+import { RightPanel } from './views/RightPanel'
+import { RightPanelToggle } from './views/RightPanelToggle'
 import { ContextView } from './views/context/ContextView'
 import { SubagentCatalogMenu } from '@vendor/ui-subagent/SubagentCatalogMenu.tsx'
 
@@ -137,7 +138,7 @@ export function App() {
   }
 
   return (
-    <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed}>
+    <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed} right={(owner) => <RightPanel {...owner} />}>
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
@@ -145,19 +146,22 @@ export function App() {
         onView={(next) => { setView(selectedId, next) }}
         tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
         headerActions={(
-          <SubagentCatalogMenu
-            agents={agents}
-            currentAgentId={currentAgentId}
-            failed={agentsFailed}
-            onRetry={retryAgents}
-            onOpen={(agentId) => {
-              if (selectedId === null) return
-              // Show the transcript the row lives in before addressing it, or
-              // the request lands on a hidden tab.
-              setView(selectedId, 'chat')
-              openSubagent(selectedId, agentId)
-            }}
-          />
+          <>
+            <RightPanelToggle />
+            <SubagentCatalogMenu
+              agents={agents}
+              currentAgentId={currentAgentId}
+              failed={agentsFailed}
+              onRetry={retryAgents}
+              onOpen={(agentId) => {
+                if (selectedId === null) return
+                // Show the transcript the row lives in before addressing it, or
+                // the request lands on a hidden tab.
+                setView(selectedId, 'chat')
+                openSubagent(selectedId, agentId)
+              }}
+            />
+          </>
         )}
         context={<ContextView sessionId={selectedId} />}
         transcript={
@@ -219,10 +223,6 @@ export function App() {
         open={contextModalOpen}
         onClose={() => { setContextModalOpen(false) }}
       />
-      {/* The produced-files viewer. It owns its own open/closed state (the
-          selection lives in the store), so it mounts unconditionally and
-          renders null while nothing is open. */}
-      <ChangesModal />
       <ContextDashboard />
     </AppFrame>
   )

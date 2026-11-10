@@ -1,0 +1,21 @@
+/*
+ * The right column occupant's chrome.
+ *
+ * The column itself (`.rightbarCol` in the vendored AppFrame stylesheet) never
+ * clips and draws no border, because upstream's occupant anchors a fixed-width
+ * panel to the frame's right edge and paints its own left edge. This is that
+ * panel, reduced to the one presentation this app uses: a tracked panel that
+ * fills the column. Upstream's trackless "hangs over the centre" form is cut
+ * with the fullscreen route it belongs to.
+ */
+.panel {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+  /* The frame's right edge never moves, so the border belongs here rather than
+     on the track that comes and goes. */
+  border-left: 0.5px solid var(--dsw-alias-border-l3);
+}

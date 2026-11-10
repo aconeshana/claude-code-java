@@ -1,4 +1,4 @@
-import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock, type WorkspaceFileDiff } from './types'
+import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -14,6 +14,22 @@ function authHeaders(): Record<string, string> {
   const token = currentToken()
   if (token == null) throw TOKEN_REQUIRED
   return { Authorization: `Bearer ${token}` }
+}
+
+/**
+ * GET one API path with the launch token attached, returning the raw response.
+ *
+ * Exported for the changed-files read stores, which sit in a vendored tree and
+ * therefore cannot use `requestJson`'s decoded shape but must still authenticate
+ * the same way — a bare `fetch` carries no bearer token and the gateway answers
+ * 401 on every route.
+ *
+ * @param path - the same-origin API path to read.
+ * @param signal - aborts the in-flight request.
+ * @returns the response, whatever its status; the caller decides what it means.
+ */
+export async function readAuthorized(path: string, signal: AbortSignal): Promise<Response> {
+  return fetch(path, { method: 'GET', headers: authHeaders(), signal })
 }
 
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -465,29 +481,31 @@ export async function submitTurn(
   await response.body.cancel()
 }
 
-/**
- * GET /api/changes.diff — one changed file's diff, in unified-diff coordinates.
- *
- * The path is passed as a query parameter rather than a path segment: a
- * workspace path contains slashes and, on some platforms, characters that a
- * path segment cannot carry unescaped.
- */
-export async function fetchWorkspaceFileDiff(
-  sessionId: string,
-  path: string,
-): Promise<WorkspaceFileDiff> {
-  const query = new URLSearchParams({ session_id: sessionId, path })
-  return await requestJson<WorkspaceFileDiff>('GET', `/api/changes.diff?${query.toString()}`)
+// The two changed-files reads (`/api/changes.summary`, `/api/changes.diff`) are
+// deliberately not wrapped here. The vendored stores own them —
+// `changes-summary.ts` and `changes-diff.ts` build their URLs from `changes.ts`
+// and read through the vendored `HostReadStore`, which is what caches a state
+// per record and decides what each response means. A wrapper beside them would
+// only be a second URL builder to keep in step with the first. They do share
+// this module's transport: `HostReadStore` reads through `readAuthorized`, so
+// a route that needs the launch token is authorized exactly like the rest.
+
+/** One workspace file as the gateway serves it for the preview tab. */
+export interface WorkspaceFileContent {
+  readonly path: string
+  readonly kind: 'text' | 'binary' | 'oversized'
+  /** Present only when `kind` is `text`. */
+  readonly text?: string
 }
 
 /**
- * POST /api/changes.open — hand a file to the host's desktop to open.
+ * GET /api/workspace-file — one workspace file's content for the preview tab.
  *
- * Upstream routes this to the Host desktop. This app's web client runs in a
- * browser with no filesystem access, so the endpoint answers an explicit
- * unavailable error (HTTP 422) instead of silently succeeding; callers render
- * a disabled control with that reason rather than a no-op button.
+ * @param sessionId - the session whose workspace the path resolves against.
+ * @param path - the file path, relative to that workspace.
+ * @returns the file's kind and, for text, its content.
  */
-export async function openFileInHost(sessionId: string, path: string): Promise<void> {
-  await requestJson<unknown>('POST', '/api/changes.open', { session_id: sessionId, path })
+export async function fetchWorkspaceFile(sessionId: string, path: string): Promise<WorkspaceFileContent> {
+  const params = new URLSearchParams({ session_id: sessionId, path })
+  return requestJson<WorkspaceFileContent>('GET', `/api/workspace-file?${params.toString()}`)
 }

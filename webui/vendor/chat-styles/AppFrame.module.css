@@ -82,6 +82,8 @@
  * where it is. The occupant draws its own left border.
  */
 .rightbarCol {
+  grid-column: 3;
+  grid-row: 1;
   position: relative;
   min-width: 0;
   overflow: visible;

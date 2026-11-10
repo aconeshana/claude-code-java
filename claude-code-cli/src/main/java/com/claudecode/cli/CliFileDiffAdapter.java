@@ -11,19 +11,20 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * The changed-files viewer's data plane: resolves one file's before/after
- * content from a session's transcript.
+ * The changed-files viewer's data plane: resolves a turn's changed files and
+ * one file's hunk comparison from a session's transcript.
  *
  * <p>The turn-aware diff source is {@link TurnDiffExtractor}, which lives in
  * {@code claude-code-commands} — a module the gateway does not depend on. This
  * adapter is therefore the composition root's half of
  * {@link GatewayFileDiffPort}: it takes the gateway's session-addressed read,
  * fetches that session's messages through the existing messages port, extracts
- * the turn diffs, and answers with the newest turn that touched the path.
+ * the turn diffs, and answers either one turn's file summary or one path's
+ * comparison.
  *
  * <p>Sessions are scanned most-recent-first so a file written in several turns
  * answers with its latest state — the file as it now stands on disk is what a
- * reader clicking a delivered-file chip expects to see.
+ * reader clicking a delivered-file card expects to see.
  */
 final class CliFileDiffAdapter {
 
@@ -44,7 +45,50 @@ final class CliFileDiffAdapter {
 
     /** The port this adapter implements. */
     GatewayFileDiffPort port() {
-        return this::diff;
+        return new GatewayFileDiffPort() {
+            @Override
+            public Optional<GatewayFileDiffPort.FileDiff> diff(String sessionId, String path) {
+                return CliFileDiffAdapter.this.diff(sessionId, path);
+            }
+
+            @Override
+            public Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
+                return CliFileDiffAdapter.this.summary(sessionId, turn);
+            }
+        };
+    }
+
+    /**
+     * The addressed turn's changed files, without contents.
+     *
+     * <p>Turns are counted the way the extractor numbers them, which is also
+     * the 1-based {@code turn} the webui stamps on each transcript row, so the
+     * number the card carries is the number this resolves.
+     */
+    private Optional<GatewayFileDiffPort.ChangesSummary> summary(String sessionId, int turn) {
+        if (turn < 1) return Optional.empty();
+        Optional<List<Message>> messages = messagesOf.apply(sessionId);
+        if (messages.isEmpty()) return Optional.empty();
+        for (TurnDiffExtractor.TurnDiff candidate : TurnDiffExtractor.extract(messages.get())) {
+            if (candidate.turnIndex() != turn) continue;
+            List<GatewayFileDiffPort.ChangedFile> files = candidate.files().stream()
+                .map(CliFileDiffAdapter::summarize)
+                .toList();
+            return Optional.of(new GatewayFileDiffPort.ChangesSummary(
+                turn, files, files.size(),
+                candidate.stats().linesAdded(), candidate.stats().linesRemoved()));
+        }
+        return Optional.empty();
+    }
+
+    /** The summary row for one file: its line counts and whether it was refused. */
+    private static GatewayFileDiffPort.ChangedFile summarize(TurnDiffExtractor.TurnFileDiff file) {
+        GatewayFileDiffPort.FileDiff projected = project(file);
+        return new GatewayFileDiffPort.ChangedFile(
+            file.filePath(), file.filePath(),
+            file.linesAdded(), file.linesRemoved(),
+            projected.kind() == GatewayFileDiffPort.FileDiff.Kind.BINARY,
+            projected.kind() == GatewayFileDiffPort.FileDiff.Kind.OVERSIZED);
     }
 
     private Optional<GatewayFileDiffPort.FileDiff> diff(String sessionId, String path) {
@@ -65,55 +109,49 @@ final class CliFileDiffAdapter {
     /**
      * Projects one extracted file change onto the viewer's shape.
      *
-     * <p>The sides come from the hunks rather than from disk: a hunk's removed
-     * lines are the old side and its added and context lines the new side, both
-     * already in the tool's own record. Reading the file instead would answer
-     * the state <em>now</em>, which for a file edited again outside this
-     * session would disagree with the turn the chip belongs to.
+     * <p>The hunks are passed through as the tool recorded them rather than
+     * flattened into a pair of whole-file sides: the viewer draws line numbers,
+     * hunk headers and a side-by-side pairing, and all three need the per-hunk
+     * offsets a flattened pair has already discarded. Reading the file from
+     * disk instead would answer the state <em>now</em>, which for a file edited
+     * again outside this session would disagree with the turn the card belongs
+     * to.
+     *
+     * <p>The whole-file budgets below still size the change from its own hunk
+     * text, so a file whose diff is enormous is refused without ever
+     * materializing the sides.
      */
-    private GatewayFileDiffPort.FileDiff project(TurnDiffExtractor.TurnFileDiff file) {
-        StringBuilder oldSide = new StringBuilder();
-        StringBuilder newSide = new StringBuilder();
-        for (StructuredPatchHunk hunk : file.hunks()) {
+    private static GatewayFileDiffPort.FileDiff project(TurnDiffExtractor.TurnFileDiff file) {
+        List<StructuredPatchHunk> hunks = file.hunks();
+        int totalChars = 0;
+        boolean binary = false;
+        for (StructuredPatchHunk hunk : hunks) {
             for (String line : hunk.lines()) {
-                if (line.isEmpty()) {
-                    // A blank entry carries no marker; treat it as context.
-                    oldSide.append('\n');
-                    newSide.append('\n');
-                    continue;
-                }
-                char marker = line.charAt(0);
-                String body = line.substring(1);
-                if (marker == '-') {
-                    oldSide.append(body).append('\n');
-                } else if (marker == '+') {
-                    newSide.append(body).append('\n');
-                } else {
-                    // A context line belongs to both sides.
-                    oldSide.append(body).append('\n');
-                    newSide.append(body).append('\n');
-                }
+                totalChars += line.length();
+                // A NUL anywhere in the recorded lines means the tool diffed a
+                // file that is not text; the record carries no flag for it, so
+                // an unreadable path is reported as binary rather than as an
+                // empty diff.
+                if (line.indexOf('\0') >= 0) binary = true;
             }
         }
-        // A created file has no old side: `DiffBlock` draws no removed lines for
-        // a null side, which is the correct reading for a new file.
-        String oldText = file.isNewFile() || oldSide.isEmpty() ? null : oldSide.toString();
-        String newText = newSide.toString();
-        if (oversized(oldText) || oversized(newText)) {
-            return GatewayFileDiffPort.FileDiff.of(file.filePath(),
-                GatewayFileDiffPort.FileDiff.Kind.OVERSIZED);
+        if (binary) {
+            return GatewayFileDiffPort.FileDiff.of(file.filePath(), GatewayFileDiffPort.FileDiff.Kind.BINARY);
         }
-        // A file whose content is not text has no line diff; the record carries
-        // no flag for it, so an unreadable path is reported as binary rather
-        // than as an empty diff.
-        if (newText.indexOf('\0') >= 0) {
-            return GatewayFileDiffPort.FileDiff.of(file.filePath(),
-                GatewayFileDiffPort.FileDiff.Kind.BINARY);
+        if (totalChars > OVERSIZED_BYTES) {
+            return GatewayFileDiffPort.FileDiff.of(file.filePath(), GatewayFileDiffPort.FileDiff.Kind.OVERSIZED);
         }
-        return GatewayFileDiffPort.FileDiff.text(file.filePath(), oldText, newText);
-    }
-
-    private static boolean oversized(String text) {
-        return text != null && text.length() > OVERSIZED_BYTES;
+        // A created file has no prior version and a deletion leaves nothing
+        // behind; the viewer names both cases from these two flags rather than
+        // inferring them from an absent side.
+        boolean before = !file.isNewFile();
+        boolean deleted = !hunks.isEmpty() && hunks.stream().allMatch(hunk -> hunk.newLines() == 0);
+        boolean after = !deleted;
+        // `coarse` is the viewer's "line comparison timed out" notice. Nothing
+        // here times out: a synthesized create hunk is a whole-file addition,
+        // which is the exact change, so the flag stays false. Upstream sets it
+        // when its own comparison budget expires, and this app serves the
+        // recorded patch directly rather than computing a comparison.
+        return GatewayFileDiffPort.FileDiff.text(file.filePath(), before, after, hunks, false);
     }
 }

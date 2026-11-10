@@ -6,6 +6,7 @@ import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -15,16 +16,9 @@ import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * The changed-files surfaces: {@code GET /api/changes.diff} reads one file's
- * diff, and {@code POST /api/changes.open} asks the host to open a file.
- *
- * <p>The viewer that consumes these is a browser page. It can read a diff
- * through this gateway, but it has no local filesystem and no desktop host to
- * hand a file to, so {@code changes.open} answers an explicit
- * {@code 422 unavailable} instead of silently succeeding. The webui renders its
- * open-file control disabled with that reason — upstream omits the control
- * where no desktop host exists; rendering it is this project's deliberate
- * difference, recorded in {@code webui/UPSTREAM.md}.
+ * The changed-files surfaces: {@code GET /api/changes.summary} reads one
+ * turn's changed files, and {@code GET /api/changes.diff} reads one file's
+ * hunks.
  */
 final class GatewayChangesHandler {
 
@@ -32,6 +26,32 @@ final class GatewayChangesHandler {
 
     GatewayChangesHandler(GatewayFileDiffPort fileDiff) {
         this.fileDiff = fileDiff;
+    }
+
+    /** Handles one {@code GET /api/changes.summary?session_id=&turn=}. */
+    void handleSummary(HttpExchange exchange) throws IOException {
+        String rawTurn = queryParam(exchange, "turn");
+        int turn;
+        try {
+            turn = Integer.parseInt(StringUtils.trimToEmpty(rawTurn));
+        } catch (NumberFormatException _) {
+            respondJson(exchange, 400, errorBody("invalid_request", "turn must be a positive integer"));
+            return;
+        }
+        if (turn < 1) {
+            respondJson(exchange, 400, errorBody("invalid_request", "turn must be a positive integer"));
+            return;
+        }
+        String sessionId = sessionIdOf(exchange);
+        Optional<GatewayFileDiffPort.ChangesSummary> summary = fileDiff.summary(sessionId, turn);
+        if (summary.isEmpty()) {
+            // Either the session is unknown or the turn changed no files. The
+            // card is only mounted for a turn that has a summary, so an
+            // unresolved turn is a genuine miss rather than an empty card.
+            respondJson(exchange, 404, errorBody("not_found", "no changes for turn " + turn));
+            return;
+        }
+        respondJson(exchange, 200, writeSummary(summary.get()));
     }
 
     /** Handles one {@code GET /api/changes.diff?session_id=&path=}. */
@@ -54,19 +74,39 @@ final class GatewayChangesHandler {
         respondJson(exchange, 200, writeDiff(diff.get()));
     }
 
-    /** Handles one {@code POST /api/changes.open}. */
-    void handleOpen(HttpExchange exchange) throws IOException {
-        // The body is read so the connection drains, but no field of it can
-        // change the answer: this host has no desktop to open a file with.
-        exchange.getRequestBody().readAllBytes();
-        respondJson(exchange, 422, errorBody("unavailable",
-            "this client runs in a browser and cannot open local files"));
+    /**
+     * Writes the wire projection of one turn's changed files, in the shape the
+     * webui's {@code ChangesSummary} is typed against.
+     *
+     * @param summary the resolved summary
+     * @return the JSON object to send
+     */
+    static ObjectNode writeSummary(GatewayFileDiffPort.ChangesSummary summary) {
+        ObjectNode node = JsonUtils.getMapper().createObjectNode();
+        node.put("turn", summary.turn());
+        node.put("total", summary.total());
+        node.put("added", summary.added());
+        node.put("deleted", summary.deleted());
+        ArrayNode files = node.putArray("files");
+        for (GatewayFileDiffPort.ChangedFile file : summary.files()) {
+            ObjectNode entry = files.addObject();
+            entry.put("path", file.path());
+            entry.put("display", file.display());
+            entry.put("added", file.added());
+            entry.put("deleted", file.deleted());
+            // Absent means "plain text": the viewer reads a missing flag as
+            // false, and omitting the false case keeps the payload to what the
+            // file actually is.
+            if (file.binary()) entry.put("binary", true);
+            if (file.oversized()) entry.put("oversized", true);
+        }
+        return node;
     }
 
     /**
      * Writes the wire projection of one file diff, in the shape the webui's
      * {@code WorkspaceFileDiff} union is typed against: a discriminated
-     * {@code kind}, and the two sides only when there is text to show.
+     * {@code kind}, and the hunks only when there is text to show.
      *
      * @param diff the resolved diff
      * @return the JSON object to send
@@ -74,22 +114,24 @@ final class GatewayChangesHandler {
     static ObjectNode writeDiff(GatewayFileDiffPort.FileDiff diff) {
         ObjectNode node = JsonUtils.getMapper().createObjectNode();
         node.put("path", diff.path());
-        // The display path is what the viewer heads the diff with. It is the
-        // reported path verbatim: this gateway has no workspace-relative
-        // projection to shorten it against, and a shortened path would be a
-        // guess about which root the file sits under.
-        node.put("display", diff.path());
+        node.put("display", diff.display());
         switch (diff.kind()) {
             case BINARY -> node.put("kind", "binary");
             case OVERSIZED -> node.put("kind", "oversized");
             case TEXT -> {
                 node.put("kind", "text");
-                // A null old side is a created file: the viewer draws no
-                // removed lines, which is exactly upstream's `oldText: null`.
-                if (diff.oldText() == null) node.putNull("old_text");
-                else node.put("old_text", diff.oldText());
-                node.put("new_text", diff.newText());
-                node.put("truncated", diff.truncated());
+                // A created file has no prior version and a deletion leaves
+                // nothing behind; the viewer names both cases from these flags
+                // rather than inferring them from an absent side.
+                node.put("before", diff.before());
+                node.put("after", diff.after());
+                // Coarse marks hunks synthesized from a whole-file write rather
+                // than recorded by a patch, so the viewer can say the comparison
+                // is approximate. The hunks themselves are written verbatim:
+                // StructuredPatchHunk carries the same field names the wire
+                // format uses, so its own serialization is already the contract.
+                node.put("coarse", diff.coarse());
+                node.set("hunks", JsonUtils.getMapper().valueToTree(diff.hunks()));
             }
         }
         return node;

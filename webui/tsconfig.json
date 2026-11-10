@@ -23,5 +23,15 @@
       "@dsh-context/*": ["./vendor/dsh-context/*"]
     }
   },
-  "include": ["src", "vendor/ui-primitives", "vendor/ui-primitives/css-modules.d.ts", "vendor/dsh-context"]
+  "include": [
+    "src",
+    "vendor/ui-primitives",
+    "vendor/ui-primitives/css-modules.d.ts",
+    "vendor/dsh-context",
+    "vendor/ui-deliverables",
+    "vendor/resources",
+    "vendor/ui-layout",
+    "vendor/store",
+    "vendor/workspace-path"
+  ]
 }

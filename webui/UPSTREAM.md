@@ -6,6 +6,12 @@ interface while owning its own protocol adapter (our gateway REST+SSE, not
 cordis/Typert RPC).
 
 - Upstream commit: `5dda764ed3aa172535a7967b06ff95d9cbfe536a` (master, 2026-09-08)
+- Second pin: `fcc0ad462172` (master HEAD, 2026-11-04) — **the changed-files
+  review system only** (`vendor/ui-deliverables/`, `vendor/resources/`,
+  `vendor/ui-layout/`, `vendor/store/`, `vendor/workspace-path/`, and the
+  HoverCard/PathLabel/product-icon additions under `vendor/ui-primitives/`).
+  The `5dda764` base still governs every other tree here. See "The
+  changed-files review pin" below.
 
 ## Vendored trees
 
@@ -18,7 +24,11 @@ cordis/Typert RPC).
 | `vendor/dsh-turn-process/` | `packages/client/ui-chat/src/client/` (`contract/turn-process.ts`, `contract/assistant-content.ts`, `conversation-nodes/turn-process.ts`, `conversation-nodes/turn-process-presentation.ts`, `conversation-nodes/turn-tail.ts`) | The turn-process fold rules + the per-turn tail anchor — see the section below |
 | `vendor/dsh-running-status/` | `packages/client/ui-chat/src/client/chat/` (`RunningStatus.tsx`, `message-chrome.ts`, `accessibility.module.css`) | The running-turn indicator (shimmer + live elapsed clock, worded with the TUI spinner verbs; whale icon dropped), **at commit `ce7073d`** — see the section below |
 | `vendor/dsh-user-questions/` | `packages/client/ui-user-questions/` | The `AskUserQuestion` answer card (pager, single/multi-select, custom free text) — see the section below |
-| `ui-deliverables` (not a tree — two files, re-seated) | `packages/client/ui-deliverables/src/client/` (`ProducedFiles.tsx`, `ProducedFiles.module.css`) | The turn-tail delivered-files chip row. Upstream ships **no** diff viewer; the viewer here wraps the already-vendored `ui-primitives/DiffBlock` — see the section below |
+| `vendor/ui-deliverables/` | `packages/client/ui-deliverables/src/client/` + `src/changes.ts` (at the **second pin**, `fcc0ad462172`) | The changed-files review system: conversation-area card, hover preview, review tab, and the diff viewer. **Replaced** the earlier `ProducedFiles` chip row and `ChangesModal` portal outright — both are deleted, not retained as fallbacks. See "The changed-files review pin" below |
+| `vendor/resources/` | `packages/client/resources/src/client/` (second pin) | The `dsh-resource://` address model — registry, `protocolOf`, refcounted frame streams, `useResource` |
+| `vendor/ui-layout/` | `packages/client/ui-layout/src/client/` (second pin) | Column geometry (`computeColumns`) + the sidebar/rightbar stores |
+| `vendor/store/` | `packages/client/store/src/` (second pin) | The snapshot-store engine (`createSnapshotStore`/`defineStore`) the three trees above are built on |
+| `vendor/workspace-path/` | `packages/util/workspace-path/src/` (second pin) | The `dsh-resource://file/…` address grammar and the path/display helpers |
 | `vendor/chat-styles/` | scattered `.module.css` from `ui-chat` / `ui-conversation` / `ui-approval` / `ui-layout` / `ui-sidebar` / `ui-settings-general` / `ui-permission-presets` / `ui-schedule` | Styles only — the paired `.tsx` files are deeply cordis-coupled upstream, so the components are re-written locally against the same class names |
 | `vendor/dsh-context/` | **different upstream**: [bowenliang123/dsh-context](https://github.com/bowenliang123/dsh-context) `src/shared/*` + `src/client/*` (Apache-2.0, own `LICENSE`/`NOTICE` in the directory) | The Context tab / `/context` modal / Context Dashboard / Chat→Context jump — see the section below |
 | `vendor/ui-subagent/` | `packages/client/ui-subagent/src/client/` (`SubagentHeaderLineage.tsx`, `SubagentHeaderLineage.module.css`, `locales.ts`) | The header subagent catalog: descendant-count trigger + subagent menu. Upstream browses **child sessions**; this product's subagents are in-session `Task`/`Agent` calls, so the tree is flattened and the child-session machinery is cut — see the section below |
@@ -1201,58 +1211,139 @@ of the host's to-do list. This app projects the runtime's own
 v1 `TodoWrite` is gated off). `Snapshot.hidden()` maps onto upstream's "no
 visible tasks → render nothing", and `Snapshot.revision` is the change token.
 
-### `ui-deliverables` — the delivered-files chip row and its viewer
+### The changed-files review pin (`fcc0ad462172`) and `vendor/ui-deliverables/`
 
-The turn-tail row naming the files a turn produced, plus the viewer an
-individual chip opens. Before this, a turn's writes were visible only as
+The turn-tail row naming the files a turn produced, plus the review system an
+individual row opens. Before this, a turn's writes were visible only as
 tool-call rows; nothing summed them up, and no file's diff could be read back.
 
-**Deliberately not vendored: there is no diff viewer upstream to port.** The
-plan for this work assumed upstream ships one. It does not, and the assumption
-was falsified against the pinned source before any code was written:
+**This is the one tree in this directory pinned to a second commit, and the
+reason is a falsified premise that must not be re-falsified the other way.**
+An earlier revision of this file recorded "there is no diff viewer upstream to
+port" and built a `DiffBlock`-wrapped modal instead. That was true *of the
+`5dda764` base* and false of upstream: the review system landed upstream
+2026-09-17 → 09-23, after `5dda764` (2026-09-08). Verified directly:
 
-- No `changes-review` package exists in the pinned tree.
-- `ui-sidebar-textpreview` is a **paginated plain-text reader**, not a diff
-  viewer.
-- The only diff primitive upstream has is
-  `ui-primitives/DiffBlock` — an inline, collapsible card that caps the diff at
-  `SHOWN_LIMIT = 6` hunks and `DEFAULT_DIFF_MAX_LINES = 16` lines, with **no
-  side-by-side mode, no scroll synchronisation and no wrap toggle**. It was
-  already vendored here byte-identical and is used verbatim as this viewer's
-  body.
+```
+gh api repos/deepseek-ai/deepseek-harness/git/trees/5dda764...?recursive=1 \
+  | jq -r '.tree[].path' | grep ui-deliverables/src
+#   ProducedFiles.tsx, ProducedFiles.module.css, index.ts, locales.ts,
+#   turn-deliverables.ts        ← four files; no ChangedFiles, no FileDiff,
+#                                 no ReviewTab, no changes.ts
+```
 
-So the absent side-by-side/scroll-sync is recorded as **upstream never had it**,
-not as a deviation this project introduced. Do not build it.
+So the reviews were built by **bumping the pin for this feature only**, to
+master HEAD `fcc0ad462172` (2026-11-04). `5dda764` still governs every other
+tree here.
+
+**Which pin each file came from is a load-bearing fact, and mixing them is the
+hazard this section exists to prevent.** Two of the vendored files are
+deliberately *not* from the review pin:
+
+- `vendor/ui-layout/columns.ts` and `stores.ts` are the `5dda764` shape, kept
+  because this project's `AppFrame.module.css` is itself the pinned revision.
+  The review pin's versions carry `SIDEBAR_DRAWER_BREAKPOINT` (768),
+  `MainPanelId`/`panelInfo`/`selectPanel`/`retainMainPanels` and two extra
+  `computeColumns` parameters, all of which describe frame CSS this app does not
+  have. **The two files are internally consistent as a pair** — `stores.ts` reads
+  `SIDEBAR_DRAWER_BREAKPOINT` from `columns.ts`, and both are the flat form — so
+  they bump together or not at all.
+
+- Everything else under the review pin (`vendor/ui-deliverables/`,
+  `vendor/resources/`, `vendor/store/`, `vendor/workspace-path/`, and the
+  `HoverCard`/`PathLabel`/product-icon additions) is from `fcc0ad462172`.
+
+This was learned the hard way: `vendor/workspace-path/` was first taken from
+`5dda764`, where `fileAddressFor` falls back to `absoluteFileAddress` and
+`pathPartsOf` does not exist at all. The review pin changed that fallback to a
+`session`-scoped address and added `pathPartsOf`/`relativizeToCwd`/
+`fileMediaUrl`. The stale half produced addresses the newer `PathLabel` could not
+read. When re-fetching anything here, fetch at the pin named in the file's own
+header, not at whichever pin a neighbouring file uses.
+
+Every other vendored file is either byte-identical to its pin or carries a header
+naming its seam. The pure ports were diffed against `fcc0ad462172` and are
+verbatim: `HoverCard.tsx`, `HoverCard.module.css`, `HoverCardGroup.tsx`,
+`overlay-top-margin.ts`, `PathLabel.module.css`.
+
+**Cut — everything that is not the review system.** Upstream's `Deliverables.tsx`
+(2-column turn card), `PresentRow.tsx`/`PresentedFileCard.tsx`/`present-open.ts`
+(the presented-file/open-in-host system), `file-actions.ts`,
+`review-definition.ts`, and `index.ts` are not vendored: this backend has no
+presented-file concept and no desktop open host, so they would be pure
+scaffolding. `turn-deliverables.ts` is not vendored as a module — its one
+needed helper (`basename`, four lines) is inlined into `ChangedFiles.tsx`
+because the rest of the file is the conversation-node definition this app has no
+seat for.
 
 | File here | Upstream source | Notes |
 |-----------|----------------|-------|
-| `src/views/ProducedFiles.tsx` | `ui-deliverables/src/client/ProducedFiles.tsx` | Kept: the chip row — one `LinkIcon` + `basename` per path, `title={path}` as the disambiguator, `aria-label` from the `produced.open` string, and the container-query bands (687/583/479/375/271px, each budgeting 96px per chip) that decide how many chips fit before the remainder collapses. Cut: the cordis `PropsLocale` `t` injection (replaced by `useTranslate(ns, dicts)`, the `produced.*` strings lifted verbatim into `src/i18n/dictionaries/deliverables.ts`) and the upstream `basename` import (that helper is a local function here). |
-| `src/views/ProducedFiles.module.css` | `ui-deliverables/src/client/ProducedFiles.module.css` | Verbatim, all 159 lines. No block cut. Every consumed `--dsw-*` token (`--dsw-alias-border-l3`, `--dsw-alias-label-tertiary`, `--dsw-alias-link`) resolves in the vendored `theme/styles/`. |
-| `src/views/ChangesModal.tsx` + `.module.css` | *(no upstream counterpart)* | The viewer body is the vendored `DiffBlock`; this file is only the surrounding modal. Not a port — see the deviation below. |
+| `vendor/ui-deliverables/ChangedFiles.tsx` + `.module.css` | `src/client/ChangedFiles.tsx` + `.module.css` | The conversation-area card. CSS verbatim (every one of its 17 `--dsw-*` tokens resolves in `vendor/theme/styles/`). Kept: `COLLAPSED_ROWS = 4`, the `Intl.NumberFormat` grouping, the hidden `aria-describedby` path descriptions, `data-single`, the lazily-mounted 500ms hover preview. Bindings replaced: cordis `PropsLocale`/`InjectFace` → explicit props; `resolveWorkspacePath(cwd, …)` → the gateway-served `display` (so no `cwd` prop); `(sessionId, seq, index)` → `(sessionId, path)`; `FileTypeIcon` → the vendored `classifyLinkPath` + `LinkIcon` (deviation below). |
+| `vendor/ui-deliverables/FileDiff.tsx` + `.module.css` | `src/client/FileDiff.tsx` + `.module.css` | The reviewer: `hunkRows`/`splitRows`/`renderedHunks`/`noteOf` kept. Local seam: the grammar/highlight imports come from `@primitives`. |
+| `vendor/ui-deliverables/ReviewTab.tsx` + `.module.css` | `src/client/ReviewTab.tsx` + `.module.css` | The right-column reviewer. Insertion-props replaced by explicit props; the `deliverables.review.file.actions` slot and the presented-open plumbing are cut with the rest of that system. |
+| `vendor/ui-deliverables/review-store.ts` | `src/client/review-store.ts` | Kept verbatim in behaviour — `byTab`, the asymmetric `navigated` seeding, the throwing `bucket()`. Seams: `@vendor/store` import, `TabId` → `string`. |
+| `vendor/ui-deliverables/changes.ts` | `src/changes.ts` | Address/URL/validation helpers. Kept; three URL builders added (`changesDiffUrl`/`changesSummaryUrl`/`changesOpenUrl`) — see the addressing deviation below. |
+| `vendor/ui-deliverables/changes-diff.ts`, `changes-summary.ts`, `host-read-store.ts` | same names | The fetch-once caches, kept; the store import is repointed and the summary's failure states are widened — see the auth deviation below. |
+| `vendor/resources/` | `packages/client/resources/src/client/` | `RESOURCE_SCHEME`, `protocolOf` (with its opaque-host case-folding), the `holders` refcount, `idle`/`attach`/`detach`/`consume` — all kept. The one cordis seam (`ctx.effect` around `register`) became direct loops that keep the same behaviour: registering a protocol attaches its already-recorded addresses, disposing detaches them. |
+| `vendor/ui-layout/` | `packages/client/ui-layout/src/client/` | `columns.ts` (pure geometry — `clampWidth`/`computeColumns` and every `*_MIN`/`*_MAX`/`*_DEFAULT`) kept verbatim. `stores.ts`: the `rightbar*` state machine and clamps kept; the `ctx.layout` service is not ported, so the store is the whole surface. |
+| `vendor/store/` | `packages/client/store/src/` | `createSnapshotStore` kept verbatim (immer `produce`, whole-value `set`, `subscribeWithSelector`, the `flush: 'raf'` branch, the hand-rolled localStorage persistence). Cut: the slot-registration types (`PropsStore`/`StoreDecl`/`HandleOf`/`StoreFactory`) — with no slots nothing declares one. One seam: `process.env.NODE_ENV` → `import.meta.env.PROD` (see below). |
+| `vendor/workspace-path/` | `packages/util/workspace-path/src/` | Whole module, verbatim apart from its `@module` docblock. `fileAddressFor` is what the reviewer's open-file control addresses; `resolveWorkspacePath` matches the gateway's own projection. |
+| `vendor/ui-primitives/HoverCard.tsx` + `.module.css`, `HoverCardGroup.tsx`, `overlay-top-margin.ts`, `PathLabel.tsx` + `.module.css` | `packages/client/ui-primitives/src/` | All verbatim. The pinned `HoverCard` had no `variant` at all; the preview variant, the `closing` phase, the `widthAnchorRef` sizing and `overlayTopMargin` arrive with the bump. `PathLabel`'s only seam is importing `pathPartsOf` from `@vendor/workspace-path`. |
+| `vendor/ui-primitives/icons/` (additions) | `src/icons/artwork.ts` | Five glyphs that only the reviewer needs, ported into the existing `index.tsx`: `chevron-down-outline`, `compare-split-outline`, `wrap-fill`, `nowrap-fill`, `inspect-outline`. Upstream renders them through a `<use href="#dsw-icon-…">` sprite this app does not inject, so the same path data is inlined per glyph — which is what every other icon here already does. Upstream's weight split (1px `Regular` / 1.3px `Medium`, `size` as a prop with the glyph's own default) is kept in `ProductIconWeight`; see that type's docblock. |
+| `src/views/RightPanel.tsx` + `.module.css` | *(no upstream counterpart)* | The app's half of the right column: the seat that reads `store/review.ts` and mounts the vendored `ReviewTab`. Upstream's column is a dock whose occupant is whatever tab the route's `dsh-resource://` address resolves to, and a review is one registered tab type among many; this app's column hosts exactly one surface, so the seat is a plain conditional over a store rather than a tab registry. The panel reports its own presence to the layout store (`layoutActions.openRightbar`), which is upstream's arrangement — whether the surface is expanded is a fact the surface owns. The two facts upstream keeps apart are kept apart here too: the *opening* is the surface's report, the *room* is the frame's (`canShow`, solved with the panel counted as open), and the panel shows only while both hold. A frame too narrow for a 300px panel therefore reports the opening and renders nothing — mounting at zero width was the earlier bug, which blamed the panel for a geometry the frame had already ruled out. |
+| `src/views/AppFrame.tsx` | *(forked)* | Upstream's frame CSS is kept verbatim; the component is this app's. It was two columns and became three by *calling* the vendored `computeColumns` rather than re-deriving the geometry. Two deliberate non-implementations, both visible in the file's header: the drag handles (no pointer geometry is wired) and the fullscreen presentation (no route can reach it). The grid template follows upstream's shape rather than only its numbers: three tracks always, the centre's `minmax(<floor>px, 1fr)` where the floor is `CENTER_MIN` exactly while the right track exists, and the third track a clamped *bid* up to which the grid resolves the squeeze natively. Solving the squeeze in JS made the centre absorb each resize whole and correct two frames later — the jitter upstream's comment in `AppFrame.tsx` warns about. |
 
-**Deviation — the host is a modal, not a sidebar tab.** Upstream opens a file as
-a tab in the right Sidebar's resource registry (`dsh-resource://file/...`,
-routed to the `textpreview` tab type). This app has no sidebar tab registry and
-no resource system, so the viewer is a modal over the conversation column —
-the same host pattern `/context` already established — with one file open at a
-time. The viewer's own behaviour (one file at a time, a reload affordance, a
-failure that stays visible) is upstream's; only the host differs.
+**Deviation — the diff is addressed by `path`, not `(seq, index)`.** Upstream
+keys a comparison by `dsh-resource://changes-review/session/<id>/<seq>` and
+inside it by file index, because it aggregates per turn off a `workspace/changes`
+event. This product's transcript has no such event, and its
+`/api/changes.diff` already addressed one file by `path`; keeping `path` avoids
+re-deriving turn membership on the server. Turn-addressed data therefore lives
+in a **separate** endpoint, `/api/changes.summary?session_id=&turn=`, which is
+what feeds the card's `+N -M` and its folded list. Both are described in
+`openapi.yaml`. This is a deliberate divergence from upstream's addressing, not
+an unfinished port.
 
-**Deviation — the open-in-host control renders disabled rather than absent.**
-The native open-file action goes through `/api/changes.open` to a desktop host.
-This client runs in a browser and cannot reach the local filesystem, so the
-endpoint always answers `422` with a readable reason. Upstream **omits the
-native control entirely** when no desktop host is present; this project
-deliberately renders it **disabled with the reason visible**, and the reason
-stays on screen until the next attempt (upstream's failure semantics). This is
-a chosen difference, not a defect — an alignment pass must not "fix" it back to
-a hidden button, and must not treat the 422 as something to implement away.
-Recorded in `openapi.yaml` on `/api/changes.open` as well.
+**Deviation — the open-file control opens a whole-file preview tab, not a host open.**
+Upstream's control hands the file to a desktop host (`presented` file actions),
+which this browser client cannot do. This project instead opens the whole file
+in its own sidebar: `RightPanel` mounts `FilePreview`, which reads
+`GET /api/workspace-file?session_id=&path=` (see `openapi.yaml`). The endpoint
+serves text as `{kind:"text", text}`, and refuses binary and over-1 MiB files
+with a notice kind rather than content. Upstream's per-application menu and
+`presented.*` dispatch remain cut.
 
-**Deviation — no hover preview.** Upstream's chip row opens a 500ms hover
-preview layered on Shiki highlighting and a full compare store. Neither exists
-here (line-level highlighting is likewise not ported), so the preview is not
-built; clicking a chip opens the modal instead.
+**Deviation — the file tile uses `LinkIcon`, not upstream's `FileTypeIcon`.**
+`FileTypeIcon` is not vendored: it pulls its own artwork tree, its own CSS and
+the code-file classifier. The card's tile instead uses the vendored
+`classifyLinkPath` + `LinkIcon`, which carry the same category vocabulary
+(`code`/`image`/`document`/`folder`/`url`/`other`) at the size the card needs.
+The visible difference is the glyph set, not the classification. Follow-up if
+pixel parity is wanted: vendor `FileTypeIcon` + its artwork and swap the tile.
+
+**Deviation — an unauthenticated read is retryable, not a kept `missing`.**
+Upstream's Host authorizes a read with credentials the browser already carries,
+so its summary policy can be `failed: 'missing'` with `retryable: () => false`:
+a failed read is final. This project's gateway authorizes every API route with
+the launch token the tab captured from its landing URL
+(`http://127.0.0.1:<port>/?token=<hex>`), and the CLI mints a **new token on
+every launch**. A tab left open across a restart therefore carries the previous
+launch's token, every `/api/changes.summary` answers `401`, and upstream's
+policy turned that into a kept `'missing'` — indistinguishable from "this turn
+changed no files", so the card stayed absent until the tab was reloaded from
+the new URL. `changes-summary.ts` therefore decodes a `401` to `'error'` and
+keeps upstream's rule for everything else (a `404`/non-OK answer is still the
+kept `'missing'`), and `ReviewTab` re-reads on `'error'` instead of sitting on
+its loading text. `changes-diff.ts` already had this asymmetry (`failed:
+'error'`, `retryable: state => state === 'error'`) and needed no change. Pinned
+by `src/store/changes.test.ts`.
+
+**Deviation — `import.meta.env.PROD` for upstream's `process.env.NODE_ENV`.**
+In `vendor/store/index.ts`'s `devFreeze`. This project builds through Vite and
+carries no node type definitions; Vite substitutes the constant at build time
+and it is `false` under vitest, so a mutation of published state throws in tests
+exactly as it does upstream. The behaviour is identical; only the spelling of
+the environment probe differs.
 
 Wiring (this app's half): `GET /api/changes.diff` reads one path's recorded
 change out of the session transcript — from the mutating call's own tool result,
@@ -1260,6 +1351,38 @@ not from disk, so the diff reports what the session did rather than whatever the
 file holds now. The turn-scoped aggregation lives in
 `src/views/turnDeliverables.ts` (`collectTurnDeliverables`); a failed or
 still-running call contributes nothing, because it wrote nothing.
+
+**The chain, end to end.** `ChatView` derives which turns produced deliverables
+and passes a `changesTurn` down to `MessageItem`, which mounts the vendored
+`ChangedFiles` card on the turn-tail anchor. The card reads the summary through
+the vendored `ChangesSummaryStore` (addressed by `(sessionId, turn)`); its
+`+N -M` header and folded file list come from that one read. Hovering a row
+mounts `ChangedFiles`'s own `HoverCard variant="preview"`, which shows that
+file's comparison from the vendored `ChangesDiffStore`. Clicking a row (or the
+header) opens a review via `store/review.ts`'s seat, and `AppFrame`'s third
+column renders `RightPanel` → the vendored `ReviewTab`. The per-tab view state
+(shown file, split, wrap) is the vendored `review-store.ts` untouched.
+
+**Two app-side modules stand in for upstream plumbing, and neither invents
+logic.** `src/store/changes.ts` is a `useSyncExternalStore` binding over the two
+vendored stores — the reads themselves, their caching and their decode guards
+are all vendored; only the React subscription is local. `src/store/review.ts`
+holds the seat (which review is open) as a plain store: upstream pushes a
+`dsh-resource://changes-review/session/…` address onto its dock, and with one
+right-column surface there is no dock to push onto, so the address collapses
+into a store. The address builder itself survives in the vendored `changes.ts`.
+
+**Deleted in this pass:** `src/views/ProducedFiles.tsx` + `.module.css`,
+`src/views/ChangesModal.tsx` + `.module.css` + `.test.tsx`, and
+`src/store/changesViewer.ts`, plus the now-unreferenced
+`fetchChangesSummary`/`fetchWorkspaceFileDiff` wrappers in `src/api/client.ts`
+and the duplicated wire types in `src/api/types.ts` (the vendored `changes.ts`
+is the single source of truth for those shapes). The modal's twelve
+host-lifecycle tests were **not** dropped: they are repointed at the surface
+that replaced it in `src/views/ReviewTab.test.tsx`, which drives the real
+vendored stores over a stubbed `fetch` — so the decode guards that the
+white-screen regression came through are inside the test's path rather than
+mocked out of it.
 
 ### `vendor/ui-attachment/` — chat-history image gallery + lightbox
 
