@@ -125,7 +125,7 @@ class DefaultSdkControlRuntimeTest {
             167_000L, "model-default", true,
             new ContextData.MessageBreakdown(50_000, 100, 200, 300, 400,
                 List.of(new ContextData.ToolIo("Read", 40, 60))),
-            new Usage(10, 20, 30, 40));
+            new Usage(10, 20, 30, 40), ContextData.TokenSource.MEASURED);
 
         ObjectNode payload = DefaultSdkControlRuntime.contextPayload(data);
 

@@ -180,7 +180,11 @@ class ContextUsageAnalyzerTest {
     }
 
     @Test
-    void configuredCountTokensFailureDoesNotFallBackToRoughStaticCounts() {
+    void configuredCountTokensFailureFallsBackButDeclaresTheFiguresEstimated() {
+        // A counter outage must not be reported as an empty context window. The
+        // analyzer keeps the categories alive with local estimates, and marks
+        // the whole snapshot so neither renderer can pass an estimate off as a
+        // measurement.
         ContextUsageAnalyzer.Sources sources = new ContextUsageAnalyzer.Sources(
             () -> List.of(new ToolDef("Bash", "run commands", null)),
             () -> "large system prompt that rough estimation would count",
@@ -193,9 +197,26 @@ class ContextUsageAnalyzerTest {
         ContextData data = new ContextUsageAnalyzer(sources)
             .analyze(List.of(), "claude-sonnet-4-6");
 
-        assertTrue(data.categories().stream()
-            .noneMatch(c -> Strings.CS.equals("System prompt", c.name()) || Strings.CS.equals("System tools", c.name())));
-        assertEquals(0, data.totalTokens());
+        assertTrue(byName(data, "System prompt").tokens() > 0,
+            "a counter outage must not erase the system prompt");
+        assertTrue(byName(data, "System tools").tokens() > 0,
+            "a counter outage must not erase the tool catalogue");
+        assertTrue(data.totalTokens() > 0, "a counter outage must not zero the total");
+        assertEquals(ContextData.TokenSource.ESTIMATED, data.tokenSource());
+    }
+
+    @Test
+    void aWorkingCounterLeavesTheSnapshotMarkedMeasured() {
+        ContextUsageAnalyzer.Sources sources = new ContextUsageAnalyzer.Sources(
+            () -> List.of(new ToolDef("Bash", "run commands", null)),
+            () -> "system", List::of, List::of, _ -> List.of(), null, () -> true,
+            (_, _, tools) -> tools.isEmpty() ? 123L : 456L,
+            "/tmp/project");
+
+        ContextData data = new ContextUsageAnalyzer(sources)
+            .analyze(List.of(), "claude-sonnet-4-6");
+
+        assertEquals(ContextData.TokenSource.MEASURED, data.tokenSource());
     }
 
     @Test
@@ -379,6 +400,46 @@ class ContextUsageAnalyzerTest {
         assertTrue(data.memoryFiles().isEmpty());
         assertTrue(data.agents().isEmpty());
         assertNull(data.skills());
+    }
+
+    // ── counter failure falls back to local estimates ────────────────────────
+
+    @Test
+    void failedExactCountFallsBackToLocalEstimatesInsteadOfReportingZero() {
+        // A count_tokens outage (unknown model, timeout, transport error) used
+        // to zero every category: the failure surfaced as "this costs nothing"
+        // rather than "this was not measured", which reads as an empty context
+        // window while the wire is actually carrying a full tool catalogue.
+        List<ToolDef> tools = List.of(
+            new ToolDef("Bash", "run a command", null),
+            new ToolDef("mcp__rea__inspect_binary", "inspects " + "a binary ".repeat(60), null, false));
+        List<ContextUsageAnalyzer.MemoryDocument> memory = List.of(
+            new ContextUsageAnalyzer.MemoryDocument(
+                Path.of("/tmp/project/CLAUDE.md"),
+                ContextUsageAnalyzer.MemoryScope.PROJECT, "x".repeat(4_000)));
+
+        ContextUsageAnalyzer.Sources sources = new ContextUsageAnalyzer.Sources(
+            () -> tools, () -> "system prompt text", () -> List.of("system prompt text"),
+            () -> memory, List::of, _ -> List.of(),
+            null, () -> true,
+            (_, _, _) -> { throw new IllegalStateException("count_tokens unavailable"); },
+            (_, _, _) -> { throw new IllegalStateException("count_tokens fallback unavailable"); },
+            "/tmp/project", null);
+
+        ContextData data = new ContextUsageAnalyzer(sources).analyze(List.of(), "probe-model");
+
+        assertTrue(byName(data, "System prompt").tokens() > 0,
+            "system prompt must survive a counter outage");
+        assertTrue(byName(data, "Memory files").tokens() > 0,
+            "memory files must survive a counter outage");
+        assertTrue(byName(data, "MCP tools").tokens() > 0,
+            "an eagerly-sent MCP schema must survive a counter outage");
+        assertTrue(data.mcpTools().stream()
+                .filter(e -> Strings.CS.equals(e.name(), "mcp__rea__inspect_binary"))
+                .findFirst().orElseThrow().tokens() > 0,
+            "per-tool rows must survive a counter outage");
+        assertEquals(ContextData.TokenSource.ESTIMATED, data.tokenSource(),
+            "the snapshot must declare that its figures are estimates");
     }
 
     private static Category byName(ContextData data, String name) {

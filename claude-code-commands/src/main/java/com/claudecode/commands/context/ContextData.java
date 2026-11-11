@@ -23,7 +23,8 @@ public record ContextData(
     String autoCompactSource,
     boolean autoCompactEnabled,
     MessageBreakdown messageBreakdown,
-    Usage apiUsage
+    Usage apiUsage,
+    TokenSource tokenSource
 ) {
 
     /** Compatibility constructor for renderers/tests created before source reporting. */
@@ -36,7 +37,25 @@ public record ContextData(
             Usage apiUsage) {
         this(categories, totalTokens, maxTokens, percentage, model, memoryFiles,
             mcpTools, agents, null, skills, autoCompactThreshold, "auto",
-            autoCompactEnabled, messageBreakdown, apiUsage);
+            autoCompactEnabled, messageBreakdown, apiUsage, TokenSource.MEASURED);
+    }
+
+    /**
+     * Where the system-side token numbers came from. The count_tokens endpoint
+     * can be unreachable (unknown model, transport error, outage); the analyzer
+     * then falls back to its local estimator rather than reporting zero, and
+     * records that here so both renderers can mark the figures as approximate
+     * instead of letting an estimate pass as a measurement.
+     */
+    public enum TokenSource {
+        /** Every figure came from the API's own token counter. */
+        MEASURED,
+        /** The counter was unavailable; figures are local character-based estimates. */
+        ESTIMATED;
+
+        public boolean isEstimated() {
+            return this == ESTIMATED;
+        }
     }
 
     /** Category display names shared by analyzer and renderers. */

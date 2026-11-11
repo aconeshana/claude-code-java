@@ -35,8 +35,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -137,11 +139,19 @@ public final class ContextUsageAnalyzer {
     private final Sources sources;
     private final TokenEstimator estimator = TokenEstimator.getInstance();
 
+    /**
+     * Latched by {@link #countExactOrEstimate} whenever any figure in the
+     * current run came from the local estimator instead of the API counter.
+     * Reset at the top of {@link #analyze}.
+     */
+    private final AtomicBoolean anyEstimated = new AtomicBoolean();
+
     public ContextUsageAnalyzer(Sources sources) {
         this.sources = sources;
     }
 
     public ContextData analyze(List<Message> messages, String model) {
+        anyEstimated.set(false);
         long contextWindow = resolvedContextWindow(model);
 
         // Same pre-API transforms as the query path: compact boundary, then
@@ -315,7 +325,8 @@ public final class ContextUsageAnalyzer {
             autoCompactSource,
             autoCompact,
             breakdown,
-            apiUsage);
+            apiUsage,
+            anyEstimated.get() ? ContextData.TokenSource.ESTIMATED : ContextData.TokenSource.MEASURED);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -442,7 +453,8 @@ public final class ContextUsageAnalyzer {
         if (hasApiUsage) {
             totalTokens = 0;
         } else if (sources.tokenCounter() != null) {
-            totalTokens = countExact(model, requestMessages(compacted), List.of());
+            totalTokens = countExactOrEstimate(model, requestMessages(compacted), List.of(),
+                () -> estimator.estimateTokenCount(compacted));
         } else {
             totalTokens = estimator.estimateTokenCount(compacted);
         }
@@ -459,7 +471,8 @@ public final class ContextUsageAnalyzer {
         if (sources.tokenCounter() == null) {
             return estimator.estimateTokenCount(value);
         }
-        return countExact(model, List.of(new RequestMessage("user", value)), List.of());
+        return countExactOrEstimate(model, List.of(new RequestMessage("user", value)), List.of(),
+            () -> estimator.estimateTokenCount(value));
     }
 
     private long countToolsOrEstimate(List<ToolDef> tools, String model, boolean subtractOverhead) {
@@ -467,23 +480,63 @@ public final class ContextUsageAnalyzer {
         if (sources.tokenCounter() == null) {
             return tools.stream().mapToLong(this::estimateToolDef).sum();
         }
-        long counted = countExact(model, List.of(), tools);
-        return subtractOverhead ? Math.max(0, counted - 500) : counted;
+        boolean wasEstimated = anyEstimated.get();
+        long counted = countExactOrEstimate(model, List.of(), tools,
+            () -> tools.stream().mapToLong(this::estimateToolDef).sum());
+        // The 500-token overhead is real only for the API's count_tokens, which
+        // measures a whole request envelope. A local estimate already covers
+        // just the definitions, so subtracting from it would drop small tool
+        // groups to a misleading zero.
+        boolean measured = !wasEstimated && !anyEstimated.get();
+        return subtractOverhead && measured ? Math.max(0, counted - 500) : counted;
     }
 
+    /**
+     * Exact count with a local-estimate fallback. A measurement failure — an
+     * unknown model, a transport error, an outage on the count_tokens endpoint —
+     * must never render as "this costs nothing": the {@code /context} grid would
+     * then show an empty window while the wire actually carries a full tool
+     * catalogue. Falling back to the local estimator keeps the numbers
+     * approximate instead of absent.
+     */
+    /** Exact count with no fallback; a failure yields 0. For probe calls whose result is discarded. */
     private long countExact(String model, List<RequestMessage> messages, List<ToolDef> tools) {
         try {
             Long value = sources.tokenCounter().count(model, messages, tools);
-            return value != null ? Math.max(0, value) : 0;
+            if (value != null) return Math.max(0, value);
         } catch (Exception _) {
-            if (sources.fallbackTokenCounter() == null) return 0;
+            // Fall through to the secondary counter.
+        }
+        if (sources.fallbackTokenCounter() != null) {
             try {
                 Long value = sources.fallbackTokenCounter().count(model, messages, tools);
-                return value != null ? Math.max(0, value) : 0;
+                if (value != null) return Math.max(0, value);
             } catch (Exception _) {
-                return 0;
+                // No counter is reachable.
             }
         }
+        return 0;
+    }
+
+    private long countExactOrEstimate(
+            String model, List<RequestMessage> messages, List<ToolDef> tools,
+            LongSupplier estimate) {
+        try {
+            Long value = sources.tokenCounter().count(model, messages, tools);
+            if (value != null) return Math.max(0, value);
+        } catch (Exception _) {
+            // Fall through to the secondary counter.
+        }
+        if (sources.fallbackTokenCounter() != null) {
+            try {
+                Long value = sources.fallbackTokenCounter().count(model, messages, tools);
+                if (value != null) return Math.max(0, value);
+            } catch (Exception _) {
+                // Fall through to the local estimate.
+            }
+        }
+        anyEstimated.set(true);
+        return estimate.getAsLong();
     }
 
     private static List<RequestMessage> requestMessages(List<Message> messages) {

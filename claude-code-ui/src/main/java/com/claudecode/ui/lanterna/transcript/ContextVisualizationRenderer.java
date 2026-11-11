@@ -151,6 +151,14 @@ public final class ContextVisualizationRenderer {
             LanternaTheme.ghostText()));
         legend.add(line("", TextColor.ANSI.DEFAULT));
         legend.add(line("Estimated usage by category", LanternaTheme.ghostText()));
+        if (data.tokenSource().isEstimated()) {
+            // The counter was unreachable, so these figures are local
+            // character-based estimates. Say so: an unmarked estimate reads as
+            // a measurement, and a failed measurement must never look like a
+            // small context window.
+            legend.add(line("~ token counter unavailable · figures are local estimates",
+                LanternaTheme.autoYellow()));
+        }
 
         for (Category cat : data.categories()) {
             boolean visible = cat.tokens() > 0

@@ -25,6 +25,12 @@ public final class ContextMarkdownFormatter {
         out.append("**Tokens:** ").append(formatTokens(data.totalTokens()))
             .append(" / ").append(formatTokens(data.maxTokens()))
             .append(" (").append(data.percentage()).append("%)\n\n");
+        if (data.tokenSource().isEstimated()) {
+            // The count_tokens endpoint was unreachable, so these figures are
+            // local estimates. Without this note the zeroed categories would
+            // read as an empty context window rather than a failed measurement.
+            out.append("> Token counter unavailable — figures below are local estimates.\n\n");
+        }
 
         appendCategories(out, data);
         appendMcpTools(out, data.mcpTools());

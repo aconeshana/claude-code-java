@@ -736,7 +736,14 @@ final class CliEngineAssembler {
             final LlmClient contextUsageLlmClient = llmClient;
             var contextAnalyzer = new ContextUsageAnalyzer(
                 new ContextUsageAnalyzer.Sources(
-                    toolRegistry::getContextAnalysisToolDefinitions,
+                    // The defer tag must match what this model would actually
+                    // receive: the tool-search gate is judged per model off its
+                    // resolved protocol and base URL, so a /model switch changes
+                    // whether MCP schemas are withheld or sent in full.
+                    () -> toolRegistry.getContextAnalysisToolDefinitions(
+                        engineRef.get() != null
+                            ? engineRef.get().configuration().getConfig().model()
+                            : resolvedModel),
                     () -> engine.configuration().assembleSystemPrompt(null),
                     () -> engine.configuration().assembleSystemPromptParts(null),
                     () -> {

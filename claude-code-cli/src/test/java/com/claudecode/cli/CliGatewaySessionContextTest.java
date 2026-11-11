@@ -313,7 +313,7 @@ class CliGatewaySessionContextTest {
             List.of(), List.of(), List.of(), null, null,
             167_000L, "model-default", true,
             new ContextData.MessageBreakdown(47_000, 100, 200, 300, 400, List.of()),
-            null);
+            null, ContextData.TokenSource.MEASURED);
         GatewaySessionContextPort port =
             CliInteractiveSessionRunner.gatewaySessionContext(
                 registryWith(models, efforts), null, null, "/work", () -> data);
