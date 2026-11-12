@@ -84,7 +84,9 @@ import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -876,7 +878,13 @@ public class LanternaReplScreen implements SlashHost {
 
     private TuiOutputGuard initTerminal() throws IOException {
         log.info("[LANTERNA] initTerminal step 1: creating factory");
-        terminalInput = new EscapeSequenceInputStream(TuiOutputGuard.terminalInput());
+        // ReadConsoleInput preserves IME Unicode and must be installed before the
+        // reader thread's first blocking read. System.in is the non-console fallback.
+        InputStream consoleInput = WindowsConsoleInput.open();
+        Charset terminalCharset = consoleInput == null
+            ? Charset.defaultCharset() : StandardCharsets.UTF_8;
+        terminalInput = new EscapeSequenceInputStream(
+            consoleInput == null ? TuiOutputGuard.terminalInput() : consoleInput);
         // Claim the renderer's own handle on the terminal before the guard redirects fd 1, so
         // nothing else in the process — native code, inherited-stdio children — shares the
         // descriptor our escape sequences travel on. Null outside a terminal, where fd 1 is
@@ -884,7 +892,7 @@ public class LanternaReplScreen implements SlashHost {
         PrintStream terminalChannel = TuiOutputGuard.openTerminalChannel();
         DefaultTerminalFactory factory = new DefaultTerminalFactory(
             terminalChannel != null ? terminalChannel : TuiOutputGuard.terminalOutput(),
-            terminalInput, Charset.defaultCharset())
+            terminalInput, terminalCharset)
             .setForceTextTerminal(true)
             .setInitialTerminalSize(null)
             // Trap Ctrl+C as a keystroke instead of Lanterna's default
@@ -906,7 +914,7 @@ public class LanternaReplScreen implements SlashHost {
         if (terminal instanceof ExtendedTerminal extended
                 && !(terminal instanceof DefaultVirtualTerminal)) {
             terminal = new CompactAnsiTerminal(extended,
-                new FastTerminalInputDecoder(terminalInput, Charset.defaultCharset()));
+                new FastTerminalInputDecoder(terminalInput, terminalCharset));
         }
         log.info("[LANTERNA] initTerminal step 3: terminal created = {}", terminal.getClass().getName());
 
