@@ -1001,6 +1001,9 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             @Override
             public void onAgentMessage(Message message, String ignoredAgentId) {
                 tracker.recordMessage(message);
+                // Mirror onto the handle so a viewer renders a running agent from memory
+                // instead of re-parsing its JSONL on every repaint.
+                if (handle != null) handle.appendToDisplayTranscript(message);
                 publishUsage();
                 if (downstream == null) return;
                 Message projected = message instanceof AssistantMessage assistant
