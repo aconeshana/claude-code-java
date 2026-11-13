@@ -188,11 +188,16 @@ public final class GlobalConfigStore {
      * consumes it via a supplier so it stays storage-agnostic.
      */
     public static Optional<String> getApiKey() {
-        JsonNode primary = readKey(ClaudePaths.GLOBAL_JSON, API_KEY_FIELD);
+        return readStoredApiKey(ClaudePaths.GLOBAL_JSON);
+    }
+
+    /** {@code primaryApiKey}, then the legacy {@code apiKey} field, from one config file. */
+    static Optional<String> readStoredApiKey(Path path) {
+        JsonNode primary = readKey(path, API_KEY_FIELD);
         if (primary != null && primary.isTextual() && !StringUtils.isBlank(primary.asText())) {
             return Optional.of(primary.asText());
         }
-        JsonNode legacy = readKey(ClaudePaths.GLOBAL_JSON, LEGACY_API_KEY_FIELD);
+        JsonNode legacy = readKey(path, LEGACY_API_KEY_FIELD);
         if (legacy != null && legacy.isTextual() && !StringUtils.isBlank(legacy.asText())) {
             return Optional.of(legacy.asText());
         }

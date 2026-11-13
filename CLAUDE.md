@@ -1,8 +1,8 @@
 # Claude Code Java — Development Guide
 
 A terminal coding agent implemented in Java, with Anthropic and user-defined Anthropic or
-OpenAI-compatible model endpoints. The repository contains 15 product modules plus the build-time
-`build-recipes` helper project.
+OpenAI-compatible model endpoints. The repository contains the product modules listed below plus
+the build-time `build-recipes` helper project.
 
 ## Quick Reference
 
@@ -19,7 +19,7 @@ Gradle with Kotlin DSL is the only build system. See
 [docs/build-and-test.md](docs/build-and-test.md) for build, test, packaging, native-image,
 and platform-asset details.
 
-## Module Map (16 product modules)
+## Module Map
 
 ```
 claude-code-core     → stable model protocols, policies, value objects
@@ -41,58 +41,14 @@ claude-code-app      → assembly + packaging
 ```
 
 `build-recipes` is a build-time OpenRewrite/Refaster helper project and is not part of the product
-runtime module graph.
-
-### Key Dependency Chain
-
-```
-app → cli
-sdk → { core, session, cli (runtime only) }
-cli → { core, http, api, permissions, runtime, gateway, session, mcp, commands, ui, tools, services, lsp }
-      # The composition root explicitly declares every module whose types it uses.
-ui → { core, commands, permissions, tools, lsp, runtime }
-     # UI must not depend on services, MCP, or session implementations; use runtime/application ports.
-gateway → { core, runtime, api }
-          # Third session endpoint: HTTP+SSE transport over the same registry/hub/ledger semantics.
-services → { core, http, api, mcp, tools, permissions, session, runtime }
-commands → { core, runtime }
-           # CLI leaf adapters provide session, permission, tools, configuration, and MCP capabilities.
-api → { core, http }
-mcp → { core, http }
-lsp → core
-runtime → { core, permissions }
-tools → { core, http, permissions, session, lsp, mcp, runtime }
-session → core
-permissions → core
-http → OkHttp (no internal module dependencies)
-core → no internal module dependencies
-```
-
-See [docs/architecture.md](docs/architecture.md) for the complete dependency graph.
-
-**Module dependency rule**: Internal Gradle project dependencies use
-`implementation(project(...))` by default. `api(project(...))` is allowed only when the dependency's
-types are deliberately exposed as part of the module's public ABI, and the exception must be recorded
-in `ModuleArchitectureTest`. Every production import from another internal module requires a direct
-production dependency. Test imports must be covered by a production dependency or an explicit
-`testImplementation` or `testCompileOnly` dependency. Do not rely on compile-classpath leakage
-through a third module. The module guard enforces allowed directions, acyclicity, and direct
-dependency declarations; it intentionally does not require the current dependency set to remain
-exact forever.
-
-**Tool ownership rule**: Built-in tool implementations and their private state stores, such as
-`TaskStore`, belong in `claude-code-tools`. Place a tool in a higher layer only when it has a genuine
-compile-time dependency on a service available exclusively there. Module ownership is determined by
-the code's actual dependency closure.
+runtime module graph. The executable module graph, allowed dependency directions, and ownership
+boundaries live in `ModuleArchitectureTest` and [docs/architecture.md](docs/architecture.md).
 
 ## Code Standards (enforced)
 
 - **Java 25**: use records for immutable data carriers, sealed interfaces for closed unions,
   pattern-matching switches where they clarify modeled cases, and virtual threads for blocking I/O
 - **Visibility**: package-private by default; `public` only for deliberate package or module APIs
-- **Async**: query orchestration uses virtual threads and `BlockingQueue`-backed streaming handoff;
-  prefer `CompletionStage<T>` at API boundaries and `CompletableFuture<T>` when the implementation
-  owns completion
 - **`@Explanation` annotation**: briefly explain declarations that intentionally differ from the
   original product. Do not use it for ordinary refactoring, language-level implementation details,
   or unfinished work.
@@ -119,20 +75,14 @@ verification, local Lanterna development, and checks outside the default test ta
 
 ## Configuration
 
-- API key resolution order: `--api-key`, `ANTHROPIC_API_KEY`, then the
-  `primaryApiKey` field in the global config (legacy field: `apiKey`). The default global config is
-  `~/.claude.json`; with `CLAUDE_CONFIG_DIR`, it is resolved relative to that override.
 - Bearer authentication for the independent gateway channel: `ANTHROPIC_AUTH_TOKEN`.
 - Settings sources: user-level `~/.claude/settings.json`, project-level
   `.claude/settings.json`, local `.claude/settings.local.json`, `--settings` file or inline overrides,
-  and OS-specific managed policy settings. File-backed settings are parsed as strict JSON after an
-  optional UTF-8 BOM; comments and trailing commas are not accepted.
+  and OS-specific managed policy settings.
 - Transcript storage: `~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl`.
 - Configuration directory override: `CLAUDE_CONFIG_DIR` (default: `~/.claude`). It relocates the
   Claude configuration home and resolves the global config as `$CLAUDE_CONFIG_DIR/.claude.json`
   unless the legacy `$CLAUDE_CONFIG_DIR/.config.json` exists.
-
-The API key and bearer token are resolved independently; neither is a fallback or alias for the other.
 
 ## Architecture Notes
 
@@ -140,10 +90,6 @@ The API key and bearer token are resolved independently; neither is a fallback o
   orchestration, interruption recovery, and application-facing ports.
 - `claude-code-services` owns concrete integrations such as hooks, compaction, memory,
   settings, plugins, and platform processes.
-- `claude-code-ui` is a presentation adapter. Its production code does not depend on
-  `claude-code-services`, `claude-code-mcp`, or `claude-code-session`.
-- `claude-code-cli` is the composition root and wires concrete implementations to runtime,
-  command, and UI ports.
 - `claude-code-sdk` is an external-consumer leaf. Its query implementation launches the CLI
   in a separate JVM and can host SDK MCP servers in process; the CLI does not depend on it.
 - Model-visible tools are assembled dynamically from built-ins and runtime providers. Do not
