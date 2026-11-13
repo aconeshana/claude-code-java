@@ -174,6 +174,20 @@ public final class PathValidation {
         if (path.isAbsolute()) {
             return path.normalize().toString();
         }
-        return Path.of(cwd == null ? "." : cwd, p).normalize().toString();
+        Path base = Path.of(cwd == null ? "." : cwd);
+        if (path.getRoot() != null && base.getRoot() != null) {
+            // Rooted but drive-relative (/x on Windows): like Node's
+            // path.win32.resolve, anchor it to the working directory's drive
+            // root. Joining it onto the cwd instead would pull /private/tmp
+            // INSIDE the project and let containment treat an outside write as
+            // an inside one. On POSIX a rooted path is absolute and never gets
+            // here. A bare root ("/", zero name elements) anchors to the root
+            // itself — subpath(0, 0) would be illegal.
+            Path anchored = path.getNameCount() == 0
+                ? base.getRoot()
+                : base.getRoot().resolve(path.subpath(0, path.getNameCount()));
+            return anchored.normalize().toString();
+        }
+        return base.resolve(p).normalize().toString();
     }
 }

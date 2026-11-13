@@ -10,10 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 
 /**
@@ -116,7 +120,15 @@ final class CronSchedulerLock {
         }
         if (expectedStartToken == null) return true;
         String actual = cachedProcessStartToken(pid);
-        return actual == null || actual.equals(expectedStartToken);
+        if (actual == null) return true;
+        Instant expected = parseProcessStartToken(expectedStartToken);
+        Instant started = parseProcessStartToken(actual);
+        if (expected == null || started == null) return expectedStartToken.equals(actual);
+        // Legacy ps tokens carry second precision; compare both at that
+        // granularity so an old lock and the current API agree on the same
+        // process.
+        return expected.truncatedTo(ChronoUnit.SECONDS)
+            .equals(started.truncatedTo(ChronoUnit.SECONDS));
     }
 
     private static String cachedProcessStartToken(long pid) {
@@ -131,28 +143,42 @@ final class CronSchedulerLock {
     }
 
     private static String processStartToken(long pid) {
-        Process process = null;
+        // Portable JDK API (GetProcessTimes on Windows, /proc on Linux): the
+        // previous implementation shelled out to ps, which does not exist on
+        // Windows, so every token came back null and PID-reuse protection was
+        // vacuous there — a reused PID was treated as the original owner and
+        // stale locks could never be taken over.
         try {
-            ProcessBuilder builder = new ProcessBuilder(
-                "ps", "-o", "lstart=", "-p", Long.toString(pid));
-            builder.environment().put("LC_ALL", "C");
-            builder.environment().put("TZ", "UTC");
-            process = builder.start();
-            if (!process.waitFor(Duration.ofSeconds(1).toMillis(), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
+            return ProcessHandle.of(pid)
+                .map(ProcessHandle::info)
+                .flatMap(ProcessHandle.Info::startInstant)
+                .map(Object::toString)
+                .orElse(null);
+        } catch (RuntimeException _) {
+            return null;
+        }
+    }
+
+    private static final DateTimeFormatter LEGACY_PS_START_FORMAT =
+        DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss yyyy", Locale.ROOT)
+            .withZone(ZoneOffset.UTC);
+
+    /**
+     * Parses the token formats that may appear in lock files: ISO instants
+     * written by {@link #processStartToken} and the legacy {@code ps -o lstart=}
+     * strings written by earlier builds on POSIX hosts (LC_ALL=C, TZ=UTC).
+     */
+    private static Instant parseProcessStartToken(String token) {
+        if (StringUtils.isBlank(token)) return null;
+        String trimmed = token.trim();
+        try {
+            return Instant.parse(trimmed);
+        } catch (DateTimeParseException _) {
+            try {
+                return Instant.from(LEGACY_PS_START_FORMAT.parse(trimmed));
+            } catch (RuntimeException _) {
                 return null;
             }
-            if (process.exitValue() != 0) return null;
-            String value = new String(process.getInputStream().readAllBytes(),
-                StandardCharsets.UTF_8).trim();
-            return value.isEmpty() ? null : value;
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-            return null;
-        } catch (IOException | RuntimeException _) {
-            return null;
-        } finally {
-            if (process != null) process.destroy();
         }
     }
 

@@ -11,6 +11,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -120,8 +121,17 @@ public class McpConfigLoader {
         for (String source : explicitSources == null ? List.<String>of() : explicitSources) {
             if (StringUtils.isBlank(source)) continue;
             try {
-                Path path = Path.of(source);
-                if (Files.isRegularFile(path)) {
+                // Probe the filesystem first so file paths keep working; an
+                // inline JSON object is not a usable path on Windows — ":" and
+                // "\"" are illegal path characters and Path.of throws — so fall
+                // back to JSON parsing instead of rejecting the whole source.
+                Path path = null;
+                try {
+                    path = Path.of(source);
+                } catch (InvalidPathException _) {
+                    // Inline JSON on Windows; parse below.
+                }
+                if (path != null && Files.isRegularFile(path)) {
                     mergeFrom(path, merged, scopes, McpServerScope.DYNAMIC, warnings, diagnostics);
                     continue;
                 }
@@ -354,8 +364,11 @@ public class McpConfigLoader {
                                     Map<String, McpServerScope> scopeTarget,
                                     List<String> warningsSink,
                                     List<McpConfigWarning> diagnosticsSink) {
+        // The sentinel is only a display/validation label (validateServerConfig
+        // prints its getFileName()), but "<" and ">" are illegal path characters
+        // on Windows and Path.of threw before any server could be merged.
         mergeInline(root, sourceLabel, target, scopeTarget, warningsSink, diagnosticsSink,
-            Path.of("<inline-mcp-config>"), McpServerScope.DYNAMIC);
+            Path.of("inline-mcp-config"), McpServerScope.DYNAMIC);
     }
 
     private static void mergeInline(JsonNode root, String sourceLabel,

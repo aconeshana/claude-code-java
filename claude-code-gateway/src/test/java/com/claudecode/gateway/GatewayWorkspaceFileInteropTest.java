@@ -15,6 +15,7 @@ import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -49,7 +50,7 @@ class GatewayWorkspaceFileInteropTest {
     @Test
     @Timeout(20)
     void servesTextWithItsFullContent() throws Exception {
-        startServer((sessionId, path) ->
+        startServer((_, path) ->
             Optional.of(new TextFile(path, TextFile.Kind.TEXT, "class App {}\n")));
         try (Response response = get("/api/workspace-file?path=" + PATH)) {
             assertThat(response.code()).isEqualTo(200);
@@ -63,7 +64,7 @@ class GatewayWorkspaceFileInteropTest {
     @Test
     @Timeout(20)
     void omitsTheContentOfBinaryAndOversizedFiles() throws Exception {
-        startServer((sessionId, path) ->
+        startServer((_, path) ->
             Optional.of(new TextFile(path, TextFile.Kind.BINARY, "must not leak")));
         try (Response response = get("/api/workspace-file?path=" + PATH)) {
             assertThat(response.code()).isEqualTo(200);
@@ -73,7 +74,7 @@ class GatewayWorkspaceFileInteropTest {
         }
 
         server.close();
-        startServer((sessionId, path) ->
+        startServer((_, path) ->
             Optional.of(new TextFile(path, TextFile.Kind.OVERSIZED, "must not leak")));
         try (Response response = get("/api/workspace-file?path=" + PATH)) {
             assertThat(response.code()).isEqualTo(200);
@@ -86,7 +87,7 @@ class GatewayWorkspaceFileInteropTest {
     @Test
     @Timeout(20)
     void passesAnExplicitSessionIdToThePort() throws Exception {
-        List<String> seen = new java.util.ArrayList<>();
+        List<String> seen = new ArrayList<>();
         startServer((sessionId, path) -> {
             seen.add(sessionId);
             return Optional.of(new TextFile(path, TextFile.Kind.TEXT, ""));

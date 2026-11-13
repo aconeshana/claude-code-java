@@ -3,6 +3,7 @@ package com.claudecode.permissions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
@@ -76,6 +77,21 @@ class PathValidationTest {
         assertFalse(PathValidation.validatePath("=rg", "/cwd", true).allowed());
     }
 
+    /**
+     * Host-rendered form of a fixture path, mirroring PathValidation.resolve:
+     * rooted POSIX paths anchor to the cwd's drive root on Windows ("/x" is
+     * drive-relative there, not the cwd), relative paths resolve against the
+     * cwd, and the host separator is used. POSIX hosts keep the POSIX form.
+     */
+    private static String hostForm(String posixLiteral, String cwd) {
+        Path p = Path.of(posixLiteral);
+        Path root = Path.of(cwd).getRoot();
+        Path resolved = root != null && p.getRoot() != null && !p.isAbsolute()
+            ? root.resolve(p.subpath(0, p.getNameCount()))
+            : Path.of(cwd).resolve(p);
+        return resolved.normalize().toString();
+    }
+
     @Test
     void validatePathRejectsGlobInWrite() {
         assertFalse(PathValidation.validatePath("/allowed/dir/*.txt", "/cwd", false).allowed());
@@ -83,7 +99,7 @@ class PathValidationTest {
         PathValidation.PathValidationResult r =
             PathValidation.validatePath("/allowed/dir/*.txt", "/cwd", true);
         assertTrue(r.allowed());
-        assertEquals("/allowed/dir", r.resolvedPath());
+        assertEquals(hostForm("/allowed/dir", "/cwd"), r.resolvedPath());
     }
 
     @Test
@@ -91,24 +107,25 @@ class PathValidationTest {
         PathValidation.PathValidationResult abs =
             PathValidation.validatePath("/tmp/foo.txt", "/cwd", true);
         assertTrue(abs.allowed());
-        assertEquals("/tmp/foo.txt", abs.resolvedPath());
+        assertEquals(hostForm("/tmp/foo.txt", "/cwd"), abs.resolvedPath());
 
         PathValidation.PathValidationResult rel =
             PathValidation.validatePath("bar.txt", "/cwd", true);
         assertTrue(rel.allowed());
-        assertEquals("/cwd/bar.txt", rel.resolvedPath());
+        assertEquals(hostForm("bar.txt", "/cwd"), rel.resolvedPath());
 
         // Expands tilde.
         String home = System.getProperty("user.home");
         PathValidation.PathValidationResult tilde =
             PathValidation.validatePath("~/f.txt", "/cwd", true);
         assertTrue(tilde.allowed());
-        assertEquals(home + "/f.txt", tilde.resolvedPath());
+        // The resolved path renders with the host separator (mixed / is normalized).
+        assertEquals(Path.of(home, "f.txt").toString(), tilde.resolvedPath());
 
         // Strips surrounding quotes.
         PathValidation.PathValidationResult quoted =
             PathValidation.validatePath("'/tmp/f.txt'", "/cwd", true);
         assertTrue(quoted.allowed());
-        assertEquals("/tmp/f.txt", quoted.resolvedPath());
+        assertEquals(hostForm("/tmp/f.txt", "/cwd"), quoted.resolvedPath());
     }
 }

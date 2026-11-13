@@ -7,6 +7,7 @@ import org.apache.commons.lang3.Strings;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.mcp.McpException;
 import com.claudecode.mcp.McpServerConfig;
 import java.awt.Desktop;
@@ -14,6 +15,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -373,12 +375,36 @@ public final class McpOAuthProvider {
         // Fallback: xdg-open (Linux) or `open` (macOS) — the Java Desktop
         // integration is fussy in headless / SSH contexts.
         try {
-            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-            String cmd = Strings.CS.contains(os, "mac") ? "open" : "xdg-open";
-            new ProcessBuilder(cmd, url).redirectErrorStream(true).start();
+            new ProcessBuilder(fallbackOpenCommand(
+                    System.getProperty("os.name", ""),
+                    SubprocessEnvironment.get("BROWSER"), url))
+                .redirectErrorStream(true).start();
         } catch (Exception _) {
             LOG.warn("Could not open browser for {} — user must open manually", url);
         }
+    }
+
+    /**
+     * Pure command selection so tests can pin the platform matrix. Windows has
+     * neither xdg-open nor open — rundll32 launches the default browser there
+     * (the same contract ExternalUrlOpener uses for marketplace links), and the
+     * BROWSER override is honored on every platform with Windows-style quoting.
+     */
+    static List<String> fallbackOpenCommand(String osName, String browser, String url) {
+        String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
+        List<String> command = new ArrayList<>();
+        if (StringUtils.isNotBlank(browser)) {
+            command.add(browser);
+            command.add(Strings.CS.contains(os, "win") ? "\"" + url + "\"" : url);
+        } else if (Strings.CS.contains(os, "win")) {
+            command.add("rundll32");
+            command.add("url,OpenURL");
+            command.add(url);
+        } else {
+            command.add(Strings.CS.contains(os, "mac") ? "open" : "xdg-open");
+            command.add(url);
+        }
+        return List.copyOf(command);
     }
 
     /** Test seam so unit tests can capture URL instead of spawning a browser. */

@@ -4,13 +4,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.runtime.interaction.SudoPasswordInteraction;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
 
 class SudoCommandAdapterTest {
+
+    @BeforeEach
+    void posixOnly() {
+        // sudo is deliberately unsupported on Windows (no sudo there, matching
+        // the official product) — the whole contract is POSIX-only.
+        Assumptions.assumeFalse(Platform.IS_WINDOWS);
+    }
 
     @Test
     void directSudoUsesTheSharedInteractionAndTrustedExecutable() {

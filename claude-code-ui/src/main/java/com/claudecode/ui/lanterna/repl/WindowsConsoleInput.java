@@ -12,11 +12,14 @@ import com.sun.jna.win32.W32APIOptions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -154,7 +157,7 @@ final class WindowsConsoleInput extends InputStream {
     private ByteBuffer encode(CharSequence characters) throws IOException {
         ByteBuffer encoded = ByteBuffer.allocate(
             (int) encoder.maxBytesPerChar() * characters.length());
-        CoderResult result = encoder.encode(java.nio.CharBuffer.wrap(characters), encoded, false);
+        CoderResult result = encoder.encode(CharBuffer.wrap(characters), encoded, false);
         if (result.isError()) result.throwException();
         encoded.flip();
         return encoded;
@@ -185,7 +188,7 @@ final class WindowsConsoleInput extends InputStream {
         public Event event;
 
         @Override
-        protected java.util.List<String> getFieldOrder() {
+        protected List<String> getFieldOrder() {
             return Arrays.asList("eventType", "event");
         }
 
@@ -218,7 +221,7 @@ final class WindowsConsoleInput extends InputStream {
         public int controlKeyState;
 
         @Override
-        protected java.util.List<String> getFieldOrder() {
+        protected List<String> getFieldOrder() {
             return Arrays.asList("keyDown", "repeatCount", "virtualKeyCode",
                 "virtualScanCode", "character", "controlKeyState");
         }
@@ -232,7 +235,7 @@ final class WindowsConsoleInput extends InputStream {
         public int eventFlags;
 
         @Override
-        protected java.util.List<String> getFieldOrder() {
+        protected List<String> getFieldOrder() {
             return Arrays.asList("position", "buttonState", "controlKeyState", "eventFlags");
         }
     }
@@ -242,8 +245,8 @@ final class WindowsConsoleInput extends InputStream {
         public Coordinate size = new Coordinate();
 
         @Override
-        protected java.util.List<String> getFieldOrder() {
-            return java.util.List.of("size");
+        protected List<String> getFieldOrder() {
+            return List.of("size");
         }
     }
 
@@ -253,7 +256,7 @@ final class WindowsConsoleInput extends InputStream {
         public short y;
 
         @Override
-        protected java.util.List<String> getFieldOrder() {
+        protected List<String> getFieldOrder() {
             return Arrays.asList("x", "y");
         }
     }

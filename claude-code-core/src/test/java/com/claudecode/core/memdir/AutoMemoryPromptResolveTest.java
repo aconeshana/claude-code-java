@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
+import java.util.Locale;
 import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
@@ -122,9 +123,18 @@ class AutoMemoryPromptResolveTest {
 
     @Test
     void validateMemoryOverride_acceptsAndStripsTrailingSep() {
-        assertEquals("/tmp/mem", AutoMemoryPrompt.validateMemoryOverride("/tmp/mem"));
-        assertEquals("/tmp/mem", AutoMemoryPrompt.validateMemoryOverride("/tmp/mem/"));
-        assertEquals("/tmp/mem", AutoMemoryPrompt.validateMemoryOverride("/tmp/mem\\"));
+        // POSIX hosts accept /tmp/mem. On Windows an override is valid only as a
+        // drive-qualified forward-slash path — backslash forms are rejected by
+        // contract (see rejectsUnc / rejectsWindowsDriveRoot) — and /tmp/mem
+        // alone would be drive-relative, hence not absolute.
+        boolean windows = Strings.CS.contains(
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT), "win");
+        String base = windows ? "C:/tmp/mem" : "/tmp/mem";
+        // The accepted override comes back platform-normalized (Path.normalize).
+        String expected = Path.of(base).normalize().toString();
+        assertEquals(expected, AutoMemoryPrompt.validateMemoryOverride(base));
+        assertEquals(expected, AutoMemoryPrompt.validateMemoryOverride(base + "/"));
+        assertEquals(expected, AutoMemoryPrompt.validateMemoryOverride(base + "\\"));
     }
 
     @Test

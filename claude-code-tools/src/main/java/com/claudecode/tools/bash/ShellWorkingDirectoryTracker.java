@@ -74,7 +74,13 @@ public final class ShellWorkingDirectoryTracker {
         String shellPath = Platform.IS_WINDOWS
             ? PathUtils.windowsPathToPosixPath(trackingFile.toString())
             : trackingFile.toString();
-        return command + " && pwd -P >| " + shellQuote(shellPath);
+        // On Windows git-bash renders pwd -P through its MSYS mount table, which
+        // is not invertible from the Java side (custom mounts like /tmp → D:\Temp
+        // turn the real path into /tmp/... and the converted result points at a
+        // nonexistent location). Git-for-Windows' pwd builtin supports -W, which
+        // prints the Windows form directly.
+        String pwd = Platform.IS_WINDOWS ? "pwd -W" : "pwd -P";
+        return command + " && " + pwd + " >| " + shellQuote(shellPath);
     }
 
     /**
@@ -86,7 +92,9 @@ public final class ShellWorkingDirectoryTracker {
         try {
             String raw = Files.readString(trackingFile, StandardCharsets.UTF_8).trim();
             if (raw.isEmpty()) return null;
-            if (Platform.IS_WINDOWS) raw = PathUtils.posixPathToWindowsPath(raw);
+            // On Windows the capture uses pwd -W, so raw is already the Windows
+            // form (with forward slashes, which Path.of accepts as-is); the old
+            // POSIX→Windows conversion misread MSYS-mounted pwds (/tmp → D:\Temp).
             Path observed = Path.of(raw).toRealPath();
             if (observed.equals(previous)) return null;
 

@@ -79,7 +79,7 @@ class OSC52HelperTest {
 
         OSC52Helper.copyNative("中文划词复制");
 
-        assertEquals(java.util.List.of("中文划词复制"), copied);
+        assertEquals(List.of("中文划词复制"), copied);
         assertEquals(0, commands.size());
         assertArrayEquals(new byte[] {
             (byte) 0x2d, (byte) 0x4e, (byte) 0x87, (byte) 0x65, 0, 0

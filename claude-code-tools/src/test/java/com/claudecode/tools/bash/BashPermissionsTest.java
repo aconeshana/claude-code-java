@@ -29,6 +29,22 @@ class BashPermissionsTest {
     // intentionally validates symlink targets as well as the lexical path.
     private static final Path CWD = Path.of("/Users/test/project");
 
+    /**
+     * The host-rendered form of a fixture path, mirroring the product's
+     * resolution: rooted POSIX paths anchor to the working directory's drive
+     * root (Node path.win32.resolve semantics — on Windows "/x" is
+     * drive-relative, not the cwd), relative paths resolve against the cwd, and
+     * the host separator is used throughout. On POSIX this is the identity.
+     */
+    private static String hostForm(String posixLiteral) {
+        Path p = Path.of(posixLiteral);
+        Path root = CWD.getRoot();
+        Path resolved = root != null && p.getRoot() != null && !p.isAbsolute()
+            ? root.resolve(p.subpath(0, p.getNameCount()))
+            : CWD.resolve(p);
+        return resolved.normalize().toString();
+    }
+
     private static ToolPermissionContext ctx() {
         return ToolPermissionContext.of(CWD);
     }
@@ -196,14 +212,14 @@ class BashPermissionsTest {
         assertInstanceOf(PermissionDecision.Allow.class, BashPermissions.check("ls -la", ctx()));
         // Default mode does not auto-allow writes, even inside the cwd.
         PermissionDecision.Ask a = ask("cp a.txt b.txt");
-        assertEquals("/Users/test/project/a.txt", a.blockedPath());
+        assertEquals(hostForm("/Users/test/project/a.txt"), a.blockedPath());
     }
 
     @Test
     void redirectTargetValidated() {
         // A redirect is a write operation. In default mode it asks even when
         // the target is inside the cwd and carries the resolved blocked path.
-        assertEquals("/Users/test/project/out.txt",
+        assertEquals(hostForm("/Users/test/project/out.txt"),
             ask("echo hi > out.txt").blockedPath());
 
         // A dangerous redirect target IS still caught (UNC path on the `>` side).
@@ -222,7 +238,7 @@ class BashPermissionsTest {
     @Test
     void writeInsideWorkingDirRequiresAcceptEditsAndCarriesBlockedPath() {
         PermissionDecision.Ask a = ask("rm sub/file.txt");
-        assertEquals("/Users/test/project/sub/file.txt", a.blockedPath());
+        assertEquals(hostForm("/Users/test/project/sub/file.txt"), a.blockedPath());
     }
 
     @Test
@@ -238,16 +254,16 @@ class BashPermissionsTest {
         PermissionDecision decision = BashPermissions.check(
             "rm -f /private/tmp/cc197-can-use-tool-nonexistent", acceptEdits);
         PermissionDecision.Ask ask = assertInstanceOf(PermissionDecision.Ask.class, decision);
-        assertEquals("/private/tmp/cc197-can-use-tool-nonexistent", ask.blockedPath());
+        assertEquals(hostForm("/private/tmp/cc197-can-use-tool-nonexistent"), ask.blockedPath());
     }
 
     @Test
     void writeOutsideWorkingDirectoriesCarriesResolvedBlockedPath() {
         PermissionDecision.Ask a = ask("rm -f /private/tmp/cc197-can-use-tool-nonexistent");
-        assertEquals("/private/tmp/cc197-can-use-tool-nonexistent", a.blockedPath());
+        assertEquals(hostForm("/private/tmp/cc197-can-use-tool-nonexistent"), a.blockedPath());
         assertEquals(List.of(
             new PermissionUpdate.AddDirectories(
-                List.of("/private/tmp"), PermissionUpdate.Destination.SESSION),
+                List.of(hostForm("/private/tmp")), PermissionUpdate.Destination.SESSION),
             new PermissionUpdate.SetMode(
                 PermissionModeKind.ACCEPT_EDITS, PermissionUpdate.Destination.SESSION)),
             a.suggestions());
@@ -256,7 +272,7 @@ class BashPermissionsTest {
     @Test
     void readOutsideWorkingDirectoriesCarriesResolvedBlockedPath() {
         PermissionDecision.Ask a = ask("cat /private/tmp/cc197-can-use-tool-nonexistent");
-        assertEquals("/private/tmp/cc197-can-use-tool-nonexistent", a.blockedPath());
+        assertEquals(hostForm("/private/tmp/cc197-can-use-tool-nonexistent"), a.blockedPath());
         assertEquals(List.of(new PermissionUpdate.AddRules(
             List.of(new PermissionUpdate.RuleValue("Read", "//private/tmp/**")),
             PermissionUpdate.Behavior.ALLOW,
@@ -268,7 +284,7 @@ class BashPermissionsTest {
         PermissionDecision.Ask a = ask("touch /private/tmp/cc197-tty-permission-approve-marker");
         assertEquals(List.of(
             new PermissionUpdate.AddDirectories(
-                List.of("/private/tmp"), PermissionUpdate.Destination.SESSION),
+                List.of(hostForm("/private/tmp")), PermissionUpdate.Destination.SESSION),
             new PermissionUpdate.SetMode(
                 PermissionModeKind.ACCEPT_EDITS, PermissionUpdate.Destination.SESSION)),
             a.suggestions());
@@ -278,7 +294,7 @@ class BashPermissionsTest {
     void redirectionCarriesOnlyDirectorySuggestionLikeReleased197() {
         PermissionDecision.Ask a = ask("echo hi > /private/tmp/cc197-output.txt");
         assertEquals(List.of(new PermissionUpdate.AddDirectories(
-            List.of("/private/tmp"), PermissionUpdate.Destination.SESSION)),
+            List.of(hostForm("/private/tmp")), PermissionUpdate.Destination.SESSION)),
             a.suggestions());
     }
 

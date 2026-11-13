@@ -144,12 +144,17 @@ val vendorCcConnect = distributionTarget.ccConnectTarget?.let { ccConnectTarget 
 // pnpm when it is available; a machine without node/pnpm produces a JAR
 // without the bundle, and the gateway serves its "not packaged" landing page.
 val webuiDir = rootProject.layout.projectDirectory.dir("webui")
+val isWindowsHost = System.getProperty("os.name", "").lowercase().contains("windows")
 val buildWebui = tasks.register<Exec>("buildWebui") {
     group = "webui"
     description = "Installs and builds the webui React frontend into webui/dist."
     workingDir = webuiDir.asFile
     // One shell invocation so the working directory stays put between steps.
-    commandLine("sh", "-c", "pnpm install --silent && pnpm build")
+    // Windows has no /bin/sh — cmd.exe runs the same pnpm pipeline.
+    commandLine(*(if (isWindowsHost)
+        arrayOf("cmd", "/c", "pnpm install --silent && pnpm build")
+    else
+        arrayOf("sh", "-c", "pnpm install --silent && pnpm build")))
     // Rebuild only when the sources change; node_modules and dist are both
     // gitignored outputs of this task.
     inputs.files(fileTree(webuiDir) {
@@ -165,10 +170,18 @@ val buildWebui = tasks.register<Exec>("buildWebui") {
     })
     outputs.dir(webuiDir.dir("dist/webui"))
     // Skip (rather than fail) where pnpm is absent — the JAR then packages
-    // without the bundle and the gateway explains that at runtime.
+    // without the bundle and the gateway explains that at runtime. A probe
+    // that cannot even start (no sh/cmd) also means "absent".
     onlyIf {
-        val probe = ProcessBuilder("sh", "-c", "command -v pnpm >/dev/null 2>&1").start()
-        probe.waitFor() == 0
+        try {
+            val probe = if (isWindowsHost)
+                ProcessBuilder("cmd", "/c", "where pnpm >nul 2>nul")
+            else
+                ProcessBuilder("sh", "-c", "command -v pnpm >/dev/null 2>&1")
+            probe.start().waitFor() == 0
+        } catch (_: Exception) {
+            false
+        }
     }
 }
 

@@ -81,9 +81,11 @@ class SkillToolTest {
 
         ToolResult result = tool.call(input, context);
         assertEquals("Launching skill: test-skill", ack(result));
-        assertEquals("Base directory for this skill: "
-            + skillsDir.resolve("test-skill")
-            + "\n\nThis is the skill content.\n", injectedBody(result));
+        // The base directory renders with the host path style — compare separator-agnostically.
+        assertEquals(
+            ("Base directory for this skill: " + skillsDir.resolve("test-skill")
+                + "\n\nThis is the skill content.\n").replace('\\', '/'),
+            injectedBody(result).replace('\\', '/'));
     }
 
     @Test
@@ -105,8 +107,10 @@ class SkillToolTest {
 
         String body = injectedBody(tool.call(input, context));
 
-        assertEquals("Base directory for this skill: " + skillDir
-            + "\n\nroot=" + skillDir + "\n", body);
+        // Host path style — compare separator-agnostically.
+        assertEquals(("Base directory for this skill: " + skillDir
+            + "\n\nroot=" + skillDir + "\n").replace('\\', '/'),
+            body.replace('\\', '/'));
     }
 
     @Test

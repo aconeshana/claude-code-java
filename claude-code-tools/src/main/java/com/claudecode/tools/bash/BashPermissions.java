@@ -11,6 +11,7 @@ import com.claudecode.permissions.PermissionMode;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.permissions.WorkingDirectoryPaths;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -943,11 +944,28 @@ public final class BashPermissions {
     // ─────────────────────────────────────────────────────────────────────
 
     private static boolean isAbsolute(String p) {
-        return Path.of(p).isAbsolute();
+        // A rooted path (/x or \x) counts as absolute here: the shell driving
+        // these commands is bash, where a leading separator always addresses a
+        // root — on Windows Path.of("/x") is only drive-relative, and Path.of
+        // throws outright for characters Windows forbids (globs, quotes), which
+        // must degrade to the caller's validation flow instead of crashing the
+        // permission check.
+        try {
+            return Strings.CS.startsWith(p, "/") || Strings.CS.startsWith(p, "\\")
+                || Path.of(p).isAbsolute();
+        } catch (InvalidPathException _) {
+            return false;
+        }
     }
 
     private static String resolve(String p, String cwd) {
-        return Path.of(cwd == null ? "." : cwd, p).normalize().toString();
+        try {
+            return Path.of(cwd == null ? "." : cwd, p).normalize().toString();
+        } catch (InvalidPathException _) {
+            // Not a usable path on this platform (glob pattern, illegal chars) —
+            // hand the raw value back so the danger/glob checks decide on it.
+            return p;
+        }
     }
 
     private static String stripQuotes(String path) {

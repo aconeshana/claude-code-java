@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.claudecode.core.diff.StructuredPatchHunk;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.serialization.JsonUtils;
-import com.claudecode.gateway.GatewayFileDiffPort.ChangedFile;
-import com.claudecode.gateway.GatewayFileDiffPort.ChangesSummary;
 import com.claudecode.gateway.GatewayFileDiffPort.FileDiff;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;

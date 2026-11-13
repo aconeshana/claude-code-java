@@ -9,6 +9,7 @@ import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.platform.Platform;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.File;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -172,8 +173,9 @@ class GlobToolTest {
         Files.writeString(dir.resolve("b.txt"), "b");
 
         // An absolute pattern is rerooted: the dir becomes the search dir, the relative
-        // remainder is passed to rg.
-        ObjectNode in = input(dir.resolve("*.txt").toString());
+        // remainder is passed to rg. Build the pattern as a string — dir.resolve("*.txt")
+        // throws on Windows, where * is an illegal path character.
+        ObjectNode in = input(dir + File.separator + "*.txt");
         String out = glob(new GlobTool(), in, dir, List.of());
         assertTrue(Strings.CS.contains(out, "a.txt"), out);
         assertTrue(Strings.CS.contains(out, "b.txt"), out);
@@ -192,11 +194,12 @@ class GlobToolTest {
 
         ObjectNode in = input("*.txt");
         in.put("path", sub.toString());
-        String out = glob(new GlobTool(), in, dir, List.of());
+        // rg emits result paths with the host separator; compare forward-slash forms.
+        String out = glob(new GlobTool(), in, dir, List.of()).replace('\\', '/');
         assertTrue(Strings.CS.contains(out, "sub/x.txt"), out);
         assertTrue(Strings.CS.contains(out, "sub/y.txt"), out);
         // Regression guard: must NOT double-prefix the search dir.
-        assertFalse(Strings.CS.contains(out, sub.toString() + sub.toString()),
+        assertFalse(Strings.CS.contains(out, sub.toString().replace('\\', '/') + sub.toString().replace('\\', '/')),
             "search dir must not be concatenated twice: " + out);
     }
 
@@ -235,7 +238,7 @@ class GlobToolTest {
         List<FileReadIgnorePattern> deny = List.of(FileReadIgnorePattern.anywhere("secret.txt"));
         ObjectNode in = input("*.txt");
         in.put("path", sub.toString());
-        String out = glob(new GlobTool(), in, dir, deny);
+        String out = glob(new GlobTool(), in, dir, deny).replace('\\', '/');
         assertTrue(Strings.CS.contains(out, "sub/a.txt"), out);
         assertFalse(Strings.CS.contains(out, "sub/secret.txt"), "deny mask must exclude secret.txt under path dir");
     }
@@ -252,10 +255,13 @@ class GlobToolTest {
     void safeRelativizeUsesPathSegmentBoundary() {
         // Regression for the /a/foo vs /a/foobar prefix bug: a plain startsWith would
         // wrongly relativize /a/foobar under /a/foo. It must be returned absolute.
-        assertEquals("/a/foobar", GlobTool.safeRelativize(Path.of("/a/foo"), Path.of("/a/foobar")));
+        // safeRelativize renders with the host separator — compare forward-slash forms.
+        assertEquals("/a/foobar",
+            GlobTool.safeRelativize(Path.of("/a/foo"), Path.of("/a/foobar")).replace('\\', '/'));
         // True descendant still relativizes.
         assertEquals("x.txt", GlobTool.safeRelativize(Path.of("/a/foo"), Path.of("/a/foo/x.txt")));
         // Sibling/unrelated directory returns absolute.
-        assertEquals("/b/bar.txt", GlobTool.safeRelativize(Path.of("/a/foo"), Path.of("/b/bar.txt")));
+        assertEquals("/b/bar.txt",
+            GlobTool.safeRelativize(Path.of("/a/foo"), Path.of("/b/bar.txt")).replace('\\', '/'));
     }
 }

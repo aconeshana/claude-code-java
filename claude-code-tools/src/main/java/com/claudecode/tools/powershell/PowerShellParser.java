@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -90,15 +91,22 @@ final class PowerShellParser {
         if (StringUtils.isBlank(path)) return null;
         for (String directory : path.split(File.pathSeparator)) {
             if (StringUtils.isBlank(directory)) continue;
-            Path candidate = Path.of(directory, command);
-            if (Files.isRegularFile(candidate)
-                    && Files.isExecutable(candidate)) {
-                return candidate.toString();
-            }
-            if (Strings.CS.contains(
-                    System.getProperty("os.name", "").toLowerCase(Locale.ROOT), "win")) {
-                Path exe = Path.of(directory, command + ".exe");
-                if (Files.isRegularFile(exe)) return exe.toString();
+            // A PATH entry can hold characters this platform forbids in paths
+            // (a mangled environment value, quotes) — skip that entry instead
+            // of crashing the whole executable resolution.
+            try {
+                Path candidate = Path.of(directory, command);
+                if (Files.isRegularFile(candidate)
+                        && Files.isExecutable(candidate)) {
+                    return candidate.toString();
+                }
+                if (Strings.CS.contains(
+                        System.getProperty("os.name", "").toLowerCase(Locale.ROOT), "win")) {
+                    Path exe = Path.of(directory, command + ".exe");
+                    if (Files.isRegularFile(exe)) return exe.toString();
+                }
+            } catch (InvalidPathException _) {
+                continue;
             }
         }
         return null;

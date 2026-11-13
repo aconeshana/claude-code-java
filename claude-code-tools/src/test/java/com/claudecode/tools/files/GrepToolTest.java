@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -223,13 +224,19 @@ class GrepToolTest {
     @Test
     void rebaseToSearchRoot_makesRelativeOutputAbsolute() {
         Path searchRoot = Path.of("/tmp/search-root");
-        // bare (files_with_matches) line
-        assertEquals("/tmp/search-root/foo.txt", GrepTool.rebaseToSearchRoot("foo.txt", searchRoot));
+        boolean windows = Strings.CS.contains(
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT), "win");
+        // An absolute input that is absolute on THIS host (on Windows /abs is only
+        // drive-relative, so the fixture uses a drive-qualified form).
+        String absOutside = windows ? "D:/abs/bar.txt" : "/abs/bar.txt";
+        // bare (files_with_matches) line — the rebased path renders with the host separator
+        assertEquals("/tmp/search-root/foo.txt",
+            GrepTool.rebaseToSearchRoot("foo.txt", searchRoot).replace('\\', '/'));
         // content line: path:line:col:content
         assertEquals("/tmp/search-root/foo.txt:1:2:match",
-            GrepTool.rebaseToSearchRoot("foo.txt:1:2:match", searchRoot));
+            GrepTool.rebaseToSearchRoot("foo.txt:1:2:match", searchRoot).replace('\\', '/'));
         // absolute input is left untouched
-        assertEquals("/abs/bar.txt", GrepTool.rebaseToSearchRoot("/abs/bar.txt", searchRoot));
+        assertEquals(absOutside, GrepTool.rebaseToSearchRoot(absOutside, searchRoot));
         // A Windows drive colon is part of the absolute path, not rg metadata.
         assertEquals("D:\\project\\file.txt", GrepTool.rebaseToSearchRoot("D:\\project\\file.txt", searchRoot));
         assertEquals("D:\\project\\file.txt:1:match",

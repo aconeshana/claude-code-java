@@ -1,0 +1,29 @@
+# Normalize every text file to LF so byte-for-byte parity fixtures (system
+# prompts, tool texts, skills, goldens) match on Windows checkouts too —
+# a default autocrlf clone otherwise checks resources out as CRLF and the
+# parity tests fail. Keep shell scripts on their platform convention and
+# mark known binaries so auto-detection never touches them.
+* text=auto eol=lf
+*.bat eol=crlf
+*.cmd eol=crlf
+*.ps1 eol=crlf
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.mp3 binary
+*.zip binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.bin binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary

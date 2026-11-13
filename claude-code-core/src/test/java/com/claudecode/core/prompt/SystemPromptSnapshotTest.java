@@ -2,6 +2,7 @@ package com.claudecode.core.prompt;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,16 @@ class SystemPromptSnapshotTest {
     @BeforeEach
     void setUp() {
         SystemPromptSectionResolver.clearAll();
+        // The frozen TS fixtures embed the macOS environment block they were
+        // captured with (Platform: darwin / Shell: zsh / Darwin 23.5.0); render
+        // under that identity so the comparison stays byte-for-byte on Windows.
+        DarwinGoldenEnvironment.stub();
         service = new SystemPromptService();
+    }
+
+    @AfterEach
+    void restorePlatformEnvironment() {
+        DarwinGoldenEnvironment.restore();
     }
 
     private String loadFixture(String name) throws IOException {

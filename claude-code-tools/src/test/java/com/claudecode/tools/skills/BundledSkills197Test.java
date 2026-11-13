@@ -432,8 +432,10 @@ class BundledSkills197Test {
     }
 
     private static String normalizeBundledBase(String body, String skill) {
+        // The base-directory line ends with the host separator (Windows renders
+        // \), so the pre-skill separator is a slash or a backslash.
         return body.replaceFirst(
-            "(?m)^Base directory for this skill: .*/" + skill + "$",
+            "(?m)^Base directory for this skill: .*[\\\\/]" + skill + "$",
             "Base directory for this skill: <BASE>");
     }
 

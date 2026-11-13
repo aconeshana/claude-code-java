@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Optional;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -91,7 +92,7 @@ class CliWorkspaceFileReaderTest {
         Path other = Files.createTempDirectory("other-root");
         Files.writeString(other.resolve("only-there.txt"), "elsewhere");
         GatewayWorkspaceFilePort port = new CliWorkspaceFileReader(id ->
-            "other".equals(id) ? Optional.of(other) : Optional.empty()).port();
+            Strings.CS.equals("other", id) ? Optional.of(other) : Optional.empty()).port();
 
         assertThat(port.read("other", "only-there.txt")).isPresent();
         assertThat(port.read("other", "hello.js")).isEmpty();
