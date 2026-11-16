@@ -9,6 +9,7 @@ import com.claudecode.gateway.GatewaySessionCatalogPort.SessionEntry;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 
@@ -161,5 +162,61 @@ class LiveSessionMergeTest {
     @Test
     void returnsAnEmptyListingUnchangedWhenNothingIsLive() {
         assertTrue(LiveSessionMerge.merge(List.of(), List.of(), IDENTITY).isEmpty());
+    }
+
+    // -------------------------------------------------------------- BUG-15
+
+    /**
+     * Deleting a headless session must not bring it back.
+     *
+     * <p>Delete removes the transcript but not the open handle, so the next
+     * listing still reports the session as live and this fold — whose whole job
+     * is to synthesize a row for every live session the catalog does not know —
+     * rebuilds the row the user just deleted. A transcript that is gone is the
+     * one durable signal that separates "created a moment ago, never written"
+     * from "written and then deleted", and it must win over the handle.
+     */
+    @Test
+    void doesNotResurrectALiveSessionWhoseTranscriptIsGone() {
+        List<ProjectEntry> merged = LiveSessionMerge.merge(
+            List.of(project("/repo", row("stored-1", 1_000L))),
+            List.of(live("deleted-1", "/repo")),
+            IDENTITY,
+            Set.of("deleted-1"));
+
+        assertEquals(List.of("stored-1"), idsOf(merged.getFirst()),
+            "the deleted session is not folded back in");
+        assertEquals(1, merged.getFirst().sessionCount());
+    }
+
+    /**
+     * The same fold against an empty catalog: a deleted session must not
+     * synthesize a project of its own either.
+     */
+    @Test
+    void doesNotSynthesizeAProjectForADeletedSession() {
+        assertTrue(
+            LiveSessionMerge.merge(List.of(), List.of(live("deleted-1", "/repo")), IDENTITY,
+                Set.of("deleted-1")).isEmpty());
+    }
+
+    /**
+     * Archiving is the second half of the same defect, but its evidence is the
+     * opposite one: the transcript is still there and carries the marker, while
+     * the live handle knows nothing about it. A live fold must therefore be
+     * told which live sessions the transcripts call archived, and drop those
+     * rows the catalog already dropped.
+     */
+    @Test
+    void doesNotResurrectASessionWhoseTranscriptIsArchived() {
+        List<ProjectEntry> merged = LiveSessionMerge.merge(
+            List.of(),
+            List.of(live("archived-1", "/repo"), live("open-1", "/repo")),
+            IDENTITY,
+            Set.of("archived-1"));
+
+        assertEquals(1, merged.size());
+        assertEquals(List.of("open-1"), idsOf(merged.getFirst()));
+        assertEquals(1, merged.getFirst().sessionCount());
     }
 }

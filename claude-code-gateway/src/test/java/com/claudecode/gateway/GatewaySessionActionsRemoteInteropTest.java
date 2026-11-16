@@ -16,14 +16,17 @@ import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Stream;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -167,6 +170,52 @@ class GatewaySessionActionsRemoteInteropTest {
     }
 
     /**
+     * Deleting is only half done when the file is gone: the webui reloads the
+     * listing after every successful action, so a session that reappears there
+     * was never really deleted from the user's point of view.
+     *
+     * <p>The resurrection is specific to a session the gateway still hosts. Its
+     * handle outlives the transcript, so the listing keeps reporting it live;
+     * {@link LiveSessionMerge} exists to synthesize a row for a live session the
+     * catalog does not know, and that is exactly what it does for a session that
+     * was just deleted. The other transcript below is the control: delete must
+     * not take an ordinary row with it.
+     */
+    @Test
+    @Timeout(20)
+    void aDeletedHostedSessionDoesNotComeBackOnTheListing() throws Exception {
+        assertThat(listedIds()).contains(hostedId, foreignId);
+
+        try (Response response = client.newCall(new Request.Builder()
+                .url(url("/api/sessions/" + hostedId + "?token=" + TOKEN))
+                .delete().build()).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+        }
+
+        assertThat(listedIds())
+            .doesNotContain(hostedId)
+            .contains(foreignId);
+    }
+
+    /**
+     * The same resurrection through the archive route, and through the opposite
+     * evidence: the transcript stays and carries the marker, while the handle
+     * carries nothing. The catalog drops the row and the live fold rebuilds it,
+     * so the route's 200 left the session on screen.
+     */
+    @Test
+    @Timeout(20)
+    void anArchivedHostedSessionDoesNotComeBackOnTheListing() throws Exception {
+        assertThat(listedIds()).contains(hostedId);
+
+        try (Response response = post("/api/sessions/" + hostedId + "/archive?token=" + TOKEN, "{}")) {
+            assertThat(response.code()).isEqualTo(200);
+        }
+
+        assertThat(listedIds()).doesNotContain(hostedId);
+    }
+
+    /**
      * The distinction the handler cannot recover from types has to survive the
      * decorator: an id no transcript answers to is a 404, not the 500 the bug
      * reported, and not a 500 that hides a missing row behind "try again".
@@ -215,6 +264,26 @@ class GatewaySessionActionsRemoteInteropTest {
 
     // ------------------------------------------------------------ fixtures
 
+    /** Every session id the listing serves, across every project row. */
+    private List<String> listedIds() throws IOException {
+        try (Response response = client.newCall(
+                new Request.Builder().url(url("/api/sessions?token=" + TOKEN)).get().build())
+                .execute()) {
+            assertThat(response.code()).isEqualTo(200);
+            JsonNode body = JsonUtils.getMapper().readTree(response.body().string());
+            List<String> ids = new ArrayList<>();
+            for (JsonNode project : body.path("projects")) {
+                for (JsonNode session : project.path("sessions")) {
+                    ids.add(session.path("id").asText());
+                }
+            }
+            for (JsonNode session : body.path("sessions")) {
+                ids.add(session.path("id").asText());
+            }
+            return ids;
+        }
+    }
+
     private Response post(String path, String body) throws IOException {
         return client.newCall(new Request.Builder().url(url(path))
             .post(RequestBody.create(body, JSON)).build()).execute();
@@ -231,7 +300,8 @@ class GatewaySessionActionsRemoteInteropTest {
         String assistant = UUID.randomUUID().toString();
         Files.writeString(transcript,
             "{\"type\":\"user\",\"uuid\":\"" + user + "\",\"parentUuid\":null,\"sessionId\":\""
-                + sessionId + "\",\"message\":{\"role\":\"user\",\"content\":\"hello\"},"
+                + sessionId + "\",\"cwd\":\"/work\",\"message\":{\"role\":\"user\","
+                + "\"content\":\"hello\"},"
                 + "\"timestamp\":\"2026-01-01T00:00:00Z\"}\n"
                 + "{\"type\":\"assistant\",\"uuid\":\"" + assistant + "\",\"parentUuid\":\""
                 + user + "\",\"sessionId\":\"" + sessionId + "\",\"message\":{\"role\":\"assistant\","
@@ -245,7 +315,25 @@ class GatewaySessionActionsRemoteInteropTest {
         return home.resolve("projects").resolve("-work").resolve(sessionId + ".jsonl");
     }
 
+    /**
+     * Removes {@code path} once nothing is writing under it any more. The
+     * project index flushes on its own thread, so a walk can list a directory
+     * and still find a new file in it by the time the walk reaches it; retrying
+     * the whole walk is what makes the teardown independent of that thread.
+     */
     private static void deleteTree(Path path) throws IOException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            try {
+                deleteTreeOnce(path);
+                return;
+            } catch (DirectoryNotEmptyException _) {
+                LockSupport.parkNanos(Duration.ofMillis(25).toNanos());
+            }
+        }
+        deleteTreeOnce(path);
+    }
+
+    private static void deleteTreeOnce(Path path) throws IOException {
         if (!Files.exists(path)) return;
         try (Stream<Path> paths = Files.walk(path)) {
             for (Path entry : paths.sorted(Comparator.reverseOrder()).toList()) {

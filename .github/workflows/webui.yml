@@ -1,0 +1,50 @@
+name: webui
+
+# The webui's unit and component tests. They run on every push and pull
+# request that can change the frontend, because they are the substitute for
+# the CDP browser runs the web integration checklist used to depend on: a
+# regression in a card, the mirror stream's frame parsing, or the store
+# reducers shows up here as a failing assertion instead of a manual click.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webui/**"
+      - ".github/workflows/webui.yml"
+  pull_request:
+    paths:
+      - "webui/**"
+      - ".github/workflows/webui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm 9.12.1 is what package.json's packageManager field pins; corepack
+      # reads it so CI and a developer's machine resolve the same tree.
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc -b
+
+      - name: Test
+        run: pnpm test

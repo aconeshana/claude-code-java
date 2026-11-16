@@ -57,6 +57,34 @@ final class LiveSessionMerge {
             List<ProjectEntry> catalogProjects,
             List<SessionHostInfo> live,
             UnaryOperator<String> canonicalize) {
+        return merge(catalogProjects, live, canonicalize, Set.of());
+    }
+
+    /**
+     * The same fold with the live sessions that must stay off the listing.
+     *
+     * <p>A live handle outlives the transcript it belongs to: deleting a session
+     * removes the file but the engine that ran it is still open, and archiving
+     * one appends a marker the handle knows nothing about. Those sessions are
+     * live by every measure this fold can take on its own, so its synthesizing
+     * half would rebuild the row the user just removed — the catalog drops it,
+     * and then a live-shaped copy appears in its place. {@code discarded} is
+     * the caller's reading of the transcripts, which the fold deliberately
+     * cannot take itself: it is a pure function over two listings.
+     *
+     * @param discarded ids whose transcript is gone, or says archived
+     */
+    static List<ProjectEntry> merge(
+            List<ProjectEntry> catalogProjects,
+            List<SessionHostInfo> live,
+            UnaryOperator<String> canonicalize,
+            Set<String> discarded) {
+        if (!discarded.isEmpty()) {
+            // A no-op filter rather than a guard: the caller's set is empty on
+            // every ordinary request, and this is the only line that has to know
+            // the difference between "live" and "live and still listed".
+            live = live.stream().filter(info -> !discarded.contains(info.id())).toList();
+        }
         // A live session that already has a catalog row must still take the live row's counts:
         // the catalog reads the transcript once, so its message_count stops advancing the moment
         // the session keeps growing in a process the catalog cannot see. Overlay first, or the

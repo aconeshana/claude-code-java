@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -93,6 +94,8 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionsHandler sessionsApi;
     private final GatewaySessionActionsHandler sessionActionsApi;
     private final GatewaySessionCatalogPort catalog;
+    /** The transcript-backed session actions, when the standalone wiring installed them. */
+    private final TranscriptSessionActions sessionActions;
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewaySudoRespondHandler sudoApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
@@ -293,6 +296,7 @@ public final class GatewayServer implements AutoCloseable {
         String token = builder.token;
         SessionHostRegistry registry = builder.registry;
         GatewaySessionCatalogPort catalog = builder.catalog;
+        TranscriptSessionActions sessionActions = null;
         GatewayHeadlessSessions headless = builder.headless;
         InteractionCoordinator interactions = builder.interactions;
         GatewaySessionMessagesPort sessionMessages = builder.sessionMessages;
@@ -332,8 +336,9 @@ public final class GatewayServer implements AutoCloseable {
             // The composition root that starts a standalone `claude web` gateway
             // wires no session storage, so without this the four routes answered
             // "not configured" for rows the same webui had just listed.
-            actions = new TranscriptSessionActions(actions,
+            sessionActions = new TranscriptSessionActions(actions,
                 TranscriptSessionActions.configurationHomeOf(builder.webWorkers));
+            actions = sessionActions;
             // The listing follows the same rule. A gateway that serves no
             // catalog of its own listed live sessions only, so a row that
             // existed purely on disk — a fork, or a session whose TUI had
@@ -400,6 +405,10 @@ public final class GatewayServer implements AutoCloseable {
                 }
             });
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        // Set by the wiring above when it installs the transcript reader; the
+        // listing asks it whether a live handle's transcript is still there, a
+        // fact neither the handle nor the catalog can answer.
+        this.sessionActions = sessionActions;
         // The shared interaction coordinator (when wired) makes the gateway a
         // remote observer of every pending permission ask: asks project into
         // the mirror stream and the respond endpoint answers them first-come.
@@ -972,8 +981,10 @@ public final class GatewayServer implements AutoCloseable {
         Set<String> remoteIds = remote.stream()
             .map(SessionHostInfo::id)
             .collect(Collectors.toSet());
+        List<SessionHostInfo> live = liveSessions(remote);
         List<GatewaySessionCatalogPort.ProjectEntry> projects = LiveSessionMerge.merge(
-            catalog.listProjects(perProjectLimit), liveSessions(remote), catalog::canonicalizeProjectPath);
+            catalog.listProjects(perProjectLimit), live, catalog::canonicalizeProjectPath,
+            discarded(live));
         if (!projects.isEmpty()) {
             ArrayNode projectArray = body.putArray("projects");
             for (GatewaySessionCatalogPort.ProjectEntry project : projects) {
@@ -1060,6 +1071,33 @@ public final class GatewayServer implements AutoCloseable {
         }
         live.addAll(remote);
         return live;
+    }
+
+    /**
+     * The live sessions whose row the listing must not carry: their transcript
+     * is gone, or their transcript says archived.
+     *
+     * <p>A handle outlives both. Delete removes the file but the engine keeps
+     * running, and archive appends a marker the {@code SessionHostInfo} record
+     * has no field for — while the catalog filters archived rows out entirely.
+     * Either way the session is live by every test the listing can apply to a
+     * handle, and {@link LiveSessionMerge} would synthesize back the very row
+     * the user just removed.
+     *
+     * <p>A gateway the standalone wiring did not touch gets its listing back
+     * untouched: it read no transcript to begin with, so a live row is the only
+     * evidence it has that the session exists.
+     */
+    private Set<String> discarded(List<SessionHostInfo> live) {
+        // Without the transcript reader nothing on disk contradicts a handle,
+        // and a refreshed session with no transcript yet is an ordinary state.
+        if (live.isEmpty() || sessionActions == null) return Set.of();
+        Set<String> discarded = new HashSet<>();
+        for (SessionHostInfo info : live) {
+            if (StringUtils.isBlank(info.id())) continue;
+            if (sessionActions.retired(info.id())) discarded.add(info.id());
+        }
+        return discarded;
     }
 
     private List<SessionHostInfo> remoteSessions() {

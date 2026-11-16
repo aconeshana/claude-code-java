@@ -1,8 +1,9 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
-import com.claudecode.session.SessionOperationsService;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
+import com.claudecode.session.SessionInfo;
+import com.claudecode.session.SessionOperationsService;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -136,6 +137,38 @@ final class TranscriptSessionActions implements GatewaySessionActionsPort {
             // False for an id no transcript answers to: deletion is idempotent
             // and the handler renders it as 404, not as a failed operation.
             return translate(() -> transcripts.deleteSession(sessionId, null));
+        }
+    }
+
+    /**
+     * Whether {@code sessionId} should no longer hold a row, whatever its live
+     * handle says.
+     *
+     * <p>The sessions listing needs this for two facts the four actions do not:
+     * whether a live handle's session still has a transcript, and whether that
+     * transcript says the session was archived. A handle outlives both — a
+     * delete removes the file but leaves the engine running, and an archive
+     * appends a marker {@code SessionHostInfo} has no field for — while the
+     * catalog filters archived rows out altogether. Either way the surviving
+     * handle is the only evidence the merge still sees, and it would
+     * synthesize back the very row the user just removed. See
+     * {@link LiveSessionMerge}.
+     *
+     * <p>Both answers come from the transcript because it is the one source
+     * that reports them: the file's presence, and its latched {@code archived}
+     * marker. A handle with no transcript is also the ordinary state of a
+     * session created before its first write, which is why the caller must not
+     * apply this to a listing with no live sessions at all.
+     */
+    boolean retired(String sessionId) {
+        try {
+            return transcripts.getSessionInfo(sessionId, (String) null)
+                .map(SessionInfo::archived)
+                .orElse(true);
+        } catch (RuntimeException _) {
+            // An unreadable projects tree: "could not prove it exists" is the
+            // conservative answer for the merge, which then lists the row.
+            return false;
         }
     }
 
