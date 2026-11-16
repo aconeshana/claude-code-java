@@ -76,7 +76,7 @@ describe('subscribeMirror', () => {
     connection.close()
 
     expect(frames).toHaveLength(1)
-    expect(frames[0]).toMatchObject({ event: 'output.text.delta', id: 0 })
+    expect(frames[0]).toMatchObject({ event: 'output.text.delta', id: 431 })
   })
 
   it('reports a streaming thinking delta as not journaled', () => {
