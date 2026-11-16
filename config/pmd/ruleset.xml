@@ -307,6 +307,22 @@
       </property>
     </properties>
   </rule>
+  <rule name="ExplanationNeedsAReason"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="@Explanation must name why this declaration differs from the original product">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //Annotation[
+            pmd-java:typeIs('com.claudecode.core.annotation.Explanation')
+            and .//StringLiteral[string-length(@Image) < 22]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
   <rule name="LambdaToStaticMethodReference"
         language="java"
         class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"

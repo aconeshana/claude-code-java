@@ -38,7 +38,10 @@ class StandardStreamBoundaryTest {
     private static final Set<String> ALLOWED_CLI_COMPOSITION_ROOTS = Set.of(
         "claude-code-cli/src/main/java/com/claudecode/cli/CliOutput.java",
         "claude-code-cli/src/main/java/com/claudecode/cli/CliSessionAssembler.java",
-        "claude-code-cli/src/main/java/com/claudecode/cli/ClaudeCodeCli.java"
+        "claude-code-cli/src/main/java/com/claudecode/cli/ClaudeCodeCli.java",
+        // `claude web` is its own entry point: it runs no session of its own and
+        // prints the gateway URL to the terminal that started it.
+        "claude-code-cli/src/main/java/com/claudecode/cli/WebCliCommand.java"
     );
 
     @Test

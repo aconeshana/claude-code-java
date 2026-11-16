@@ -86,8 +86,10 @@ class BashSecurityTest {
         PermissionDecision.Ask decision =
             (PermissionDecision.Ask) BashPermissions.check("echo hi > out.txt", CONTEXT);
         // Redirections stay in the path layer so callers retain blockedPath and
-        // addDirectories suggestions instead of a generic security ASK.
-        Assertions.assertEquals(
-            "/Users/test/project/out.txt", decision.blockedPath());
+        // addDirectories suggestions instead of a generic security ASK. The
+        // resolved path renders with the host separator (Windows \), so compare
+        // separator-agnostically against the POSIX fixture.
+        Assertions.assertEquals("/Users/test/project/out.txt",
+            decision.blockedPath().replace('\\', '/'));
     }
 }

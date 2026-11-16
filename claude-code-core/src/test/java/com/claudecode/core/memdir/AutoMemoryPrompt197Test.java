@@ -34,9 +34,12 @@ class AutoMemoryPrompt197Test {
             fixture = new String(in.readAllBytes(), StandardCharsets.UTF_8)
                 .replaceAll("\\n$", "");
         }
-        // The capture's only dynamic slot is the memory dir path.
+        // The capture's only dynamic slot is the memory dir path. The fixture is
+        // a macOS capture where path.join renders '/'; on Windows the same
+        // template renders the host separator, so compare separator-agnostically.
         Path capturedDir = Path.of("/Users/example/.claude/projects/-Users-example/memory");
-        assertEquals(fixture, AutoMemoryPrompt.memorySection197(capturedDir));
+        assertEquals(fixture.replace('\\', '/'),
+            AutoMemoryPrompt.memorySection197(capturedDir).replace('\\', '/'));
     }
 
     @Test

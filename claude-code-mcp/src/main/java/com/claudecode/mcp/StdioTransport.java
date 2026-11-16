@@ -1,5 +1,7 @@
 package com.claudecode.mcp;
 
+import com.claudecode.core.platform.Platform;
+import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,14 +14,19 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.file.Path;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,8 +87,51 @@ public class StdioTransport implements McpTransport {
 
             LOG.debug("Started MCP server '{}': {} {}", config.name(), config.command(), config.args());
         } catch (IOException e) {
-            throw new McpException("Failed to start MCP server '" + config.name() + "'", e);
+            throw new McpException(startFailureMessage(e, config.name(), config.command(),
+                Platform.IS_WINDOWS,
+                ExecutableFinder::find), e);
         }
+    }
+
+    /**
+     * Builds the start-failure message. Under CreateProcess a bare command name
+     * resolves only .exe, so a .cmd/.bat shim (npx, npm, pnpm) on the PATH still
+     * fails with error=2 even though naming it explicitly — npx.cmd — would
+     * launch. The remedy official Claude Code documents for Windows is wrapping
+     * it with {@code cmd /c}; surface that when the PATH resolution maps the
+     * command to such a shim. The finder is injected for tests.
+     */
+    static String startFailureMessage(IOException cause, String serverName, String command,
+                                      boolean windows, Function<String, Optional<Path>> finder) {
+        StringBuilder message = new StringBuilder("Failed to start MCP server '")
+            .append(serverName).append('\'');
+        if (windows) {
+            String shim = cmdShim(command, finder);
+            if (shim != null) {
+                message.append(" — \"").append(command).append("\" resolves to \"")
+                    .append(shim).append("\", which Windows cannot launch directly. ")
+                    .append("Wrap it with cmd /c: command=\"cmd\", args=[\"/c\", \"")
+                    .append(command).append("\", ...] (as official Claude Code documents for Windows)");
+            }
+        }
+        return message.toString();
+    }
+
+    /**
+     * The PATH resolution that maps a bare command name to a .cmd/.bat shim.
+     * Commands naming the shim explicitly (npx.cmd, an absolute path) launch
+     * fine — CreateProcess auto-spawns cmd.exe for them — so only the bare-name
+     * failure gets the hint.
+     */
+    private static String cmdShim(String command, Function<String, Optional<Path>> finder) {
+        if (StringUtils.isBlank(command)) return null;
+        return finder.apply(command)
+            .filter(p -> {
+                String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                return Strings.CS.endsWith(name, ".cmd") || Strings.CS.endsWith(name, ".bat");
+            })
+            .map(Path::toString)
+            .orElse(null);
     }
 
     /** Reader-thread body — the only consumer of the server's stdout. */

@@ -1,7 +1,10 @@
 package com.claudecode.tools.bash;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.runtime.interaction.SudoPasswordInteraction;
 
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -13,6 +16,13 @@ import org.apache.commons.lang3.Strings;
 
 /** RED tests for the deliberately narrow phase-one sudo interaction boundary. */
 class SudoCommandSupportTest {
+
+    @BeforeEach
+    void posixOnly() {
+        // sudo is deliberately unsupported on Windows (no sudo there, matching
+        // the official product) — the whole contract is POSIX-only.
+        Assumptions.assumeFalse(Platform.IS_WINDOWS);
+    }
 
     @Test
     void preparesOnlyDirectTopLevelSudoAndRequestsPasswordOnStdin() {

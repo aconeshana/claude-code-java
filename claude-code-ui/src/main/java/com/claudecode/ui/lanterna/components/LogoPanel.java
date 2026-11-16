@@ -73,7 +73,7 @@ public final class LogoPanel {
         this.pokemon = pokemon;
     }
 
-    @Explanation("Adds an opt-in pokemon-colorscripts welcome sprite; absent configuration keeps the compact Clawd banner and never enters model context.")
+    @Explanation("Welcome sprite defaults to a regular Pikachu; a stored welcomePokemon replaces it and never enters model context.")
     public PokemonProfile pokemon() { return pokemon; }
 
     /** Renders the complete welcome block and returns its replaceable source range. */
@@ -401,8 +401,8 @@ public final class LogoPanel {
 
     private static PokemonProfile loadPokemon() {
         PokemonProfile stored = PokemonProfile.fromJson(UiSettings.readGlobalNode(CONFIG_KEY));
-        return stored != null && PokemonRoster.contains(stored.name())
-            ? stored : null;
+        if (stored != null && PokemonRoster.contains(stored.name())) return stored;
+        return PokemonRoller.defaultPikachu();
     }
 
     private static TextColor rarityColor(PokemonProfile.Rarity rarity) {

@@ -77,7 +77,10 @@ class SkillLoaderTest {
 
         assertEquals(1, skills.size());
         assertEquals("agent-reach", skills.getFirst().name());
-        assertTrue(Strings.CS.endsWith(skills.getFirst().sourceFile().toString(), "agent-reach/SKILL.md"));
+        // Host path style — compare separator-agnostically.
+        assertTrue(Strings.CS.endsWith(
+            skills.getFirst().sourceFile().toString().replace('\\', '/'),
+            "agent-reach/SKILL.md"));
     }
 
     @Test

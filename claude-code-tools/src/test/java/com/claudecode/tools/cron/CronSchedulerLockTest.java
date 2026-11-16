@@ -5,14 +5,34 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 
 import com.claudecode.core.serialization.JsonUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CronSchedulerLockTest {
+
+    /**
+     * The start token must come from the portable ProcessHandle API: the previous
+     * implementation shelled out to ps, which does not exist on Windows, so every
+     * token came back null — the lock body carried no procStart and sameProcess
+     * treated any live PID (including a reused one) as the original owner,
+     * permanently blocking takeover after a crash.
+     */
+    @Test
+    void currentProcessStartTokenIsProducedPortably() {
+        Instant expected = ProcessHandle.current().info().startInstant().orElse(null);
+        if (expected == null) {
+            // Hosts that cannot report a start time legitimately produce none.
+            assertNull(CronSchedulerLock.currentProcessStartToken());
+            return;
+        }
+        assertEquals(expected, Instant.parse(CronSchedulerLock.currentProcessStartToken()));
+    }
 
     @Test
     void onlyOneLiveOwnerFiresAndStaleLeaseCanBeTakenOver(@TempDir Path projectRoot)

@@ -1,9 +1,13 @@
 package com.claudecode.tools.tasks;
 
 import com.claudecode.core.engine.AbortController;
+import com.claudecode.core.message.Message;
+import com.claudecode.core.message.MessageContent;
+import com.claudecode.core.message.UserMessage;
 import com.claudecode.tools.agent.SubAgentResult;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -198,5 +202,99 @@ class LocalAgentTaskTest {
         assertTrue(handle.kill());
         assertEquals(TaskStatus.KILLED,
             store.get(task.id()).orElseThrow().status());
+    }
+
+    @Test
+    void displayTranscript_startsEmptySoViewerKnowsToSeedFromDisk() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+
+        assertTrue(handle.displayTranscript().isEmpty());
+        assertFalse(handle.hasDisplayTranscript());
+    }
+
+    @Test
+    void appendToDisplayTranscript_notifiesListenerOncePerAcceptedRow() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+        int[] notifications = {0};
+        handle.setTranscriptListener(() -> notifications[0]++);
+
+        handle.appendToDisplayTranscript(userMessage("u1", "hello"));
+        handle.appendToDisplayTranscript(userMessage("u1", "hello"));
+        handle.appendToDisplayTranscript(userMessage("u2", "world"));
+
+        assertEquals(2, handle.displayTranscript().size());
+        assertEquals(2, notifications[0], "a duplicate uuid must not fire the listener");
+    }
+
+    @Test
+    void appendToDisplayTranscript_dropsOldestRowsPastTheCap() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+
+        for (int i = 0; i < 250; i++) {
+            handle.appendToDisplayTranscript(userMessage("u" + i, "row " + i));
+        }
+
+        List<Message> rows = handle.displayTranscript();
+        assertEquals(200, rows.size());
+        assertEquals("u50", rows.getFirst().uuid(), "the oldest rows drop off first");
+        assertEquals("u249", rows.getLast().uuid());
+    }
+
+    @Test
+    void seedDisplayTranscript_addsRowsAndReportsTheChange() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+
+        assertTrue(handle.seedDisplayTranscript(List.of(
+            userMessage("u1", "hello"), userMessage("u2", "world"))));
+        assertEquals(2, handle.displayTranscript().size());
+
+        // An unchanged re-read must report no change: the watcher uses this to skip a repaint,
+        // and firing on a no-op read would make the poll as expensive as the disk parse it avoids.
+        assertFalse(handle.seedDisplayTranscript(List.of(
+            userMessage("u1", "hello"), userMessage("u2", "world"))));
+    }
+
+    @Test
+    void seedDisplayTranscript_appendsOnlyRowsTheMirrorIsMissing() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+        handle.appendToDisplayTranscript(userMessage("u1", "live"));
+
+        // The seed carries the same row plus one the live mirror never saw, because the progress
+        // callback filters out plain-text content.
+        assertTrue(handle.seedDisplayTranscript(List.of(
+            userMessage("u1", "live"), userMessage("u2", "plain text answer"))));
+
+        List<Message> rows = handle.displayTranscript();
+        assertEquals(List.of("u1", "u2"),
+            rows.stream().map(Message::uuid).toList());
+    }
+
+    @Test
+    void seedDisplayTranscript_neverOverwritesALiveRowWithThePersistedCopy() {
+        TaskStore store = TaskStore.inMemory();
+        TaskState task = store.create(TaskType.LOCAL_AGENT, "explore repo");
+        LocalAgentTask handle = new LocalAgentTask(task, store);
+        handle.appendToDisplayTranscript(userMessage("u1", "live text"));
+
+        handle.seedDisplayTranscript(List.of(userMessage("u1", "stale text")));
+
+        List<Message> rows = handle.displayTranscript();
+        assertEquals(1, rows.size());
+        assertEquals("live text",
+            ((UserMessage) rows.getFirst()).message().text());
+    }
+
+    private static UserMessage userMessage(String uuid, String text) {
+        return new UserMessage(uuid, MessageContent.ofText(text));
     }
 }

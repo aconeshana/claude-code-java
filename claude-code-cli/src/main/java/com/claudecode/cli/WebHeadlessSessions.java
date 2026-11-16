@@ -8,6 +8,10 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Builds the headless session factory for {@code claude web} from the same toolchain the TUI
  * uses, scoped to the directory {@code claude web} was launched from.
+ *
+ * <p>The bootstrap and toolchain report warnings and their own failures through a
+ * {@link CliOutput}, which the caller supplies: binding one to a process-global stream is a
+ * composition-root decision, and this factory is not that root.
  */
 final class WebHeadlessSessions {
 
@@ -17,8 +21,8 @@ final class WebHeadlessSessions {
     private WebHeadlessSessions() {
     }
 
-    static CliHeadlessGatewaySessions create(ManagedMcpRuntime mcpRuntime, CliResourceScope resources) {
-        CliOutput errorOutput = CliOutput.systemErr();
+    static CliHeadlessGatewaySessions create(ManagedMcpRuntime mcpRuntime, CliResourceScope resources,
+            CliOutput errorOutput) {
         CliLaunchRequest request = new CliLaunchRequest(null, null, null, null, null, null, null);
         CliWorkspaceBootstrap.Workspace workspace = CliWorkspaceBootstrap.bootstrap(
             request, CliWorkspaceBootstrap.parseSettingSources(null), errorOutput);

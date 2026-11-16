@@ -25,25 +25,36 @@ public final class PathUtils {
         return posixExtname(name).toLowerCase(Locale.ROOT);
     }
 
-    /** Expands bare {@code ~} and a leading {@code ~/}; leaves other strings unchanged. */
+    /**
+     * Expands bare {@code ~} and a leading {@code ~/}; on Windows also a leading {@code ~\},
+     * matching the separator form {@code PathValidation.expandTilde} accepts so a permission
+     * decision and the tool execution resolve the same file. Leaves other strings unchanged.
+     */
     public static String expandTilde(String path) {
         if (StringUtils.isEmpty(path)) return path;
         if (Strings.CS.equals(path, "~")) return System.getProperty("user.home");
-        if (Strings.CS.startsWith(path, "~/")) return System.getProperty("user.home") + path.substring(1);
+        if (Strings.CS.startsWith(path, "~/")
+                || (isWindows() && Strings.CS.startsWith(path, "~\\"))) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
         return path;
     }
 
     /**
      * Inverse of {@link #expandTilde}: rewrites the home prefix back to {@code ~} so absolute
-     * paths stay legible in narrow terminal chrome. Only a whole leading path segment matches,
-     * so a sibling directory such as {@code /Users/alice-backup} is left alone.
+     * paths stay legible in narrow terminal chrome. Only a whole leading path segment matches
+     * (with either separator), so a sibling directory such as {@code /Users/alice-backup} is
+     * left alone.
      */
     public static String abbreviateTilde(String path) {
         if (StringUtils.isEmpty(path)) return path;
         String home = System.getProperty("user.home");
         if (StringUtils.isEmpty(home)) return path;
         if (Strings.CS.equals(path, home)) return "~";
-        return Strings.CS.startsWith(path, home + "/") ? "~" + path.substring(home.length()) : path;
+        String rest = null;
+        if (Strings.CS.startsWith(path, home + "/")) rest = path.substring(home.length());
+        else if (Strings.CS.startsWith(path, home + "\\")) rest = path.substring(home.length());
+        return rest != null ? "~" + rest : path;
     }
 
     /** Implements {@code path.posix.extname} semantics consistently on every host platform. */

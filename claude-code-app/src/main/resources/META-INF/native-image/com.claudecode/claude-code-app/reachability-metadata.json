@@ -3172,6 +3172,139 @@
       "type": "sun.util.resources.cldr.CalendarData"
     },
     {
+      "type": "com.sun.jna.platform.win32.WinNT$HANDLE",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.sun.jna.platform.win32.WinDef$LPVOID",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.sun.jna.ptr.IntByReference",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$COORD",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$SMALL_RECT",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$CONSOLE_SCREEN_BUFFER_INFO",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$INPUT_RECORD",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$INPUT_RECORD$Event",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$KEY_EVENT_RECORD",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$MOUSE_EVENT_RECORD",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.googlecode.lanterna.terminal.win32.WinDef$WINDOW_BUFFER_SIZE_RECORD",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$InputRecord",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$InputRecord$Event",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$KeyEvent",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$MouseEvent",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$WindowEvent",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$Coordinate",
+      "allDeclaredConstructors": true,
+      "allPublicMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$InputRecord[]"
+    },
+    {
+      "type": {
+        "proxy": [
+          "com.claudecode.ui.lanterna.repl.WindowsConsoleInput$Console"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "com.claudecode.ui.lanterna.components.WindowsUnicodeClipboard$User"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "com.claudecode.ui.lanterna.components.WindowsUnicodeClipboard$Kernel"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "com.googlecode.lanterna.terminal.win32.Wincon"
+        ]
+      }
+    },
+    {
       "type": {
         "proxy": [
           "io.methvin.watchservice.jna.CarbonAPI"

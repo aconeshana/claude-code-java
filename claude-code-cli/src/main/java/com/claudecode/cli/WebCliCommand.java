@@ -53,11 +53,20 @@ public class WebCliCommand implements Callable<Integer> {
     private static final long READY_TIMEOUT_MILLIS = 10_000;
     private static final long POLL_MILLIS = 100;
 
+    /**
+     * The terminal this command was started from. This class is the composition
+     * root for {@code claude web}, so binding to the process-global streams
+     * happens here and nowhere else on this path; the URL it prints is the whole
+     * point of the command.
+     */
+    private final CliOutput out = CliOutput.systemOut();
+    private final CliOutput err = CliOutput.systemErr();
+
     @Override
     public Integer call() throws Exception {
         Optional<WebGatewayRecord> running = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
         if (running.isPresent()) {
-            System.out.println(running.get().url());
+            out.println(running.get().url());
             return 0;
         }
         Path lockFile = ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.lock");
@@ -70,7 +79,7 @@ public class WebCliCommand implements Callable<Integer> {
             }
             Optional<WebGatewayRecord> racing = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
             if (racing.isPresent()) {
-                System.out.println(racing.get().url());
+                out.println(racing.get().url());
                 return 0;
             }
             return hostUntilStopped();
@@ -82,19 +91,19 @@ public class WebCliCommand implements Callable<Integer> {
         while (System.currentTimeMillis() < deadline) {
             Optional<WebGatewayRecord> published = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
             if (published.isPresent()) {
-                System.out.println(published.get().url());
+                out.println(published.get().url());
                 return 0;
             }
             Thread.sleep(POLL_MILLIS);
         }
-        System.err.println("Another claude web is starting but did not publish its gateway in time.");
+        err.println("Another claude web is starting but did not publish its gateway in time.");
         return 1;
     }
 
     private Integer hostUntilStopped() throws Exception {
         try (ManagedMcpRuntime mcpRuntime = new McpToolProvider();
              CliResourceScope resources = new CliResourceScope()) {
-            CliHeadlessGatewaySessions headless = WebHeadlessSessions.create(mcpRuntime, resources);
+            CliHeadlessGatewaySessions headless = WebHeadlessSessions.create(mcpRuntime, resources, err);
             String cwd = System.getProperty("user.dir");
             CommandRegistry commandRegistry = webCommands();
             GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
@@ -150,7 +159,7 @@ public class WebCliCommand implements Callable<Integer> {
                 runtime.close();
                 stopped.countDown();
             }));
-            System.out.println(runtime.start().url());
+            out.println(runtime.start().url());
             stopped.await();
             return 0;
         }

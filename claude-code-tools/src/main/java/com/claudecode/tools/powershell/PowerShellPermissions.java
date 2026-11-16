@@ -7,6 +7,7 @@ import com.claudecode.permissions.PathValidation;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -556,7 +557,17 @@ public final class PowerShellPermissions {
      * Validates a single extracted path with PowerShell-specific guards layered
      * on top of the shell-agnostic {@link PathValidation} primitives.
      */
+    /**
+     * Redirect operators ride along in the token stream (the segment splitter
+     * keeps them) — a token made purely of digits and {@code > & |} is syntax,
+     * not a path; validateSegmentRedirects handles its target.
+     */
+    private static final Pattern REDIRECT_OPERATOR_RE = Pattern.compile("[\\d>&|]+");
+
     private static PermissionDecision validatePowerShellPath(String path, String cwdStr, String opType) {
+        if (REDIRECT_OPERATOR_RE.matcher(path).matches()) {
+            return null;
+        }
         String clean = PathValidation.expandTilde(stripQuotes(path));
         String normalized = clean.replace('\\', '/');
         // Backtick escape — cannot statically validate.
@@ -589,8 +600,16 @@ public final class PowerShellPermissions {
             return new PermissionDecision.Ask(normalized);
         }
         // Residual string-level checks (UNC, tilde-variant, glob-write).
-        PathValidation.PathValidationResult r = PathValidation.validatePath(
-            path, cwdStr, !Strings.CS.equals("write", opType));
+        PathValidation.PathValidationResult r;
+        try {
+            r = PathValidation.validatePath(
+                path, cwdStr, !Strings.CS.equals("write", opType));
+        } catch (InvalidPathException _) {
+            // A token that cannot be a path on this platform (illegal characters
+            // that slipped past the guards) — fall back to asking rather than
+            // crashing the whole permission evaluation.
+            return new PermissionDecision.Ask(normalized);
+        }
         if (!r.allowed()) {
             return new PermissionDecision.Ask(r.resolvedPath());
         }

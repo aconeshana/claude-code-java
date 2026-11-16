@@ -12,8 +12,8 @@ dependencies {
     api(libs.commonmark.gfm.tables)
     api(libs.caffeine)
     api(libs.lanterna)
-    runtimeOnly(libs.jna)
-    runtimeOnly(libs.jna.platform)
+    implementation(libs.jna)
+    implementation(libs.jna.platform)
     api(libs.tm4e) {
         exclude(group = "org.assertj", module = "assertj-core")
     }

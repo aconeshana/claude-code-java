@@ -27,6 +27,10 @@ public final class OSC52Helper {
     static Platform platform = () -> System.getProperty("os.name", "");
     static Environment environment = System::getenv;
     static NativeCommandRunner nativeCommandRunner = OSC52Helper::runNativeCommand;
+    static WindowsClipboard windowsClipboard = WindowsUnicodeClipboard::setText;
+
+    @FunctionalInterface
+    interface WindowsClipboard { boolean setText(String text); }
 
     private enum LinuxClipboardTool { WL_COPY, XCLIP, XSEL, NONE }
 
@@ -69,7 +73,9 @@ public final class OSC52Helper {
         } else if (Strings.CS.contains(os, "linux")) {
             copyLinux(utf8);
         } else if (Strings.CS.contains(os, "win")) {
-            nativeCommandRunner.run(new String[]{"clip"}, utf8);
+            // clip.exe reads stdin in the console code page (GBK on Chinese
+            // Windows), which turns this UTF-8 selection into mojibake.
+            windowsClipboard.setText(text);
         }
     }
 

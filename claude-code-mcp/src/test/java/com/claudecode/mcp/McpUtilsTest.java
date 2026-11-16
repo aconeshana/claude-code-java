@@ -15,11 +15,20 @@ class McpUtilsTest {
 
     // ── expandEnvVarsInString ──────────────────────────────────────────────
 
+    /** HOME exists on POSIX hosts, USERPROFILE on Windows — expansion reads the process environment verbatim. */
+    private static String homeVar() {
+        return System.getenv("HOME") != null ? "HOME" : "USERPROFILE";
+    }
+
+    private static String userVar() {
+        return System.getenv("USER") != null ? "USER" : "USERNAME";
+    }
+
     @Test
     void expandsSimpleVar() {
-        // HOME (and USER) exist in the test process environment on macOS/Linux CI.
-        String out = McpUtils.expandEnvVarsInString("${HOME}/bin", List.of());
-        assertEquals(System.getenv("HOME") + "/bin", out);
+        String var = homeVar();
+        String out = McpUtils.expandEnvVarsInString("${" + var + "}/bin", new ArrayList<>());
+        assertEquals(System.getenv(var) + "/bin", out);
     }
 
     @Test
@@ -30,8 +39,9 @@ class McpUtilsTest {
 
     @Test
     void expandsPresentVarIgnoresDefault() {
-        String out = McpUtils.expandEnvVarsInString("${HOME:-fallback}", List.of());
-        assertEquals(System.getenv("HOME"), out);
+        String var = homeVar();
+        String out = McpUtils.expandEnvVarsInString("${" + var + ":-fallback}", new ArrayList<>());
+        assertEquals(System.getenv(var), out);
     }
 
     @Test
@@ -58,16 +68,18 @@ class McpUtilsTest {
 
     @Test
     void expandsServerConfigFields() {
+        String home = homeVar();
+        String user = userVar();
         McpServerConfig cfg = new McpServerConfig(
-            "srv", "${HOME}/tool", List.of("${USER}", "lit"),
-            Map.of("TOKEN", "${HOME}"), false, "stdio",
-            null, Map.of("X", "${HOME}"));
+            "srv", "${" + home + "}/tool", List.of("${" + user + "}", "lit"),
+            Map.of("TOKEN", "${" + home + "}"), false, "stdio",
+            null, Map.of("X", "${" + home + "}"));
         McpConfigLoader.ExpansionResult r = McpConfigLoader.expandEnvVars(cfg);
-        assertEquals(System.getenv("HOME") + "/tool", r.config().command());
-        assertEquals(List.of(System.getenv("USER"), "lit"), r.config().args());
-        assertEquals(Map.of("TOKEN", System.getenv("HOME")), r.config().env());
+        assertEquals(System.getenv(home) + "/tool", r.config().command());
+        assertEquals(List.of(System.getenv(user), "lit"), r.config().args());
+        assertEquals(Map.of("TOKEN", System.getenv(home)), r.config().env());
         assertNull(r.config().url());
-        assertEquals(Map.of("X", System.getenv("HOME")), r.config().headers());
+        assertEquals(Map.of("X", System.getenv(home)), r.config().headers());
         assertTrue(r.missingVars().isEmpty());
     }
 

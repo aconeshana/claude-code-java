@@ -6,6 +6,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,15 +50,27 @@ public final class ExecutableFinder {
                 if (Files.isRegularFile(candidate)) return Optional.of(candidate);
             }
         }
-        String pathValue = env.get("PATH");
+        // Windows environment blocks may store the variable under any case (the
+        // default block name is "Path"), and snapshot()-style plain-map copies lose
+        // the JDK getenv view's case-insensitive lookup — resolve by name-insensitive
+        // scan there. POSIX PATH stays case-sensitive.
+        String pathValue = platform == Platform.WIN32
+            ? envEntry(env, "PATH") : env.get("PATH");
         if (StringUtils.isBlank(pathValue)) return Optional.empty();
         List<String> extensions = platform == Platform.WIN32
-            ? windowsExtensions(trimmed, env.get("PATHEXT")) : List.of("");
+            ? windowsExtensions(trimmed, envEntry(env, "PATHEXT")) : List.of("");
         Path normalizedCwd = cwd.toAbsolutePath().normalize();
         for (String directory : pathValue.split(Pattern.quote(File.pathSeparator))) {
             if (StringUtils.isBlank(directory)) continue;
             for (String extension : extensions) {
-                Path candidate = Path.of(directory, trimmed + extension).toAbsolutePath().normalize();
+                Path candidate;
+                try {
+                    candidate = Path.of(directory, trimmed + extension).toAbsolutePath().normalize();
+                } catch (InvalidPathException _) {
+                    // A junk PATH entry (unpaired quote, mangled chars) must not abort
+                    // the whole lookup — probe the remaining directories.
+                    continue;
+                }
                 if (platform == Platform.WIN32 && candidate.startsWith(normalizedCwd)) continue;
                 if (executable(candidate, platform)) return Optional.of(candidate);
             }
@@ -95,6 +108,16 @@ public final class ExecutableFinder {
 
     private static boolean executable(Path path, Platform platform) {
         return Files.isRegularFile(path) && (platform == Platform.WIN32 || Files.isExecutable(path));
+    }
+
+    /** Exact-match first, then a case-insensitive scan for Windows-style blocks. */
+    private static String envEntry(Map<String, String> env, String name) {
+        String value = env.get(name);
+        if (value != null) return value;
+        for (Map.Entry<String, String> entry : env.entrySet()) {
+            if (Strings.CI.equals(entry.getKey(), name)) return entry.getValue();
+        }
+        return null;
     }
 
     private static List<String> windowsExtensions(String command, String pathExt) {

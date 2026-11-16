@@ -473,7 +473,11 @@ public final class FileHistoryManager {
         try (var stream = Files.list(backupRoot)) {
             for (Path dir : stream.filter(Files::isDirectory).toList()) {
                 try {
-                    if (Files.getLastModifiedTime(dir).toInstant().isBefore(cutoff)) {
+                    // Inclusive boundary: Windows stamps a just-written directory's
+                    // last-write time at metadata-flush time, which lands exactly on
+                    // the cutoff tick, and a strict isBefore would keep the dir —
+                    // breaking the zero-grace-period contract.
+                    if (!Files.getLastModifiedTime(dir).toInstant().isAfter(cutoff)) {
                         FileUtils.deleteRecursively(dir);
                     }
                 } catch (IOException e) {

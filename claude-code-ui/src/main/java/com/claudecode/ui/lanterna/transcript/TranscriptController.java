@@ -11,6 +11,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.tools.tasks.InProcessTeammateTask;
+import com.claudecode.tools.tasks.LocalAgentTask;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
 import java.nio.file.Path;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -70,6 +72,10 @@ public final class TranscriptController {
     private ScheduledFuture<?> localAgentWatchFuture;
     private Path activeLocalAgentTranscript;
     private long activeLocalAgentStamp = -1L;
+    /** Which viewed agent still needs its one disk read; see {@link AgentTranscriptLatch}. */
+    private final AgentTranscriptLatch transcriptLatch = new AgentTranscriptLatch();
+    /** Task whose {@link LocalAgentTask} currently holds this controller's rebuild listener. */
+    private String activeLocalAgentTaskId;
 
     public TranscriptController(MultiWindowTextGUI gui, Screen screen,
                          MessagePanel messagePanel, SpinnerComponent spinner,
@@ -211,6 +217,13 @@ public final class TranscriptController {
                 .ifPresent(teammate -> teammate.setTranscriptListener(null));
             activeTeammateTaskId = null;
         }
+        if (activeLocalAgentTaskId != null && !activeLocalAgentTaskId.equals(taskId)) {
+            taskRegistry.getAgentHandle(activeLocalAgentTaskId)
+                .ifPresent(agent -> agent.setTranscriptListener(null));
+            activeLocalAgentTaskId = null;
+        }
+        // A new view starts unseeded, so its first render re-reads the transcript from disk.
+        transcriptLatch.viewChangedTo(taskId);
         if (taskId != null) {
             taskRegistry.getTeammateHandle(taskId).ifPresent(teammate -> {
                 teammate.setTranscriptListener(this::requestRebuild);
@@ -218,11 +231,24 @@ public final class TranscriptController {
             });
             if (ViewedTeammateHolder.instance().isViewingLocalAgent()
                     && agentTranscriptResolver != null) {
+                taskRegistry.getAgentHandle(taskId).ifPresent(agent -> {
+                    agent.setTranscriptListener(this::requestRebuild);
+                    activeLocalAgentTaskId = taskId;
+                });
                 startLocalAgentWatcher(agentTranscriptResolver.apply(taskId));
             }
         }
     }
 
+    /**
+     * Watches an agent's transcript file for appends the in-memory mirror cannot carry.
+     *
+     * <p>The mirror is fed by a progress callback filtered to tool-bearing content, so a plain-text
+     * answer lands on disk without reaching the handle. This watcher covers that gap: when the file
+     * has grown but the mirror is silent, the new tail is read back and merged into the mirror.
+     * While the mirror is still growing the poll is a no-op, which is the common case for a running
+     * agent and what keeps a repaint from re-parsing the whole JSONL.
+     */
     private void startLocalAgentWatcher(Path transcript) {
         if (transcript == null) return;
         activeLocalAgentTranscript = transcript;
@@ -231,11 +257,28 @@ public final class TranscriptController {
             Path active = activeLocalAgentTranscript;
             if (active == null || !ViewedTeammateHolder.instance().isViewingLocalAgent()) return;
             long next = transcriptStamp(active);
-            if (next != activeLocalAgentStamp) {
-                activeLocalAgentStamp = next;
-                requestRebuild();
-            }
+            if (next == activeLocalAgentStamp) return;
+            activeLocalAgentStamp = next;
+            if (!reloadMirrorTail()) requestRebuild();
         }, 250L, 250L, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Re-reads the viewed agent's transcript and folds any new rows into its handle, returning true
+     * when the mirror absorbed them (so the caller can skip a redundant rebuild). Returns false when
+     * there is no live handle, leaving the caller to render straight from disk.
+     */
+    private boolean reloadMirrorTail() {
+        String taskId = ViewedTeammateHolder.instance().viewingTaskId();
+        if (taskId == null) return false;
+        Optional<LocalAgentTask> handle = taskRegistry.getAgentHandle(taskId);
+        if (handle.isEmpty()) return false;
+        Path transcript = agentTranscriptResolver == null
+            ? null : agentTranscriptResolver.apply(taskId);
+        if (transcript == null) return false;
+        // seedDisplayTranscript fires the listener only when it added rows, so a no-op read must not
+        // force a repaint — otherwise the watcher would defeat the point of mirroring.
+        return handle.get().seedDisplayTranscript(loadAgentTranscript(transcript, taskId, sessions));
     }
 
     private void stopLocalAgentWatcher() {
@@ -263,6 +306,16 @@ public final class TranscriptController {
         }
     }
 
+    /**
+     * Renders a backgrounded/foreground local agent, preferring the handle's in-memory mirror over
+     * a fresh JSONL parse. The released client renders a viewed agent from an in-memory transcript
+     * and only touches disk to seed it once; doing a full read + parse on every repaint is what
+     * made switching main/sub feel slow on large agent transcripts.
+     *
+     * <p>The mirror is not complete on its own: the progress callback that feeds it is filtered to
+     * tool-bearing content, so a plain-text answer never reaches it. The first render of a view
+     * therefore always seeds from disk, and later repaints reuse that seed plus live appends.
+     */
     private void renderLocalAgent(String taskId) {
         Path transcript = agentTranscriptResolver == null ? null : agentTranscriptResolver.apply(taskId);
         if (transcript == null) {
@@ -274,7 +327,7 @@ public final class TranscriptController {
             .map(TaskState::description).orElse(taskId);
         messagePanel.appendLine("── Agent: " + label + " ──", LanternaTheme.claude());
         List<Message> messages = mergePendingLocalAgentInput(
-            loadAgentTranscript(transcript, taskId, sessions),
+            localAgentMessages(taskId, transcript),
             localAgentPendingInput.getOrDefault(taskId, List.of()));
         visibleHistoryTaskId = taskId;
         visiblePromptHistory = promptHistoryFromMessages(messages);
@@ -282,6 +335,28 @@ public final class TranscriptController {
             SDKMessage sdkMessage = toSdkMessage(message);
             if (sdkMessage != null) collapser.dispatch(sdkMessage, messagePanel);
         }
+    }
+
+    /**
+     * Resolves the rows to render for a local agent: the in-memory mirror once the handle exists
+     * and has been seeded, otherwise a disk read that both seeds the mirror and supplies this
+     * frame. Only the first render of a view reads the transcript file.
+     */
+    private List<Message> localAgentMessages(String taskId, Path transcript) {
+        Optional<LocalAgentTask> handle = taskRegistry.getAgentHandle(taskId);
+        if (handle.isEmpty()) {
+            // Foreground agent that completed before it was backgrounded, or an evicted one:
+            // there is no live mirror to render from, so fall back to the persisted transcript.
+            return loadAgentTranscript(transcript, taskId, sessions);
+        }
+        LocalAgentTask agent = handle.get();
+        if (!transcriptLatch.needsRead(taskId)) {
+            return agent.displayTranscript();
+        }
+        // Seed once per view, then serve every later repaint from the mirror.
+        agent.seedDisplayTranscript(loadAgentTranscript(transcript, taskId, sessions));
+        transcriptLatch.markRead(taskId);
+        return agent.displayTranscript();
     }
 
     static List<Message> mergePendingLocalAgentInput(

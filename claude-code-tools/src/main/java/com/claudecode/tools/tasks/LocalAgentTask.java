@@ -1,26 +1,40 @@
 package com.claudecode.tools.tasks;
 
 import com.claudecode.core.engine.AbortController;
+import com.claudecode.core.message.Message;
 import com.claudecode.tools.agent.SubAgentResult;
 
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CompletableFuture;
 import java.time.Instant;
+import java.util.stream.Collectors;
 
 /**
  * Live handle for a backgrounded sub-agent run: tracks coarse progress and drives the backing
  * {@link TaskState} through {@link TaskStore} on completion or kill.
+ *
+ * <p>Also mirrors the run's messages into a capped in-memory display transcript, so a viewer can
+ * render a running agent without re-reading and re-parsing its JSONL on every repaint. This is the
+ * local-agent counterpart of {@link InProcessTeammateTask}'s display transcript: the released
+ * client likewise shows a viewed agent from an in-memory transcript and only falls back to disk to
+ * seed it once.
  */
 public class LocalAgentTask {
 
     private static final Logger log = LoggerFactory.getLogger(LocalAgentTask.class);
 
+    /** Upper bound on the mirrored transcript; the oldest rows drop off first. */
+    private static final int DISPLAY_TRANSCRIPT_CAP = 200;
 
     public static final Duration PANEL_GRACE = Duration.ofSeconds(30);
 
@@ -31,6 +45,10 @@ public class LocalAgentTask {
     private final AtomicLong progressTokens = new AtomicLong();
     private final AtomicInteger progressToolUses = new AtomicInteger();
     private final CompletableFuture<Void> backgroundSignal = new CompletableFuture<>();
+    /** Messages mirrored off the run's event stream, deduped by uuid. */
+    private final List<Message> displayTranscript = new ArrayList<>();
+    /** Fired when {@link #displayTranscript} changes, so a live view can re-render. */
+    private volatile Runnable transcriptListener;
     private volatile double progress;
     private volatile String currentStep;
     private volatile Thread runnerThread;
@@ -122,6 +140,83 @@ public class LocalAgentTask {
             taskStore.updateUsage(getTaskId(), new TaskUsage(
                 normalizedTokens, normalizedTools, Math.max(0L, durationMs)));
         }
+    }
+
+    /**
+     * Thread-safe copy of the mirrored transcript, in arrival order. Empty until either the run
+     * emits its first message or a viewer seeds it from disk via {@link #seedDisplayTranscript}.
+     */
+    public List<Message> displayTranscript() {
+        synchronized (displayTranscript) {
+            return new ArrayList<>(displayTranscript);
+        }
+    }
+
+    /** True once the mirror holds at least one message, so a viewer can skip the disk seed. */
+    public boolean hasDisplayTranscript() {
+        synchronized (displayTranscript) {
+            return !displayTranscript.isEmpty();
+        }
+    }
+
+    /**
+     * Registers a listener invoked whenever the mirrored transcript changes, so a viewer can
+     * re-render a running agent in real time instead of polling for file changes.
+     */
+    public void setTranscriptListener(Runnable listener) {
+        this.transcriptListener = listener;
+    }
+
+    /**
+     * Mirrors one message off the run's event stream, deduping by uuid and capping the tail.
+     * A listener installed by a viewer is fired once per accepted append.
+     */
+    public void appendToDisplayTranscript(Message message) {
+        if (message == null) return;
+        synchronized (displayTranscript) {
+            if (message.uuid() != null
+                    && displayTranscript.stream().anyMatch(row -> message.uuid().equals(row.uuid()))) {
+                return;
+            }
+            displayTranscript.add(message);
+            while (displayTranscript.size() > DISPLAY_TRANSCRIPT_CAP) {
+                displayTranscript.removeFirst();
+            }
+        }
+        fireTranscriptListener();
+    }
+
+    /**
+     * Seeds the mirror from an already-parsed disk transcript, which is how a viewer opens a run
+     * that finished before it was ever watched. Existing rows win on uuid, so a seed can never
+     * clobber messages mirrored live.
+     *
+     * @return true when at least one row was added, which also means the listener already fired
+     */
+    public boolean seedDisplayTranscript(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) return false;
+        boolean changed;
+        synchronized (displayTranscript) {
+            Set<String> existing = displayTranscript.stream()
+                .map(Message::uuid).filter(Objects::nonNull).collect(Collectors.toSet());
+            changed = false;
+            for (Message message : messages) {
+                if (message == null) continue;
+                if (message.uuid() != null && !existing.add(message.uuid())) continue;
+                displayTranscript.add(message);
+                changed = true;
+            }
+            while (displayTranscript.size() > DISPLAY_TRANSCRIPT_CAP) {
+                displayTranscript.removeFirst();
+            }
+        }
+        if (changed) fireTranscriptListener();
+        return changed;
+    }
+
+    private void fireTranscriptListener() {
+        Runnable listener = transcriptListener;
+        if (listener != null) listener.run();
     }
 
     /**

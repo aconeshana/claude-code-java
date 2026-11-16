@@ -2,6 +2,7 @@ package com.claudecode.core.prompt;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -50,6 +51,12 @@ class UnrestrictedPromptTest {
     @BeforeEach
     void clearSectionCache() {
         SystemPromptSectionResolver.clearAll();
+        DarwinGoldenEnvironment.stub();
+    }
+
+    @AfterEach
+    void restorePlatformEnvironment() {
+        DarwinGoldenEnvironment.restore();
     }
 
     private static SystemPromptConfig configFor(String modelId, boolean unrestricted) {

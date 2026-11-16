@@ -1,8 +1,8 @@
 # Claude Code Java — Development Guide
 
 A terminal coding agent implemented in Java. It supports Anthropic endpoints and user-defined
-Anthropic-compatible or OpenAI-compatible model endpoints. The repository contains 15 product
-modules plus the build-time `build-recipes` helper project.
+Anthropic-compatible or OpenAI-compatible model endpoints. The repository contains the product
+modules listed below plus the build-time `build-recipes` helper project.
 
 ## Quick Reference
 
@@ -19,7 +19,7 @@ The product modules and `build-recipes` use Gradle with Kotlin DSL. See
 [docs/build-and-test.md](docs/build-and-test.md) for build, test, packaging, native-image,
 and platform-asset details.
 
-## Module Map (15 product modules)
+## Module Map
 
 ```
 claude-code-core     → stable model protocols, policies, value objects
@@ -27,6 +27,7 @@ claude-code-http     → shared OkHttp transport
 claude-code-api      → provider configuration, routing, and API clients
 claude-code-permissions → allow/deny/ask system
 claude-code-runtime  → QuerySession + headless session/turn orchestration + UI application ports
+claude-code-gateway  → in-process HTTP+SSE third session endpoint (web/API entry)
 claude-code-tools    → built-in + runtime-provided tool system (some tools are platform- or feature-gated)
 claude-code-commands → slash command registry (commands, availability gates, and hidden stubs)
 claude-code-mcp      → Model Context Protocol
@@ -40,55 +41,14 @@ claude-code-app      → assembly + packaging
 ```
 
 `build-recipes` is a build-time OpenRewrite/Refaster helper project and is not part of the
-product runtime module graph.
-
-### Key Dependency Chain
-
-```
-app → cli
-sdk → { core, session, cli (runtime only) }
-cli → { core, http, api, permissions, runtime, session, mcp, commands, ui, tools, services, lsp }
-      # The composition root explicitly declares every module whose types it uses.
-ui → { core, commands, permissions, tools, lsp, runtime }
-     # UI must not depend on services, MCP, or session implementations; use runtime/application ports.
-services → { core, http, api, mcp, tools, permissions, session, runtime }
-commands → { core, runtime }
-           # CLI leaf adapters provide session, permission, tools, configuration, and MCP capabilities.
-api → { core, http }
-mcp → { core, http }
-lsp → core
-runtime → { core, permissions }
-tools → { core, http, permissions, session, lsp, mcp, runtime }
-session → core
-permissions → core
-http → OkHttp (no internal module dependencies)
-core → no internal module dependencies
-```
-
-See [docs/architecture.md](docs/architecture.md) for the complete dependency graph.
-
-**Module dependency rule**: Internal Gradle project dependencies use
-`implementation(project(...))` by default. `api(project(...))` is allowed only when the dependency's
-types are deliberately exposed as part of the module's public ABI, and the exception must be recorded
-in `ModuleArchitectureTest`. Every production import from another internal module requires a direct
-production dependency. Test imports must be covered by a production dependency or an explicit
-`testImplementation` or `testCompileOnly` dependency. Do not rely on compile-classpath leakage
-through a third module. The module guard enforces allowed directions, acyclicity, direct dependency
-declarations, reviewed internal `api` exports, and selected ownership boundaries. Its allowed-edge
-policy is a ceiling, not an exact dependency snapshot, so obsolete edges may be removed.
-
-**Tool ownership rule**: Built-in tool implementations, registration support, and private tool
-state belong in `claude-code-tools`. Place an implementation in another module only when its actual
-compile-time dependencies require that boundary.
+product runtime module graph. The executable module graph, allowed dependency directions, and
+ownership boundaries live in `ModuleArchitectureTest` and [docs/architecture.md](docs/architecture.md).
 
 ## Code Standards (enforced)
 
 - **Java 25**: use records for immutable data carriers, sealed interfaces for closed unions,
   pattern-matching switches where they clarify modeled cases, and virtual threads for blocking I/O
 - **Visibility**: package-private by default; `public` only for deliberate package or module APIs
-- **Async**: query orchestration uses virtual threads and `BlockingQueue`-backed streaming handoff;
-  prefer `CompletionStage<T>` at API boundaries and `CompletableFuture<T>` when the implementation
-  owns completion
 - **`@Explanation` annotation**: briefly explain declarations that intentionally differ from the
   original product.
 
@@ -116,23 +76,17 @@ test task.
 
 ## Configuration
 
-- API key resolution order: `--api-key`, `ANTHROPIC_API_KEY`, then the
-  `primaryApiKey` field in the global config (legacy field: `apiKey`). The default global config is
-  `~/.claude.json`; with `CLAUDE_CONFIG_DIR`, it is resolved relative to that override.
 - Bearer authentication for the independent gateway channel: `ANTHROPIC_AUTH_TOKEN`.
 - File-backed settings sources: user-level `$CLAUDE_CONFIG_DIR/settings.json` (default:
   `~/.claude/settings.json`; `cowork_settings.json` when cowork plugins are enabled), project-level
   `<project>/.claude/settings.json`, local `<project>/.claude/settings.local.json`, the OS-specific
   administrator-managed `managed-settings.json` and sibling `managed-settings.d` drop-ins, and an
-  optional `--settings` file or inline JSON object. File-backed sources are parsed as strict JSON
-  after an optional UTF-8 BOM; comments and trailing commas are rejected.
+  optional `--settings` file or inline JSON object.
 - Transcript storage: `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/<sessionId>.jsonl` (default:
   `~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl`).
 - Configuration directory override: `CLAUDE_CONFIG_DIR` (default configuration home:
   `~/.claude`). It relocates the Claude configuration home and resolves the global config as
   `$CLAUDE_CONFIG_DIR/.claude.json` unless the legacy `$CLAUDE_CONFIG_DIR/.config.json` exists.
-
-The API key and bearer token are resolved independently; neither is a fallback or alias for the other.
 
 ## Architecture Notes
 
@@ -140,10 +94,6 @@ The API key and bearer token are resolved independently; neither is a fallback o
   orchestration, interruption recovery, and application-facing ports.
 - `claude-code-services` owns concrete integrations such as hooks, compaction, memory,
   settings, plugins, and platform processes.
-- `claude-code-ui` is a presentation adapter. Its production code does not depend on
-  `claude-code-services`, `claude-code-mcp`, or `claude-code-session`.
-- `claude-code-cli` is the composition root and wires concrete implementations to runtime,
-  command, and UI ports.
 - `claude-code-sdk` is an external-consumer leaf. Its query implementation launches the CLI
   in a separate JVM and can host SDK MCP servers in process; the CLI does not depend on it.
 - Model-visible tools are assembled dynamically from built-ins and runtime providers. Do not
