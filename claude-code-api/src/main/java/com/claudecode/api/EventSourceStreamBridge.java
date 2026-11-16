@@ -144,14 +144,24 @@ final class EventSourceStreamBridge {
             .newEventSource(ByteWatchdogTag.apply(request, byteWatchdog), state.listener());
         state.attach(eventSource, cancellation);
         if (onRequestSubmitted != null) onRequestSubmitted.run();
+        long connectStartNanos = System.nanoTime();
+        log.debug("[stream-connect] awaiting headers host={} path={} timeoutMs={}",
+            request.url().host(), request.url().encodedPath(), connectTimeout.toMillis());
         try {
             state.awaitConnected(connectTimeout);
+            log.debug("[stream-connect] headers received elapsedMs={}",
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos));
         } catch (ExecutionException e) {
+            log.debug("[stream-connect] connect failed elapsedMs={} cause={}",
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos), e.getCause());
             state.abort();
             Throwable cause = e.getCause();
             if (cause instanceof ApiException apiException) throw apiException;
             throw new ApiException("Failed to send request: " + cause.getMessage(), 0, cause);
         } catch (TimeoutException e) {
+            log.debug("[stream-connect] timed out elapsedMs={} host={} path={}",
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos),
+                request.url().host(), request.url().encodedPath());
             state.fail(new ApiException(
                 "API streaming connection timed out after " + connectTimeout.toMillis() + "ms", 0, e));
             throw new ApiException(

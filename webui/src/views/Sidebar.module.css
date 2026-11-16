@@ -62,17 +62,52 @@
 }
 
 /*
- * Marks a session hosted by another running Claude Code process (a remote
- * worker reached through the web gateway) so it is not mistaken for a local TUI
- * session in the row list.
+ * Session ownership tints. The row's dot says what the session is doing; these
+ * say whose session it is, so the list stays readable without a per-row label:
+ *
+ *   --dsw-alias-state-business-primary (brand blue)  a session this browser drives
+ *   --dsw-alias-label-secondary (muted ink)          a session the terminal owns
+ *   --dsw-static-green-500 (success)                 the row the user has open
+ *
+ * The first two are alias tokens and follow the platform's light/dark pairs;
+ * the success step has no alias at 500, so it is pinned to the static scale
+ * the way the vendored StateDot pins its running blue.
+ *
+ * The chase matrix keeps its animation in every ownership — only its color
+ * changes — so a running session still reads as running.
+ *
+ * Every StateDot class is hashed by its own CSS Module, so this file cannot
+ * name the element's `dot` / `matrix` classes at all — `.dot` here would be
+ * rewritten to a class this file never emits (verified: the element carries
+ * `_dot_1tljr_3`, this module would ask for `_dot_*_*.dot`). Ownership is
+ * therefore expressed purely through its own class on the same element, with
+ * the selector tripled so it outranks StateDot's `.dot[data-state]` rules.
+ *
+ * Tripling, not just doubling, is load-bearing: the vendored stylesheet loads
+ * after this one, so an equal-specificity rule would lose on source order —
+ * silently, since every state paints at 0.1 opacity through currentColor.
  */
-.remoteTag {
-  flex: none;
-  margin-left: 6px;
-  padding: 0 6px;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  font-size: 11px;
-  line-height: 16px;
-  opacity: 0.6;
+.stateWeb:is(.stateWeb, .stateWeb)[data-state] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.stateTerminal:is(.stateTerminal, .stateTerminal)[data-state] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.stateCurrent:is(.stateCurrent, .stateCurrent)[data-state] {
+  color: var(--dsw-static-green-500);
+}
+
+/*
+ * The running chase keeps its animation; only its color moves. StateDot paints
+ * the matrix from a custom property declared on the same element, so the
+ * ownership class alone can override it — no shared class name needed.
+ */
+.stateTerminal {
+  --dsh-state-ongoing: var(--dsw-alias-label-secondary);
+}
+
+.stateCurrent {
+  --dsh-state-ongoing: var(--dsw-static-green-500);
 }

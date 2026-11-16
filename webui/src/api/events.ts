@@ -46,7 +46,8 @@ export function subscribeMirror(
   for (const name of [
     'turn.started', 'output.text', 'output.thinking', ...TRANSIENT_EVENTS, 'tool.started',
     'tool.progress', 'tool.completed', 'permission.asked',
-    'permission.resolved', 'permission.mode', 'session.activated', 'session.error',
+    'permission.resolved', 'sudo.asked', 'sudo.resolved',
+    'permission.mode', 'session.activated', 'session.error',
     'session.idle', 'turn.cancelled', 'turn.completed', 'task_board',
   ]) {
     source.addEventListener(name, forward(name) as EventListener)

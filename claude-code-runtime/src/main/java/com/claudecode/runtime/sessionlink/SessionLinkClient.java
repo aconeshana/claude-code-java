@@ -124,8 +124,27 @@ public final class SessionLinkClient implements AutoCloseable {
                 CompletableFuture<SessionLinkFrame> reply = pending.remove(frame.replyTo());
                 if (reply != null) reply.completeExceptionally(RemoteException.of(frame));
             }
-            case EVENT -> listener.accept(frame);
+            case EVENT -> consume(frame);
             case REQUEST -> { /* The host never initiates requests on a client connection. */ }
+        }
+    }
+
+    /**
+     * Hands one event frame to the listener without letting a listener failure
+     * end this connection.
+     *
+     * <p>The listener runs on the reader thread, and a failure there escapes the
+     * read loop into its {@code finally}, closing the client: a single bad frame
+     * would then break every later request on a link that is still physically
+     * open — the host keeps writing, the client never reads again. An event is
+     * advisory to the client's projection, not part of the request/response
+     * protocol, so one it cannot apply is dropped instead of costing the link.
+     */
+    private void consume(SessionLinkFrame frame) {
+        try {
+            listener.accept(frame);
+        } catch (RuntimeException _) {
+            // Dropped: the next frame on this link may still apply cleanly.
         }
     }
 
@@ -146,6 +165,16 @@ public final class SessionLinkClient implements AutoCloseable {
             if (next != '\r') line.write(next);
         }
         return line.toByteArray();
+    }
+
+    /**
+     * Whether this client has been closed — as a caller asked, or because its
+     * reader loop saw the connection end. A client never reopens: its pending
+     * futures were failed and later requests fail immediately, so a holder that
+     * caches one must dial a new client rather than reuse this one.
+     */
+    public boolean isClosed() {
+        return closed.get();
     }
 
     @Override

@@ -43,6 +43,22 @@ final class CliFileDiffAdapter {
         this.messagesOf = messagesOf;
     }
 
+    /**
+     * The same adapter reading transcripts from an arbitrary root, for a
+     * session another process hosts.
+     *
+     * <p>This adapter reads a transcript and nothing else, so the only thing a
+     * remote session needs is its transcript resolved against the directory
+     * its owning process reported — not this process's own project.
+     *
+     * @param messagesOf resolves a session id to its messages, normally via
+     *                   {@code messagesInWorkDir} bound to the owner's directory
+     */
+    static GatewayFileDiffPort rootedAt(
+            Function<String, Optional<List<Message>>> messagesOf) {
+        return new CliFileDiffAdapter(messagesOf).port();
+    }
+
     /** The port this adapter implements. */
     GatewayFileDiffPort port() {
         return new GatewayFileDiffPort() {

@@ -1,10 +1,14 @@
 package com.claudecode.cli;
 
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.message.Message;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
 import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.webworker.WebWorkerDirectory;
+import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptLoader;
@@ -14,6 +18,7 @@ import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskType;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +44,8 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
             SessionHostSession host,
             CliHeadlessSessionFactory.Assembled assembled,
             String taskId,
-            Instant openedAt) {}
+            Instant openedAt,
+            boolean locallyOwned) {}
 
     CliHeadlessGatewaySessions(CliHeadlessSessionFactory factory, String mainCwd) {
         this.factory = factory;
@@ -49,7 +55,52 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     @Override
     public Optional<SessionHostSession> find(String sessionId) {
         Entry entry = sessions.get(sessionId);
-        return Optional.ofNullable(entry).map(Entry::host);
+        if (entry == null || !ownsHistory(entry)) return Optional.empty();
+        return Optional.of(livingHost(entry));
+    }
+
+    /**
+     * Whether this process, rather than some other TUI, is the one that runs
+     * this entry's turns.
+     *
+     * <p>{@code open} also mints an entry when a client hands it a session id
+     * belonging to a TUI elsewhere: the handle exists so the client can address
+     * that session, but its conversation stays in the owning process. The
+     * gateway's submission path asks {@link #find} first and only forwards to
+     * the owning TUI over Session Link when it answers empty, so reporting such
+     * an entry here routed every later submission into this process's own
+     * engine — a second, forked branch of the same conversation.
+     *
+     * <p>The two cases cannot be told apart by "does the engine hold messages":
+     * a resumed session also holds them. Ownership is therefore decided once, in
+     * {@code open}, from which directory's transcript the id resolves to.
+     */
+    private boolean ownsHistory(Entry entry) {
+        return entry.locallyOwned();
+    }
+
+    /**
+     * The entry's host record with its message count re-read from the live engine.
+     *
+     * <p>{@link SessionHostInfo} is an immutable snapshot taken when the session was
+     * assembled — at that instant a resumed session has no messages yet and a new one
+     * never will. Returning the frozen record makes every catalog row for an open
+     * headless session report {@code message_count: 0} forever, even though the
+     * snapshot endpoint serves the real conversation. The engine, unlike the record,
+     * stays current, so the count is projected from it per read. The other fields are
+     * still whatever assembly saw; only the count is a live fact.
+     */
+    private static SessionHostSession livingHost(Entry entry) {
+        SessionHostSession host = entry.host();
+        SessionHostInfo frozen = host.info();
+        int messages = entry.assembled().engine().conversation().getMessages().size();
+        if (messages == frozen.messageCount()) return host;
+        return new SessionHostSession(
+            new SessionHostInfo(frozen.id(), frozen.workDir(), frozen.summary(), messages,
+                frozen.modifiedAt(), frozen.gitBranch()),
+            host.events(), host.submitter(),
+            host.models(), host.efforts(), host.compacts(),
+            host.permissions(), host.cancels());
     }
 
     /** The project directory an open headless session works in, or empty when none is open under that id. */
@@ -71,7 +122,19 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     @Override
     public Opened open(OpenRequest request) {
         String sessionId = StringUtils.defaultString(request.sessionId()).strip();
-        String projectPath = resolveProjectPath(request.projectPath());
+        // An existing session id names a session some TUI may own elsewhere on
+        // this machine; its transcript then lives under that worker's project,
+        // not under the directory this gateway was launched from. Resolve it
+        // there first so the handle reports (and resumes) the real project.
+        String owner = owningWorkDir(sessionId);
+        String projectPath = resolveProjectPath(
+            StringUtils.defaultIfBlank(request.projectPath(), owner));
+        // A transcript another process reported owning is a handle on that
+        // process's session, not a session this one may run turns in. A
+        // session id nobody holds a transcript for is this process's to mint:
+        // answering "remote" for it would leave every brand-new id unrunnable.
+        boolean remote = owner != null && !Paths.get(owner).normalize()
+            .equals(Paths.get(mainCwd).toAbsolutePath().normalize());
 
         Entry existing = sessions.get(sessionId);
         if (existing != null) {
@@ -94,11 +157,42 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         // PENDING → RUNNING so the pill lists it and close can reach a
         // terminal state through the state machine.
         TaskRegistry.global().store().updateStatus(task.id(), TaskStatus.RUNNING);
-        sessions.put(id, new Entry(assembled.host(), assembled, task.id(), Instant.now()));
+        sessions.put(id, new Entry(assembled.host(), assembled, task.id(), Instant.now(), !remote));
         // The tasks dialog's kill stops the session through this action; the
         // entry is removed by then, so close() re-runs harmlessly as a no-op.
         TaskRegistry.global().registerWebSession(task.id(), () -> close(id));
         return new Opened(assembled.host(), projectPath, resumed);
+    }
+
+    /**
+     * The working directory of a process that holds this session's transcript,
+     * or null when the session is new here.
+     *
+     * <p>This process's own project is checked first; a miss falls back to the
+     * directories running workers report, which is where a session another TUI
+     * owns keeps its transcript.
+     */
+    private String owningWorkDir(String sessionId) {
+        if (sessionId.isEmpty()) return null;
+        Optional<String> local = transcriptUnder(sessionId, mainCwd) ? Optional.of(mainCwd)
+            : Optional.empty();
+        if (local.isPresent()) return local.get();
+        return new WebWorkerDirectory(ClaudePaths.WEB_WORKERS_DIR).scan().stream()
+            .map(WebWorkerRegistration::workDir)
+            .filter(workDir -> workDir != null && transcriptUnder(sessionId, workDir))
+            .findFirst()
+            .orElse(null);
+    }
+
+    /** Whether {@code workDir} holds a readable transcript for {@code sessionId}. */
+    private static boolean transcriptUnder(String sessionId, String workDir) {
+        if (StringUtils.isBlank(workDir)) return false;
+        try {
+            return Files.isRegularFile(
+                new SessionManager(workDir).getSessionFile(sessionId));
+        } catch (RuntimeException _) {
+            return false;
+        }
     }
 
     /** The persisted conversation for {@code sessionId}, or empty when none. */
@@ -176,8 +270,14 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 if (headlessSessionId != null) {
                     Entry entry = sessions.get(headlessSessionId);
                     if (entry != null) {
-                        return Optional.of(
-                            entry.assembled().engine().conversation().getMessages());
+                        List<Message> live =
+                            entry.assembled().engine().conversation().getMessages();
+                        // An entry can exist for a session this process merely
+                        // opened a handle on — a TUI elsewhere hosts it, so the
+                        // local engine never received its history. Answering
+                        // with that empty conversation hid the real transcript
+                        // behind a 200; fall through to disk instead.
+                        if (!live.isEmpty()) return Optional.of(live);
                     }
                 }
                 if (StringUtils.isBlank(sessionId)) return Optional.empty();

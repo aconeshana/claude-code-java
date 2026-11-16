@@ -10,7 +10,6 @@ import com.claudecode.runtime.sessionhost.*;
 import com.claudecode.runtime.sessionlink.SessionLinkServer;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
-import com.claudecode.session.SessionSearch;
 import com.claudecode.ui.lanterna.repl.LanternaReplScreen;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,7 +23,6 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -98,15 +96,22 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
                 return screen.activateHostSession(request);
             }
 
+            /**
+             * Only the sessions this process currently holds: the one the TUI is showing.
+             *
+             * <p>This listing is what a remote supervisor (the web gateway) presents as the
+             * terminal side of the session list, so it must not be the work directory's history.
+             * The registry already folds its current activation into every listing, so answering
+             * empty leaves exactly that one row; on-disk history is the catalog's job, not this
+             * worker's.
+             *
+             * <p>History also cannot be served here: the gateway subscribes every session a worker
+             * lists, and the link only lets a connection attach the active one, so each sibling
+             * row arrived untraceable ("remote" yet never fed) on top of being a duplicate of its
+             * catalog row.
+             */
             @Override public List<SessionHostInfo> list() {
-                return new SessionSearch(workDir).listSessions().stream().map(located -> {
-                    var info = located.info();
-                    String cwd = StringUtils.isBlank(info.cwd())
-                        ? located.cwd() : info.cwd();
-                    return new SessionHostInfo(info.id(), cwd, info.summary(),
-                        Math.max(0, info.messageCount()), Instant.ofEpochMilli(info.lastModified()),
-                        info.gitBranch());
-                }).toList();
+                return List.of();
             }
         });
         SessionCollaborationController collaboration =

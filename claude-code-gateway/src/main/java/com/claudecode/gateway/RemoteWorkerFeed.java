@@ -3,12 +3,16 @@ package com.claudecode.gateway;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionlink.SessionLinkClient;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Follows one interactive process's Session Link: every live event of every
@@ -21,7 +25,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class RemoteWorkerFeed implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(RemoteWorkerFeed.class);
     private static final String ACTIVATED = "session.activated";
+    private static final String INTERACTION_REQUESTED = "interaction.requested";
+    private static final String INTERACTION_RESOLVED = "interaction.resolved";
+    private static final String SUDO_KIND = "sudo_password";
 
     private final MirrorHub hub;
     private final SessionLinkClient client;
@@ -34,6 +42,21 @@ final class RemoteWorkerFeed implements AutoCloseable {
 
     void start() throws IOException {
         client.connect();
+    }
+
+    /**
+     * Whether this link can still carry a forwarded request.
+     *
+     * <p>A client is single-use: its reader loop closes the client on any read
+     * failure, and a closed client answers every later request with
+     * {@code session-link connection closed} forever. The pool caches one feed
+     * per worker socket, so when the host drops the connection (a TUI restart,
+     * a {@code /resume} that re-attaches the link) that cached feed would pin a
+     * dead link and every forwarded read would fail until the process exits.
+     * The pool drops such a feed and dials a fresh one on the next scan.
+     */
+    boolean isOpen() {
+        return !client.isClosed();
     }
 
     CompletableFuture<SessionLinkFrame> submit(String sessionId, String prompt, String messageId) {
@@ -51,6 +74,36 @@ final class RemoteWorkerFeed implements AutoCloseable {
         return client.request("interaction.respond", sessionId, payload);
     }
 
+    CompletableFuture<SessionLinkFrame> getPermissionMode(String sessionId) {
+        return client.request("permission.get", sessionId, JsonUtils.getMapper().createObjectNode());
+    }
+
+    CompletableFuture<SessionLinkFrame> setPermissionMode(String sessionId, String mode) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("mode", mode);
+        return client.request("permission.set", sessionId, payload);
+    }
+
+    CompletableFuture<SessionLinkFrame> getModel(String sessionId) {
+        return client.request("model.get", sessionId, JsonUtils.getMapper().createObjectNode());
+    }
+
+    CompletableFuture<SessionLinkFrame> setModel(String sessionId, String model) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("model", model);
+        return client.request("model.set", sessionId, payload);
+    }
+
+    CompletableFuture<SessionLinkFrame> getEffort(String sessionId) {
+        return client.request("effort.get", sessionId, JsonUtils.getMapper().createObjectNode());
+    }
+
+    CompletableFuture<SessionLinkFrame> setEffort(String sessionId, String effort) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("effort", effort);
+        return client.request("effort.set", sessionId, payload);
+    }
+
     CompletableFuture<SessionLinkFrame> listSessions() {
         return client.request("session.list", null, JsonUtils.getMapper().createObjectNode());
     }
@@ -58,19 +111,50 @@ final class RemoteWorkerFeed implements AutoCloseable {
     /** Attaches to a session once; repeated calls for an attached session are no-ops. */
     CompletableFuture<SessionLinkFrame> subscribe(String sessionId) {
         if (!subscribed.add(sessionId)) return CompletableFuture.completedFuture(null);
+        log.debug("[remote-feed] subscribe session={}", sessionId);
         return client.request("session.subscribe", sessionId,
             JsonUtils.getMapper().createObjectNode()).whenComplete((_, failure) -> {
+                log.debug("[remote-feed] subscribe settled session={} failure={}",
+                    sessionId, failure == null ? "none" : failure.toString());
                 if (failure != null) subscribed.remove(sessionId);
             });
     }
 
     private void onFrame(SessionLinkFrame frame) {
+        log.debug("[remote-feed] frame name={} session={}", frame.name(), frame.sessionId());
         if (frame.sessionId() == null) return;
         if (ACTIVATED.equals(frame.name())) {
             subscribe(frame.sessionId());
             return;
         }
+        // A sudo ask shares the interaction frame names but is a password
+        // prompt, not an approval: it carries no tool input and must not be
+        // rendered as an allow/deny card, so it splits off by its kind tag.
+        boolean sudo = Strings.CS.equals(SUDO_KIND, payloadOf(frame).path("interaction_kind").asText());
+        if (INTERACTION_REQUESTED.equals(frame.name())) {
+            if (sudo) {
+                hub.publishSudoAsked(frame.sessionId(), RemoteInteractionMirror.sudoAsked(payloadOf(frame)));
+            } else {
+                hub.publishPermissionAsked(frame.sessionId(),
+                    RemoteInteractionMirror.asked(payloadOf(frame)));
+            }
+            return;
+        }
+        if (INTERACTION_RESOLVED.equals(frame.name())) {
+            if (sudo) {
+                hub.publishSudoResolved(frame.sessionId(),
+                    RemoteInteractionMirror.sudoResolved(payloadOf(frame)));
+            } else {
+                hub.publishPermissionResolved(frame.sessionId(),
+                    RemoteInteractionMirror.resolved(payloadOf(frame)));
+            }
+            return;
+        }
         hub.publishRemote(frame.sessionId(), frame.name(), frame.payload());
+    }
+
+    private static JsonNode payloadOf(SessionLinkFrame frame) {
+        return frame.payload() == null ? JsonUtils.getMapper().createObjectNode() : frame.payload();
     }
 
     @Override

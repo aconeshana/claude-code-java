@@ -6,6 +6,7 @@ import { ApiError, type UserContentBlock } from './api/types'
 import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
 import { useTranslate } from './i18n/useTranslate'
 import { pendingAskFor, useApprovals } from './store/approvals'
+import { pendingSudoFor, useSudoAsks } from './store/sudoAsks'
 import { useAuth } from './store/auth'
 import { useContextTimeline, useSessionAgents } from './store/contextTimeline'
 import { dropForeignSubagentFocus, useSubagentFocus } from './store/subagentFocus'
@@ -17,6 +18,7 @@ import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
+import { SudoCard } from './views/SudoCard'
 import { ChatView } from './views/ChatView'
 import { ConversationRoot } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
@@ -56,6 +58,7 @@ export function App() {
     const connection: MirrorConnection = subscribeMirror((frame) => {
       useConversations.getState().applyFrame(frame)
       useApprovals.getState().applyFrame(frame)
+      useSudoAsks.getState().applyFrame(frame)
       useContextTimeline.getState().applyFrame(frame)
       useSessions.getState().applyFrame(frame)
       usePermissionMode.getState().applyFrame(frame)
@@ -89,6 +92,8 @@ export function App() {
     state.conversations[selectedId ?? ''])
   const asks = useApprovals((state) => state.asks)
   const visibleAsk = pendingAskFor(asks, selectedId)
+  const sudoAsks = useSudoAsks((state) => state.asks)
+  const visibleSudo = pendingSudoFor(sudoAsks, selectedId)
 
   const onSubmit = useCallback((content: string | readonly UserContentBlock[]) => {
     void submitTurn(selectedId, content).catch((failure: unknown) => {
@@ -169,6 +174,23 @@ export function App() {
         }
         composer={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {visibleSudo != null && (
+              <SudoCard
+                key={visibleSudo.request_id}
+                ask={visibleSudo}
+                onRespond={async (ask, password) => {
+                  const { respondSudo } = await import('./api/client')
+                  await respondSudo(password == null
+                    ? { request_id: ask.request_id, session_id: ask.session_id, behavior: 'cancel' }
+                    : {
+                        request_id: ask.request_id,
+                        session_id: ask.session_id,
+                        behavior: 'submit',
+                        password,
+                      })
+                }}
+              />
+            )}
             {visibleAsk != null && (visibleAsk.questions?.length ?? 0) > 0 && (
               <QuestionCard
                 key={visibleAsk.request_id}

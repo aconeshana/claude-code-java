@@ -1399,4 +1399,70 @@ class TranscriptRecorderTest {
         assertFalse(line.has("level"));
         assertFalse(line.has("content"));
     }
+
+    /**
+     * Two processes share one transcript: this recorder, and a second writer that appends
+     * through the storage layer directly — which is how the gateway's SDK path lands its
+     * own rows. The recorder's chain anchors live in memory, so unless it notices the
+     * foreign append it keeps chaining onto its own last write and the conversation forks.
+     */
+    @Test
+    void chainsOntoAnotherProcessesWrite() throws Exception {
+        String sessionId = sessionManager.createSession();
+        Path sessionFile = sessionManager.getSessionFile(sessionId);
+        String cwd = "/test/project";
+
+        UserMessage mine1 = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("first"));
+        recorder.recordTranscript(sessionId, mine1);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
+
+        // The other process appends under the same file, chaining onto our first message.
+        UserMessage theirs = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("theirs"));
+        storage.appendMessageWithParent(sessionFile, theirs, sessionId, cwd,
+            false, null, "HEAD", null, null, mine1.uuid(), "p-theirs", "user");
+
+        UserMessage mine2 = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("second"));
+        recorder.recordTranscript(sessionId, mine2);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
+
+        JsonNode second = lastLineOfType(sessionFile, "second");
+        assertEquals(theirs.uuid(), second.path("parentUuid").asText(),
+            "must chain onto the other process's write, not fork off our own last message");
+    }
+
+    @Test
+    void doesNotDuplicateAMessageTheOtherProcessAlreadyWrote() throws Exception {
+        String sessionId = sessionManager.createSession();
+        Path sessionFile = sessionManager.getSessionFile(sessionId);
+        String cwd = "/test/project";
+
+        UserMessage first = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("first"));
+        recorder.recordTranscript(sessionId, first);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
+
+        // The other process writes the very message this recorder is about to write.
+        UserMessage shared = new UserMessage(UUID.randomUUID().toString(), MessageContent.ofText("shared"));
+        storage.appendMessageWithParent(sessionFile, shared, sessionId, cwd,
+            false, null, "HEAD", null, null, first.uuid(), "p-shared", "user");
+
+        recorder.recordTranscript(sessionId, shared);
+        assertTrue(recorder.awaitPendingWrites(sessionId, 5_000));
+
+        long occurrences = JsonUtils.readJsonLines(sessionFile).stream()
+            .filter(n -> Strings.CS.equals("shared", n.path("message").path("content").asText())
+                || Strings.CS.equals("shared", n.path("message").path("blocks").path(0).path("text").asText()))
+            .count();
+        assertEquals(1, occurrences, "the foreign row already on disk must not be appended twice");
+    }
+
+    private static JsonNode lastLineOfType(Path file, String text) throws Exception {
+        JsonNode found = null;
+        for (JsonNode node : JsonUtils.readJsonLines(file)) {
+            String content = node.path("message").path("content").asText("");
+            String block = node.path("message").path("blocks").path(0).path("text").asText("");
+            if (text.equals(content) || text.equals(block)) found = node;
+        }
+        assertNotNull(found, "no transcript row carrying text: " + text);
+        return found;
+    }
 }

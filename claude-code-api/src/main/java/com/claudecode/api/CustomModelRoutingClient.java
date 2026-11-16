@@ -190,6 +190,7 @@ public final class CustomModelRoutingClient implements LlmClient {
             .querySource(request.querySource())
             .cancellationRegistrar(request.cancellationRegistrar())
             .subagent(request.subagent())
+            .streamConnectTimeout(request.streamConnectTimeout())
             .build();
     }
 
@@ -303,6 +304,7 @@ public final class CustomModelRoutingClient implements LlmClient {
             .querySource(request.querySource())
             .cancellationRegistrar(request.cancellationRegistrar())
             .subagent(request.subagent())
+            .streamConnectTimeout(request.streamConnectTimeout())
             .build();
     }
 

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
@@ -542,6 +543,37 @@ class LlmClientAdapterTest {
         assertEquals("Hello", capturedRequest[0].messages().getFirst().content());
         assertEquals(List.of(), capturedRequest[0].tools(),
             "main-loop requests preserve an explicit empty tools array");
+    }
+
+    @Test
+    void adapterCarriesConfiguredStreamConnectTimeoutOntoEveryRequest() {
+        final CreateMessageRequest[] capturedRequest = {null};
+        LlmClient capturingClient = new LlmClient() {
+            @Override
+            public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request) {
+                capturedRequest[0] = request;
+                return List.<StreamEvent>of(new StreamEvent.MessageStop()).iterator();
+            }
+
+            @Override
+            public ApiMessage createMessage(CreateMessageRequest request) {
+                return null;
+            }
+
+            @Override
+            public String getModel() {
+                return "test-model";
+            }
+        };
+
+        StreamingClient.StreamRequest request = new StreamingClient.StreamRequest(
+            "claude-sonnet-4-20250514", 8192, "You are helpful",
+            List.of(new StreamingClient.StreamRequest.RequestMessage("user", "Hello")), true);
+
+        new LlmClientAdapter(capturingClient, Duration.ofSeconds(60))
+            .createStream(request).forEachRemaining(_ -> { });
+
+        assertEquals(Duration.ofSeconds(60), capturedRequest[0].streamConnectTimeout());
     }
 
     @Test

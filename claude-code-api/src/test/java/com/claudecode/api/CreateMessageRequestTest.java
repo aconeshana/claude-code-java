@@ -5,6 +5,7 @@ import com.claudecode.core.feature.FeatureGate;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -389,4 +390,23 @@ class CreateMessageRequestTest {
         JsonNode node = JsonUtils.parseTree(JsonUtils.toJson(request));
         assertFalse(node.has("context_management"));
     }
+
+    @Test
+    void streamConnectTimeoutIsNotSerializedAndSurvivesCopy() {
+        CreateMessageRequest request = CreateMessageRequest.builder()
+                .model("m")
+                .maxTokens(16)
+                .messages(List.of(new CreateMessageRequest.RequestMessage("user", "hi")))
+                .streamConnectTimeout(Duration.ofSeconds(60))
+                .build();
+
+        assertEquals(Duration.ofSeconds(60), request.streamConnectTimeout());
+        assertFalse(JsonUtils.parseTree(JsonUtils.toJson(request)).has("streamConnectTimeout"));
+
+        CreateMessageRequest replaced = request.withStreamConnectTimeout(null);
+        assertNull(replaced.streamConnectTimeout());
+        assertEquals("m", replaced.model());
+        assertEquals(16, replaced.maxTokens());
+    }
 }
+

@@ -50,8 +50,15 @@ class ModuleArchitectureTest {
         Map.entry("claude-code-lsp", Set.of("claude-code-core")),
         Map.entry("claude-code-mcp", Set.of("claude-code-core", "claude-code-http")),
         Map.entry("claude-code-runtime", Set.of("claude-code-core", "claude-code-permissions")),
+        // The gateway serves the session row menu's four mutating actions
+        // (rename/fork/archive/delete) for sessions it does not host, and those
+        // are transcript edits. Fork in particular is an intricate transform
+        // (uuid remapping, parent rewriting, sidecar markers) that must not be
+        // re-derived: the gateway calls the same SessionOperationsService the
+        // Agent SDK's local session facade does.
         Map.entry("claude-code-gateway", Set.of(
-            "claude-code-core", "claude-code-runtime", "claude-code-api")),
+            "claude-code-core", "claude-code-runtime", "claude-code-api",
+            "claude-code-session")),
         Map.entry("claude-code-tools", Set.of(
             "claude-code-core", "claude-code-http", "claude-code-permissions",
             "claude-code-session", "claude-code-lsp", "claude-code-mcp",

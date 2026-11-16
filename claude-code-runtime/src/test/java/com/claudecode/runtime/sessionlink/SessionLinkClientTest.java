@@ -97,6 +97,43 @@ class SessionLinkClientTest {
         client.close();
     }
 
+    @Test
+    void aListenerThatThrowsOnOneEventKeepsTheLinkOpen() throws Exception {
+        // The listener runs on the reader thread. If its failure escaped the read
+        // loop, the client would close and the request below — answered only after
+        // the rejected event — would never complete.
+        List<String> seen = new ArrayList<>();
+        SessionLinkClient client = new SessionLinkClient(socketPath, "tok", frame -> {
+            seen.add(frame.name());
+            throw new IllegalStateException("projection could not apply " + frame.name());
+        });
+        Thread host = Thread.ofVirtual().start(() -> {
+            try {
+                acceptPeer();
+                SessionLinkFrame hello = readFrames(1).getFirst();
+                writeFrame(SessionLinkFrame.response(hello.id(), hello.name(), null,
+                    JsonUtils.getMapper().createObjectNode()));
+                SessionLinkFrame list = readFrames(1).getFirst();
+                // An event the listener rejects, then the response to the request.
+                writeFrame(SessionLinkFrame.event("output.text", "s1",
+                    JsonUtils.getMapper().createObjectNode()));
+                writeFrame(SessionLinkFrame.response(list.id(), list.name(), null,
+                    JsonUtils.getMapper().createObjectNode().put("status", "ok")));
+            } catch (IOException failure) {
+                throw new IllegalStateException(failure);
+            }
+        });
+        client.connect();
+
+        SessionLinkFrame response = client.request("session.list", null,
+            JsonUtils.getMapper().createObjectNode()).get(5, TimeUnit.SECONDS);
+
+        assertEquals("ok", response.payload().get("status").asText());
+        assertEquals(List.of("output.text"), seen);
+        host.join(5_000);
+        client.close();
+    }
+
     private void serveHelloThenList() {
         try {
             acceptPeer();

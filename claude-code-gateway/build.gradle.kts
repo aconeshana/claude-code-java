@@ -4,6 +4,10 @@ dependencies {
     implementation(project(":claude-code-core"))
     implementation(project(":claude-code-runtime"))
     implementation(project(":claude-code-api"))
+    // The session row menu's four mutating actions are transcript edits. A
+    // gateway that runs no engine still has to serve them, and re-deriving the
+    // fork transform here would be a second copy of SessionOperationsService.
+    implementation(project(":claude-code-session"))
     api(libs.commons.lang3)
     api(libs.jackson.databind)
 

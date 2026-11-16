@@ -38,8 +38,6 @@ import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.claudecode.gateway.GatewayCommandsPort;
-import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayModelsPort;
@@ -96,7 +94,6 @@ import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
-import com.claudecode.tools.files.WorkspaceFileSearch;
 import com.claudecode.tools.bash.BashTool;
 import com.claudecode.tools.cron.CronStore;
 import com.claudecode.tools.loop.LoopPromptResolver;
@@ -403,14 +400,14 @@ final class CliInteractiveSessionRunner {
                 gatewaySettings(interactiveCwd),
                 gatewaySchedule(),
                 gatewayModels(customModelCatalog),
-                gatewayCommands(cmdRegistry),
+                CliGatewayPorts.commands(cmdRegistry),
                 gatewaySessionContext(sessionHostRuntime.registry(), engine,
                     headlessSessions, interactiveCwd, contextDataCollector,
                     toolRegistry::getContextAnalysisToolDefinitions),
                 gatewaySessionActions(),
                 gatewayPermissionMode(sessionHostRuntime.registry(), headlessSessions),
                 gatewaySpinnerVerbs(),
-                gatewayFileSuggestions(interactiveCwd),
+                CliGatewayPorts.fileSuggestions(interactiveCwd),
                 gatewaySessionCancel(sessionHostRuntime.registry(), headlessSessions),
                 gatewayTaskBoard(taskBoard, engine.conversation().getSessionId()),
                 gatewayFileDiff(headlessSessions.messagesPort(interactiveCwd),
@@ -659,7 +656,9 @@ final class CliInteractiveSessionRunner {
             sessionHostRuntime.interactions().register(
                 InteractionFeatures.SUDO_PASSWORD,
                 new TuiSudoPasswordPresenter(
-                    sessionHostRuntime.interactions(), lanternaRepl::promptSudoPassword));
+                    sessionHostRuntime.interactions(),
+                    lanternaRepl::promptSudoPassword,
+                    lanternaRepl::dismissSudoPassword));
             if (input.startupResumePicker()) {
                 lanternaRepl.requestStartupResumePicker(input.startupResumeSearchTerm());
             }
@@ -831,7 +830,7 @@ final class CliInteractiveSessionRunner {
      * to {@code RuleSource}/{@code PermissionBehavior} so the gateway module
      * stays free of services and permissions types.
      */
-    private static GatewaySettingsPort gatewaySettings(String cwd) {
+    static GatewaySettingsPort gatewaySettings(String cwd) {
         return new GatewaySettingsPort() {
             @Override public ObjectNode effectiveSettings() {
                 return SettingsSnapshots.withSources(cwd);
@@ -894,7 +893,7 @@ final class CliInteractiveSessionRunner {
      * instance the {@code /model} command writes to, so webui edits and
      * slash-command edits share one on-disk catalogue.
      */
-    private static GatewayModelsPort gatewayModels(CustomModelCatalog catalog) {
+    static GatewayModelsPort gatewayModels(CustomModelCatalog catalog) {
         return new GatewayModelsPort() {
             @Override public List<ModelEntry> list() {
                 return catalog.list().stream()
@@ -929,43 +928,6 @@ final class CliInteractiveSessionRunner {
         return new GatewaySpinnerVerbsPort() {
             @Override public List<String> activeVerbs() { return SpinnerVerbs.activeVerbs(); }
             @Override public Map<String, String> toolVerbs() { return SpinnerVerbs.toolVerbs(); }
-        };
-    }
-
-    /**
-     * Projects the TUI {@code @}-completion workspace enumeration onto the
-     * gateway, so the webui composer's {@code @} menu lists the same paths the
-     * TUI typeahead offers. Both surfaces rank through one
-     * {@code WorkspaceFileSearch}, so the two cannot drift; rows carry paths
-     * only and never read file contents (the submission-time
-     * {@code AtMentionedFilesProvider} owns the read).
-     */
-    private static GatewayFileSuggestionsPort gatewayFileSuggestions(String cwd) {
-        WorkspaceFileSearch search = new WorkspaceFileSearch();
-        return new GatewayFileSuggestionsPort() {
-            @Override public List<FileCandidate> list(String query) {
-                return search.suggest(cwd, query, MAX_WEB_FILE_CANDIDATES).stream()
-                    .map(row -> new FileCandidate(row.path(), row.directory()))
-                    .toList();
-            }
-        };
-    }
-
-    /** Upper bound on one {@code @} menu answer (the client renders far fewer). */
-    private static final int MAX_WEB_FILE_CANDIDATES = 50;
-
-    private static GatewayCommandsPort gatewayCommands(CommandRegistry registry) {
-        return new GatewayCommandsPort() {
-            @Override public List<CommandEntry> list() {
-                return registry.snapshot().commands().stream()
-                    .filter(command -> !command.isHidden())
-                    .map(command -> new CommandEntry(
-                        command.name(),
-                        command.menuDescription(),
-                        command.argumentHint(),
-                        command instanceof CliSkillPromptCommand ? "skill" : "command"))
-                    .toList();
-            }
         };
     }
 

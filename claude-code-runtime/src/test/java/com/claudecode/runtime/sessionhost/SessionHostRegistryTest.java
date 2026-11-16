@@ -42,6 +42,20 @@ class SessionHostRegistryTest {
     }
 
     @Test
+    void listIncludesActiveSessionWithoutTranscriptOnDisk() {
+        SessionHostRegistry registry = new SessionHostRegistry(new SessionHostRegistry.Activator() {
+            @Override public CompletableFuture<SessionHostSession> activate(SessionOpenRequest request) {
+                return CompletableFuture.completedFuture(session(request.requestedSessionId()));
+            }
+            @Override public List<SessionHostInfo> list() { return List.of(); }
+        });
+        SessionHostSession current = session("fresh");
+        registry.activateLocal(current);
+
+        assertEquals(List.of(current.info()), registry.list());
+    }
+
+    @Test
     void borrowsNonOwningViewOnlyForTheActiveSession() {
         SessionHostRegistry registry = new SessionHostRegistry(new SessionHostRegistry.Activator() {
             @Override public CompletableFuture<SessionHostSession> activate(SessionOpenRequest request) {
@@ -228,6 +242,45 @@ class SessionHostRegistryTest {
         assertThrows(CompletionException.class, opening::join);
         assertEquals(0, activations.get());
         assertEquals("current", registry.current().orElseThrow().info().id());
+    }
+
+    @Test
+    void listTakesTheLiveCountForTheActiveSessionInsteadOfTheCatalogsCopy() {
+        // The activator serves the catalog, whose message count is frozen at transcript glob time.
+        // Keeping both rows would let the caller pick the stale one and report a count that never
+        // moves for the session the user is actually typing into.
+        SessionHostRegistry registry = new SessionHostRegistry(new SessionHostRegistry.Activator() {
+            @Override public CompletableFuture<SessionHostSession> activate(SessionOpenRequest request) {
+                return CompletableFuture.completedFuture(session(request.requestedSessionId()));
+            }
+            @Override public List<SessionHostInfo> list() {
+                return List.of(
+                    new SessionHostInfo("current", "/project", "stored", 4, null, ""),
+                    new SessionHostInfo("other", "/project", "", 7, null, ""));
+            }
+        });
+        SessionHostSession current = sessionWithCount("current", 80);
+        registry.activateLocal(current);
+
+        List<SessionHostInfo> listed = registry.list();
+
+        assertEquals(2, listed.size(), "no duplicate row for a session the catalog already has");
+        assertEquals(current.info(), listed.getFirst(), "the active row carries the live count");
+        assertEquals("other", listed.get(1).id(), "sibling sessions keep their catalog rows");
+    }
+
+    private static SessionHostSession sessionWithCount(String id, int messageCount) {
+        SessionSink primary = new SessionSink() {
+            @Override public void onTurnStart(UserInput input) {}
+            @Override public void onMessage(SDKMessage msg) {}
+            @Override public void onError(Throwable error, boolean userCancel) {}
+            @Override public void onTurnComplete(TurnOutcome outcome) {}
+            @Override public void onIdle() {}
+        };
+        return new SessionHostSession(
+            new SessionHostInfo(id, "/project", "", messageCount, null, ""),
+            new SessionEventHub(primary, _ -> {}),
+            _ -> CompletableFuture.completedFuture(null));
     }
 
     private static SessionHostSession session(String id) {

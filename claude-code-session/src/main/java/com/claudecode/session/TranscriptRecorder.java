@@ -95,6 +95,18 @@ public class TranscriptRecorder implements TranscriptSink {
 
     private static final ConcurrentMap<String, String> currentParent = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, String> lastAssistantUuid = new ConcurrentHashMap<>();
+    /**
+     * Size this process last observed the transcript file to have, after its own write.
+     *
+     * <p>Chain anchors in {@link #currentParent} / {@link #lastAssistantUuid} are maintained
+     * in memory, so they only describe writes made by this process. The gateway process
+     * appends to the same transcript directly, and its writes never touch this memory. The
+     * file size is the cheap cross-process tell: if it disagrees with what this process
+     * left behind, someone else appended and the anchors have to be re-read from disk.
+     * Without that check each side keeps chaining onto its own last write and the
+     * conversation forks permanently.
+     */
+    private static final ConcurrentMap<String, Long> observedFileSizes = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, String> sessionSlugs = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, String> currentPromptIds = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, String> currentPromptSources = new ConcurrentHashMap<>();
@@ -294,6 +306,11 @@ public class TranscriptRecorder implements TranscriptSink {
         enqueue(sessionFile, () -> {
             rebaseConversationChain(sessionFile, retained);
             writeRewindAnchor(sessionId, sessionFile, anchorUuid);
+            // A rewind deliberately points the chain at a retained tail while the
+            // abandoned rows stay on disk. Re-baseline the size fingerprint so the
+            // cross-process reconciliation does not read those rows back and undo
+            // the rewind on the very next append.
+            observedFileSizes.put(sessionFile.toString(), currentFileSize(sessionFile));
         });
     }
 
@@ -921,6 +938,7 @@ public class TranscriptRecorder implements TranscriptSink {
         materializedLastPrompts.remove(key);
         currentParent.remove(key);
         lastAssistantUuid.remove(key);
+        observedFileSizes.remove(key);
         sessionSlugs.remove(key);
         currentPromptIds.remove(key);
         currentPromptSources.remove(key);
@@ -961,6 +979,7 @@ public class TranscriptRecorder implements TranscriptSink {
         recordedUuids.remove(key);
         currentParent.remove(key);
         lastAssistantUuid.remove(key);
+        observedFileSizes.remove(key);
         return true;
     }
 
@@ -1127,14 +1146,20 @@ public class TranscriptRecorder implements TranscriptSink {
                             if (seen.contains(uuid)) {
                                 return; // already on disk → skip (prefix-skip; seed captured it)
                             }
-                            String parent = computeParent(message,
-                                currentParent.get(key), lastAssistantUuid.get(key));
-
-                            // compact boundary, where it preserves the running parent
-                            // (the last chain participant before the boundary).
-                            String logicalParent = isCompactBoundary(message)
-                                ? compactLogicalParent(message, currentParent.get(key)) : null;
                             SessionFileLock.withLock(sessionFile, () -> {
+                                // The size check and the append share the cross-process
+                                // lock, so no other process can append between them.
+                                reconcileChainWithDisk(key, sessionFile, seen);
+                                if (seen.contains(uuid)) {
+                                    return; // another process wrote this very message
+                                }
+                                String parent = computeParent(message,
+                                    currentParent.get(key), lastAssistantUuid.get(key));
+
+                                // compact boundary, where it preserves the running parent
+                                // (the last chain participant before the boundary).
+                                String logicalParent = isCompactBoundary(message)
+                                    ? compactLogicalParent(message, currentParent.get(key)) : null;
                                 if (isCompactBoundary(message)
                                         && !preparedManualCompactMetadata.remove(key)
                                         && !freshlyMaterializedRestoredModes.remove(key)) {
@@ -1148,14 +1173,15 @@ public class TranscriptRecorder implements TranscriptSink {
                                     currentBranch(), slug,
                                     logicalParent, parent, promptId, promptSource,
                                     attributionAgent, teamInfo);
-                            });
-                            seen.add(uuid);
-                            if (isChainParticipant(message)) {
-                                currentParent.put(key, uuid);
-                                if (Strings.CS.equals("assistant", message.type())) {
-                                    lastAssistantUuid.put(key, uuid);
+                                seen.add(uuid);
+                                if (isChainParticipant(message)) {
+                                    currentParent.put(key, uuid);
+                                    if (Strings.CS.equals("assistant", message.type())) {
+                                        lastAssistantUuid.put(key, uuid);
+                                    }
                                 }
-                            }
+                                observedFileSizes.put(key, currentFileSize(sessionFile));
+                            });
                         } finally {
                             lock.unlock();
                         }
@@ -1344,6 +1370,39 @@ public class TranscriptRecorder implements TranscriptSink {
         metadata.leafUuid().ifPresent(uuid -> currentLeaves.putIfAbsent(
             key, new LeafState(uuid, Instant.EPOCH)));
         return seen;
+    }
+
+    /**
+     * Re-reads the chain anchors from disk when another process appended behind our back.
+     *
+     * <p>The in-memory anchors only track this process's writes. A second process (the
+     * gateway, when it appends through the SDK path) moves the real chain tail without
+     * touching our maps, so chaining onto them would attach the next message to a stale
+     * leaf and fork the conversation. The file size is the tell: it is compared against
+     * what this process last left behind, and only a disagreement — another append — pays
+     * for the full re-read.
+     *
+     * <p>Must be called while holding the cross-process file lock, so the size sampled
+     * here and the append that follows cannot be separated by a foreign write.
+     */
+    private void reconcileChainWithDisk(String key, Path sessionFile, Set<String> seen) {
+        long size = currentFileSize(sessionFile);
+        Long observed = observedFileSizes.get(key);
+        if (observed != null && observed == size) {
+            return; // file is exactly where our last write left it; anchors are current
+        }
+        Set<String> diskUuids = seedState(sessionFile);
+        seen.addAll(diskUuids);
+        observedFileSizes.put(key, size);
+    }
+
+    /** Current transcript size in bytes, or {@code -1} when it cannot be read. */
+    private static long currentFileSize(Path sessionFile) {
+        try {
+            return Files.size(sessionFile);
+        } catch (IOException _) {
+            return -1L;
+        }
     }
 
     private void rebaseConversationChain(Path file, List<Message> retainedMessages) {

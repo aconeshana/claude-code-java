@@ -52,6 +52,16 @@ public interface GatewaySessionContextPort {
         }
     }
 
+    /** The reasoning-effort half of a session's selection. */
+    record EffortSelection(String current, String effective, List<String> choices) {
+
+        public EffortSelection {
+            current = current == null ? "" : current;
+            effective = effective == null ? "" : effective;
+            choices = List.copyOf(choices == null ? List.of() : choices);
+        }
+    }
+
     /** One selectable model row: a built-in family, or a custom model. */
     record ModelChoice(String name, String label, String description, boolean defaultOption) {}
 

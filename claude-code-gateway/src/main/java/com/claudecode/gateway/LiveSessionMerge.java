@@ -27,6 +27,10 @@ import org.apache.commons.lang3.StringUtils;
  * <p>Rows synthesized here carry only what the registry knows. They are deliberately not enriched:
  * {@code customTitle} and {@code firstPrompt} live in the transcript that does not exist yet.
  *
+ * <p>The same applies to a live session that <em>does</em> have a catalog row: the catalog's copy
+ * is a snapshot taken when the transcript was globbed, so its {@code message_count} freezes while
+ * the session keeps growing. {@link #reconcile} overlays the live counts onto that row.
+ *
  * @see GatewayServer#sessionsBody(int)
  */
 @Explanation("The gateway's session listing must include sessions that have no transcript yet")
@@ -53,11 +57,17 @@ final class LiveSessionMerge {
             List<ProjectEntry> catalogProjects,
             List<SessionHostInfo> live,
             UnaryOperator<String> canonicalize) {
-        Map<String, List<SessionEntry>> pending = groupByProject(catalogProjects, live, canonicalize);
-        if (pending.isEmpty()) return catalogProjects;
+        // A live session that already has a catalog row must still take the live row's counts:
+        // the catalog reads the transcript once, so its message_count stops advancing the moment
+        // the session keeps growing in a process the catalog cannot see. Overlay first, or the
+        // freshly-lived numbers are discarded along with the duplicate.
+        Map<String, SessionEntry> liveById = indexLive(live);
+        List<ProjectEntry> catalog = reconcile(catalogProjects, liveById);
+        Map<String, List<SessionEntry>> pending = groupByProject(catalog, live, canonicalize);
+        if (pending.isEmpty()) return catalog;
 
-        List<ProjectEntry> absorbed = new ArrayList<>(catalogProjects.size());
-        for (ProjectEntry project : catalogProjects) {
+        List<ProjectEntry> absorbed = new ArrayList<>(catalog.size());
+        for (ProjectEntry project : catalog) {
             List<SessionEntry> fresh = pending.remove(project.projectPath());
             absorbed.add(fresh == null ? project : absorb(project, fresh));
         }
@@ -66,6 +76,55 @@ final class LiveSessionMerge {
         pending.forEach((projectPath, rows) -> merged.add(synthesize(projectPath, rows)));
         merged.addAll(absorbed);
         return List.copyOf(merged);
+    }
+
+    private static Map<String, SessionEntry> indexLive(List<SessionHostInfo> live) {
+        Map<String, SessionEntry> byId = new LinkedHashMap<>();
+        for (SessionHostInfo info : live) {
+            if (StringUtils.isBlank(info.id())) continue;
+            byId.put(info.id(), toEntry(info));
+        }
+        return byId;
+    }
+
+    /**
+     * Replaces each catalog row whose session is live with the live row, keeping the catalog's
+     * custom title and first prompt — those are not in {@link SessionHostInfo}, and dropping them
+     * would make a running session lose its name in the picker while it runs.
+     */
+    private static List<ProjectEntry> reconcile(
+            List<ProjectEntry> catalogProjects, Map<String, SessionEntry> liveById) {
+        if (liveById.isEmpty()) return catalogProjects;
+        List<ProjectEntry> reconciled = new ArrayList<>(catalogProjects.size());
+        for (ProjectEntry project : catalogProjects) {
+            List<SessionEntry> rows = new ArrayList<>(project.sessions().size());
+            boolean changed = false;
+            for (SessionEntry row : project.sessions()) {
+                SessionEntry live = liveById.get(row.id());
+                if (live == null) {
+                    rows.add(row);
+                    continue;
+                }
+                changed = true;
+                rows.add(new SessionEntry(
+                    row.id(),
+                    row.summary(),
+                    live.messageCount(),
+                    live.lastModifiedMs(),
+                    row.gitBranch(),
+                    row.cwd(),
+                    row.customTitle(),
+                    row.firstPrompt()));
+            }
+            if (!changed) {
+                reconciled.add(project);
+                continue;
+            }
+            reconciled.add(new ProjectEntry(project.projectPath(), project.projectName(),
+                project.sessionCount(), Math.max(project.lastActivityMs(),
+                    lastActivityOf(rows)), rows));
+        }
+        return reconciled;
     }
 
     /** Live sessions with no catalog row, keyed by their canonical project path. */

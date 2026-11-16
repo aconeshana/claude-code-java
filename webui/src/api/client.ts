@@ -1,4 +1,4 @@
-import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type UserContentBlock } from './types'
+import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -166,6 +166,11 @@ export function deleteSession(sessionId: string): Promise<DeleteSessionResponse>
 
 export function respondPermission(request: RespondRequest): Promise<unknown> {
   return requestJson('POST', '/api/permissions/respond', request)
+}
+
+/** POST /api/sudo/respond: supplies or declines the password for one sudo ask. */
+export function respondSudo(request: SudoRespondRequest): Promise<unknown> {
+  return requestJson('POST', '/api/sudo/respond', request)
 }
 
 /**
@@ -442,6 +447,20 @@ export function removeCustomModel(modelName: string): Promise<{ removed: boolean
 }
 
 /**
+ * The model the user persisted in settings (`effective.model`). Turns are
+ * never sent with a model the user did not choose, so a missing value fails
+ * the submit instead of falling back to a built-in name.
+ */
+async function persistedModel(): Promise<string> {
+  const snapshot = await fetchSettingsSnapshot()
+  const model: unknown = snapshot.effective?.model
+  if (typeof model !== 'string' || model.trim() === '') {
+    throw new ApiError(409, 'model_missing', 'no persisted model in settings')
+  }
+  return model
+}
+
+/**
  * Submits one turn through the Anthropic Messages protocol face. The SSE
  * response body is drained (rendering flows through /api/events), and only
  * terminal protocol errors surface here.
@@ -454,11 +473,12 @@ export async function submitTurn(
   sessionId: string | null,
   content: string | readonly UserContentBlock[],
 ): Promise<void> {
+  const model = await persistedModel()
   const response = await fetch('/v1/messages', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-5',
+      model,
       stream: true,
       // Absent session_id targets the active TUI session; an explicit id
       // (TUI session or open headless) routes to that conversation.

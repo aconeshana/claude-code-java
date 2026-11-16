@@ -32,9 +32,12 @@ import com.sun.net.httpserver.HttpExchange;
 final class GatewayPermissionModeHandler {
 
     private final GatewayPermissionModePort permissionMode;
+    private final Optional<RemoteWorkerPool> remoteWorkers;
 
-    GatewayPermissionModeHandler(GatewayPermissionModePort permissionMode) {
+    GatewayPermissionModeHandler(GatewayPermissionModePort permissionMode,
+            Optional<RemoteWorkerPool> remoteWorkers) {
         this.permissionMode = permissionMode;
+        this.remoteWorkers = remoteWorkers;
     }
 
     /** Handles one {@code GET} exchange: the addressed session's current state. */
@@ -42,7 +45,12 @@ final class GatewayPermissionModeHandler {
         respondJson(exchange, 200, body(sessionIdOf(exchange)));
     }
 
-    /** Handles one {@code POST} exchange: select a new permission mode. */
+    /**
+     * Handles one {@code POST} exchange: select a new permission mode. A
+     * session hosted by another TUI process is forwarded over its Session
+     * Link, so the shift+Tab cycle and the webui chip stay one gate: the
+     * owning process applies the mode and every subscriber mirrors it.
+     */
     void handlePost(HttpExchange exchange) throws IOException {
         JsonNode request = readJson(exchange);
         if (request == null) return;
@@ -50,6 +58,10 @@ final class GatewayPermissionModeHandler {
         String mode = text(request, "mode");
         if (StringUtils.isBlank(mode)) {
             respondJson(exchange, 400, errorBody("invalid_request", "mode is required"));
+            return;
+        }
+        if (sessionId != null && isRemote(sessionId)) {
+            selectRemote(exchange, sessionId, mode.strip());
             return;
         }
         GatewayPermissionModePort.SelectionResult result =
@@ -64,7 +76,47 @@ final class GatewayPermissionModeHandler {
         respondJson(exchange, 200, response);
     }
 
+    private boolean isRemote(String sessionId) {
+        return remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false);
+    }
+
+    /**
+     * One forwarded selection. The worker answers with the state it now
+     * reports, so the caller sees the same projection a local selection
+     * returns rather than an optimistic echo.
+     */
+    private void selectRemote(HttpExchange exchange, String sessionId, String mode)
+            throws IOException {
+        SessionHostPermissionState state;
+        try {
+            state = remoteWorkers.flatMap(pool -> pool.selectPermissionMode(sessionId, mode))
+                .orElse(null);
+        } catch (IllegalStateException rejection) {
+            respondJson(exchange, 400, errorBody("invalid_request",
+                StringUtils.defaultIfBlank(rejection.getMessage(), "permission mode was rejected")));
+            return;
+        }
+        if (state == null) {
+            respondJson(exchange, 501, errorBody("unsupported",
+                "permission mode can only be changed from the TUI that hosts this session"));
+            return;
+        }
+        ObjectNode response = JsonUtils.getMapper().createObjectNode();
+        stateBody(response.putObject("permission_mode"), state);
+        respondJson(exchange, 200, response);
+    }
+
     private ObjectNode body(String sessionId) {
+        Optional<SessionHostPermissionState> remote = remoteState(sessionId);
+        if (remote != null) {
+            ObjectNode response = JsonUtils.getMapper().createObjectNode();
+            if (remote.isEmpty()) {
+                response.putNull("permission_mode");
+            } else {
+                stateBody(response.putObject("permission_mode"), remote.get());
+            }
+            return response;
+        }
         ObjectNode response = JsonUtils.getMapper().createObjectNode();
         Optional<SessionHostPermissionState> state = permissionMode.state(sessionId);
         if (state.isPresent()) {
@@ -73,6 +125,12 @@ final class GatewayPermissionModeHandler {
             response.putNull("permission_mode");
         }
         return response;
+    }
+
+    /** The remote projection, or null when this session is not remote-owned here. */
+    private Optional<SessionHostPermissionState> remoteState(String sessionId) {
+        if (sessionId == null || !isRemote(sessionId)) return null;
+        return remoteWorkers.flatMap(pool -> pool.permissionMode(sessionId));
     }
 
     private static void stateBody(ObjectNode node, SessionHostPermissionState state) {

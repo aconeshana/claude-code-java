@@ -33,11 +33,13 @@ import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,12 +49,16 @@ class SessionLinkServerTest {
     @TempDir Path tempDir;
 
     @Test
-    void remoteSudoIsReportedAsUnsupportedWithoutLeakingRequestPayload() throws Exception {
+    void remoteSudoAskReachesTheLinkAndTheRemoteAnswerResolvesTheLocalPrompt()
+            throws Exception {
         SessionHostSession session = session("session-sudo", new ArrayList<>());
         SessionHostRegistry registry = registry(session);
         registry.activateLocal(session);
         InteractionCoordinator interactions =
             new InteractionCoordinator(() -> "session-sudo");
+        // The terminal presents it but never answers: the answer must come
+        // from the attached client, which is the case this test covers.
+        CountDownLatch localPrompted = new CountDownLatch(1);
         interactions.register(InteractionFeatures.SUDO_PASSWORD,
             new InteractionPresenter<>() {
                 @Override public InteractionEndpoint endpoint() {
@@ -65,12 +71,10 @@ class SessionLinkServerTest {
                 @Override public void present(
                         InteractionRequest<SudoPasswordInteraction.Request,
                             SudoPasswordInteraction.Result> request) {
-                    interactions.respond(InteractionFeatures.SUDO_PASSWORD,
-                        request.descriptor().id(), request.descriptor().sessionId(),
-                        SudoPasswordInteraction.Result.cancelled(), endpoint());
+                    localPrompted.countDown();
                 }
             });
-        Path socket = tempDir.resolve("sudo-unsupported.sock");
+        Path socket = tempDir.resolve("sudo-answered.sock");
 
         try (SessionLinkServer server = new SessionLinkServer(
                 new SessionLinkServer.Config(socket,
@@ -92,15 +96,50 @@ class SessionLinkServerTest {
                         new SudoPasswordInteraction.Request(
                             "/usr/bin/sudo", "sudo launchctl limit maxfiles 65536")));
 
-                SessionLinkFrame unsupported = client.read();
-                assertEquals("interaction.unsupported", unsupported.name());
+                SessionLinkFrame requestedSudo = client.read();
+                assertEquals("interaction.requested", requestedSudo.name());
+                assertEquals("session-sudo", requestedSudo.sessionId());
                 assertEquals("sudo_password",
-                    unsupported.payload().path("interaction_kind").asText());
-                assertEquals("complete_in_tui",
-                    unsupported.payload().path("action").asText());
-                assertFalse(Strings.CS.contains(unsupported.payload().toString(), "launchctl"));
-                assertInstanceOf(SudoPasswordInteraction.Result.Cancelled.class,
-                    result.get(2, TimeUnit.SECONDS));
+                    requestedSudo.payload().path("interaction_kind").asText());
+                assertEquals("/usr/bin/sudo",
+                    requestedSudo.payload().path("executable").asText());
+                assertEquals("sudo launchctl limit maxfiles 65536",
+                    requestedSudo.payload().path("command").asText());
+                // The ask carries the command being authorized but never a
+                // password: nothing has been typed at this point.
+                assertNull(requestedSudo.payload().get("password"));
+                assertTrue(localPrompted.await(2, TimeUnit.SECONDS));
+
+                String sudoRequestId =
+                    requestedSudo.payload().path("request_id").asText();
+                client.send(request("respond-sudo", "interaction.respond", "session-sudo",
+                    object().put("request_id", sudoRequestId)
+                        .put("interaction_kind", "sudo_password")
+                        .put("behavior", "submit")
+                        .put("password", "correct horse battery staple")));
+                SessionLinkFrame sudoResolved = client.read();
+                assertEquals("interaction.resolved", sudoResolved.name());
+                assertEquals("sudo_password",
+                    sudoResolved.payload().path("interaction_kind").asText());
+                assertEquals("submit", sudoResolved.payload().path("behavior").asText());
+                assertEquals("remote", sudoResolved.payload().path("origin").asText());
+                // The resolution is broadcast to the terminal too, so its prompt
+                // closes; it must not carry the password either.
+                assertFalse(Strings.CS.contains(sudoResolved.payload().toString(),
+                    "correct horse battery staple"));
+                assertEquals("interaction.respond", client.read().name());
+
+                SudoPasswordInteraction.Result answered = result.get(2, TimeUnit.SECONDS);
+                assertInstanceOf(SudoPasswordInteraction.Result.Provided.class, answered);
+                // The password survives the link intact and is readable exactly
+                // once; the second read is refused because the first consumed it.
+                ByteArrayOutputStream written = new ByteArrayOutputStream();
+                ((SudoPasswordInteraction.Result.Provided) answered).writeTo(written);
+                assertEquals("correct horse battery staple\n",
+                    written.toString(StandardCharsets.UTF_8));
+                assertThrows(IllegalStateException.class,
+                    () -> ((SudoPasswordInteraction.Result.Provided) answered)
+                        .writeTo(new ByteArrayOutputStream()));
             }
         }
     }

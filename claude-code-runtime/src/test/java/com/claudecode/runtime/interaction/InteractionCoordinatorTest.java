@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
@@ -22,7 +23,10 @@ class InteractionCoordinatorTest {
             assertTrue(InteractionCapabilities.support(kind, InteractionEndpoint.LOCAL) != null);
             assertTrue(InteractionCapabilities.support(kind, InteractionEndpoint.REMOTE) != null);
         }
-        assertEquals(InteractionSupport.UNIMPLEMENTED,
+        // Sudo is answerable from a web client too: the password is typed
+        // either in the terminal dialog or in the browser card, and whichever
+        // answers first wins.
+        assertEquals(InteractionSupport.SUPPORTED,
             InteractionCapabilities.support(
                 InteractionKind.SUDO_PASSWORD, InteractionEndpoint.REMOTE));
     }
@@ -77,9 +81,10 @@ class InteractionCoordinatorTest {
     }
 
     @Test
-    void localOnlySudoReportsRemoteUnimplementedButWaitsForLocalResult() throws Exception {
+    void sudoIsFirstResponderAcrossTerminalAndWeb() throws Exception {
         InteractionCoordinator coordinator = new InteractionCoordinator(() -> "session-1");
-        CompletableFuture<InteractionUnsupported> unsupported = new CompletableFuture<>();
+        CountDownLatch bothPresented = new CountDownLatch(2);
+        AtomicReference<InteractionEndpoint> resolver = new AtomicReference<>();
         coordinator.register(InteractionFeatures.SUDO_PASSWORD,
             new InteractionPresenter<>() {
                 @Override public InteractionEndpoint endpoint() {
@@ -87,7 +92,7 @@ class InteractionCoordinatorTest {
                 }
 
                 @Override public InteractionSupport support() {
-                    return InteractionSupport.UNIMPLEMENTED;
+                    return InteractionSupport.SUPPORTED;
                 }
 
                 @Override public boolean available(String sessionId) {
@@ -97,12 +102,7 @@ class InteractionCoordinatorTest {
                 @Override public void present(
                         InteractionRequest<SudoPasswordInteraction.Request,
                             SudoPasswordInteraction.Result> request) {
-                    throw new InteractionNotImplementedException(
-                        request.descriptor(), endpoint(), "complete_in_tui");
-                }
-
-                @Override public void unsupported(InteractionUnsupported event) {
-                    unsupported.complete(event);
+                    bothPresented.countDown();
                 }
             });
         coordinator.register(InteractionFeatures.SUDO_PASSWORD,
@@ -122,24 +122,110 @@ class InteractionCoordinatorTest {
                 @Override public void present(
                         InteractionRequest<SudoPasswordInteraction.Request,
                             SudoPasswordInteraction.Result> request) {
+                    bothPresented.countDown();
+                    try {
+                        // Wait until both prompts are up before answering, so
+                        // the web answer really races a live terminal prompt.
+                        bothPresented.await(2, TimeUnit.SECONDS);
+                    } catch (InterruptedException _) {
+                        Thread.currentThread().interrupt();
+                    }
+                    resolver.set(InteractionEndpoint.REMOTE);
+                    assertTrue(coordinator.respond(InteractionFeatures.SUDO_PASSWORD,
+                        request.descriptor().id(), request.descriptor().sessionId(),
+                        SudoPasswordInteraction.Result.provided("hunter2".toCharArray()),
+                        InteractionEndpoint.REMOTE));
+                    // The terminal's late answer for the same ask is refused:
+                    // a sudo ask is answered exactly once.
                     assertFalse(coordinator.respond(InteractionFeatures.SUDO_PASSWORD,
                         request.descriptor().id(), request.descriptor().sessionId(),
                         SudoPasswordInteraction.Result.cancelled(),
-                        InteractionEndpoint.REMOTE));
-                    assertTrue(coordinator.respond(InteractionFeatures.SUDO_PASSWORD,
-                        request.descriptor().id(), request.descriptor().sessionId(),
-                        SudoPasswordInteraction.Result.cancelled(), endpoint()));
+                        InteractionEndpoint.LOCAL));
                 }
             });
 
         SudoPasswordInteraction.Result result = coordinator.request(
             new SudoPasswordInteraction.Request("/usr/bin/sudo", "sudo -v"));
 
-        assertInstanceOf(SudoPasswordInteraction.Result.Cancelled.class, result);
-        InteractionUnsupported event = unsupported.get(2, TimeUnit.SECONDS);
-        assertEquals(InteractionKind.SUDO_PASSWORD, event.descriptor().kind());
-        assertEquals("complete_in_tui", event.action());
-        assertFalse(Strings.CS.contains(event.toString(), "sudo -v"));
+        assertEquals(InteractionEndpoint.REMOTE, resolver.get());
+        assertInstanceOf(SudoPasswordInteraction.Result.Provided.class, result);
+        // Neither the ask nor the answer leaks the command or the password.
+        assertFalse(Strings.CS.contains(result.toString(), "hunter2"));
+        assertFalse(Strings.CS.contains(
+            new SudoPasswordInteraction.Request("/usr/bin/sudo", "sudo -v").toString(),
+            "sudo -v"));
+    }
+
+    @Test
+    void blockingLocalPromptDoesNotHoldTheAskBackFromRemoteObservers() throws Exception {
+        InteractionCoordinator coordinator = new InteractionCoordinator(() -> "session-1");
+        CountDownLatch remotePresented = new CountDownLatch(1);
+        CountDownLatch terminalDismissed = new CountDownLatch(1);
+        AtomicReference<String> askId = new AtomicReference<>();
+        coordinator.register(InteractionFeatures.SUDO_PASSWORD,
+            new InteractionPresenter<>() {
+                @Override public InteractionEndpoint endpoint() {
+                    return InteractionEndpoint.REMOTE;
+                }
+
+                @Override public InteractionSupport support() {
+                    return InteractionSupport.SUPPORTED;
+                }
+
+                @Override public boolean available(String sessionId) {
+                    return true;
+                }
+
+                @Override public void present(
+                        InteractionRequest<SudoPasswordInteraction.Request,
+                            SudoPasswordInteraction.Result> request) {
+                    // The browser types the password while the terminal
+                    // dialog is still waiting on its own answer.
+                    askId.set(request.descriptor().id());
+                    remotePresented.countDown();
+                }
+            });
+        coordinator.register(InteractionFeatures.SUDO_PASSWORD,
+            new InteractionPresenter<>() {
+                @Override public InteractionEndpoint endpoint() {
+                    return InteractionEndpoint.LOCAL;
+                }
+
+                @Override public InteractionSupport support() {
+                    return InteractionSupport.SUPPORTED;
+                }
+
+                @Override public boolean available(String sessionId) {
+                    return true;
+                }
+
+                @Override public void present(
+                        InteractionRequest<SudoPasswordInteraction.Request,
+                            SudoPasswordInteraction.Result> request) {
+                    // The terminal dialog blocks until the user answers it —
+                    // exactly like the real TUI modal.
+                    try {
+                        terminalDismissed.await(2, TimeUnit.SECONDS);
+                    } catch (InterruptedException _) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+
+        CompletableFuture<SudoPasswordInteraction.Result> ask = CompletableFuture.supplyAsync(
+            () -> coordinator.request(
+                new SudoPasswordInteraction.Request("/usr/bin/sudo", "sudo -v")));
+        // The web card shows up while the terminal prompt is still open, and
+        // the password typed there is the answer the sudo run receives.
+        assertTrue(remotePresented.await(2, TimeUnit.SECONDS),
+            "the web observer must see the ask while the terminal prompt is open");
+        SudoPasswordInteraction.Result typedInBrowser = SudoPasswordInteraction.Result
+            .provided("typed-in-browser".toCharArray());
+        assertTrue(coordinator.respond(InteractionFeatures.SUDO_PASSWORD,
+            askId.get(), "session-1", typedInBrowser, InteractionEndpoint.REMOTE));
+        terminalDismissed.countDown();
+
+        assertSame(typedInBrowser, ask.get(2, TimeUnit.SECONDS));
     }
 
     @Test
@@ -255,10 +341,11 @@ class InteractionCoordinatorTest {
                 }
 
                 @Override public InteractionSupport support() {
-                    return InteractionSupport.UNIMPLEMENTED;
+                    return InteractionSupport.SUPPORTED;
                 }
 
                 @Override public boolean available(String sessionId) {
+                    // No browser attached: the terminal still gets its prompt.
                     return false;
                 }
 

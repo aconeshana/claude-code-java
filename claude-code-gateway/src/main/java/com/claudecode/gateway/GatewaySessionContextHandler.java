@@ -11,6 +11,8 @@ import com.claudecode.core.message.TokenEstimator;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
 import com.claudecode.core.model.ModelContextWindows;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostEffortState;
+import com.claudecode.runtime.sessionhost.SessionHostModelState;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -59,24 +61,24 @@ final class GatewaySessionContextHandler {
 
     /**
      * Handles one {@code POST} exchange: select a model or an effort level. A
-     * session hosted by another TUI process is refused as unsupported: its model
-     * and effort are owned by that process, and this gateway's selection shape is
-     * not the Session Link one, so forwarding would fail obscurely.
+     * session hosted by another TUI process is forwarded over its Session Link,
+     * so the webui's model seat and the TUI {@code /model} picker edit one
+     * selection: the owning process applies it and answers with the state it
+     * now reports.
      */
     void handlePost(HttpExchange exchange) throws IOException {
         JsonNode request = readJson(exchange);
         if (request == null) return;
         String sessionId = StringUtils.trimToNull(text(request, "session_id"));
-        if (sessionId != null && remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
-            respondJson(exchange, 501, errorBody("unsupported",
-                "model and effort can only be changed from the TUI that hosts this session"));
-            return;
-        }
         String model = StringUtils.trimToNull(text(request, "model"));
         String effort = StringUtils.trimToNull(text(request, "effort"));
         if (model != null && effort != null) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 "model and effort cannot be changed in one request"));
+            return;
+        }
+        if (sessionId != null && remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
+            selectRemote(exchange, sessionId, model, effort);
             return;
         }
         GatewaySessionContextPort.SelectionResult result;
@@ -107,6 +109,85 @@ final class GatewaySessionContextHandler {
     }
 
     /**
+     * One forwarded selection. The worker answers with the state it now
+     * reports, so the caller sees the same projection a local selection
+     * returns rather than an optimistic echo; a rejection (an unknown model,
+     * an unsupported effort level) becomes the caller's 400.
+     */
+    private void selectRemote(HttpExchange exchange, String sessionId,
+            String model, String effort) throws IOException {
+        GatewaySessionContextPort.ModelSelection selection;
+        GatewaySessionContextPort.EffortSelection effortState = null;
+        try {
+            if (model != null) {
+                SessionHostModelState state = remoteWorkers
+                    .flatMap(pool -> pool.selectModel(sessionId, model)).orElse(null);
+                if (state == null) {
+                    unsupported(exchange);
+                    return;
+                }
+                // The model answer also carries the current effort state, so
+                // the response keeps both halves of the selection complete.
+                effortState = remoteWorkers.flatMap(pool -> pool.effort(sessionId))
+                    .map(GatewaySessionContextHandler::fromRemote).orElse(null);
+                selection = fromRemote(state, effortState);
+            } else {
+                effortState = remoteWorkers.flatMap(pool -> pool.selectEffort(sessionId, effort))
+                    .map(GatewaySessionContextHandler::fromRemote).orElse(null);
+                if (effortState == null) {
+                    unsupported(exchange);
+                    return;
+                }
+                GatewaySessionContextPort.EffortSelection changed = effortState;
+                selection = remoteWorkers.flatMap(pool -> pool.model(sessionId))
+                    .map(state -> fromRemote(state, changed)).orElse(null);
+            }
+        } catch (IllegalStateException rejection) {
+            respondJson(exchange, 400, errorBody("invalid_request",
+                StringUtils.defaultIfBlank(rejection.getMessage(), "selection was rejected")));
+            return;
+        }
+        ObjectNode response = JsonUtils.getMapper().createObjectNode();
+        if (selection != null) {
+            selectionBody(response.putObject("selection"), selection);
+        } else {
+            response.putNull("selection");
+        }
+        Optional<GatewaySessionContextPort.ContextUsage> usage = usage(sessionId);
+        if (usage.isPresent()) {
+            usageBody(response.putObject("context"), usage.get());
+        } else {
+            response.putNull("context");
+        }
+        attachMetrics(response, sessionId);
+        respondJson(exchange, 200, response);
+    }
+
+    /**
+     * No live owner answered: the session stopped routing here between the
+     * ownership check and the forward. The change did not happen, so this is
+     * reported the way the pre-forwarding gateway reported a remote target.
+     */
+    private static void unsupported(HttpExchange exchange) throws IOException {
+        respondJson(exchange, 501, errorBody("unsupported",
+            "model and effort can only be changed from the TUI that hosts this session"));
+    }
+
+    /**
+     * A remote model answer plus the effort state that rode with it; the
+     * host's model and effort are one selection, so both halves of the wire
+     * body come from the same projection.
+     */
+    private static GatewaySessionContextPort.ModelSelection fromRemote(
+            SessionHostModelState state, GatewaySessionContextPort.EffortSelection effort) {
+        return RemoteSelections.modelSelection(state, effort);
+    }
+
+    private static GatewaySessionContextPort.EffortSelection fromRemote(SessionHostEffortState state) {
+        return RemoteSelections.remoteEffort(state);
+    }
+
+    /**
      * The addressed session's usage: the gateway computes it here from the
      * port's message list with the exact claude-hud status-line
      * accounting, so the port implementation never re-implements token
@@ -114,7 +195,7 @@ final class GatewaySessionContextHandler {
      */
     private Optional<GatewaySessionContextPort.ContextUsage> usage(String sessionId) {
         Optional<GatewaySessionContextPort.ModelSelection> selection =
-            context.selection(sessionId);
+            selectionOf(sessionId);
         String model = selection.map(GatewaySessionContextPort.ModelSelection::current)
             .filter(StringUtils::isNotBlank).orElse("");
         GatewaySessionContextPort.ContextBreakdown breakdown =
@@ -123,10 +204,23 @@ final class GatewaySessionContextHandler {
             .flatMap(messages -> usageOver(model, messages, breakdown));
     }
 
+    /**
+     * The addressed session's selection: forwarded from its owning TUI when
+     * another process hosts it, otherwise this gateway's own port. A remote
+     * session's seat used to render blank, which read as "no model" rather
+     * than "not this process's session".
+     */
+    private Optional<GatewaySessionContextPort.ModelSelection> selectionOf(String sessionId) {
+        if (sessionId == null || !remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
+            return context.selection(sessionId);
+        }
+        return remoteWorkers.flatMap(pool -> pool.modelSelection(sessionId));
+    }
+
     private ObjectNode body(String sessionId) {
         ObjectNode response = JsonUtils.getMapper().createObjectNode();
         Optional<GatewaySessionContextPort.ModelSelection> selection =
-            context.selection(sessionId);
+            selectionOf(sessionId);
         if (selection.isPresent()) {
             selectionBody(response.putObject("selection"), selection.get());
         } else {

@@ -17,6 +17,8 @@ import com.googlecode.lanterna.input.PasteKeyStroke;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +37,21 @@ public final class SudoPasswordDialog extends BasicWindow {
     private volatile SudoPasswordInteraction.Result result =
         SudoPasswordInteraction.Result.cancelled();
     private boolean submitted;
+    /**
+     * The dialog this prompt mounted, so another endpoint's answer can close
+     * it. Set before the window goes up and cleared when it comes down.
+     */
+    private static final AtomicReference<SudoPasswordDialog> OPEN =
+        new AtomicReference<>();
+    /**
+     * Raised when another endpoint answers before this dialog is mounted.
+     *
+     * <p>The answer can arrive in the gap between the ask being published and
+     * the GUI thread showing this window — a fast browser on a slow terminal.
+     * Without this the prompt would open for an ask that is already settled,
+     * and the user would type a password nobody reads.
+     */
+    private static final AtomicBoolean DISMISSED_WHILE_MOUNTING = new AtomicBoolean();
 
     SudoPasswordDialog(SudoPasswordInteraction.Request request) {
         super("Authentication required");
@@ -65,9 +82,41 @@ public final class SudoPasswordDialog extends BasicWindow {
             WindowBasedTextGUI gui, SudoPasswordInteraction.Request request) {
         if (gui == null || request == null) return SudoPasswordInteraction.Result.unavailable();
         SudoPasswordDialog dialog = new SudoPasswordDialog(request);
-        gui.addWindowAndWait(dialog);
+        // Read-and-clear before publishing: a dismiss that lands after this
+        // reads OPEN and closes the window itself, so no answer is lost.
+        if (DISMISSED_WHILE_MOUNTING.getAndSet(false)) {
+            return SudoPasswordInteraction.Result.cancelled();
+        }
+        OPEN.set(dialog);
+        try {
+            gui.addWindowAndWait(dialog);
+        } finally {
+            OPEN.compareAndSet(dialog, null);
+        }
         clearClosedDialogFrame(gui);
         return dialog.result;
+    }
+
+    /**
+     * Dismisses the open password prompt after another endpoint answered the
+     * same ask first.
+     *
+     * <p>The window is closed on the GUI thread — Lanterna's window stack is
+     * not safe to mutate from the answering thread — and the dialog settles on
+     * the cancelled result, which its presenter then fails to submit because
+     * the ask is already gone. When no prompt is mounted this is a no-op.
+     */
+    public static void dismissPending(WindowBasedTextGUI gui) {
+        if (gui == null) return;
+        SudoPasswordDialog open = OPEN.get();
+        if (open == null) {
+            // Arrived before the window went up: the prompt that is about to
+            // mount settles as cancelled instead of asking for a password
+            // whose ask is already answered.
+            DISMISSED_WHILE_MOUNTING.set(true);
+            return;
+        }
+        gui.getGUIThread().invokeLater(open::close);
     }
 
     private static void clearClosedDialogFrame(WindowBasedTextGUI gui) {

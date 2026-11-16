@@ -9,10 +9,18 @@ public final class InteractionFeatures {
         PERMISSION = permissionFeature(InteractionKind.PERMISSION);
     public static final InteractionFeature<PermissionAskContext, PermissionAskCallback.Result>
         USER_QUESTION = permissionFeature(InteractionKind.USER_QUESTION);
+    /**
+     * The sudo password ask, answerable from the terminal or a web client.
+     *
+     * <p>{@code FIRST_RESPONDER} because the two are observers of one blocked
+     * {@code sudo} invocation: whoever types the password first wins and the
+     * other prompt closes unsubmitted. The result stays {@code SECRET}, so
+     * failure logging redacts the payload and no presenter may echo it back.
+     */
     public static final InteractionFeature<SudoPasswordInteraction.Request,
         SudoPasswordInteraction.Result> SUDO_PASSWORD = new InteractionFeature<>(
             InteractionKind.SUDO_PASSWORD,
-            InteractionResponsePolicy.LOCAL_ONLY,
+            InteractionResponsePolicy.FIRST_RESPONDER,
             InteractionSensitivity.SECRET,
             SudoPasswordInteraction.Request.class,
             SudoPasswordInteraction.Result.class,

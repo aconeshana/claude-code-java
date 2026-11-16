@@ -129,7 +129,13 @@ final class CliHeadlessSessionFactory {
             builder.initialMessages(priorMessages);
         }
         QuerySession engine = querySessionFactory.create(builder.build());
-        TranscriptRecorder recorder = new TranscriptRecorder(new SessionManager(projectPath));
+        // The project path is the session's working directory, and it must be
+        // stamped into every transcript row: the catalog groups sessions by the
+        // cwd a row records, so the two-argument constructor would stamp this
+        // process's own directory instead — a web-created session would then
+        // be listed under the gateway's project rather than the one it opened.
+        TranscriptRecorder recorder = new TranscriptRecorder(
+            new SessionManager(projectPath), new SessionStorage(), projectPath, false);
         Path sessionFile = new SessionManager(projectPath).getSessionFile(sessionId);
         // Restore the durable HUD fold from the same persisted rows the TUI
         // /resume path consumes, so an opened history session reports

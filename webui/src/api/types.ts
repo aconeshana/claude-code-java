@@ -243,6 +243,13 @@ export type MirrorFrame =
       readonly request_id: string
       readonly origin: string
     } }
+  | { readonly event: 'sudo.asked'; readonly id: number; readonly data: SudoAsk }
+  | { readonly event: 'sudo.resolved'; readonly id: number; readonly data: {
+      readonly session_id: string
+      readonly request_id: string
+      readonly resolution: 'submitted' | 'cancelled'
+      readonly origin: 'tui' | 'web'
+    } }
   | { readonly event: 'permission.mode'; readonly id: number; readonly data: {
       readonly session_id: string
       /** Mirrors GET /api/session/permission-mode; null when the session exposes no gate. */
@@ -294,6 +301,21 @@ export interface PermissionQuestion {
   readonly header?: string
   readonly multi_select?: boolean
   readonly options: readonly PermissionQuestionOption[]
+}
+
+/**
+ * A sudo invocation blocked on a password.
+ *
+ * Never carries the password: the prompt is shown from these fields, and what
+ * the user types goes back on POST /api/sudo/respond as the request body.
+ */
+export interface SudoAsk {
+  readonly session_id: string
+  readonly request_id: string
+  /** The verified system sudo that will receive the password. */
+  readonly executable?: string
+  /** The command line awaiting authentication. */
+  readonly command?: string
 }
 
 export interface PermissionAsk {
@@ -374,6 +396,19 @@ export interface RespondRequest {
   readonly allowed: boolean
   readonly updated_input?: Readonly<Record<string, unknown>>
   readonly skip?: boolean
+}
+
+/**
+ * POST /api/sudo/respond: answer a sudo password ask.
+ *
+ * `password` is present only for a submit and is never echoed back by any
+ * endpoint or mirror frame.
+ */
+export interface SudoRespondRequest {
+  readonly request_id: string
+  readonly session_id: string
+  readonly behavior: 'submit' | 'cancel'
+  readonly password?: string
 }
 
 export class ApiError extends Error {

@@ -1,0 +1,35 @@
+package com.claudecode.cli;
+
+import com.claudecode.runtime.query.DefaultQuerySessionFactory;
+import com.claudecode.tools.mcp.ManagedMcpRuntime;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Builds the headless session factory for {@code claude web} from the same toolchain the TUI
+ * uses, scoped to the directory {@code claude web} was launched from.
+ */
+final class WebHeadlessSessions {
+
+    /** Bounds the wait for response headers so a stalled upstream fails the turn instead of hanging it. */
+    private static final Duration HEADLESS_STREAM_CONNECT_TIMEOUT = Duration.ofSeconds(60);
+
+    private WebHeadlessSessions() {
+    }
+
+    static CliHeadlessGatewaySessions create(ManagedMcpRuntime mcpRuntime, CliResourceScope resources) {
+        CliOutput errorOutput = CliOutput.systemErr();
+        CliLaunchRequest request = new CliLaunchRequest(null, null, null, null, null, null, null);
+        CliWorkspaceBootstrap.Workspace workspace = CliWorkspaceBootstrap.bootstrap(
+            request, CliWorkspaceBootstrap.parseSettingSources(null), errorOutput);
+        CliToolchainAssembler.Toolchain toolchain = CliToolchainAssembler.assemble(
+            workspace, mcpRuntime, new AtomicReference<>(), new AtomicReference<>(),
+            new DefaultQuerySessionFactory(), resources, errorOutput);
+        CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
+            new LlmClientAdapter(toolchain.llmClient(), HEADLESS_STREAM_CONNECT_TIMEOUT),
+            toolchain.toolRegistry(), new DefaultQuerySessionFactory(),
+            toolchain.permissionGate(), workspace.launch().model(), workspace.cwd(),
+            toolchain.customModelCatalog(), toolchain.modelAvailability().showBuiltInModelFamilies());
+        return new CliHeadlessGatewaySessions(factory, workspace.cwd());
+    }
+}

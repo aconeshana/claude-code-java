@@ -14,6 +14,8 @@
  *   {@link SessionActivity} — see `sessionStatus` and `showSessionStatus`.
  * - `timeLabel`/`displayTitle` helpers (search-result and hover-card variants
  *   dropped — no search, no HoverCard in this port).
+ * This port's own extension: the row's dot is also tinted by ownership (this
+ * browser / the terminal / the row the user has open) — see {@link statusState}.
  * Dropped by subtraction (no backend surface): workspace rename/delete menus,
  * drag-and-drop reorder wiring, HoverCard previews, schedule indicator,
  * subagent statuses, the visually-hidden status labels.
@@ -81,27 +83,57 @@ export function sessionStatus(
 }
 
 /**
+ * Which ownership state the row's dot carries, as a local class that overrides
+ * the `data-state` colors of the vendored `StateDot`.
+ *
+ * The dot answers two independent questions and this port splices them: which
+ * of `StateDot`'s states to draw says what the session is doing (a running
+ * chase, a finished turn, a pending ask), while the class says whose session
+ * it is — this browser's, the terminal's, or the row the user currently has
+ * open. Upstream has no second axis because its sidebar is the whole product;
+ * here the list mixes all three, and a bare grey dot cannot tell a TUI row the
+ * user can only watch from one they can drive.
+ *
+ * The row being read outranks ownership: it is the one thing the user must
+ * never lose track of.
+ *
+ * Activity deliberately plays no part here. Whether a turn is running is
+ * already `state`'s job — it picks `ongoing`, the vendored chase matrix — and
+ * the tint rides whichever element that state renders, so a running session
+ * keeps both its animation and its ownership color instead of one axis
+ * overwriting the other.
+ */
+export function statusState(
+  session: CatalogSession,
+  selected: boolean,
+): string | undefined {
+  if (selected) return localCss.stateCurrent
+  if (session.remote === true) return localCss.stateTerminal
+  return localCss.stateWeb
+}
+
+/**
  * Whether the row draws its status dot at all.
  *
  * Upstream hides the dot when the primary status is idle (`primaryStatus.state
  * !== 'idle'`), leaving the 16px slot blank — an idle row says nothing rather
  * than showing a grey dot. That rule is kept.
  *
- * Deviation: the TUI's current session keeps a dot while idle. Upstream has no
- * such session (its sidebar is the whole product, not a window onto a TUI), so
- * there is nothing to preserve there; here the TUI's session is otherwise
- * indistinguishable from any old row, and the grey dot keeps it locatable.
- * {@link sessionStatus} already returns `idle` for it, so this is the only
- * place the case exists.
+ * Deviation: this port draws the dot on every row, idle included. Upstream can
+ * leave idle silent because its sidebar lists only sessions it drives; here
+ * the list mixes the terminal's sessions, this browser's, and the open row,
+ * and the dot's tint is what carries that (see {@link statusState}). Its
+ * absence must not be a third signal for a row the user cannot otherwise name.
+ *
+ * `session`/`activity`/`pending` stay in the signature so the rule keeps being
+ * evaluated where the row's state is, not that any of them can veto the dot.
  */
 export function showSessionStatus(
-  session: CatalogSession,
-  activity: SessionActivity | undefined,
-  pending?: PendingInteraction,
+  _session: CatalogSession,
+  _activity: SessionActivity | undefined,
+  _pending?: PendingInteraction,
 ): boolean {
-  if (pending != null) return true
-  if (activity?.running === true || activity?.completed === true) return true
-  return session.active
+  return true
 }
 
 /**
@@ -193,12 +225,14 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
       onClick={() => { onOpen(session) }}
     >
       <span className={css.slot}>
-        {showStatus && <StateDot state={status.state} />}
+        {showStatus && (
+          <StateDot
+            state={status.state}
+            className={statusState(session, selected)}
+          />
+        )}
       </span>
       <span className={css.title}>{title}</span>
-      {session.remote === true && (
-        <span className={localCss.remoteTag}>{t('session.remote')}</span>
-      )}
       <span className={css.time}>{timeLabel(Date.parse(session.modified_at), now, t)}</span>
       <span className={css.rowActions}>
         <Menu

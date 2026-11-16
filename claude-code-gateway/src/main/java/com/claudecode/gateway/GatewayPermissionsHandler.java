@@ -101,10 +101,13 @@ final class GatewayPermissionsHandler {
         Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.flatMap(
             pool -> pool.respondInteraction(sessionId, remotePayload));
         if (forwarded.isEmpty()) {
-            // Unknown id (404) vs. already answered (409): a known feature
-            // request that no longer pends was answered by another observer.
+            // Nothing is pending for this id here, so the answer has no ask to
+            // land on. That covers a late answer to an ask another observer
+            // already resolved and an id this gateway never issued; both reach
+            // the client as the same conflict, because from the client's side
+            // they are the same outcome — its dialog is gone either way.
             respondJson(exchange, 409, errorBody("already_responded",
-                "the ask was already answered by another observer"));
+                "the ask is no longer pending; it was answered by another observer"));
             return;
         }
         respondForwarded(exchange, forwarded.get());

@@ -39,6 +39,7 @@ import com.claudecode.core.process.SubprocessEnvironment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,9 +69,16 @@ public class LlmClientAdapter implements StreamingClient {
     private static final String DISABLE_ADAPTIVE_THINKING_ENV = "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING";
 
     private final LlmClient llmClient;
+    private final Duration streamConnectTimeout;
 
     public LlmClientAdapter(LlmClient llmClient) {
+        this(llmClient, null);
+    }
+
+    /** Bounds how long each streaming request waits for response headers; null keeps the global API timeout. */
+    public LlmClientAdapter(LlmClient llmClient, Duration streamConnectTimeout) {
         this.llmClient = llmClient;
+        this.streamConnectTimeout = streamConnectTimeout;
     }
 
     static long countTokens(
@@ -214,7 +222,8 @@ public class LlmClientAdapter implements StreamingClient {
                 : CancellationRegistrar.NONE)
             .subagent(request.agentId() != null)
             .speed(request.fastMode() ? "fast" : null)
-            .thinking(thinkingSelection.config());
+            .thinking(thinkingSelection.config())
+            .streamConnectTimeout(streamConnectTimeout);
 
         // feature: shouldIncludeFirstPartyOnlyBetas  suppresses
 
@@ -375,7 +384,7 @@ public class LlmClientAdapter implements StreamingClient {
             request.effort(), request.toolChoice(), request.outputConfig(), request.speed(),
             request.contextManagement(), request.skipCacheWrite(),
             request.promptCachingEnabled(), request.promptCacheTtl(), request.querySource(),
-            request.cancellationRegistrar(), request.subagent());
+            request.cancellationRegistrar(), request.subagent(), request.streamConnectTimeout());
     }
 
     /**
@@ -475,6 +484,7 @@ public class LlmClientAdapter implements StreamingClient {
             .querySource(request.querySource())
             .cancellationRegistrar(request.cancellationRegistrar())
             .subagent(request.subagent())
+            .streamConnectTimeout(request.streamConnectTimeout())
             .build();
     }
 

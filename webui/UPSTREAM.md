@@ -427,6 +427,26 @@ Product-scope deviations (documented, not gaps):
 | `AppearanceRow.module.css` | `ui-theme` | `src/client/AppearanceRow.module.css` — the three-cube theme selector (`group`/`title`/`cubeRow`/`themeCube`/`selected`), rendered by a local `AppearanceRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts` |
 | `FontSizeRow.module.css` | `ui-theme` | `src/client/FontSizeRow.module.css` — the font-size stepper pill (`row`/`control`/`stepper`/`value`/`arrows`/`arrow`), rendered by a local `FontSizeRow` component in `SettingsPanel.tsx`'s general section and wired to `store/theme.ts`. `EnterBehaviorRow.module.css`/`TranscriptViewRow.module.css` are **not** vendored separately — both rows are pixel-identical to the already-vendored `PermissionRow.module.css` row/selector pattern and reuse `SettingsPanel.tsx`'s existing `SettingsRow`/`MenuSelect` helpers. |
 
+### `vendor/chat-styles/ApprovalPanel.module.css` — local additions for the sudo prompt
+
+The approval card is vendored verbatim for the tool-approval case. The sudo
+password prompt (`views/SudoCard.tsx`, 2026-11-10) reuses its shell — the warn
+strip, card, body and action row — because it is the same "the agent is
+blocked, answer in the composer" shape, but upstream has no sudo card to copy:
+dsh has no equivalent interaction. Four classes are therefore **local
+additions, not vendored**:
+
+| Class | Why it exists |
+|-------|---------------|
+| `secretRow` | The password field's row: a bordered, focus-ringed box matching the composer input's radius and border tokens |
+| `secretInput` | The masked input itself — transparent background, no outline of its own (the row draws the ring), monospace |
+| `reveal` | The show/hide eye toggle, sized to the input's line height |
+| `hint` | The one-line note under the field ("密码只发送给系统 sudo") in the tertiary label colour |
+
+Deviations from the approval card: no allow/deny pair — a sudo ask resolves to
+`submit` (with the password) or `cancel`, neither of which is a decision about
+a tool's input.
+
 ### `vendor/chat-styles/` — session sidebar (`Sidebar.tsx`/`SessionRows.tsx`)
 
 | File here | Upstream package | Upstream file |

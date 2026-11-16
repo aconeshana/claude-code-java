@@ -1,6 +1,11 @@
 package com.claudecode.gateway;
 
+import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
+import com.claudecode.runtime.sessionhost.SessionHostModelOption;
+import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionMode;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
@@ -119,6 +124,193 @@ final class RemoteWorkerPool implements AutoCloseable {
         return owners.containsKey(sessionId);
     }
 
+    /**
+     * Forwards one permission-mode read to the worker that hosts {@code sessionId},
+     * answering the state exactly as the worker projected it.
+     *
+     * <p>Empty means the session is not remote-owned here. A worker that rejects
+     * the request (a mode the gate does not know) completes exceptionally, so the
+     * caller can surface its message instead of an invented default.
+     */
+    Optional<SessionHostPermissionState> permissionMode(String sessionId) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        try {
+            return Optional.of(parsePermissionState(feed.getPermissionMode(sessionId)
+                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
+        } catch (ExecutionException | TimeoutException _) {
+            return Optional.empty();
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
+    /** Forwards one permission-mode selection to the owning worker; same contract as above. */
+    Optional<SessionHostPermissionState> selectPermissionMode(String sessionId, String mode) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        try {
+            return Optional.of(parsePermissionState(feed.setPermissionMode(sessionId, mode)
+                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException(linkFailureMessage(exception), exception);
+        } catch (TimeoutException _) {
+            throw new IllegalStateException("the session's host did not answer in time");
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for the session's host");
+        }
+    }
+
+    /**
+     * Forwards one model read to the worker that hosts {@code sessionId}.
+     *
+     * <p>Empty means the session is not remote-owned here, or its host did not
+     * answer; a rejection the worker raises propagates as an
+     * {@link IllegalStateException} carrying its message.
+     */
+    Optional<SessionHostModelState> model(String sessionId) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        return Optional.of(parseModelState(requestState(feed.getModel(sessionId),
+            "the session's host did not answer the model request in time")));
+    }
+
+    /** Forwards one model selection to the owning worker; same contract as above. */
+    Optional<SessionHostModelState> selectModel(String sessionId, String model) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        return Optional.of(parseModelState(requestState(feed.setModel(sessionId, model),
+            "the session's host did not answer the model change in time")));
+    }
+
+    /** Forwards one effort read to the worker that hosts {@code sessionId}. */
+    Optional<SessionHostEffortState> effort(String sessionId) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        return Optional.of(parseEffortState(requestState(feed.getEffort(sessionId),
+            "the session's host did not answer the effort request in time")));
+    }
+
+    /**
+     * A remote session's model selection and effort level as one
+     * {@link GatewaySessionContextPort.ModelSelection}. Empty when this
+     * gateway does not own the session. The model answer carries the
+     * catalogue and the effort answer the levels, so both round trips are
+     * needed for a complete seat.
+     */
+    Optional<GatewaySessionContextPort.ModelSelection> modelSelection(String sessionId) {
+        Optional<SessionHostModelState> models = model(sessionId);
+        if (models.isEmpty()) return Optional.empty();
+        SessionHostModelState state = models.get();
+        Optional<SessionHostEffortState> efforts = effort(sessionId);
+        return Optional.of(new GatewaySessionContextPort.ModelSelection(
+            state.current(),
+            state.models().stream()
+                .map(option -> new GatewaySessionContextPort.ModelChoice(option.name(),
+                    option.label(), option.description(), option.defaultOption()))
+                .toList(),
+            efforts.map(SessionHostEffortState::current).orElse(""),
+            efforts.map(SessionHostEffortState::effective).orElse(""),
+            efforts.map(SessionHostEffortState::efforts).orElse(List.of())));
+    }
+
+    /** Forwards one effort selection to the owning worker; same contract as above. */
+    Optional<SessionHostEffortState> selectEffort(String sessionId, String effort) {
+        RemoteWorkerFeed feed = ownerOf(sessionId);
+        if (feed == null) return Optional.empty();
+        return Optional.of(parseEffortState(requestState(feed.setEffort(sessionId, effort),
+            "the session's host did not answer the effort change in time")));
+    }
+
+    /**
+     * One blocking round trip to the owning worker. A host-side rejection
+     * (an unknown model, an unsupported effort level) is the worker's answer
+     * about the request, so it surfaces as a rejection; an interrupted caller
+     * keeps its interrupt flag and reports the same shape.
+     */
+    private static JsonNode requestState(CompletableFuture<SessionLinkFrame> pending,
+            String timeoutMessage) {
+        try {
+            return pending.get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload();
+        } catch (ExecutionException failure) {
+            throw new IllegalStateException(linkFailureMessage(failure), failure);
+        } catch (TimeoutException _) {
+            throw new IllegalStateException(timeoutMessage);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for the session's host");
+        }
+    }
+
+    private static SessionHostModelState parseModelState(JsonNode payload) {
+        if (payload == null || payload.isNull()) return null;
+        List<SessionHostModelOption> models = new ArrayList<>();
+        for (JsonNode row : payload.path("models")) {
+            models.add(new SessionHostModelOption(
+                row.path("name").asText(""), row.path("label").asText(""),
+                row.path("description").asText(""), row.path("alias").asText(""),
+                row.path("default").asBoolean(false)));
+        }
+        return new SessionHostModelState(payload.path("current").asText(""), models);
+    }
+
+    private static SessionHostEffortState parseEffortState(JsonNode payload) {
+        if (payload == null || payload.isNull()) return null;
+        List<String> efforts = new ArrayList<>();
+        for (JsonNode row : payload.path("efforts")) {
+            if (row.isTextual()) efforts.add(row.asText());
+        }
+        return new SessionHostEffortState(
+            payload.path("current").asText("auto"),
+            payload.path("effective").asText(""), efforts);
+    }
+
+    /**
+     * The worker currently claiming {@code sessionId}, or null. Polls the same
+     * snapshot {@link #owns} uses so a freshly activated session routes here too.
+     */
+    private RemoteWorkerFeed ownerOf(String sessionId) {
+        if (sessionId == null) return null;
+        if (!owns(sessionId)) return null;
+        return owners.get(sessionId);
+    }
+
+    private static SessionHostPermissionState parsePermissionState(JsonNode payload) {
+        if (payload == null || payload.isNull()) {
+            return null;
+        }
+        List<SessionHostPermissionMode> modes = new ArrayList<>();
+        JsonNode rawModes = payload.get("modes");
+        if (rawModes != null && rawModes.isArray()) {
+            for (JsonNode row : rawModes) {
+                modes.add(new SessionHostPermissionMode(
+                    row.path("value").asText(""), row.path("title").asText(""),
+                    row.path("short_title").asText(""), row.path("symbol").asText(""),
+                    row.path("color_key").asText(""),
+                    row.path("available").asBoolean(false)));
+            }
+        }
+        return new SessionHostPermissionState(
+            payload.path("current").asText(""), modes,
+            payload.path("bypass_permissions_available").asBoolean(false),
+            payload.path("bypass_permissions_disabled_by_policy").asBoolean(false));
+    }
+
+    /**
+     * The worker's rejection message, unwrapped from the completion wrapper. A
+     * link error that carries no message still needs to read as a rejection
+     * rather than as an empty reason.
+     */
+    private static String linkFailureMessage(ExecutionException failure) {
+        Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+        String message = cause.getMessage();
+        return StringUtils.isBlank(message)
+            ? "the session's host rejected the permission mode"
+            : message;
+    }
+
     synchronized Optional<String> workDirOf(String sessionId) {
         return liveSessions().stream()
             .filter(session -> session.id().equals(sessionId))
@@ -129,6 +321,16 @@ final class RemoteWorkerPool implements AutoCloseable {
 
     private Optional<List<SessionHostInfo>> listFrom(WebWorkerRegistration worker) {
         RemoteWorkerFeed feed = feeds.get(worker.socket());
+        if (feed != null && !feed.isOpen()) {
+            // The host ended this link (a restart, a re-attach); nothing will
+            // ever answer on it again, so drop it and dial a fresh one rather
+            // than pinning a dead connection for the life of this process.
+            RemoteWorkerFeed dead = feed;
+            dead.close();
+            feeds.remove(worker.socket());
+            owners.entrySet().removeIf(entry -> entry.getValue() == dead);
+            feed = null;
+        }
         if (feed == null) {
             feed = connect(worker);
             if (feed == null) return Optional.empty();
@@ -144,6 +346,15 @@ final class RemoteWorkerPool implements AutoCloseable {
                 feed.subscribe(session.id());
                 owners.put(session.id(), feed);
             }
+            // A worker lists the session it is on (and only that one), so a listing is its
+            // whole ownership claim: ids it no longer lists must stop routing here even though
+            // this connection still holds their attachment (the TUI switched away).
+            Set<String> listed = sessions.stream()
+                .map(SessionHostInfo::id)
+                .collect(Collectors.toSet());
+            RemoteWorkerFeed owner = feed;
+            owners.entrySet()
+                .removeIf(entry -> entry.getValue() == owner && !listed.contains(entry.getKey()));
             return Optional.of(sessions);
         } catch (ExecutionException | TimeoutException _) {
             feeds.remove(worker.socket());

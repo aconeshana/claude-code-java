@@ -375,6 +375,11 @@ public class LanternaReplScreen implements SlashHost {
         return SudoPasswordDialog.prompt(gui, request);
     }
 
+    /** Closes the mounted sudo prompt after the web client answered first. */
+    public void dismissSudoPassword() {
+        SudoPasswordDialog.dismissPending(gui);
+    }
+
     /** Configure verbose mode (wired from CLI --verbose flag). */
     public void setVerbose(boolean verbose) {
         this.verbose = verbose;

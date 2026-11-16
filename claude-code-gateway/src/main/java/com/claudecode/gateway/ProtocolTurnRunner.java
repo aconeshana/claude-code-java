@@ -25,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Shared turn orchestration for every Messages-protocol-shaped endpoint
@@ -121,6 +123,8 @@ final class ProtocolTurnRunner {
 
     private final SessionResolver sessions;
     private final SessionHostSubmissionLedger ledger = new SessionHostSubmissionLedger();
+    private static final Logger log = LoggerFactory.getLogger(ProtocolTurnRunner.class);
+
     private final InFlightGuard inFlight;
 
     ProtocolTurnRunner(SessionResolver sessions, InFlightGuard inFlight) {
@@ -161,6 +165,8 @@ final class ProtocolTurnRunner {
 
         String sessionId = projection.extractSessionId(request);
         SessionHostSession session = sessions.resolve(sessionId).orElse(null);
+        log.debug("[gw-turn] resolve session={} found={} requestModel={} messageId={}",
+            sessionId, session != null, request.path("model").asText(""), messageId);
         if (session == null && sessionId != null) {
             Optional<CompletableFuture<Void>> remote =
                 sessions.submitRemote(sessionId, prompt, messageId);
@@ -178,17 +184,19 @@ final class ProtocolTurnRunner {
         }
         String targetId = session.info().id();
         if (!inFlight.tryAcquire(targetId)) {
+            log.debug("[gw-turn] rejected: in flight session={}", targetId);
             responder.respondJsonError(TOO_MANY_REQUESTS,
                 "a turn is already in flight on this session; retry after it completes");
             return;
         }
+        log.debug("[gw-turn] acquired session={} messageId={}", targetId, messageId);
 
         SseConnection connection = responder.beginSse();
         PerTurnProjection perTurn = projection.newTurn(request);
         TurnScopeSink turnScope = new TurnScopeSink(perTurn, connection, targetId);
         // Subscribe before submitting: onTurnStart fires synchronously on the
         // submitting thread, so the subscription must already be in place.
-        turnScope.attach(session.events(), connection);
+        turnScope.attach(session.events());
         try {
             for (SseFrame frame : perTurn.openingFrames()) {
                 connection.offer(SseFrameWriter.event(frame.event(), null, frame.data()));
@@ -226,9 +234,12 @@ final class ProtocolTurnRunner {
         String sessionId = session.info().id();
         SessionHostSubmission submission = new SessionHostSubmission(
             prompt, messageId, attachments.images(), attachments.files());
+        log.debug("[gw-turn] submitting session={} messageId={}", sessionId, messageId);
         ledger.submit(sessionId, messageId,
             () -> session.submit(submission))
             .whenComplete((_, failure) -> {
+                log.debug("[gw-turn] submit settled session={} failure={}", sessionId,
+                    failure == null ? "none" : failure.toString());
                 if (failure != null) {
                     // The submission never reached the engine; release the
                     // in-flight slot and end the stream. Successful turns do
@@ -293,7 +304,7 @@ final class ProtocolTurnRunner {
             this.sessionId = sessionId;
         }
 
-        void attach(SessionEventHub hub, SseConnection lane) {
+        void attach(SessionEventHub hub) {
             // replay=false: the hub's recorded prefix belongs to previous
             // turns and must not seed this request's stream.
             subscription = hub.subscribe(new SessionSink() {

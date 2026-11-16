@@ -9,7 +9,6 @@ import com.claudecode.runtime.interaction.InteractionEndpoint;
 import com.claudecode.runtime.interaction.InteractionFeature;
 import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.interaction.InteractionKind;
-import com.claudecode.runtime.interaction.InteractionNotImplementedException;
 import com.claudecode.runtime.interaction.InteractionPresenter;
 import com.claudecode.runtime.interaction.InteractionRequest;
 import com.claudecode.runtime.interaction.InteractionResolution;
@@ -21,6 +20,8 @@ import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostModelOption;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionMode;
+import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSessionView;
@@ -149,6 +150,20 @@ public final class SessionLinkServer implements AutoCloseable {
         }
     }
 
+    /**
+     * Announces a sudo password ask to every attached supervisor.
+     *
+     * <p>The ask is SECRET, so the frame carries the interaction id plus the
+     * executable and command it belongs to — never a password. What the client
+     * types travels back on {@code interaction.respond} and lands only in the
+     * one-shot {@code SudoPasswordInteraction.Result.Provided} the blocked
+     * {@code sudo} invocation consumes.
+     *
+     * <p>Presenting is not registration of a responder: the local dialog stays
+     * bound at the same time, and {@code FIRST_RESPONDER} means whichever side
+     * submits first completes the ask. A client that never answers leaves the
+     * request pending exactly as before, with the TUI prompt still on screen.
+     */
     private final class RemoteSudoPasswordPresenter implements InteractionPresenter<
             SudoPasswordInteraction.Request, SudoPasswordInteraction.Result> {
         @Override public InteractionEndpoint endpoint() {
@@ -156,7 +171,7 @@ public final class SessionLinkServer implements AutoCloseable {
         }
 
         @Override public InteractionSupport support() {
-            return InteractionSupport.UNIMPLEMENTED;
+            return InteractionSupport.SUPPORTED;
         }
 
         @Override public boolean available(String sessionId) {
@@ -165,8 +180,21 @@ public final class SessionLinkServer implements AutoCloseable {
 
         @Override public void present(InteractionRequest<SudoPasswordInteraction.Request,
                 SudoPasswordInteraction.Result> request) {
-            throw new InteractionNotImplementedException(
-                request.descriptor(), endpoint(), "complete_in_tui");
+            for (Connection connection : connections) {
+                if (connection.attachedSessions.containsKey(request.descriptor().sessionId())) {
+                    connection.sendEvent(sudoRequested(request));
+                }
+            }
+        }
+
+        @Override public void resolved(InteractionResolution<SudoPasswordInteraction.Result>
+                resolution) {
+            for (Connection connection : connections) {
+                if (connection.attachedSessions.containsKey(
+                        resolution.descriptor().sessionId())) {
+                    connection.sendEvent(interactionResolvedSudo(resolution));
+                }
+            }
         }
 
         @Override public void unsupported(InteractionUnsupported event) {
@@ -315,6 +343,8 @@ public final class SessionLinkServer implements AutoCloseable {
                     case "interaction.respond" -> respondInteraction(request);
                     case "model.get" -> getModel(request);
                     case "model.set" -> setModel(request);
+                    case "permission.get" -> getPermissionMode(request);
+                    case "permission.set" -> setPermissionMode(request);
                     case "effort.get" -> getEffort(request);
                     case "effort.set" -> setEffort(request);
                     case "compact.run" -> runCompact(request);
@@ -488,15 +518,7 @@ public final class SessionLinkServer implements AutoCloseable {
             putOptional(response, "activation_id", activation.activationId());
             response.put("activation_generation", activation.activationGeneration());
             sendResponse(request, response);
-            for (InteractionRequest<?, ?> pending :
-                    interactions.pendingRequests(session.info().id())) {
-                if (pending.descriptor().kind() == InteractionKind.SUDO_PASSWORD) {
-                    sendEvent(interactionUnsupported(new InteractionUnsupported(
-                        pending.descriptor(), InteractionEndpoint.REMOTE, "complete_in_tui")));
-                } else {
-                    sendEvent(interactionRequested(permissionRequest(pending)));
-                }
-            }
+            announcePending(session.info().id());
         }
 
         private void listSessions(SessionLinkFrame request) throws IOException {
@@ -542,11 +564,24 @@ public final class SessionLinkServer implements AutoCloseable {
             response.put("session_id", session.info().id());
             response.set("session", infoPayload(session.info()));
             sendResponse(request, response);
-            for (InteractionRequest<?, ?> pending :
-                    interactions.pendingRequests(session.info().id())) {
+            announcePending(session.info().id());
+        }
+
+        /**
+         * Replays the asks already blocked when a supervisor attaches, so a
+         * browser that connects mid-ask sees the prompt the terminal is
+         * showing. Sudo is included on the same terms as permissions now that
+         * the endpoint presents it.
+         */
+        private void announcePending(String sessionId) throws IOException {
+            for (InteractionRequest<?, ?> pending : interactions.pendingRequests(sessionId)) {
                 if (pending.descriptor().kind() == InteractionKind.SUDO_PASSWORD) {
-                    sendEvent(interactionUnsupported(new InteractionUnsupported(
-                        pending.descriptor(), InteractionEndpoint.REMOTE, "complete_in_tui")));
+                    @SuppressWarnings("unchecked")
+                    InteractionRequest<SudoPasswordInteraction.Request,
+                        SudoPasswordInteraction.Result> sudo =
+                            (InteractionRequest<SudoPasswordInteraction.Request,
+                                SudoPasswordInteraction.Result>) pending;
+                    sendEvent(sudoRequested(sudo));
                 } else {
                     sendEvent(interactionRequested(permissionRequest(pending)));
                 }
@@ -609,6 +644,31 @@ public final class SessionLinkServer implements AutoCloseable {
                 effortPayload(attachment.activeView().efforts().set(selected)));
         }
 
+        /**
+         * The session's live permission mode, projected for a remote supervisor's
+         * composer chip. Sent as the same shape {@code setPermissionMode} answers
+         * with so a reader never has to know which call produced its state.
+         */
+        private void getPermissionMode(SessionLinkFrame request) throws IOException {
+            payload(request, Set.of());
+            sendResponse(request,
+                permissionPayload(requireAttachment(request).activeView().permissions().get()));
+        }
+
+        /**
+         * Applies a mode change made from a remote supervisor and answers with the
+         * refreshed state, so the caller renders what the gate actually accepted
+         * rather than its request. The gate validates the name; an unknown mode
+         * surfaces as {@code invalid_request} through the handler's catch.
+         */
+        private void setPermissionMode(SessionLinkFrame request) throws IOException {
+            AttachedSessionView attachment = requireAttachment(request);
+            ObjectNode body = payload(request, Set.of("mode"));
+            String selected = requiredText(body, "mode").trim();
+            sendResponse(request,
+                permissionPayload(attachment.activeView().permissions().set(selected)));
+        }
+
         private void runCompact(SessionLinkFrame request) throws IOException {
             AttachedSessionView attachment = requireAttachment(request);
             ObjectNode body = payload(request, Set.of("instructions"));
@@ -623,7 +683,10 @@ public final class SessionLinkServer implements AutoCloseable {
         private void respondInteraction(SessionLinkFrame request) throws IOException {
             String sessionId = requireAttachment(request).sessionId();
             ObjectNode payload = payload(request,
-                Set.of("request_id", "behavior", "updated_input", "message"));
+                Set.of("request_id", "behavior", "updated_input", "message", "password",
+                    "interaction_kind"));
+            String requestId = requiredText(payload, "request_id");
+            if (respondSudo(request, payload, sessionId, requestId)) return;
             String behavior = requiredText(payload, "behavior");
             JsonNode updatedInput = payload.get("updated_input");
             String message = optionalText(payload, "message");
@@ -637,7 +700,6 @@ public final class SessionLinkServer implements AutoCloseable {
                     : PermissionAskCallback.Result.denyWithDirectMessage(message);
                 default -> throw new IllegalArgumentException("unsupported interaction behavior");
             };
-            String requestId = requiredText(payload, "request_id");
             boolean accepted = interactions.respond(InteractionFeatures.USER_QUESTION,
                 requestId, sessionId, result, InteractionEndpoint.REMOTE)
                 || interactions.respond(InteractionFeatures.PERMISSION,
@@ -647,6 +709,46 @@ public final class SessionLinkServer implements AutoCloseable {
                 return;
             }
             sendResponse(request, object());
+        }
+
+        /**
+         * Answers a pending sudo ask, if the frame names one.
+         *
+         * <p>The password arrives in the frame and is marshalled straight into
+         * the one-shot {@code Provided} the blocked run consumes; it is never
+         * stored, logged, or echoed. {@code behavior=cancel} answers with
+         * {@code Cancelled}, which the adapter turns into a plain "cancelled"
+         * tool error.
+         *
+         * @return whether this frame was a sudo answer, answered or refused
+         */
+        private boolean respondSudo(SessionLinkFrame request, ObjectNode payload,
+                String sessionId, String requestId) throws IOException {
+            String kind = optionalText(payload, "interaction_kind");
+            String password = optionalText(payload, "password");
+            if (!Strings.CS.equals(kind, "sudo_password") && password == null) return false;
+            String behavior = requiredText(payload, "behavior");
+            SudoPasswordInteraction.Result result = switch (behavior) {
+                case "submit" -> SudoPasswordInteraction.Result.provided(
+                    password == null ? new char[0] : password.toCharArray());
+                case "cancel" -> SudoPasswordInteraction.Result.cancelled();
+                default -> throw new IllegalArgumentException("unsupported sudo behavior");
+            };
+            boolean accepted = interactions.respond(InteractionFeatures.SUDO_PASSWORD,
+                requestId, sessionId, result, InteractionEndpoint.REMOTE);
+            if (!accepted && result instanceof SudoPasswordInteraction.Result.Provided provided) {
+                // The coordinator refused it (the ask was already answered, or
+                // this session does not own it). Nobody will write it to sudo,
+                // so wiping is ours; an accepted password belongs to the run,
+                // which wipes it when it writes.
+                provided.close();
+            }
+            if (!accepted) {
+                sendError(request, "stale_interaction", "interaction is no longer pending");
+                return true;
+            }
+            sendResponse(request, object());
+            return true;
         }
 
         private void attach(SessionHostSession session) {
@@ -825,6 +927,46 @@ public final class SessionLinkServer implements AutoCloseable {
             "interaction.requested", request.descriptor().sessionId(), payload);
     }
 
+    /**
+     * The sudo ask as a supervisor sees it: who is asking and for which
+     * command, under an id the answer can name. The password is not part of
+     * this frame in either direction — the client supplies it on respond.
+     */
+    private static SessionLinkFrame sudoRequested(
+            InteractionRequest<SudoPasswordInteraction.Request,
+                SudoPasswordInteraction.Result> request) {
+        SudoPasswordInteraction.Request payload = request.payload();
+        ObjectNode body = object();
+        body.put("request_id", request.descriptor().id());
+        putOptional(body, "executable", payload.executable());
+        putOptional(body, "command", payload.command());
+        return SessionLinkFrame.event("interaction.requested", request.descriptor().sessionId(),
+            withKind(body, InteractionKind.SUDO_PASSWORD));
+    }
+
+    /**
+     * The sudo resolution as a supervisor sees it. Neither a submitted nor a
+     * cancelled password may be echoed, so the frame reports only the outcome
+     * and which endpoint produced it.
+     */
+    private static SessionLinkFrame interactionResolvedSudo(
+            InteractionResolution<SudoPasswordInteraction.Result> resolution) {
+        ObjectNode body = object();
+        body.put("request_id", resolution.descriptor().id());
+        body.put("behavior", resolution.result()
+                instanceof SudoPasswordInteraction.Result.Cancelled ? "cancel" : "submit");
+        body.put("origin", resolution.origin().name().toLowerCase(Locale.ROOT));
+        return SessionLinkFrame.event("interaction.resolved",
+            resolution.descriptor().sessionId(),
+            withKind(body, InteractionKind.SUDO_PASSWORD));
+    }
+
+    /** Tags an interaction frame with its kind, which disambiguates the shared name. */
+    private static ObjectNode withKind(ObjectNode body, InteractionKind kind) {
+        body.put("interaction_kind", kind.name().toLowerCase(Locale.ROOT));
+        return body;
+    }
+
     private static SessionLinkFrame interactionResolved(
             InteractionResolution<PermissionAskCallback.Result> resolution) {
         ObjectNode payload = object();
@@ -967,6 +1109,30 @@ public final class SessionLinkServer implements AutoCloseable {
             putOptional(mapped, "alias", option.alias());
             if (option.defaultOption()) mapped.put("default", true);
         }
+        return payload;
+    }
+
+    /**
+     * The permission-mode wire shape, field-for-field what the gateway's
+     * {@code GatewayPermissionModeHandler.writeState} emits, so a forwarded body
+     * needs no second mapping on the receiving side.
+     */
+    private static ObjectNode permissionPayload(SessionHostPermissionState state) {
+        ObjectNode payload = object();
+        payload.put("current", state.current());
+        ArrayNode modes = payload.putArray("modes");
+        for (SessionHostPermissionMode mode : state.modes()) {
+            ObjectNode row = modes.addObject();
+            row.put("value", mode.value());
+            row.put("title", mode.title());
+            row.put("short_title", mode.shortTitle());
+            row.put("symbol", mode.symbol());
+            row.put("color_key", mode.colorKey());
+            row.put("available", mode.available());
+        }
+        payload.put("bypass_permissions_available", state.bypassPermissionsAvailable());
+        payload.put("bypass_permissions_disabled_by_policy",
+            state.bypassPermissionsDisabledByPolicy());
         return payload;
     }
 

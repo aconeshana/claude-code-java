@@ -48,6 +48,11 @@ public final class ApiTimeouts {
         return resolveApiTimeout(SubprocessEnvironment.get("API_TIMEOUT_MS"));
     }
 
+    static Duration streamConnectTimeout(CreateMessageRequest request) {
+        Duration requested = request.streamConnectTimeout();
+        return requested != null ? requested : apiTimeout();
+    }
+
     /**
      * Per-attempt timeout for the non-streaming fallback.
      */
@@ -126,7 +131,16 @@ public final class ApiTimeouts {
                                             String enabledRaw, String bedrockEnabledRaw,
                                             String byteTimeoutRaw, String streamTimeoutRaw) {
         return resolveByteWatchdog(provider, baseUrl, enabledRaw, bedrockEnabledRaw,
-            byteTimeoutRaw, streamTimeoutRaw, remoteWatchdogDefaultOn(), null);
+            byteTimeoutRaw, streamTimeoutRaw, remoteWatchdogDefaultOn(), remoteByteIdleMs());
+    }
+
+    /**
+     * {@code A8S}'s middle tier: the cached remote
+     * {@code tengu_byte_stream_idle_timeout_ms} value, or null when the cache is
+     * absent or holds no numeric value.
+     */
+    static Long remoteByteIdleMs() {
+        return CachedFeatureValues.number(BYTE_IDLE_FEATURE);
     }
 
     static ByteWatchdog resolveByteWatchdog(ApiConfig.ApiProvider provider, String baseUrl,
@@ -155,14 +169,10 @@ public final class ApiTimeouts {
      *
      * @param streamIdleOrNull the positive {@code CLAUDE_STREAM_IDLE_TIMEOUT_MS}
      *        window, or null when that variable was unset/non-positive
+     * @param remoteByteIdleMs the remote
+     *        {@code tengu_byte_stream_idle_timeout_ms} value, or null when the
+     *        cache holds no numeric value — collapsed to {@code providerDefault}
      */
-    static Duration resolveByteIdleTimeout(ApiConfig.ApiProvider provider,
-                                           String byteTimeoutRaw,
-                                           Duration streamIdleOrNull) {
-        return resolveByteIdleTimeout(provider, byteTimeoutRaw, streamIdleOrNull,
-            CachedFeatureValues.number(BYTE_IDLE_FEATURE));
-    }
-
     static Duration resolveByteIdleTimeout(ApiConfig.ApiProvider provider,
                                            String byteTimeoutRaw,
                                            Duration streamIdleOrNull,

@@ -24,6 +24,7 @@ import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
+import com.claudecode.session.SessionManager;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -59,8 +60,15 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** Default loopback port the gateway tries first, mirroring kimi-cli's {@code kimi web}. */
-    private static final int DEFAULT_PORT = 8087;
+    /**
+     * Default loopback port the gateway tries first.
+     *
+     * <p>19845 is built from two emoji code points: {@code ⚡} (U+26A1 = 9889) contributes
+     * its leading digits {@code 98}, {@code 🐭} (U+1F42D = 128045) its trailing digits
+     * {@code 45}, and {@code 1} pads the result to five digits. It sits above 10000 and is
+     * not an IANA-assigned port.
+     */
+    private static final int DEFAULT_PORT = 19845;
 
     /** How many ascending ports to probe before giving up. */
     private static final int PORT_SEARCH_ATTEMPTS = 10;
@@ -307,6 +315,14 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
             .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
             .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
+            // Every session a webui client addresses belongs to this process or
+            // to another TUI on the machine; the gateway forwards the halves
+            // only the owning process knows and replays the transcript halves.
+            .remoteSessionState(true)
+            // Addressed by the owner's work directory: this process's own
+            // project holds none of the transcripts it is asked to fold.
+            .remoteMetrics((sessionId, workDir) -> new CliTranscriptMetricsFold().of(sessionId,
+                new SessionManager(workDir).getSessionFile(sessionId)))
             .build();
         created.start();
         String published = "http://127.0.0.1:" + created.port() + "/?token=" + token;

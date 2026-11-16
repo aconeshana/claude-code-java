@@ -29,11 +29,14 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -127,9 +130,18 @@ public final class MirrorHub {
      */
     private static final int MAX_RESULT_CHARS = 20_000;
     private static final String TRUNCATION_MARKER = "\n…[truncated]";
+    /** The frame carrying a request's model and the message count at the head of that request. */
+    private static final String TURN_MODEL = "turn.model";
 
     /** Bounded recent tool-use names by id, for typing later result frames. */
     private static final int REMEMBERED_TOOLS = 256;
+
+    /**
+     * Most permission asks replayed to a cursorless subscriber. An ask that is
+     * never answered (its host crashed or the link dropped mid-dialog) cannot
+     * be pruned by a resolution, so the parked set needs its own ceiling.
+     */
+    private static final int MAX_PENDING_ASKS = 64;
 
     /**
      * Longest argument excerpt in a sub-agent activity line. The live progress
@@ -148,6 +160,7 @@ public final class MirrorHub {
      */
     private final Object journalLock = new Object();
     private final ArrayDeque<MirrorFrame> ring = new ArrayDeque<>();
+    private final Map<String, PendingAsk> pendingAsks = new ConcurrentHashMap<>();
     private final AtomicLong nextId = new AtomicLong();
     private final CopyOnWriteArrayList<Consumer<MirrorFrame>> sinks =
         new CopyOnWriteArrayList<>();
@@ -193,6 +206,14 @@ public final class MirrorHub {
      * turn whose stream never reported a model stays without the field.
      */
     private final Map<String, String> turnModels = new ConcurrentHashMap<>();
+    /**
+     * Each followed session's most recent message count, from the
+     * {@code StreamRequestStart} the TUI publishes at the head of every model
+     * request. The session listing otherwise has only the count frozen into
+     * {@code SessionHostInfo} at activation, so a session the user keeps
+     * talking in would report the number it started with.
+     */
+    private final Map<String, Integer> messageCounts = new ConcurrentHashMap<>();
     /**
      * Each followed session's in-flight text/thinking block, built from the
      * stream deltas and dropped when the block settles into its Assistant
@@ -255,6 +276,16 @@ public final class MirrorHub {
      * already under way) has no {@code turn.started} frame to reduce, so the
      * snapshot carries the running fact and its clock origin instead.
      */
+    /**
+     * The message count the followed session reported at its last model request, or empty before
+     * it has made one. This is fresher than the count in {@code SessionHostInfo}, which is the
+     * snapshot taken when the session was activated.
+     */
+    public OptionalInt liveMessageCount(String sessionId) {
+        Integer count = messageCounts.get(sessionId);
+        return count == null ? OptionalInt.empty() : OptionalInt.of(count);
+    }
+
     public OptionalLong runningSince(String sessionId) {
         Long started = turnStartClocks.get(sessionId);
         return started == null ? OptionalLong.empty() : OptionalLong.of(started);
@@ -320,13 +351,87 @@ public final class MirrorHub {
 
     /** Publishes one pending permission ask raised by a followed session. */
     public void publishPermissionAsked(String sessionId, ObjectNode payload) {
-        publish(sessionId, "permission.asked", payload);
+        String requestId = payload.path("request_id").asText("");
+        if (requestId.isEmpty()) {
+            publish(sessionId, "permission.asked", payload);
+            return;
+        }
+        MirrorFrame frame = publish(sessionId, "permission.asked", payload);
+        // Recording the owning session lets a cursorless subscriber be handed
+        // only its own asks instead of every followed session's.
+        pendingAsks.put(requestId, new PendingAsk(sessionId, frame));
+        evictStaleAsks();
+    }
+
+    /**
+     * Publishes one pending sudo password ask raised by a followed session.
+     *
+     * <p>Replayed to a cursorless subscriber just like a permission ask, so a
+     * browser opened while a {@code sudo} is already blocked still shows the
+     * prompt. The payload names the executable and command but never a
+     * password: answers travel in the respond request, not this stream.
+     */
+    public void publishSudoAsked(String sessionId, ObjectNode payload) {
+        String requestId = payload.path("request_id").asText("");
+        if (requestId.isEmpty()) {
+            publish(sessionId, "sudo.asked", payload);
+            return;
+        }
+        MirrorFrame frame = publish(sessionId, "sudo.asked", payload);
+        pendingAsks.put(requestId, new PendingAsk(sessionId, frame));
+        evictStaleAsks();
+    }
+
+    /** Publishes the resolution of one earlier sudo ask. */
+    public void publishSudoResolved(String sessionId, ObjectNode payload) {
+        publish(sessionId, "sudo.resolved", payload);
+        String requestId = payload.path("request_id").asText("");
+        if (!requestId.isEmpty()) pendingAsks.remove(requestId);
     }
 
     /** Publishes the resolution of one earlier permission ask. */
     public void publishPermissionResolved(String sessionId, ObjectNode payload) {
+        // Publish first, forget second: a sink that throws would otherwise drop
+        // the ask from the replay set while every client still shows its dialog.
         publish(sessionId, "permission.resolved", payload);
+        String requestId = payload.path("request_id").asText("");
+        if (!requestId.isEmpty()) pendingAsks.remove(requestId);
     }
+
+    /**
+     * Permission asks still awaiting an answer, oldest first, narrowed to
+     * {@code sessionId} when one is given. A client that connects without a
+     * cursor starts live and would otherwise never learn of an ask published
+     * before it attached.
+     */
+    public List<MirrorFrame> pendingPermissionFrames(String sessionId) {
+        Collection<PendingAsk> asks = pendingAsks.values();
+        return asks.stream()
+            .filter(ask -> sessionId == null || Strings.CS.equals(ask.sessionId(), sessionId))
+            .map(PendingAsk::frame)
+            .sorted(Comparator.comparingLong(MirrorFrame::id))
+            .toList();
+    }
+
+    /**
+     * Bounds the replay set. An ask normally leaves through
+     * {@link #publishPermissionResolved}; one whose host vanished mid-ask never
+     * gets that callback, and every entry holds a whole ask payload, so an
+     * unpruned map grows for the life of the gateway. Oldest go first — their
+     * dialog is the one a reconnect is least likely to still need.
+     */
+    private void evictStaleAsks() {
+        if (pendingAsks.size() <= MAX_PENDING_ASKS) return;
+        pendingAsks.entrySet().stream()
+            .sorted(Comparator.comparingLong(entry -> entry.getValue().frame().id()))
+            .limit(pendingAsks.size() - MAX_PENDING_ASKS)
+            .map(Map.Entry::getKey)
+            .toList()
+            .forEach(pendingAsks::remove);
+    }
+
+    /** One parked ask: the session that owns it, and its journaled frame. */
+    private record PendingAsk(String sessionId, MirrorFrame frame) { }
 
     /**
      * Publishes one session's new permission mode so a mirror client (the
@@ -469,6 +574,11 @@ public final class MirrorHub {
 
     private void onMessage(String sessionId, SDKMessage msg) {
         recordFirstOutput(sessionId, msg);
+        if (msg instanceof SDKMessage.StreamRequestStart start) {
+            // The head of a model request carries the running message count, which is the only
+            // live reading this process gets of a session it merely follows.
+            messageCounts.put(sessionId, start.messageCount());
+        }
         if (msg instanceof SDKMessage.Assistant assistant
                 && StringUtils.isNotBlank(assistant.model())) {
             // The usage dialog's model-route row: the last model the stream
@@ -561,7 +671,7 @@ public final class MirrorHub {
      * channel. A web client follows a running sub-agent through these frames,
      * keyed by {@code tool_use_id}; the agent id doubles as the sidechain
      * transcript key for a client that wants the on-disk transcript instead.
-     *
+     * <p>
      * Three fields answer three different questions, and a reader needs all
      * three to follow a child honestly: {@code prompt} is what the sub-agent was
      * asked, {@code content} is the one-line activity it is on *now* (see
@@ -570,7 +680,7 @@ public final class MirrorHub {
      * one. {@code content} is an activity ticker, not a transcript: the child's
      * full output lives in the sidechain, which is why the frame carries a single
      * line and the client is expected to offer the transcript for the rest.
-     *
+     * <p>
      * {@code content} falls back to {@code output} only when no child message
      * produced one, so the two projections never overwrite each other.
      */
@@ -600,14 +710,14 @@ public final class MirrorHub {
     /**
      * One line of sub-agent activity for the live progress channel, or null when
      * the message carries nothing a reader can follow.
-     *
+     * <p>
      * A running sub-agent's progress arrives as the child's own messages, and the
      * useful line is not always prose: an assistant turn *calling* a tool is the
      * activity, so it is projected as `Name(args)` — the same vocabulary the TUI's
      * agent progress presenter renders, kept deliberately instead of dropped,
      * because an agent that reads files emits tool calls rather than narration and
      * a text-only projection shows the reader nothing at all.
-     *
+     * <p>
      * Only the first tool use becomes the line: one frame is one activity, and the
      * subsequent blocks of the same assistant turn are separate frames' worth of
      * work that the next message will carry.
@@ -946,10 +1056,16 @@ public final class MirrorHub {
     public void publishRemote(String sessionId, String event, JsonNode payload) {
         ObjectNode copy = payload != null && payload.isObject()
             ? ((ObjectNode) payload.deepCopy()) : JsonUtils.getMapper().createObjectNode();
+        // A remote session's messages never reach {@link #onMessage}: the worker pushes ready-made
+        // frames. Its request-start frame is where the live message count travels, so it has to be
+        // read here too or a followed session keeps reporting its activation snapshot.
+        if (TURN_MODEL.equals(event) && copy.hasNonNull("message_count")) {
+            messageCounts.put(sessionId, copy.path("message_count").asInt());
+        }
         publish(sessionId, event, copy);
     }
 
-    private void publish(String sessionId, String event, ObjectNode payload) {
+    private MirrorFrame publish(String sessionId, String event, ObjectNode payload) {
         payload.put("session_id", sessionId);
         MirrorFrame frame = new MirrorFrame(
             nextId.incrementAndGet(), event, payload.toString());
@@ -957,8 +1073,31 @@ public final class MirrorHub {
             ring.addLast(frame);
             while (ring.size() > RING_CAPACITY) ring.removeFirst();
         }
+        fanOut(frame);
+        return frame;
+    }
+
+    /**
+     * Delivers one frame to every subscriber, isolating each subscriber's failure.
+     *
+     * <p>A sink writes to one SSE lane, and it throws as soon as that lane's
+     * browser has gone: the exchange's output stream rejects the next write. The
+     * fan-out runs on whichever thread published — for a remote session that is
+     * the {@code session-link-client-reader} thread — so an escaping exception
+     * would end that reader and close the whole Session Link, failing every later
+     * forward to that TUI with {@code session-link connection closed} until the
+     * pool rediscovered it. One closed tab must not cost the gateway its link to a
+     * worker, and it must not starve the other subscribers of the same frame.
+     */
+    private void fanOut(MirrorFrame frame) {
         for (Consumer<MirrorFrame> sink : sinks) {
-            sink.accept(frame);
+            try {
+                sink.accept(frame);
+            } catch (RuntimeException _) {
+                // The lane reports its own disconnect by throwing; the journal
+                // above already holds the frame, so a reconnecting client
+                // resumes from it.
+            }
         }
     }
 
@@ -970,9 +1109,7 @@ public final class MirrorHub {
     private void publishTransient(String sessionId, String event, ObjectNode payload) {
         payload.put("session_id", sessionId);
         MirrorFrame frame = new MirrorFrame(TRANSIENT_ID, event, payload.toString());
-        for (Consumer<MirrorFrame> sink : sinks) {
-            sink.accept(frame);
-        }
+        fanOut(frame);
     }
 
     private void closeSubscription(String sessionId) {
@@ -982,6 +1119,7 @@ public final class MirrorHub {
         turnStartClocks.remove(sessionId);
         turnFirstOutputClocks.remove(sessionId);
         turnModels.remove(sessionId);
+        messageCounts.remove(sessionId);
         drafts.remove(sessionId);
         if (subscription != null) {
             try { subscription.close(); } catch (Exception _) {

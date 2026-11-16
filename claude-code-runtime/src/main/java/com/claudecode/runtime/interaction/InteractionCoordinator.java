@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -109,39 +110,37 @@ public final class InteractionCoordinator
         Pending<Q, R> entry = new Pending<>(request, new CompletableFuture<>());
         pending.put(descriptor.id(), entry);
 
-        int responders = 0;
-        List<InteractionEndpoint> presentationOrder =
-            feature.responsePolicy() == InteractionResponsePolicy.LOCAL_ONLY
-                ? List.of(InteractionEndpoint.REMOTE, InteractionEndpoint.LOCAL)
-                : List.of(InteractionEndpoint.LOCAL, InteractionEndpoint.REMOTE);
-        for (InteractionEndpoint endpoint : presentationOrder) {
+        // Every endpoint is offered the ask concurrently. The terminal
+        // presenter blocks inside present() until the user answers, so a
+        // sequential offer would keep the ask from the web client for as long
+        // as the local prompt is open — and the web card is one of the two
+        // answers a FIRST_RESPONDER ask is waiting for. The policy governs who
+        // may answer, not the order observers are asked in.
+        AtomicInteger responders = new AtomicInteger();
+        List<Thread> presentations = new ArrayList<>();
+        for (InteractionEndpoint endpoint : List.of(
+                InteractionEndpoint.REMOTE, InteractionEndpoint.LOCAL)) {
             for (InteractionPresenter<Q, R> presenter : presenters(feature, endpoint)) {
-                try {
-                    if (!presenter.available(descriptor.sessionId())) continue;
-                    presenter.present(request);
-                    if (presenter.support() == InteractionSupport.SUPPORTED
-                            && (feature.responsePolicy() != InteractionResponsePolicy.LOCAL_ONLY
-                                || endpoint == InteractionEndpoint.LOCAL)) {
-                        responders++;
-                    }
-                } catch (InteractionNotImplementedException unsupported) {
-                    log.warn("Interaction endpoint is unimplemented: requestId={}, sessionId={}, kind={}, endpoint={}",
-                        descriptor.id(), descriptor.sessionId(), descriptor.kind(), endpoint);
-                    try {
-                        presenter.unsupported(new InteractionUnsupported(
-                            descriptor, endpoint, unsupported.action()));
-                    } catch (RuntimeException notificationFailure) {
-                        logSecretSafeFailure("Interaction unsupported notification failed",
-                            descriptor, endpoint, notificationFailure);
-                    }
-                } catch (RuntimeException failure) {
-                    logSecretSafeFailure("Interaction presenter failed",
-                        descriptor, endpoint, failure);
-                }
+                presentations.add(Thread.ofVirtual().name(
+                    "interaction-present-" + descriptor.kind()).start(
+                        () -> present(feature, request, descriptor, endpoint, presenter,
+                            responders)));
             }
-            if (!pending.containsKey(descriptor.id())) break;
         }
-        if (responders == 0 && pending.remove(descriptor.id(), entry)) {
+        // The offer phase ends once every presenter has returned — the
+        // terminal one when the user dismisses its dialog. Waiting for them
+        // keeps this method's contract (a presentation that throws is fully
+        // accounted for before the caller sees the result) without letting
+        // one blocked endpoint hide the ask from the others.
+        for (Thread presentation : presentations) {
+            try {
+                presentation.join();
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (responders.get() == 0 && pending.remove(descriptor.id(), entry)) {
             entry.result().complete(feature.unavailableResult().get());
         }
         return entry.result().join();
@@ -171,6 +170,37 @@ public final class InteractionCoordinator
         @SuppressWarnings("unchecked") Pending<Q, R> entry = (Pending<Q, R>) raw;
         resolve(entry, result, origin);
         return true;
+    }
+
+    /** Offers the ask to one presenter and records whether it can answer it. */
+    private <Q, R> void present(
+            InteractionFeature<Q, R> feature,
+            InteractionRequest<Q, R> request,
+            InteractionDescriptor descriptor,
+            InteractionEndpoint endpoint,
+            InteractionPresenter<Q, R> presenter,
+            AtomicInteger responders) {
+        try {
+            if (!presenter.available(descriptor.sessionId())) return;
+            presenter.present(request);
+            if (presenter.support() == InteractionSupport.SUPPORTED
+                    && (feature.responsePolicy() != InteractionResponsePolicy.LOCAL_ONLY
+                        || endpoint == InteractionEndpoint.LOCAL)) {
+                responders.incrementAndGet();
+            }
+        } catch (InteractionNotImplementedException unsupported) {
+            log.warn("Interaction endpoint is unimplemented: requestId={}, sessionId={}, kind={}, endpoint={}",
+                descriptor.id(), descriptor.sessionId(), descriptor.kind(), endpoint);
+            try {
+                presenter.unsupported(new InteractionUnsupported(
+                    descriptor, endpoint, unsupported.action()));
+            } catch (RuntimeException notificationFailure) {
+                logSecretSafeFailure("Interaction unsupported notification failed",
+                    descriptor, endpoint, notificationFailure);
+            }
+        } catch (RuntimeException failure) {
+            logSecretSafeFailure("Interaction presenter failed", descriptor, endpoint, failure);
+        }
     }
 
     public List<InteractionRequest<?, ?>> pendingRequests(String requestedSessionId) {

@@ -73,3 +73,57 @@
   color: var(--dsw-alias-state-error-primary);
   border-color: transparent;
 }
+
+/* --- local additions: the sudo password prompt (views/SudoCard.tsx) -------
+   Everything above is vendored verbatim for tool approvals. dsh has no sudo
+   card to copy, so the four rules below are authored here; see UPSTREAM.md
+   "local additions for the sudo prompt". They deliberately reuse the card's
+   shell, strip and action row. */
+
+.secretRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-specific-input-major);
+}
+
+.secretRow:focus-within {
+  border-color: var(--dsw-alias-state-warn-primary);
+}
+
+.secretInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.reveal {
+  flex: none;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.reveal:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}

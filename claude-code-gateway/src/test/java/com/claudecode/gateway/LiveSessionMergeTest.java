@@ -69,11 +69,43 @@ class LiveSessionMergeTest {
     }
 
     @Test
-    void leavesASessionTheCatalogAlreadyListsAlone() {
+    void takesTheLiveCountsForASessionTheCatalogAlreadyLists() {
+        // The catalog globbed the transcript earlier; its message_count is frozen at that moment.
+        // The live row is the only source that keeps advancing, so it must win.
+        List<ProjectEntry> merged =
+            LiveSessionMerge.merge(
+                List.of(project("/repo", row("sess-1", 1_000L))),
+                List.of(live("sess-1", "/repo")),
+                IDENTITY);
+
+        assertEquals(1, merged.size());
+        assertEquals(List.of("sess-1"), idsOf(merged.getFirst()), "no duplicate row");
+        assertEquals(2, merged.getFirst().sessions().getFirst().messageCount(),
+            "live count replaces the catalog's stale one");
+        assertEquals(9_000L, merged.getFirst().sessions().getFirst().lastModifiedMs());
+        assertEquals(1, merged.getFirst().sessionCount(), "overlaying a row adds no session");
+    }
+
+    @Test
+    void keepsTheCatalogsTitleAndFirstPromptWhenOverlayingALiveRow() {
+        SessionEntry titled = new SessionEntry(
+            "sess-1", "stored summary", 1, 1_000L, "main", "/repo", "My session", "first words");
+
+        List<ProjectEntry> merged = LiveSessionMerge.merge(
+            List.of(project("/repo", titled)), List.of(live("sess-1", "/repo")), IDENTITY);
+
+        SessionEntry overlaid = merged.getFirst().sessions().getFirst();
+        assertEquals("My session", overlaid.customTitle(),
+            "the live registry does not carry a custom title");
+        assertEquals("first words", overlaid.firstPrompt());
+        assertEquals(2, overlaid.messageCount());
+    }
+
+    @Test
+    void leavesEveryRowAloneWhenNoCatalogSessionIsLive() {
         List<ProjectEntry> catalog = List.of(project("/repo", row("sess-1", 1_000L)));
 
-        List<ProjectEntry> merged =
-            LiveSessionMerge.merge(catalog, List.of(live("sess-1", "/repo")), IDENTITY);
+        List<ProjectEntry> merged = LiveSessionMerge.merge(catalog, List.of(), IDENTITY);
 
         assertSame(catalog, merged, "nothing to fold in, so the listing is handed back untouched");
     }

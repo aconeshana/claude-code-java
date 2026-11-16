@@ -120,17 +120,24 @@ class RemoteWorkerGatewayInteropTest {
         assertThat(received).doesNotContain("turn.cancel");
     }
 
+    /**
+     * A remote session's seat is edited by its owning process, not by this
+     * gateway: the change is forwarded over the link and the owner's answer is
+     * what the caller sees, so the webui and the TUI's own picker edit one
+     * selection.
+     */
     @Test
     @Timeout(20)
-    void modelSelectionForARemoteSessionIsUnsupportedAndNotForwarded() throws Exception {
+    void modelSelectionForARemoteSessionIsForwardedAndAnsweredByItsHost() throws Exception {
         startGatewayAgainstWorkerDirectory();
 
         try (Response response = post("/api/session/context",
                 "{\"session_id\":\"s-1\",\"model\":\"sonnet\"}")) {
-            assertThat(response.code()).isEqualTo(501);
-            assertThat(response.body().string()).contains("\"type\":\"unsupported\"");
+            assertThat(response.code()).isEqualTo(200);
+            // The seat is the host's answer, not an echo of the request.
+            assertThat(response.body().string()).contains("\"current\":\"claude-sonnet-5-5\"");
         }
-        assertThat(received).doesNotContain("session.model", "session.context");
+        assertThat(received).contains("model.set", "effort.get");
     }
 
     @Test
@@ -174,6 +181,7 @@ class RemoteWorkerGatewayInteropTest {
             });
         server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
             .webWorkers(directory)
+            .remoteSessionState(true)
             .build();
         server.start();
     }
@@ -201,6 +209,21 @@ class RemoteWorkerGatewayInteropTest {
                 if (Strings.CS.equals(request.name(), "session.list")) {
                     payload.putArray("sessions").addObject()
                         .put("id", "s-1").put("work_dir", "/work").put("summary", "hello");
+                } else if (Strings.CS.equals(request.name(), "model.set")) {
+                    // The owner applies the change and answers with the seat
+                    // it now reports, the way a TUI /model picker would.
+                    payload.put("current", "claude-sonnet-5-5");
+                    payload.putArray("models").addObject()
+                        .put("name", "claude-sonnet-5-5").put("label", "Sonnet 5.5")
+                        .put("default", true);
+                } else if (Strings.CS.equals(request.name(), "model.get")) {
+                    payload.put("current", "claude-sonnet-5-5");
+                    payload.putArray("models").addObject()
+                        .put("name", "claude-sonnet-5-5").put("label", "Sonnet 5.5")
+                        .put("default", true);
+                } else if (Strings.CS.equals(request.name(), "effort.get")) {
+                    payload.put("current", "high").put("effective", "high");
+                    payload.putArray("efforts").add("low").add("high");
                 }
                 writeFrame(SessionLinkFrame.response(
                     request.id(), request.name(), null, payload));

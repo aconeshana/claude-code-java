@@ -94,6 +94,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionActionsHandler sessionActionsApi;
     private final GatewaySessionCatalogPort catalog;
     private final GatewayPermissionsHandler permissionsApi;
+    private final GatewaySudoRespondHandler sudoApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
     private final GatewaySettingsHandler settingsApi;
     private final GatewayScheduleHandler scheduleApi;
@@ -158,6 +159,9 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
         private GatewayWorkspaceFilePort workspaceFile = GatewayWorkspaceFilePort.none();
         private WebWorkerDirectory webWorkers;
+        private boolean remoteSessionState;
+        private RemoteSessionContextPort.MetricsFold remoteMetrics =
+            (_, _) -> Optional.empty();
 
         private Builder(Config config, String token, SessionHostRegistry registry) {
             this.config = Objects.requireNonNull(config, "config");
@@ -189,6 +193,28 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder sessionMessages(GatewaySessionMessagesPort value) {
             this.sessionMessages = Objects.requireNonNull(value, "sessionMessages");
+            return this;
+        }
+
+        /**
+         * Enables forwarding of state that lives only in a session's hosting
+         * process — its model selection and reasoning effort — over that
+         * process's Session Link. Without it a remote session's composer seat
+         * is blank and a selection is rejected as unsupported.
+         */
+        public Builder remoteSessionState(boolean value) {
+            this.remoteSessionState = value;
+            return this;
+        }
+
+        /**
+         * The durable HUD fold of a session hosted elsewhere, replayed from
+         * the transcript its owner wrote. The gateway must not depend on the
+         * session module, so the CLI composition root supplies the reader;
+         * absent, a remote session's stats pills stay blank.
+         */
+        public Builder remoteMetrics(RemoteSessionContextPort.MetricsFold value) {
+            this.remoteMetrics = Objects.requireNonNull(value, "remoteMetrics");
             return this;
         }
 
@@ -290,6 +316,40 @@ public final class GatewayServer implements AutoCloseable {
         this.mirror = new MirrorHub(registry);
         this.remoteWorkers = Optional.ofNullable(builder.webWorkers)
             .map(directory -> new RemoteWorkerPool(directory, mirror));
+        if (builder.remoteSessionState && remoteWorkers.isPresent()) {
+            sessionContext = new RemoteSessionContextPort(sessionContext,
+                remoteWorkers.get(), sessionMessages, builder.remoteMetrics);
+            // The file preview follows the same sessions the context surface
+            // does: a gateway that runs no engine of its own cannot resolve a
+            // remote session's workspace root from its own project directory,
+            // so the remote sessions it lists open their files through the work
+            // directory their owning process reported.
+            workspaceFile = new RemoteWorkspaceFilePort(workspaceFile, remoteWorkers.get());
+            // The session row menu's four mutating actions follow the same
+            // sessions, and are the one remote surface whose owner does not
+            // matter: rename/archive/delete edit a transcript, fork derives one,
+            // and all four resolve by bare id against the configuration home.
+            // The composition root that starts a standalone `claude web` gateway
+            // wires no session storage, so without this the four routes answered
+            // "not configured" for rows the same webui had just listed.
+            actions = new TranscriptSessionActions(actions,
+                TranscriptSessionActions.configurationHomeOf(builder.webWorkers));
+            // The listing follows the same rule. A gateway that serves no
+            // catalog of its own listed live sessions only, so a row that
+            // existed purely on disk — a fork, or a session whose TUI had
+            // exited — never appeared however many turns it held, and the
+            // custom title or archive flag a rename and archive had just
+            // written were invisible because nothing read the transcript.
+            catalog = TranscriptSessionCatalog.decorate(catalog,
+                TranscriptSessionActions.configurationHomeOf(builder.webWorkers));
+            // fileDiff needs no decorator here: it reads a transcript and no
+            // live session state, so the gateway-side adapter never consults
+            // the registry. The composition root that starts a gateway over
+            // other processes' sessions therefore supplies a port that resolves
+            // each transcript under the working directory its owning worker
+            // reported, which is the one root that answers for every session a
+            // client can address.
+        }
         // The context-timeline ledger follows the same sessions the mirror
         // does: it must observe every hub message so compaction's in-place
         // rewrite of the live rows is archived before they are gone.
@@ -351,8 +411,14 @@ public final class GatewayServer implements AutoCloseable {
             interactions.register(InteractionFeatures.PERMISSION, presenter);
             interactions.register(InteractionFeatures.USER_QUESTION, presenter);
             this.permissionsApi = new GatewayPermissionsHandler(interactions, remoteWorkers);
+            // Sudo needs no presenter here: the ask is raised by the process
+            // that owns the session and reaches the browser as a sudo.asked
+            // mirror frame, so this endpoint only has to carry the answer
+            // back to that process.
+            this.sudoApi = new GatewaySudoRespondHandler(interactions, remoteWorkers);
         } else {
             this.permissionsApi = null;
+            this.sudoApi = null;
         }
         this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
             withRemoteWorkDirFallback(sessionMessages,
@@ -365,7 +431,7 @@ public final class GatewayServer implements AutoCloseable {
         this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
         this.fileSuggestionsApi = new GatewayFileSuggestionsHandler(fileSuggestions);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext, remoteWorkers);
-        this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode);
+        this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode, remoteWorkers);
         this.sessionCancelApi = new GatewaySessionCancelHandler(cancel, remoteWorkers);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
         this.changesApi = new GatewayChangesHandler(fileDiff);
@@ -718,6 +784,18 @@ public final class GatewayServer implements AutoCloseable {
             permissionsApi.handle(exchange);
             return;
         }
+        if (post && Strings.CS.equals("/api/sudo/respond", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            if (sudoApi == null) {
+                try (exchange) {
+                    respondJson(exchange, NOT_FOUND, errorBody("not_found",
+                        "sudo interaction is not configured"));
+                }
+                return;
+            }
+            sudoApi.handle(exchange);
+            return;
+        }
         if ((get || post) && Strings.CS.equals("/api/settings", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {
@@ -908,7 +986,9 @@ public final class GatewayServer implements AutoCloseable {
                     ObjectNode sessionNode = JsonUtils.getMapper().createObjectNode();
                     sessionNode.put("id", entry.id());
                     if (hasText(entry.summary())) sessionNode.put("summary", entry.summary());
-                    sessionNode.put("message_count", entry.messageCount());
+                    // A followed session's own last request is fresher than any stored row.
+                    sessionNode.put("message_count", mirror.liveMessageCount(entry.id())
+                        .orElseGet(entry::messageCount));
                     sessionNode.put("modified_at", Instant.ofEpochMilli(
                         entry.lastModifiedMs()).toString());
                     if (hasText(entry.gitBranch())) sessionNode.put("git_branch", entry.gitBranch());
@@ -945,7 +1025,8 @@ public final class GatewayServer implements AutoCloseable {
             node.put("id", info.id());
             if (!info.workDir().isEmpty()) node.put("work_dir", info.workDir());
             if (!info.summary().isEmpty()) node.put("summary", info.summary());
-            node.put("message_count", info.messageCount());
+            node.put("message_count", mirror.liveMessageCount(info.id())
+                .orElseGet(info::messageCount));
             if (info.modifiedAt() != null) node.put("modified_at", info.modifiedAt().toString());
             if (!info.gitBranch().isEmpty()) node.put("git_branch", info.gitBranch());
             if (remoteIds.contains(info.id())) node.put("remote", true);
@@ -1018,6 +1099,9 @@ public final class GatewayServer implements AutoCloseable {
         // journal's current tip instead of replaying the whole ring — only an
         // explicit cursor asks for missed-frame replay.
         long lastEventId = parseLastEventId(exchange).orElseGet(mirror::latestId);
+        // A cursorless client starts live, but a permission still awaiting an
+        // answer must not be lost to that: it is replayed so the dialog appears.
+        boolean freshClient = parseLastEventId(exchange).isEmpty();
         // Optional session filter: frames from every followed session stream
         // by default; ?session_id= narrows the stream to one conversation view.
         String sessionFilter = queryParam(exchange, "session_id");
@@ -1028,7 +1112,10 @@ public final class GatewayServer implements AutoCloseable {
         MirrorSubscriptions subscriptions = new MirrorSubscriptions();
         SseConnection connection = SseConnection.start(
             output, config.laneCapacity(), config.keepAlive(), subscriptions::close);
-        for (MirrorHub.MirrorFrame frame : mirror.replayAfter(lastEventId)) {
+        Iterable<MirrorHub.MirrorFrame> replay = freshClient
+            ? mirror.pendingPermissionFrames(sessionFilter)
+            : mirror.replayAfter(lastEventId);
+        for (MirrorHub.MirrorFrame frame : replay) {
             if (sessionFilter == null
                     || Strings.CS.contains(frame.data(), "\"session_id\":\"" + sessionFilter + "\"")) {
                 connection.offer(SseFrameWriter.event(

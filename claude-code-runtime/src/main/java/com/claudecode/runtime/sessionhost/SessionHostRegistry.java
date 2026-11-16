@@ -6,6 +6,7 @@ import com.claudecode.core.message.SDKMessage;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -104,7 +105,20 @@ public final class SessionHostRegistry {
     }
 
     public List<SessionHostInfo> list() {
-        return List.copyOf(activator.list());
+        List<SessionHostInfo> listed = activator.list();
+        Optional<SessionHostInfo> active = current().map(SessionHostSession::info);
+        if (active.isEmpty()) return List.copyOf(listed);
+        // The activator reads the catalog, whose message count is whatever the transcript held
+        // when it was globbed. The active session's own info is the only live count, so it must
+        // replace the listed row rather than sit next to it — a duplicate would let consumers
+        // pick the stale copy and report a frozen count for a session that is being used.
+        String activeId = active.get().id();
+        List<SessionHostInfo> withActive = new ArrayList<>(listed.size() + 1);
+        withActive.add(active.get());
+        for (SessionHostInfo info : listed) {
+            if (!info.id().equals(activeId)) withActive.add(info);
+        }
+        return List.copyOf(withActive);
     }
 
     public AutoCloseable subscribe(Listener listener) {

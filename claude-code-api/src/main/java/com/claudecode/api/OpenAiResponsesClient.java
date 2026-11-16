@@ -79,7 +79,7 @@ public final class OpenAiResponsesClient implements LlmClient {
             // the byte-level tier resolves disabled for this provider.
             return EventSourceStreamBridge.connect(
                 streamingHttpClient, httpRequest, new ResponsesEventTranslator(),
-                ApiTimeouts.apiTimeout(), ApiTimeouts.watchdog(),
+                ApiTimeouts.streamConnectTimeout(request), ApiTimeouts.watchdog(),
                 request.cancellationRegistrar(), onRequestSubmitted,
                 ApiTimeouts.byteWatchdog(ApiConfig.ApiProvider.OPENAI_COMPAT, config.baseUrl()));
         } catch (ApiException e) {

@@ -14,7 +14,7 @@ public final class InteractionCapabilities {
                 InteractionEndpoint.REMOTE, InteractionSupport.SUPPORTED),
             InteractionKind.SUDO_PASSWORD, Map.of(
                 InteractionEndpoint.LOCAL, InteractionSupport.SUPPORTED,
-                InteractionEndpoint.REMOTE, InteractionSupport.UNIMPLEMENTED));
+                InteractionEndpoint.REMOTE, InteractionSupport.SUPPORTED));
 
     private InteractionCapabilities() {}
 

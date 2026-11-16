@@ -8,6 +8,7 @@ import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -129,6 +130,39 @@ class HttpClientFactoryTest {
         assertEquals(Duration.ofSeconds(99), ApiTimeouts.resolveByteWatchdog(
             ApiConfig.ApiProvider.ANTHROPIC, "https://api.anthropic.com",
             null, null, null, null, true, 99_000L).idleTimeout());
+    }
+
+    @Test
+    void byteWatchdogReadsTheRemoteIdleValueOnTheProductionPath() {
+        // A8S consults nt("tengu_byte_stream_idle_timeout_ms", r): the cached
+        // remote value is the middle tier, above providerDefault and below the
+        // explicit CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS. The production overload
+        // must feed that lookup through, rather than passing a literal null.
+        Long remote = ApiTimeouts.remoteByteIdleMs();
+        assumeTrue(remote != null && remote > 0,
+            "the shared GrowthBook cache carries no numeric byte-idle value");
+
+        // Bedrock keys providerDefault on the event window (300s) rather than the
+        // 180s first-party default, so the remote tier is distinguishable from the
+        // fallback even when the cache happens to hold 180000.
+        var provider = ApiConfig.ApiProvider.BEDROCK;
+        var viaCache = ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, "true", null, null);
+        var viaExplicit = ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, "true", null, null, true, remote);
+        assertEquals(viaExplicit.idleTimeout(), viaCache.idleTimeout(),
+            "the production path must resolve the same window as the cached value");
+        assertNotEquals(Duration.ofMinutes(5), viaCache.idleTimeout(),
+            "dropping the cache read would collapse to the 300s event window");
+
+        var providerDefaultOnly = ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, "true", null, null, true, null);
+        assertEquals(Duration.ofMinutes(5), providerDefaultOnly.idleTimeout());
+
+        // A positive stream window suppresses the remote lookup entirely, so the
+        // production path agrees with the explicit one there too.
+        assertEquals(Duration.ofMinutes(10), ApiTimeouts.resolveByteWatchdog(
+            provider, null, null, "true", null, "600000").idleTimeout());
     }
 
     @Test

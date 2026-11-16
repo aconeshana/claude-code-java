@@ -124,7 +124,7 @@ class CliGatewayRuntimeStartTest {
             ServerSocket blocker = new ServerSocket();
             blocker.setReuseAddress(true);
             try {
-                blocker.bind(new InetSocketAddress("127.0.0.1", 8087 + i));
+                blocker.bind(new InetSocketAddress("127.0.0.1", 19845 + i));
                 blockers.add(blocker);
             } catch (IOException _) {
                 try { blocker.close(); } catch (IOException _) { /* already closed */ }

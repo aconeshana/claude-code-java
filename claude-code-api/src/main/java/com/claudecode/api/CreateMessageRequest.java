@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -76,8 +77,18 @@ public record CreateMessageRequest(
         /** Internal cancellation bridge; never serialized on the API wire. */
         @JsonIgnore CancellationRegistrar cancellationRegistrar,
         /** Internal SDK sub-agent attribution marker; never serialized. */
-        @JsonIgnore boolean subagent
+        @JsonIgnore boolean subagent,
+        /** Internal per-request bound on waiting for response headers; null uses the global API timeout. */
+        @JsonIgnore Duration streamConnectTimeout
 ) {
+
+    public CreateMessageRequest withStreamConnectTimeout(Duration timeout) {
+        return new CreateMessageRequest(
+            model, maxTokens, systemPrompt, messages, tools, metadata, stopSequences, stream,
+            temperature, topP, topK, thinking, effort, toolChoice, outputConfig, speed,
+            contextManagement, skipCacheWrite, promptCachingEnabled, promptCacheTtl, querySource,
+            cancellationRegistrar, subagent, timeout);
+    }
 
     private static final Pattern RELEASE_DATE_SUFFIX = Pattern.compile("-\\d{8}$");
     private static final Pattern TWO_PART_MODEL_VERSION =
@@ -450,6 +461,7 @@ public record CreateMessageRequest(
         private String querySource;
         private CancellationRegistrar cancellationRegistrar = CancellationRegistrar.NONE;
         private boolean subagent;
+        private Duration streamConnectTimeout;
 
         public Builder model(String model) { this.model = model; return this; }
         public Builder maxTokens(int maxTokens) { this.maxTokens = maxTokens; return this; }
@@ -481,13 +493,18 @@ public record CreateMessageRequest(
             return this;
         }
         public Builder subagent(boolean subagent) { this.subagent = subagent; return this; }
+        public Builder streamConnectTimeout(Duration streamConnectTimeout) {
+            this.streamConnectTimeout = streamConnectTimeout;
+            return this;
+        }
 
         public CreateMessageRequest build() {
             return new CreateMessageRequest(
                     model, maxTokens, systemPrompt, messages, tools,
                     metadata, stopSequences, stream, temperature, topP, topK,
                     thinking, effort, toolChoice, outputConfig, speed, contextManagement, skipCacheWrite,
-                    promptCachingEnabled, promptCacheTtl, querySource, cancellationRegistrar, subagent
+                    promptCachingEnabled, promptCacheTtl, querySource, cancellationRegistrar, subagent,
+                    streamConnectTimeout
             );
         }
     }

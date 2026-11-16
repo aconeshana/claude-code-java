@@ -495,6 +495,58 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /api/sudo/respond:
+    post:
+      tags: [Permissions]
+      summary: Answer one pending sudo password ask
+      description: |
+        A sudo invocation that needs a password blocks in the owning session's
+        interaction coordinator; the terminal prompt and a web client are two
+        observers of the same ask — first answer wins. The request_id comes
+        from the matching sudo.asked frame.
+
+        The password is read from the request body only. It is never written
+        to a transcript, never logged, and never echoed on the mirror stream,
+        which carries the resolved outcome alone. A session the gateway does
+        not host itself is answered over that worker's Unix-domain socket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, session_id, behavior]
+              properties:
+                request_id:
+                  type: string
+                  description: The id from the matching sudo.asked frame
+                session_id: { type: string }
+                behavior:
+                  type: string
+                  enum: [submit, cancel]
+                  description: submit supplies a password; cancel abandons the sudo
+                password:
+                  type: string
+                  writeOnly: true
+                  description: |
+                    Required when behavior is submit; 1-1024 characters. Never
+                    returned in any response.
+      responses:
+        '200':
+          description: The ask was answered by this request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  responded: { type: boolean }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: The ask was already answered by another observer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /api/settings:
     get:
       tags: [Settings]
@@ -1459,6 +1511,8 @@ components:
             - session.idle
             - permission.asked
             - permission.resolved
+            - sudo.asked
+            - sudo.resolved
         id:
           type: integer
           format: int64
@@ -1478,6 +1532,8 @@ components:
             - $ref: '#/components/schemas/FrameSessionOnly'
             - $ref: '#/components/schemas/PermissionAsk'
             - $ref: '#/components/schemas/FramePermissionResolved'
+            - $ref: '#/components/schemas/SudoAsk'
+            - $ref: '#/components/schemas/FrameSudoResolved'
     FrameSessionActivated:
       type: object
       description: The active session switched; mirrors rebind to the new id
@@ -1620,6 +1676,42 @@ components:
           enum: [tui, web]
           description: Which observer answered first
         feedback: { type: string }
+        session_id: { type: string }
+    FrameSudoResolved:
+      type: object
+      description: |
+        Body of the sudo.resolved frame. It reports only the outcome and which
+        observer answered — a submitted password is never echoed.
+      required: [request_id, resolution, origin, session_id]
+      properties:
+        request_id: { type: string }
+        resolution: { type: string, enum: [submitted, cancelled] }
+        origin:
+          type: string
+          enum: [tui, web]
+          description: Which observer answered first
+        session_id: { type: string }
+    SudoAsk:
+      type: object
+      description: |
+        Body of the sudo.asked frame: a sudo invocation blocked on a password.
+        The terminal prompt and every web client are observers of the same ask;
+        the first to answer completes it (POST /api/sudo/respond).
+
+        This frame never carries a password. It names what is asking so the
+        prompt can show the command, and the answer travels back on the
+        request, not this stream.
+      required: [request_id, session_id]
+      properties:
+        request_id:
+          type: string
+          description: The id POST /api/sudo/respond answers
+        executable:
+          type: string
+          description: The verified system sudo that will receive the password
+        command:
+          type: string
+          description: The command line awaiting authentication
         session_id: { type: string }
     PermissionAsk:
       type: object
