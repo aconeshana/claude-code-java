@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -314,15 +315,32 @@ class CliGatewaySessionContextTest {
             167_000L, "model-default", true,
             new ContextData.MessageBreakdown(47_000, 100, 200, 300, 400, List.of()),
             null, ContextData.TokenSource.MEASURED);
+        // Gate the collector so the first GET is deterministically served
+        // before anything can land. Asserting "empty" against an instantly
+        // returning collector only tested a thread-scheduling race: a fast
+        // runner could complete the background pass first. Holding the
+        // collector here makes the same assertion a property — and if the
+        // request path ever waited on the analyzer, this call would hang
+        // instead of returning, which is the failure we actually care about.
+        CountDownLatch collectorGate = new CountDownLatch(1);
         GatewaySessionContextPort port =
             CliInteractiveSessionRunner.gatewaySessionContext(
-                registryWith(models, efforts), null, null, "/work", () -> data);
+                registryWith(models, efforts), null, null, "/work", () -> {
+                    try {
+                        collectorGate.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    return data;
+                });
 
         // The collector runs on a background single-flight pass: the first
         // GET starts it and serves the single-reading form, later GETs serve
         // the landed snapshot. The analyzer makes real count-tokens calls,
         // so the request path itself must never wait on it.
         assertThat(port.breakdown(null)).isEmpty();
+        collectorGate.countDown();
         awaitAtMost5s(() -> assertThat(port.breakdown(null)).isPresent());
         GatewaySessionContextPort.ContextBreakdown breakdown =
             port.breakdown(null).orElseThrow();

@@ -96,13 +96,19 @@ class DetachedSessionTest {
         assertEquals(List.of("bash", "-c", "true"), builder.command());
     }
 
+    /**
+     * {@code setsid} forks when it is already a process group leader, and the started process
+     * would then be the launcher: its exit status and streams belong to {@code setsid}, not the
+     * command. {@code -w} closes that hole. Gradle's test worker is a group leader, so leaving it
+     * out is what made this path report a bogus exit status on Linux runners.
+     */
     @Test
-    void prefixesTheCommandWithTheLauncher() {
+    void prefixesTheCommandWithTheLauncherAndWaitsForIt() {
         ProcessBuilder builder = new ProcessBuilder("bash", "-c", "true");
 
         DetachedSession.apply(builder, new DetachedSession.Launcher.Setsid("/usr/bin/setsid"));
 
-        assertEquals(List.of("/usr/bin/setsid", "bash", "-c", "true"), builder.command());
+        assertEquals(List.of("/usr/bin/setsid", "-w", "bash", "-c", "true"), builder.command());
     }
 
     private static String run(ProcessBuilder builder) throws IOException, InterruptedException {

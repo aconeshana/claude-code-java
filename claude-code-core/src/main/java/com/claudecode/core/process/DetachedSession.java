@@ -49,6 +49,16 @@ public final class DetachedSession {
         exec { $ARGV[0] } @ARGV or do { print STDERR "$ARGV[0]: $!", $/; exit 127 };
         """.formatted(String.join(" ", PERL_STARTUP_VARIABLES), PARKED_PREFIX);
 
+    /**
+     * {@code setsid} calls {@code fork(2)} when it is already a process group leader, and execs in
+     * place otherwise (util-linux {@code setsid(1)}). A forked child means the started {@link
+     * Process} is {@code setsid} itself, so its streams and exit status would belong to the
+     * launcher rather than the command. {@code -w} makes {@code setsid} wait and report the
+     * command's status; where no fork happens it is a no-op. Gradle's test worker and other
+     * container hosts are often already process group leaders, which is why this is not optional.
+     */
+    private static final String SETSID_WAIT = "-w";
+
     sealed interface Launcher {
         record Setsid(String path) implements Launcher {}
         record Perl(String path) implements Launcher {}
@@ -71,7 +81,7 @@ public final class DetachedSession {
     static ProcessBuilder apply(ProcessBuilder builder, Launcher launcher) {
         List<String> command = new ArrayList<>();
         switch (launcher) {
-            case Launcher.Setsid(String path) -> command.add(path);
+            case Launcher.Setsid(String path) -> command.addAll(List.of(path, SETSID_WAIT));
             case Launcher.Perl(String path) -> {
                 command.addAll(List.of(path, "-e", PERL_LAUNCHER, "--"));
                 parkPerlStartupVariables(builder.environment());

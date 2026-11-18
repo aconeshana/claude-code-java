@@ -7,7 +7,9 @@ import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 
+import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.process.SubprocessEnvironment;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -54,8 +56,15 @@ public final class EnvInfoSection {
         if (Strings.CS.equals("win32", platform())) {
             return System.getProperty("os.version", "unknown");
         }
+        // Resolve `uname` through the same environment the rest of the CLI uses
+        // for child processes. A bare "uname" would be located by the JVM's own
+        // PATH, which is the *host's* — settings.env and the process-environment
+        // seam would be ignored, and the answer would follow whichever uname the
+        // host happens to have. ExecutableFinder consults the overlaid snapshot,
+        // so the resolved path is the one this process would actually run.
         try {
-            ProcessBuilder pb = new ProcessBuilder("uname", "-r");
+            String uname = ExecutableFinder.find("uname").map(Path::toString).orElse("uname");
+            ProcessBuilder pb = new ProcessBuilder(uname, "-r");
             pb.redirectErrorStream(false);
             Process p = pb.start();
             String out = new String(p.getInputStream().readAllBytes()).trim();
