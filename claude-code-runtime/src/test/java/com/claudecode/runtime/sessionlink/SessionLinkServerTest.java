@@ -708,9 +708,18 @@ class SessionLinkServerTest {
         }
 
         void send(SessionLinkFrame frame) throws Exception {
+            // One write for payload and terminator. Sending them as two writes lets
+            // the server's byte-at-a-time reader observe a complete frame followed by
+            // a lone '\n', which it rejects as an empty frame and answers by closing
+            // the connection — the reader then sees EOF and every subsequent
+            // assertion reads a payload-less frame. Local unix sockets usually
+            // coalesce the two writes into the same read loop; a slow or
+            // differently-buffered runner does not, which is why this only ever
+            // failed in CI.
             byte[] encoded = codec.encode(frame);
-            channel.write(ByteBuffer.wrap(encoded));
-            channel.write(ByteBuffer.wrap(new byte[] {'\n'}));
+            ByteBuffer out = ByteBuffer.allocate(encoded.length + 1);
+            out.put(encoded).put((byte) '\n').flip();
+            while (out.hasRemaining()) channel.write(out);
         }
 
         SessionLinkFrame read() throws Exception {
