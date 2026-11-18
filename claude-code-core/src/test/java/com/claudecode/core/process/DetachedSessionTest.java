@@ -26,9 +26,15 @@ class DetachedSessionTest {
     void commandRunsAsTheLeaderOfANewSessionWithoutATerminal() throws Exception {
         assumeTrue(Platform.IS_DARWIN || Platform.IS_LINUX);
 
+        // The tty probe sits in a subshell so its failure cannot take the
+        // script down. dash (ubuntu's /bin/sh) treats an unopenable
+        // `/dev/tty` as a redirect error on the enclosing command and exits
+        // non-zero, which `2>/dev/null` bound to the `if` does not suppress;
+        // under bash (macOS's /bin/sh) the same line is silent. That difference
+        // is the whole reason this passed locally and failed on the runner.
         String output = run(DetachedSession.apply(new ProcessBuilder("/bin/sh", "-c",
-            "echo $$ $(ps -o pgid= -p $$); if : </dev/tty; then echo tty; else echo no-tty; fi"
-                + " 2>/dev/null")));
+            "echo $$ $(ps -o pgid= -p $$);"
+                + " if ( : </dev/tty ) 2>/dev/null; then echo tty; else echo no-tty; fi")));
 
         String[] fields = output.strip().split("\\s+");
         assertEquals(fields[0], fields[1], "the shell leads its own process group");
