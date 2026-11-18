@@ -13,6 +13,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Bridges gateway submissions onto one headless {@code QuerySession}.
@@ -48,6 +49,7 @@ final class HeadlessTurnDriver {
             RemoteSubmissionPrompt.assemble(submission, persister);
         String prompt = assembled.prompt();
         CompletableFuture<Void> done = new CompletableFuture<>();
+        long startedNanos = System.nanoTime();
         // Synchronous on the caller thread: the gateway's turn-scoped
         // subscription must observe onTurnStart before any message.
         events.onTurnStart(UserInput.of(prompt, prompt,
@@ -69,7 +71,8 @@ final class HeadlessTurnDriver {
                     }
                     events.onMessage(message);
                 }
-                events.onTurnComplete(turnOutcome());
+                events.onTurnComplete(turnOutcome(
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)));
                 done.complete(null);
             } catch (RuntimeException failure) {
                 events.onError(failure, false);
@@ -79,8 +82,9 @@ final class HeadlessTurnDriver {
         return done;
     }
 
-    private static TurnOutcome turnOutcome() {
-        return new TurnOutcome(false, false, false, false, false, 0L, null, null, null, null);
+    /** A turn that ran to completion; its wall time feeds the webui turn tail's time pill. */
+    private static TurnOutcome turnOutcome(long elapsedMs) {
+        return new TurnOutcome(false, false, false, false, false, elapsedMs, null, null, null, null);
     }
 
     /** Message-level prior conversation for a resumed session; may be empty. */

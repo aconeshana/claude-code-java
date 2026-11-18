@@ -53,7 +53,7 @@ class CliGatewayRuntimeStartTest {
     void startReusesALiveGlobalGatewayInsteadOfBinding() throws IOException {
         String published = "http://127.0.0.1:1/?token=external";
         WebGatewayRecord.write(claudeHome.resolve("web-gateway.json"),
-            new WebGatewayRecord(ProcessHandle.current().pid(), published));
+            new WebGatewayRecord(ProcessHandle.current().pid(), published, "0.2.14", 1_700_000_000_000L));
         runtime = isolatedRuntime();
 
         assertThat(runtime.start().url()).isEqualTo(published);

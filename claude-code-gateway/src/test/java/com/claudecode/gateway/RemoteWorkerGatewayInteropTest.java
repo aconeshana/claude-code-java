@@ -23,6 +23,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -50,6 +51,7 @@ class RemoteWorkerGatewayInteropTest {
 
     private final SessionLinkCodec codec = new SessionLinkCodec();
     private final List<String> received = new CopyOnWriteArrayList<>();
+    private final List<SessionLinkFrame> submitted = new CopyOnWriteArrayList<>();
     private final OkHttpClient client = new OkHttpClient.Builder()
         .readTimeout(Duration.ofSeconds(30)).build();
     private Path root;
@@ -94,6 +96,9 @@ class RemoteWorkerGatewayInteropTest {
             String body = response.body().string();
             assertThat(body).contains("\"id\":\"s-1\"");
             assertThat(body).contains("\"remote\":true");
+            // A remote worker's session is served by a live process, which is what
+            // entitles the client to offer the permission mode and model selectors.
+            assertThat(body).contains("\"interactive\":true");
         }
     }
 
@@ -154,6 +159,57 @@ class RemoteWorkerGatewayInteropTest {
         assertThat(received).contains("turn.submit");
     }
 
+    /**
+     * A picture pasted into the webui composer reaches the TUI that hosts the
+     * session: the image block travels over the link as an inline image the
+     * host turns into an {@code [Image #N]} chip, not just the text beside it.
+     */
+    @Test
+    @Timeout(20)
+    void imagesSubmittedToARemoteSessionAreForwardedWithTheText() throws Exception {
+        startGatewayAgainstWorkerDirectory();
+        String png = Base64.getEncoder().encodeToString(new byte[] {1, 2, 3});
+
+        try (Response response = post("/v1/messages", messagesBody(
+                "{\"type\":\"text\",\"text\":\"look\"},"
+                    + "{\"type\":\"image\",\"source\":{\"type\":\"base64\","
+                    + "\"media_type\":\"image/png\",\"data\":\"" + png + "\"}}"))) {
+            assertThat(response.code()).isEqualTo(202);
+        }
+        var payload = submitted.getFirst().payload();
+        assertThat(payload.path("prompt").asText()).isEqualTo("look");
+        assertThat(payload.path("images")).hasSize(1);
+        assertThat(payload.path("images").get(0).path("mime_type").asText()).isEqualTo("image/png");
+        assertThat(payload.path("images").get(0).path("data").asText()).isEqualTo(png);
+        assertThat(payload.path("attachments")).isEmpty();
+    }
+
+    /**
+     * The composer lets a picture be sent with no text at all; the turn is
+     * still valid and carries an empty prompt beside the image.
+     */
+    @Test
+    @Timeout(20)
+    void anImageAloneIsAValidTurnForARemoteSession() throws Exception {
+        startGatewayAgainstWorkerDirectory();
+        String png = Base64.getEncoder().encodeToString(new byte[] {4, 5});
+
+        try (Response response = post("/v1/messages", messagesBody(
+                "{\"type\":\"image\",\"source\":{\"type\":\"base64\","
+                    + "\"media_type\":\"image/jpeg\",\"data\":\"" + png + "\"}}"))) {
+            assertThat(response.code()).isEqualTo(202);
+        }
+        var payload = submitted.getFirst().payload();
+        assertThat(payload.path("prompt").asText()).isEmpty();
+        assertThat(payload.path("images").get(0).path("mime_type").asText()).isEqualTo("image/jpeg");
+    }
+
+    private static String messagesBody(String contentBlocks) {
+        return "{\"model\":\"sonnet\",\"max_tokens\":1,\"stream\":true,"
+            + "\"metadata\":{\"session_id\":\"s-1\"},"
+            + "\"messages\":[{\"role\":\"user\",\"content\":[" + contentBlocks + "]}]}";
+    }
+
     @Test
     @Timeout(20)
     void remoteMessagesWithoutATranscriptAtTheReportedWorkDirAreNotFound() throws Exception {
@@ -205,6 +261,7 @@ class RemoteWorkerGatewayInteropTest {
             while (true) {
                 SessionLinkFrame request = readFrame();
                 received.add(request.name());
+                if (Strings.CS.equals(request.name(), "turn.submit")) submitted.add(request);
                 var payload = JsonUtils.getMapper().createObjectNode();
                 if (Strings.CS.equals(request.name(), "session.list")) {
                     payload.putArray("sessions").addObject()

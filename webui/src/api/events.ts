@@ -13,10 +13,13 @@ import { currentToken } from './token'
  * transient and carry no `id:` line, so EventSource reports the PREVIOUS
  * journaled frame's id as their lastEventId. They are forwarded with id 0
  * instead — the reducer's "not journaled" id — or the dedupe would drop
- * every one of them as a replay of that frame.
+ * every one of them as a replay of that frame. `sessions.changed` (a TUI
+ * process started or exited) is unjournaled for the same reason.
  */
 
-const TRANSIENT_EVENTS: ReadonlySet<string> = new Set(['output.text.delta', 'output.thinking.delta'])
+const TRANSIENT_EVENTS: ReadonlySet<string> = new Set([
+  'output.text.delta', 'output.thinking.delta', 'sessions.changed',
+])
 
 export interface MirrorConnection {
   close(): void

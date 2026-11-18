@@ -24,6 +24,7 @@ function session(overrides: Partial<CatalogSession> = {}): CatalogSession {
     first_prompt: null,
     active: false,
     headless_open: false,
+    interactive: true,
     ...overrides,
   }
 }

@@ -143,9 +143,11 @@ paths:
       tags: [Sessions]
       summary: Full two-level session catalog (aligned with the TUI /resume picker)
       description: |
-        Every project and every session on disk, not only open ones. Rows carry
-        active:true for the current TUI session, headless_open:true for
-        sessions routable right now without an open round-trip, and running:true
+        Every project and every session on disk, not only open ones. A row is
+        either hosted by a live process or a historical transcript read from
+        disk, and only a hosted one can be driven: interactive:true marks those,
+        active:true the current TUI session among them, headless_open:true the
+        ones routable right now without an open round-trip, and running:true
         while a turn is in flight. Each project's
         sessions are paged to its most recent per_project rows (session_count
         keeps the total); grow the page with a larger per_project.
@@ -1273,9 +1275,21 @@ components:
         active:
           type: boolean
           description: True for the current TUI session
+        remote:
+          type: boolean
+          description: True when a remote worker process registered this session
         headless_open:
           type: boolean
           description: True when routable right now via metadata.session_id without an open round-trip
+        interactive:
+          type: boolean
+          description: |
+            True when a live process is hosting this session right now — this
+            gateway's own TUI session, a headless session it opened, or one a
+            remote worker registered. The permission mode and the model
+            selection are fields of the hosting engine rather than of the
+            transcript, so both lookups return null for a row that is not
+            interactive and the client must not offer controls for them.
         running:
           type: boolean
           description: |
@@ -1491,12 +1505,18 @@ components:
         `id:` line (the client's Last-Event-ID stays on the last journaled
         frame), and are never journaled or replayed. The block's settled
         output.text / output.thinking frame replaces the draft they built.
+
+        sessions.changed is transient too: the set of live sessions changed
+        without a switch (an interactive process started or exited). Its body
+        is FrameSessionOnly with an empty session_id; clients re-read
+        GET /api/sessions.
       required: [event, id, data]
       properties:
         event:
           type: string
           enum:
             - session.activated
+            - sessions.changed
             - turn.started
             - output.text
             - output.thinking

@@ -40,8 +40,12 @@ class StandardStreamBoundaryTest {
         "claude-code-cli/src/main/java/com/claudecode/cli/CliSessionAssembler.java",
         "claude-code-cli/src/main/java/com/claudecode/cli/ClaudeCodeCli.java",
         // `claude web` is its own entry point: it runs no session of its own and
-        // prints the gateway URL to the terminal that started it.
-        "claude-code-cli/src/main/java/com/claudecode/cli/WebCliCommand.java"
+        // prints the gateway URL to the terminal that started it. Its subcommands
+        // are the same entry point reached one argument later — they exist to
+        // report on that gateway, so their output is their entire result.
+        "claude-code-cli/src/main/java/com/claudecode/cli/WebCliCommand.java",
+        "claude-code-cli/src/main/java/com/claudecode/cli/WebCliStopCommand.java",
+        "claude-code-cli/src/main/java/com/claudecode/cli/WebCliStatusCommand.java"
     );
 
     @Test

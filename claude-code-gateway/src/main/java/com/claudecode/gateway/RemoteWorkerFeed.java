@@ -1,12 +1,16 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.sessionlink.SessionLinkClient;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Base64;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,11 +63,29 @@ final class RemoteWorkerFeed implements AutoCloseable {
         return !client.isClosed();
     }
 
-    CompletableFuture<SessionLinkFrame> submit(String sessionId, String prompt, String messageId) {
+    /**
+     * Forwards one turn with everything the composer attached. Images and files
+     * travel in the shape the host's {@code turn.submit} decoder reads, so a
+     * picture pasted into the webui reaches the TUI as the same {@code [Image #N]}
+     * chip a local paste would make instead of being dropped beside its text.
+     */
+    CompletableFuture<SessionLinkFrame> submit(String sessionId, SessionHostSubmission submission) {
         ObjectNode payload = JsonUtils.getMapper().createObjectNode();
-        payload.put("prompt", prompt);
-        payload.put("message_id", messageId);
+        payload.put("prompt", submission.prompt());
+        payload.put("message_id", submission.messageId());
+        writeAttachments(payload.putArray("images"), submission.images());
+        writeAttachments(payload.putArray("attachments"), submission.attachments());
         return client.request("turn.submit", sessionId, payload);
+    }
+
+    private static void writeAttachments(ArrayNode target,
+            List<SessionHostSubmission.Attachment> attachments) {
+        for (SessionHostSubmission.Attachment attachment : attachments) {
+            ObjectNode item = target.addObject();
+            if (!attachment.mimeType().isEmpty()) item.put("mime_type", attachment.mimeType());
+            if (!attachment.fileName().isEmpty()) item.put("file_name", attachment.fileName());
+            item.put("data", Base64.getEncoder().encodeToString(attachment.data()));
+        }
     }
 
     CompletableFuture<SessionLinkFrame> cancelTurn(String sessionId) {

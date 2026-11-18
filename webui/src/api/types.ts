@@ -36,6 +36,12 @@ export interface CatalogSession {
    * this gateway's own TUI. Omitted for local sessions.
    */
   readonly remote?: boolean
+  /**
+   * A live process is hosting this session right now. The permission mode and
+   * the model selection live on that process, not in the transcript, so a
+   * session without a host returns null for both and cannot be driven.
+   */
+  readonly interactive: boolean
 }
 
 export interface CatalogProject {
@@ -67,6 +73,8 @@ export interface FlatSession {
   readonly running?: boolean | undefined
   /** Hosted by another running Claude Code process; the gateway omits the field otherwise. */
   readonly remote?: boolean | undefined
+  /** See {@link CatalogSession.interactive}. */
+  readonly interactive: boolean | undefined
 }
 
 export interface FlatSessionCatalog {
@@ -271,6 +279,10 @@ export type MirrorFrame =
       readonly message: string
     } }
   | { readonly event: 'session.idle' | 'turn.cancelled'; readonly id: number; readonly data: {
+      readonly session_id: string
+    } }
+  /** The set of live sessions changed (a TUI started or exited); re-read the catalog. */
+  | { readonly event: 'sessions.changed'; readonly id: number; readonly data: {
       readonly session_id: string
     } }
   | { readonly event: 'turn.completed'; readonly id: number; readonly data: {

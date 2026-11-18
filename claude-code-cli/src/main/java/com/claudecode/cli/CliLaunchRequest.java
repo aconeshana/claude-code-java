@@ -163,7 +163,7 @@ record CliLaunchRequest(
         }
 
         static final PermissionOptions EMPTY = new PermissionOptions(
-            false, false, null, List.of(), List.of(), List.of());
+            false, false, null, List.of(), List.of(), null);
     }
 
     /** Explicit test seams are captured with the same immutable launch snapshot. */

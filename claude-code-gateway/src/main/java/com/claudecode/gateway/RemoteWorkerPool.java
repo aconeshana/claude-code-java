@@ -6,6 +6,7 @@ import com.claudecode.runtime.sessionhost.SessionHostModelOption;
 import com.claudecode.runtime.sessionhost.SessionHostModelState;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionMode;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
@@ -29,6 +30,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Keeps one {@link RemoteWorkerFeed} per running interactive process and reads the sessions each
@@ -37,11 +40,22 @@ import org.apache.commons.lang3.StringUtils;
  * <p>The directory is rescanned on every listing, so a process that exits drops out of the set and
  * one that starts joins it. A worker that fails to answer is detached and reconnected on the next
  * listing rather than retried in place.
+ *
+ * <p>A listing is also what attaches a worker's sessions, so a pool that only listed on request
+ * would leave a freshly started process unfollowed until some client happened to ask: its live
+ * frames went nowhere and its row stayed missing until the webui's next catalog poll. A serving
+ * gateway therefore {@linkplain #startWatching watches} the directory and announces every change
+ * to the set of live sessions on the mirror.
  */
 final class RemoteWorkerPool implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(RemoteWorkerPool.class);
+
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration SNAPSHOT_TTL = Duration.ofSeconds(1);
+
+    /** How often a serving gateway looks for interactive processes that started or exited. */
+    static final Duration WATCH_INTERVAL = SNAPSHOT_TTL;
 
     private record Snapshot(long takenAtNanos, List<SessionHostInfo> sessions) {}
 
@@ -50,13 +64,55 @@ final class RemoteWorkerPool implements AutoCloseable {
     private final Map<String, RemoteWorkerFeed> feeds = new HashMap<>();
     private final Map<String, RemoteWorkerFeed> owners = new HashMap<>();
     private Snapshot snapshot;
+    private Thread watcher;
+    private boolean closed;
 
     RemoteWorkerPool(WebWorkerDirectory directory, MirrorHub hub) {
         this.directory = directory;
         this.hub = hub;
     }
 
+    /**
+     * Rescans the directory every {@code interval} until {@link #close}, so a process that starts
+     * is followed within one interval, and a process that starts or exits is announced through
+     * {@link MirrorHub#publishSessionsChanged} instead of waiting for a client's next poll.
+     * Idempotent.
+     */
+    synchronized void startWatching(Duration interval) {
+        if (watcher != null || closed) return;
+        watcher = Thread.ofVirtual().name("remote-worker-watch").start(() -> watch(interval));
+    }
+
+    private void watch(Duration interval) {
+        Set<String> announced = null;
+        while (!Thread.currentThread().isInterrupted()) {
+            Set<String> live = announced;
+            try {
+                live = liveSessions().stream()
+                    .map(SessionHostInfo::id)
+                    .collect(Collectors.toUnmodifiableSet());
+            } catch (RuntimeException failure) {
+                log.debug("[remote-pool] directory scan failed", failure);
+            }
+            // The first scan announces nothing: a client that connects reads the listing itself.
+            // The notice goes out here, off the pool's lock, so a slow browser lane never holds up
+            // a forwarded turn.
+            if (announced != null && live != null && !live.equals(announced)) {
+                hub.publishSessionsChanged();
+            }
+            announced = live;
+            try {
+                Thread.sleep(interval);
+            } catch (InterruptedException _) {
+                return;
+            }
+        }
+    }
+
     synchronized List<SessionHostInfo> liveSessions() {
+        // A watcher that was waiting for this lock while the pool closed must not dial the
+        // workers again behind close's back.
+        if (closed) return List.of();
         long now = System.nanoTime();
         if (snapshot != null && now - snapshot.takenAtNanos() < SNAPSHOT_TTL.toNanos()) {
             return snapshot.sessions();
@@ -71,12 +127,12 @@ final class RemoteWorkerPool implements AutoCloseable {
      * live process lists it.
      */
     synchronized Optional<CompletableFuture<SessionLinkFrame>> submit(
-            String sessionId, String prompt, String messageId) {
+            String sessionId, SessionHostSubmission submission) {
         liveSessions();
         RemoteWorkerFeed owner = owners.get(sessionId);
         return owner == null
             ? Optional.empty()
-            : Optional.of(owner.submit(sessionId, prompt, messageId));
+            : Optional.of(owner.submit(sessionId, submission));
     }
 
     /**
@@ -415,6 +471,8 @@ final class RemoteWorkerPool implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        closed = true;
+        if (watcher != null) watcher.interrupt();
         feeds.values().forEach(RemoteWorkerFeed::close);
         feeds.clear();
         owners.clear();

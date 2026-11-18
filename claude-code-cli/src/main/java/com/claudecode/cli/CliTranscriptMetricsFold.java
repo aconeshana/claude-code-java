@@ -2,11 +2,14 @@ package com.claudecode.cli;
 
 import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
-import com.claudecode.session.SessionStorage;
+import com.claudecode.session.TranscriptMetricInputs;
 import com.claudecode.runtime.metrics.SessionMetricsTracker;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * The durable HUD fold of a session this process did not open, replayed from
@@ -26,6 +29,12 @@ import java.util.Optional;
  * {@code INCOMPLETE} when the event sequence has gaps or a transcript turn
  * was never measured, and {@link SessionMetricsSnapshot#complete()} then
  * fails the filter.
+ *
+ * <p>The webui asks again with every context refresh, and a session that is
+ * being worked on has grown since the last one. Its inputs are therefore read
+ * incrementally ({@link TranscriptMetricInputs}), and the fold over them is
+ * kept and replayed only when they changed; concurrent requests for one file
+ * share a single read.
  */
 final class CliTranscriptMetricsFold {
 
@@ -36,7 +45,11 @@ final class CliTranscriptMetricsFold {
      */
     private static final TranscriptSink NEVER_RECORDS = (_, _) -> { };
 
-    private final SessionStorage storage = new SessionStorage();
+    /** Folds are a few numbers each; this only bounds a gateway left up for weeks. */
+    private static final int MAX_KEPT_FOLDS = 64;
+
+    private final TranscriptMetricInputs inputs = new TranscriptMetricInputs();
+    private final ConcurrentMap<Path, Slot> folds = new ConcurrentHashMap<>();
 
     /**
      * The whole-session metrics of the transcript at {@code sessionFile}, or
@@ -46,18 +59,45 @@ final class CliTranscriptMetricsFold {
         if (sessionId == null || sessionFile == null || !Files.isRegularFile(sessionFile)) {
             return Optional.empty();
         }
+        Path key = sessionFile.toAbsolutePath().normalize();
+        if (folds.size() >= MAX_KEPT_FOLDS && !folds.containsKey(key)) folds.clear();
+        Slot slot = folds.computeIfAbsent(key, _ -> new Slot());
+        slot.lock.lock();
         try {
-            // The replay target's sink is never installed: nothing is added to
-            // this session here, the fold is only ever read.
-            SessionMetricsTracker tracker = new SessionMetricsTracker(
-                sessionId, () -> NEVER_RECORDS);
-            tracker.restore(sessionId,
-                storage.readSessionMetrics(sessionFile),
-                storage.readMetricTurnIds(sessionFile));
-            SessionMetricsSnapshot snapshot = tracker.snapshot();
-            return snapshot.complete() ? Optional.of(snapshot) : Optional.empty();
+            TranscriptMetricInputs.MetricInputs current = inputs.read(key);
+            Memo memo = slot.memo;
+            if (memo != null && memo.answers(sessionId, current)) return memo.metrics();
+            Optional<SessionMetricsSnapshot> metrics = replay(sessionId, current);
+            slot.memo = new Memo(sessionId, current, metrics);
+            return metrics;
         } catch (RuntimeException _) {
+            slot.memo = null;
             return Optional.empty();
+        } finally {
+            slot.lock.unlock();
+        }
+    }
+
+    private static Optional<SessionMetricsSnapshot> replay(String sessionId,
+            TranscriptMetricInputs.MetricInputs inputs) {
+        // The replay target's sink is never installed: nothing is added to
+        // this session here, the fold is only ever read.
+        SessionMetricsTracker tracker = new SessionMetricsTracker(sessionId, () -> NEVER_RECORDS);
+        tracker.restore(sessionId, inputs.events(), inputs.turnIds());
+        SessionMetricsSnapshot snapshot = tracker.snapshot();
+        return snapshot.complete() ? Optional.of(snapshot) : Optional.empty();
+    }
+
+    private static final class Slot {
+        private final ReentrantLock lock = new ReentrantLock();
+        private Memo memo;
+    }
+
+    /** A fold, valid for exactly the inputs instance it was replayed from. */
+    private record Memo(String sessionId, TranscriptMetricInputs.MetricInputs inputs,
+            Optional<SessionMetricsSnapshot> metrics) {
+        boolean answers(String requested, TranscriptMetricInputs.MetricInputs current) {
+            return sessionId.equals(requested) && inputs == current;
         }
     }
 }

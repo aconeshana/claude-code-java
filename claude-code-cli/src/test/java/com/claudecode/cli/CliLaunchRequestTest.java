@@ -62,6 +62,16 @@ class CliLaunchRequestTest {
     }
 
     @Test
+    void defaultedPermissionOptionsTreatToolsAsOmittedNotAsAnEmptySelection() {
+        // `claude web` builds its headless toolchain from an all-null request;
+        // an empty --tools selection there denied every tool and left the
+        // model writing tool calls as plain text.
+        CliLaunchRequest request = new CliLaunchRequest(null, null, null, null, null, null, null);
+
+        assertNull(request.permissions().baseTools());
+    }
+
+    @Test
     void sessionNameSupportsLongAndShortOptionsWithStartupNormalization() {
         CliLaunchRequest longForm = snapshot("--name", "  Named session  ");
         CliLaunchRequest shortForm = snapshot("-n", "Short name");

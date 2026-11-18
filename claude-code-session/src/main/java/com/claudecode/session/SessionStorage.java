@@ -44,9 +44,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -897,6 +895,14 @@ public class SessionStorage {
             Optional.ofNullable(leafUuid));
     }
 
+    /**
+     * The file {@link #readSessionMetrics} prefers over the transcript when it
+     * exists, so a reader caching the fold can tell when its input changed.
+     */
+    public static Path metricsSidecarOf(Path sessionFile) {
+        return SessionMetricsFiles.sidecar(sessionFile);
+    }
+
     /** Reads only Java HUD metric rows; malformed or future-schema rows are ignored. */
     public List<SessionMetricsEvent> readSessionMetrics(Path sessionFile) {
         if (sessionFile == null) return List.of();
@@ -906,26 +912,8 @@ public class SessionStorage {
         List<SessionMetricsEvent> events = new ArrayList<>();
         try {
             for (JsonNode node : JsonUtils.readJsonLines(source)) {
-                if (!Strings.CS.equals(SessionMetricsEvent.TRANSCRIPT_TYPE,
-                        node.path("type").asText())) continue;
-                try {
-                    events.add(new SessionMetricsEvent(
-                        node.path("schemaVersion").asInt(),
-                        node.path("seq").asLong(),
-                        node.path("time").asLong(),
-                        node.path("sessionId").asText(),
-                        SessionMetricsEvent.Kind.fromWireName(node.path("event").asText()),
-                        node.hasNonNull("turnId") ? node.path("turnId").asText() : null,
-                        node.path("turn").asLong(), node.path("step").asLong(),
-                        node.hasNonNull("callId") ? node.path("callId").asText() : null,
-                        node.path("uncachedInputTokens").asLong(),
-                        node.path("outputTokens").asLong(),
-                        node.path("cacheWriteTokens").asLong(),
-                        node.path("cacheReadTokens").asLong(),
-                        node.path("synthetic").asBoolean(false)));
-                } catch (RuntimeException _) {
-                    // Preserve the transcript reader's malformed-row tolerance.
-                }
+                SessionMetricsEvent event = metricRow(node);
+                if (event != null) events.add(event);
             }
         } catch (IOException e) {
             log.debug("readSessionMetrics failed for {}: {}", source, e.getMessage());
@@ -934,55 +922,20 @@ public class SessionStorage {
     }
 
     /**
-     * Main submitted user UUIDs that require one complete metrics turn.
-     *
-     * <p>A promptSource row whose transcript parent is a tool_result row is a
-     * mid-turn injection (historically the queue drain stamping the then-current
-     * prompt provenance), not a turn opener — it participates in an
-     * already-measured turn and must not enter the coverage obligation, or a
-     * single queued prompt drains would permanently poison the restore
-     * completeness check. The structural parent check also self-heals older
-     * transcripts written before drain rows stopped claiming prompt provenance.
+     * Main submitted user UUIDs that require one complete metrics turn; a
+     * prompt chained onto a tool_result row is a mid-turn injection and does
+     * not open a turn (see {@link MetricTurnIndex}).
      */
     public List<String> readMetricTurnIds(Path sessionFile) {
         if (sessionFile == null || !Files.exists(sessionFile)) return List.of();
-        List<String> turnIds = new ArrayList<>();
+        MetricTurnIndex index = new MetricTurnIndex();
         try {
-            Map<String, JsonNode> byUuid = new HashMap<>();
-            for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) {
-                if (node.hasNonNull("uuid")) byUuid.put(node.path("uuid").asText(), node);
-            }
-            for (JsonNode node : byUuid.values()) {
-                if (Strings.CS.equals("user", node.path("type").asText())
-                        && node.hasNonNull("promptSource")
-                        && node.hasNonNull("uuid")
-                        && !isMidTurnInjectedPrompt(node, byUuid)) {
-                    turnIds.add(node.path("uuid").asText());
-                }
-            }
+            for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) index.accept(node);
         } catch (IOException e) {
             log.debug("readMetricTurnIds failed for {}: {}", sessionFile, e.getMessage());
+            return List.of();
         }
-        return List.copyOf(turnIds);
-    }
-
-    /**
-     * Whether a promptSource user row is chained onto a tool_result row — the
-     * transcript shape of a mid-turn injection that never opened its own turn.
-     */
-    private static boolean isMidTurnInjectedPrompt(JsonNode node, Map<String, JsonNode> byUuid) {
-        JsonNode parentUuid = node.path("parentUuid");
-        if (!parentUuid.isTextual()) return false;
-        JsonNode parent = byUuid.get(parentUuid.asText());
-        if (parent == null || !Strings.CS.equals("user", parent.path("type").asText())) {
-            return false;
-        }
-        JsonNode content = parent.path("message").path("content");
-        if (!content.isArray()) return false;
-        for (JsonNode block : content) {
-            if (Strings.CS.equals("tool_result", block.path("type").asText())) return true;
-        }
-        return false;
+        return index.turnIds();
     }
 
     private static String textField(JsonNode node, String field) {
@@ -1041,8 +994,8 @@ public class SessionStorage {
         List<Message> messages = new ArrayList<>();
         List<ToolResultBudget.Replacement> replacements = new ArrayList<>();
         List<SessionMetricsEvent> metrics = new ArrayList<>();
-        // uuid→row for the mid-turn-injection check; only rows carrying a uuid.
-        Map<String, JsonNode> rowsByUuid = new HashMap<>();
+        // The rows the mid-turn-injection check reads; only rows carrying a uuid.
+        MetricTurnIndex turnIndex = new MetricTurnIndex();
         // With the sidecar enabled the metric rows live beside, not inside, the
         // transcript; readSessionMetrics resolves it and this pass skips them.
         boolean metricsInSidecar =
@@ -1071,7 +1024,7 @@ public class SessionStorage {
                                 lineNumber, sessionFile, e.getClass().getName(),
                                 ErrorUtils.redactedForLogging(e));
                         }
-                        indexRowUuid(line, rowsByUuid);
+                        indexRowUuid(line, turnIndex);
                     }
                     case "content-replacement" ->
                         collectContentReplacements(line, replacements);
@@ -1085,7 +1038,7 @@ public class SessionStorage {
                             }
                         }
                     }
-                    default -> indexRowUuid(line, rowsByUuid);
+                    default -> indexRowUuid(line, turnIndex);
                 }
             }
         } catch (IOException e) {
@@ -1093,7 +1046,7 @@ public class SessionStorage {
         }
         return new RestoreSnapshot(List.copyOf(messages), List.copyOf(replacements),
             metricsInSidecar ? readSessionMetrics(sessionFile) : List.copyOf(metrics),
-            metricTurnIds(rowsByUuid));
+            turnIndex.turnIds());
     }
 
     /**
@@ -1150,13 +1103,10 @@ public class SessionStorage {
      * Parsed lazily — the cheap key check first — because most metadata rows
      * carry no uuid and a full parse per row would double the pass cost.
      */
-    private void indexRowUuid(String line, Map<String, JsonNode> rowsByUuid) {
+    private void indexRowUuid(String line, MetricTurnIndex turnIndex) {
         if (!Strings.CS.contains(line, "\"uuid\"")) return;
         try {
-            JsonNode node = mapper.readTree(line);
-            if (node.hasNonNull("uuid")) {
-                rowsByUuid.put(node.path("uuid").asText(), node);
-            }
+            turnIndex.accept(mapper.readTree(line));
         } catch (JsonProcessingException _) {
             // Malformed rows never carried a parent link.
         }
@@ -1197,8 +1147,19 @@ public class SessionStorage {
         }
     }
 
+    /**
+     * The event of a transcript or sidecar row, or {@code null} when the row
+     * is not a metric row or is malformed.
+     */
+    static SessionMetricsEvent metricRow(JsonNode node) {
+        if (!Strings.CS.equals(SessionMetricsEvent.TRANSCRIPT_TYPE, node.path("type").asText())) {
+            return null;
+        }
+        return metricEvent(node);
+    }
+
     /** One metric row projected to its event record; malformed rows are skipped. */
-    private SessionMetricsEvent metricEvent(JsonNode node) {
+    static SessionMetricsEvent metricEvent(JsonNode node) {
         try {
             return new SessionMetricsEvent(
                 node.path("schemaVersion").asInt(),
@@ -1217,25 +1178,6 @@ public class SessionStorage {
         } catch (RuntimeException _) {
             return null;
         }
-    }
-
-    /**
-     * Main submitted user UUIDs that require one complete metrics turn, resolved
-     * from the single-pass uuid→row map. Shared shape with {@link
-     * #readMetricTurnIds(Path)}: a promptSource user row chained onto a
-     * tool_result row is a mid-turn injection and must not enter the obligation.
-     */
-    private static List<String> metricTurnIds(Map<String, JsonNode> rowsByUuid) {
-        List<String> turnIds = new ArrayList<>();
-        for (JsonNode node : rowsByUuid.values()) {
-            if (Strings.CS.equals("user", node.path("type").asText())
-                    && node.hasNonNull("promptSource")
-                    && node.hasNonNull("uuid")
-                    && !isMidTurnInjectedPrompt(node, rowsByUuid)) {
-                turnIds.add(node.path("uuid").asText());
-            }
-        }
-        return List.copyOf(turnIds);
     }
 
     /** Single-pass restore projection: the four parts the resume pipeline consumes. */
@@ -1271,7 +1213,18 @@ public class SessionStorage {
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read session file: " + sessionFile, e);
         }
+        return parseMessageLines(lines, sessionFile, 1);
+    }
 
+    /**
+     * Deserializes transcript lines exactly as {@link #readMessages} does, so a
+     * reader that consumes a file in pieces ({@link TranscriptMessageCache})
+     * yields the same messages as one whole-file read.
+     *
+     * @param firstLineNumber the 1-based file line number of {@code lines[0]},
+     *     only used to locate a malformed line in the warning
+     */
+    List<Message> parseMessageLines(List<String> lines, Path sessionFile, long firstLineNumber) {
         List<Message> messages = new ArrayList<>();
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i).trim();
@@ -1283,7 +1236,7 @@ public class SessionStorage {
                 messages.add(msg);
             } catch (JsonProcessingException e) {
                 log.warn("Skipping malformed line {} in {} [failureType={}]",
-                    i + 1, sessionFile, e.getClass().getName(),
+                    firstLineNumber + i, sessionFile, e.getClass().getName(),
                     ErrorUtils.redactedForLogging(e));
             }
         }

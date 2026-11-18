@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.cli.daemon.CurrentCliCommand;
+import com.claudecode.core.process.DetachedSession;
 import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -59,7 +60,9 @@ final class DetachedWebGateway implements GatewaySupervisorPort {
 
     private void launch() {
         List<String> command = new ArrayList<>();
-        // SIGHUP from a closing terminal would otherwise reach the child, which shares its process group.
+        // Only a fallback: spawn already gives the child a session of its own,
+        // but where no session launcher exists SIGHUP from a closing terminal
+        // would otherwise reach it through the shared process group.
         if (Files.isExecutable(NOHUP)) command.add(NOHUP.toString());
         command.addAll(CurrentCliCommand.resolve());
         command.add("web");
@@ -72,9 +75,13 @@ final class DetachedWebGateway implements GatewaySupervisorPort {
 
     private static void spawn(List<String> command, Path logFile) throws IOException {
         Files.createDirectories(logFile.getParent());
-        Process process = new ProcessBuilder(command)
-            .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
+        // A session of its own, so the gateway has no controlling terminal: the
+        // shell that ran `claude web -d` (or the TUI that ran /web) can close
+        // without its hangup or job-control signals reaching the child. nohup
+        // stays as the fallback where no session launcher exists.
+        Process process = DetachedSession.apply(new ProcessBuilder(command)
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
+                .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile())))
             .start();
         process.getOutputStream().close();
     }

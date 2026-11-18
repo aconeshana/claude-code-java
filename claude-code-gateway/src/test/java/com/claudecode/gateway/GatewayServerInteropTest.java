@@ -12,6 +12,7 @@ import com.claudecode.core.message.MessageOrigin;
 import com.claudecode.core.message.PastedContent;
 import com.claudecode.core.message.ProgressMessage;
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
@@ -168,6 +169,62 @@ class GatewayServerInteropTest {
             // Flat fallback shape must not appear when the catalog serves data.
             assertThat(body).doesNotContain("\"sessions\":[{\"id\":\"" + activeSessionId);
         }
+    }
+
+    /**
+     * A transcript with no hosting process is listed, but not as something the
+     * client can drive.
+     *
+     * <p>The permission mode and the model selection belong to the engine that is
+     * serving a session, so a historical transcript cannot answer for either — the
+     * lookups return null, and a client that offers the controls anyway shows
+     * empty menus. Marking the row is how the client tells the two apart without
+     * a failed round-trip.
+     */
+    @Test
+    @Timeout(20)
+    void sessionsEndpointDistinguishesHostedSessionsFromHistoricalTranscripts()
+            throws Exception {
+        server = GatewayServer.builder(new GatewayServer.Config("127.0.0.1", 0), TOKEN, registry)
+            .catalog(new GatewaySessionCatalogPort() {
+            @Override public List<ProjectEntry> listProjects() {
+               return List.of(new ProjectEntry(
+                   "/work/project-a", "project-a", 2, 1_700_000_000_000L,
+                   List.of(
+                       new SessionEntry("sess-cold", "a transcript on disk", 10,
+                           1_700_000_000_000L, "main", "/work/project-a", "", "hello"),
+                       new SessionEntry(activeSessionId, "a hosted session", 3,
+                           1_700_000_000_001L, "main", "/work/project-a", "custom", ""))));
+            }
+            })
+            .build();
+        server.start();
+        registry.activateLocal(new SessionHostSession(
+            new SessionHostInfo(activeSessionId, "/work", "a session", 3,
+                Instant.now(), "main"),
+            hub, _ -> CompletableFuture.completedFuture(null)));
+
+        try (Response authed = client.newCall(new Request.Builder()
+                .url(url("/api/sessions?token=" + TOKEN)).build()).execute()) {
+            assertThat(authed.code()).isEqualTo(200);
+            String body = authed.body().string();
+            assertThat(sessionField(body, activeSessionId)).contains("\"interactive\":true");
+            assertThat(sessionField(body, "sess-cold")).contains("\"interactive\":false");
+        }
+    }
+
+    /**
+     * The single session object for {@code id} in a {@code /api/sessions} body.
+     *
+     * <p>A substring assertion cannot express "this row, and not that one": one
+     * project here holds both a hosted and a historical session, so matching the
+     * flag anywhere in the body would pass whichever way the rows are marked.
+     */
+    private static String sessionField(String body, String id) {
+        int start = body.indexOf("{\"id\":\"" + id + "\"");
+        assertThat(start).describedAs("session %s must be listed", id).isNotNegative();
+        int end = body.indexOf('}', start);
+        return body.substring(start, end);
     }
 
     @Test
@@ -423,8 +480,12 @@ class GatewayServerInteropTest {
 
         // No complete fold at turn start: no baseline, the completion frame
         // stays without the delta fields. No stream output either, so the
-        // frame carries no TTFT reading.
+        // frame carries no TTFT reading — the engine's own session-init
+        // notice is emitted the moment the turn starts and is not model
+        // output, so it must not latch the clock either.
         hub.onTurnStart(UserInput.of("one", "one", null, "default"));
+        hub.onMessage(new SDKMessage.System(new SystemMessage(
+            UUID.randomUUID().toString(), "system_init", "info", "Session: s | Tools: 3")));
         hub.onTurnComplete(new TurnOutcome(
             false, false, 5L, null, null, null, "default"));
         String bare = events.poll(5, TimeUnit.SECONDS);

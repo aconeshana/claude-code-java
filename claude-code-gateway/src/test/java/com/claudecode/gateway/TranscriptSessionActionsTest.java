@@ -227,6 +227,85 @@ class TranscriptSessionActionsTest {
         assertThat(Files.readString(transcript)).contains("\"customTitle\":\"x\"");
     }
 
+    // ------------------------------------------------------------- retired
+
+    /**
+     * A live handle with no transcript yet keeps its row.
+     *
+     * <p>This is a brand-new session: the TUI has activated it, so a worker
+     * reports it and the gateway subscribes — but nothing has been written to
+     * disk because no turn has run. Reading a missing file as "retired" hid
+     * every session in exactly that window, so the terminal was invisible in
+     * the webui until its first keystroke.
+     */
+    @Test
+    void aSessionWithNoTranscriptYetIsNotRetired() {
+        assertThat(new TranscriptSessionActions(unmapped(), home)
+            .retired(UUID.randomUUID().toString()))
+            .isFalse();
+    }
+
+    /** An archived transcript is the positive evidence that retires a row. */
+    @Test
+    void anArchivedTranscriptRetiresItsRow() throws IOException {
+        writeTranscript(sourceId);
+        TranscriptSessionActions actions = new TranscriptSessionActions(unmapped(), home);
+        assertThat(actions.retired(sourceId)).isFalse();
+
+        actions.archive(sourceId);
+
+        assertThat(actions.retired(sourceId)).isTrue();
+    }
+
+    /** An ordinary live transcript is not retired. */
+    @Test
+    void aLiveTranscriptIsNotRetired() throws IOException {
+        writeTranscript(sourceId);
+
+        assertThat(new TranscriptSessionActions(unmapped(), home).retired(sourceId)).isFalse();
+    }
+
+    /**
+     * A session this port deleted stays dropped, even though deleting it also
+     * took its transcript away.
+     *
+     * <p>This is the case a missing file cannot answer. The row must go because
+     * the user deleted it, while the session above must stay for the opposite
+     * reason — and to every other reader both look like "no transcript".
+     */
+    @Test
+    void aDeletedSessionIsReportedAsDeleted() throws IOException {
+        writeTranscript(sourceId);
+        TranscriptSessionActions actions = new TranscriptSessionActions(unmapped(), home);
+        assertThat(actions.wasDeleted(sourceId)).isFalse();
+
+        assertThat(actions.delete(sourceId)).isTrue();
+
+        assertThat(actions.wasDeleted(sourceId)).isTrue();
+        // Not "archived": the marker route is a separate fact, and folding the
+        // two would make the deletion answer depend on which branch ran.
+        assertThat(actions.retired(sourceId)).isFalse();
+    }
+
+    /** A delete that did not happen is not recorded as one. */
+    @Test
+    void anUnsuccessfulDeleteIsNotRecorded() {
+        TranscriptSessionActions actions = new TranscriptSessionActions(unmapped(), home);
+        String missing = UUID.randomUUID().toString();
+
+        assertThat(actions.delete(missing)).isFalse();
+
+        assertThat(actions.wasDeleted(missing)).isFalse();
+    }
+
+    /** A session this port never touched reads as not deleted. */
+    @Test
+    void anUntouchedSessionIsNotDeleted() {
+        assertThat(new TranscriptSessionActions(unmapped(), home)
+            .wasDeleted(UUID.randomUUID().toString()))
+            .isFalse();
+    }
+
     /**
      * The configuration home a gateway derives is the one its worker directory
      * sits in, so both the standalone gateway's {@code ~/.claude} and a test

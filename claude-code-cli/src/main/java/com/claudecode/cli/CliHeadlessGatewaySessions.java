@@ -12,6 +12,7 @@ import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptLoader;
+import com.claudecode.session.TranscriptMessageCache;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
 import com.claudecode.tools.tasks.TaskStatus;
@@ -39,6 +40,16 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     private final CliHeadlessSessionFactory factory;
     private final String mainCwd;
     private final ConcurrentMap<String, Entry> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * Total transcript size kept parsed for the messages port. A webui page
+     * load reads one session's transcript dozens of times (messages, context
+     * timeline, one changed-files card per turn); a few long sessions fit.
+     */
+    private static final long TRANSCRIPT_CACHE_BYTES = 256L * 1024 * 1024;
+
+    private final TranscriptMessageCache transcripts =
+        new TranscriptMessageCache(new SessionStorage(), TRANSCRIPT_CACHE_BYTES);
 
     private record Entry(
             SessionHostSession host,
@@ -286,7 +297,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 Path file = new SessionManager(mainCwd).getSessionFile(sessionId);
                 if (!Files.isRegularFile(file)) return Optional.empty();
                 try {
-                    return Optional.of(new SessionStorage().readMessages(file));
+                    return Optional.of(transcripts.read(file));
                 } catch (RuntimeException _) {
                     return Optional.empty();
                 }
@@ -300,7 +311,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 Path file = new SessionManager(workDir).getSessionFile(sessionId);
                 if (!Files.isRegularFile(file)) return Optional.empty();
                 try {
-                    return Optional.of(new SessionStorage().readMessages(file));
+                    return Optional.of(transcripts.read(file));
                 } catch (RuntimeException _) {
                     return Optional.empty();
                 }

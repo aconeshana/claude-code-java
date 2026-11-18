@@ -34,6 +34,7 @@ import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.mcp.ManagedMcpRuntime;
 import com.claudecode.tools.mcp.McpToolProvider;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
 /**
  * {@code claude web}: runs the single global web gateway as its own process.
@@ -42,11 +43,17 @@ import picocli.CommandLine.Command;
  * sockets. Only one instance exists per user: a live discovery record is reused,
  * and an exclusive file lock serializes concurrent starts so two invocations
  * cannot both bind a gateway.
+ *
+ * <p>Reuse is the reason {@code stop} and {@code status} exist. Attaching is a
+ * silent success — same URL, same exit code as starting — so before these the
+ * only way to tell whether an upgrade had taken effect was to guess. Both are
+ * defined in {@link WebCliLifecycle}.
  */
 @Command(
     name = "web",
     description = "Run the global web gateway that lists every running Claude Code session",
-    mixinStandardHelpOptions = true
+    mixinStandardHelpOptions = true,
+    subcommands = {WebCliStopCommand.class, WebCliStatusCommand.class}
 )
 public class WebCliCommand implements Callable<Integer> {
 
@@ -62,12 +69,24 @@ public class WebCliCommand implements Callable<Integer> {
     private final CliOutput out = CliOutput.systemOut();
     private final CliOutput err = CliOutput.systemErr();
 
+    @Option(names = {"-d", "--detach"},
+        description = "Start the gateway in the background and return; end it with 'claude web stop'")
+    boolean detach;
+
     @Override
     public Integer call() throws Exception {
         Optional<WebGatewayRecord> running = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
         if (running.isPresent()) {
-            out.println(running.get().url());
+            WebCliLifecycle.describeReuse(running.get(), out);
             return 0;
+        }
+        if (detach) {
+            // The child is a plain `claude web`: it takes the start lock and
+            // hosts in the foreground of its own session, so concurrent starts
+            // still converge on one gateway.
+            Path log = ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.log");
+            return WebCliLifecycle.detach(
+                new DetachedWebGateway(ClaudePaths.WEB_GATEWAY_JSON, log), log, out, err);
         }
         Path lockFile = ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.lock");
         Files.createDirectories(lockFile.getParent());
@@ -79,7 +98,7 @@ public class WebCliCommand implements Callable<Integer> {
             }
             Optional<WebGatewayRecord> racing = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
             if (racing.isPresent()) {
-                out.println(racing.get().url());
+                WebCliLifecycle.describeReuse(racing.get(), out);
                 return 0;
             }
             return hostUntilStopped();
@@ -91,7 +110,7 @@ public class WebCliCommand implements Callable<Integer> {
         while (System.currentTimeMillis() < deadline) {
             Optional<WebGatewayRecord> published = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
             if (published.isPresent()) {
-                out.println(published.get().url());
+                WebCliLifecycle.describeReuse(published.get(), out);
                 return 0;
             }
             Thread.sleep(POLL_MILLIS);
@@ -123,15 +142,13 @@ public class WebCliCommand implements Callable<Integer> {
                 null,
                 CliInteractiveSessionRunner.gatewayModels(new CustomModelJsonStore()),
                 CliGatewayPorts.commands(commandRegistry),
-                // This process runs no engine, so its own context port answers
-                // nothing. Every session a webui client can address belongs to
-                // a TUI, and the gateway answers each of them from its owner's
-                // transcript and Session Link through its own remote
-                // decorator — building the same answers here would resolve
-                // them against this process's project directory instead.
-                new GatewaySessionContextPort() {},
+                // Sessions a TUI hosts are answered from its transcript and
+                // Session Link by the gateway's own remote decorators before
+                // these ports are consulted; these answer the sessions this
+                // process opened itself.
+                sessionContext(headless, cwd),
                 new GatewaySessionActionsPort() {},
-                new GatewayPermissionModePort() {},
+                permissionMode(headless),
                 new GatewaySpinnerVerbsPort() {},
                 CliGatewayPorts.fileSuggestions(cwd),
                 // sessionCancel / taskBoard stay null on purpose: both are
@@ -165,17 +182,6 @@ public class WebCliCommand implements Callable<Integer> {
         }
     }
 
-    /**
-     * The webui's composer menu and {@code @} completion describe what this
-     * host has installed, not what any one session is doing, so the gateway
-     * answers them from this process rather than forwarding to a TUI. The
-     * catalogue is the same default registry the TUI builds, which keeps the
-     * two menus listing the same commands.
-     *
-     * <p>User-invocable skills are registered by the interactive startup path
-     * (plugin/skill discovery needs a live plugin runtime), so a skill row is
-     * absent here; the slash commands are not.
-     */
     /**
      * The changed-files source for every session a client can address.
      *
@@ -231,6 +237,37 @@ public class WebCliCommand implements Callable<Integer> {
         return new WebWorkerDirectory(ClaudePaths.WEB_WORKERS_DIR).scan();
     }
 
+    /**
+     * The model seat of every session this process opened itself. A session a
+     * TUI hosts never reaches this port: the gateway's remote decorator routes
+     * it over that TUI's Session Link first. What is left is this process's own
+     * headless sessions, which carry live model and effort controllers — an
+     * empty port here left a new web session's composer with no model to pick.
+     *
+     * <p>There is no TUI engine in this process, so the registry is empty and
+     * the engine and {@code /context} collector are absent.
+     */
+    static GatewaySessionContextPort sessionContext(CliHeadlessGatewaySessions headless, String cwd) {
+        return CliInteractiveSessionRunner.gatewaySessionContext(
+            emptyRegistry(), null, headless, cwd, null);
+    }
+
+    /** The permission-mode seat of this process's own sessions, addressed as {@link #sessionContext}. */
+    static GatewayPermissionModePort permissionMode(CliHeadlessGatewaySessions headless) {
+        return CliInteractiveSessionRunner.gatewayPermissionMode(emptyRegistry(), headless);
+    }
+
+    /**
+     * The webui's composer menu and {@code @} completion describe what this
+     * host has installed, not what any one session is doing, so the gateway
+     * answers them from this process rather than forwarding to a TUI. The
+     * catalogue is the same default registry the TUI builds, which keeps the
+     * two menus listing the same commands.
+     *
+     * <p>User-invocable skills are registered by the interactive startup path
+     * (plugin/skill discovery needs a live plugin runtime), so a skill row is
+     * absent here; the slash commands are not.
+     */
     private static CommandRegistry webCommands() {
         return CommandFactory.createDefault(
             new CliSettingsManagementAdapter(),

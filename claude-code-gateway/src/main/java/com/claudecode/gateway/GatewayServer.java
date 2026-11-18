@@ -11,6 +11,7 @@ import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -384,9 +385,9 @@ public final class GatewayServer implements AutoCloseable {
             }
 
             @Override public Optional<CompletableFuture<Void>> submitRemote(
-                    String sessionId, String prompt, String messageId) {
+                    String sessionId, SessionHostSubmission submission) {
                 return remoteWorkers
-                    .flatMap(pool -> pool.submit(sessionId, prompt, messageId))
+                    .flatMap(pool -> pool.submit(sessionId, submission))
                     .map(accepted -> accepted.thenApply(_ -> (Void) null));
             }
         };
@@ -483,6 +484,9 @@ public final class GatewayServer implements AutoCloseable {
         created.createContext("/", this::routeGuarded);
         created.start();
         server = created;
+        // Other processes' sessions are followed from the moment they start,
+        // not from whichever request next happens to list them.
+        remoteWorkers.ifPresent(pool -> pool.startWatching(RemoteWorkerPool.WATCH_INTERVAL));
     }
 
     /** The bound port — meaningful when {@code Config.port} was 0 (auto). */
@@ -1018,6 +1022,7 @@ public final class GatewayServer implements AutoCloseable {
                     if (mirror.runningSince(entry.id()).isPresent()) {
                         sessionNode.put("running", true);
                     }
+                    sessionNode.put("interactive", isInteractive(entry.id(), remoteIds));
                     sessionArray.add(sessionNode);
                 }
                 projectArray.add(projectNode);
@@ -1044,9 +1049,32 @@ public final class GatewayServer implements AutoCloseable {
             if (registry.isCurrent(info.id())) node.put("active", true);
             if (headless.isOpen(info.id())) node.put("headless_open", true);
             if (mirror.runningSince(info.id()).isPresent()) node.put("running", true);
+            node.put("interactive", isInteractive(info.id(), remoteIds));
             array.add(node);
         }
         return body;
+    }
+
+    /**
+     * Whether some live process is hosting this session right now.
+     *
+     * <p>The listing mixes two very different things under one row shape: sessions a
+     * running process owns, and historical transcripts read off disk. Only the former can
+     * answer for in-process state — the permission mode and the model selection are fields
+     * of the hosting engine, not of the transcript — so the client cannot offer controls
+     * for them on the latter. Without this flag the client finds out only by asking, one
+     * round-trip each, and gets {@code null} back.
+     *
+     * <p>The three sources are exactly the ones {@link #liveSessions} collects, so a
+     * session is interactive when it is any of: this gateway's own TUI session, a headless
+     * session it opened, or a session a remote worker registered. {@code running} is
+     * deliberately excluded: a turn being in flight says nothing about whether a host can
+     * still answer, and a session is interactive between turns too.
+     */
+    private boolean isInteractive(String sessionId, Set<String> remoteIds) {
+        return registry.isCurrent(sessionId)
+            || headless.isOpen(sessionId)
+            || remoteIds.contains(sessionId);
     }
 
     /**
@@ -1075,7 +1103,7 @@ public final class GatewayServer implements AutoCloseable {
 
     /**
      * The live sessions whose row the listing must not carry: their transcript
-     * is gone, or their transcript says archived.
+     * says archived, or this gateway deleted them.
      *
      * <p>A handle outlives both. Delete removes the file but the engine keeps
      * running, and archive appends a marker the {@code SessionHostInfo} record
@@ -1083,6 +1111,14 @@ public final class GatewayServer implements AutoCloseable {
      * Either way the session is live by every test the listing can apply to a
      * handle, and {@link LiveSessionMerge} would synthesize back the very row
      * the user just removed.
+     *
+     * <p>The two carry different evidence and must not be collapsed into "the
+     * transcript is missing": a session created before its first write has no
+     * transcript either, and reading that absence as a removal hid every
+     * brand-new session from the listing. Archived is read off the marker the
+     * archive left behind; deleted is the record {@link
+     * com.claudecode.gateway.TranscriptSessionActions} kept when its own delete
+     * succeeded.
      *
      * <p>A gateway the standalone wiring did not touch gets its listing back
      * untouched: it read no transcript to begin with, so a live row is the only
@@ -1095,7 +1131,9 @@ public final class GatewayServer implements AutoCloseable {
         Set<String> discarded = new HashSet<>();
         for (SessionHostInfo info : live) {
             if (StringUtils.isBlank(info.id())) continue;
-            if (sessionActions.retired(info.id())) discarded.add(info.id());
+            if (sessionActions.retired(info.id()) || sessionActions.wasDeleted(info.id())) {
+                discarded.add(info.id());
+            }
         }
         return discarded;
     }

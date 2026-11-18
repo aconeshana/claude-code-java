@@ -6,6 +6,8 @@ import com.claudecode.session.SessionInfo;
 import com.claudecode.session.SessionOperationsService;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -61,6 +63,24 @@ final class TranscriptSessionActions implements GatewaySessionActionsPort {
 
     private final GatewaySessionActionsPort local;
     private final SessionOperationsService transcripts;
+
+    /**
+     * Ids deleted through this port, so the listing can drop their row.
+     *
+     * <p>Deleting a hosted session removes the transcript but not the live
+     * handle, so the listing keeps being told the session exists and would
+     * synthesize its row back. The absence of a transcript cannot carry that
+     * fact on its own: a session created before its first write has no
+     * transcript either, and reading that absence as "gone" hid every
+     * brand-new session from the terminal's own window. Only a successful
+     * delete is positive evidence, so it is recorded here.
+     *
+     * <p>Scoped to this process because a delete is an action this process
+     * performed and then serves a listing to. A later process reads the
+     * projects tree directly, where the file is simply gone — the catalog
+     * needs no help from it.
+     */
+    private final Set<String> deleted = ConcurrentHashMap.newKeySet();
 
     /**
      * @param local      this process's own sessions; its answer wins whenever
@@ -131,45 +151,49 @@ final class TranscriptSessionActions implements GatewaySessionActionsPort {
 
     @Override
     public boolean delete(String sessionId) {
+        // The removal is recorded on the same terms for both routes: a local
+        // delete also removes the transcript the listing reads, and the row it
+        // leaves behind a live handle must not be listed back.
+        boolean removed;
         try {
-            return local.delete(sessionId);
+            removed = local.delete(sessionId);
         } catch (UnsupportedOperationException _) {
             // False for an id no transcript answers to: deletion is idempotent
             // and the handler renders it as 404, not as a failed operation.
-            return translate(() -> transcripts.deleteSession(sessionId, null));
+            removed = translate(() -> transcripts.deleteSession(sessionId, null));
         }
+        if (removed) deleted.add(sessionId);
+        return removed;
     }
 
     /**
-     * Whether {@code sessionId} should no longer hold a row, whatever its live
-     * handle says.
+     * Whether {@code sessionId}'s transcript carries the archived marker.
      *
-     * <p>The sessions listing needs this for two facts the four actions do not:
-     * whether a live handle's session still has a transcript, and whether that
-     * transcript says the session was archived. A handle outlives both — a
-     * delete removes the file but leaves the engine running, and an archive
-     * appends a marker {@code SessionHostInfo} has no field for — while the
-     * catalog filters archived rows out altogether. Either way the surviving
-     * handle is the only evidence the merge still sees, and it would
-     * synthesize back the very row the user just removed. See
-     * {@link LiveSessionMerge}.
-     *
-     * <p>Both answers come from the transcript because it is the one source
-     * that reports them: the file's presence, and its latched {@code archived}
-     * marker. A handle with no transcript is also the ordinary state of a
-     * session created before its first write, which is why the caller must not
-     * apply this to a listing with no live sessions at all.
+     * <p>Archiving leaves the file in place and appends the marker the catalog
+     * reads, so the marker is the whole answer here. A transcript that is not
+     * there is <em>not</em> archived: absence is the ordinary state of a
+     * session created before its first write, and answering "retired" for it
+     * hid every brand-new session from the listing. Deletion is a separate
+     * fact with its own evidence; see {@link #wasDeleted}.
      */
     boolean retired(String sessionId) {
         try {
             return transcripts.getSessionInfo(sessionId, (String) null)
                 .map(SessionInfo::archived)
-                .orElse(true);
+                .orElse(false);
         } catch (RuntimeException _) {
             // An unreadable projects tree: "could not prove it exists" is the
             // conservative answer for the merge, which then lists the row.
             return false;
         }
+    }
+
+    /**
+     * Whether this port deleted {@code sessionId} and its live handle outlived
+     * the transcript. The one piece of evidence a missing file cannot give.
+     */
+    boolean wasDeleted(String sessionId) {
+        return deleted.contains(sessionId);
     }
 
     /** A missing transcript is the one failure the handler must render as 404. */

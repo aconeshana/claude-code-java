@@ -27,8 +27,8 @@ describe('fetchCatalog', () => {
   it('groups the flat sessions[] fallback by work_dir into synthetic projects', async () => {
     const body = {
       sessions: [
-        { id: 's1', work_dir: '/repo', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', active: true, headless_open: false },
-        { id: 's2', work_dir: '/repo', summary: 'b', message_count: 1, modified_at: null, git_branch: null, active: false, headless_open: true },
+        { id: 's1', work_dir: '/repo', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', active: true, headless_open: false, interactive: true },
+        { id: 's2', work_dir: '/repo', summary: 'b', message_count: 1, modified_at: null, git_branch: null, active: false, headless_open: true, interactive: false },
         { id: 's3', work_dir: null, summary: 'c', message_count: 0, modified_at: '2026-09-08', git_branch: null, active: false, headless_open: false },
       ],
     }
@@ -39,11 +39,15 @@ describe('fetchCatalog', () => {
     const repoProject = catalog.projects.find((p) => p.project_path === '/repo')
     expect(repoProject).toMatchObject({ project_name: '/repo', session_count: 2 })
     expect(repoProject?.sessions).toEqual([
-      { id: 's1', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: true, headless_open: false },
-      { id: 's2', summary: 'b', message_count: 1, modified_at: '', git_branch: null, cwd: '/repo', custom_title: null, first_prompt: null, active: false, headless_open: true },
+      { id: 's1', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: true, headless_open: false, interactive: true },
+      { id: 's2', summary: 'b', message_count: 1, modified_at: '', git_branch: null, cwd: '/repo', custom_title: null, first_prompt: null, active: false, headless_open: true, interactive: false },
     ])
 
     const looseProject = catalog.projects.find((p) => p.project_path === '')
     expect(looseProject).toMatchObject({ project_name: '会话', session_count: 1 })
+    // s3 carried no flag. The registry lists live handles only, so absent must
+    // read as hosted — the opposite default would hide the composer's controls
+    // for a session that is in fact being served.
+    expect(looseProject?.sessions[0].interactive).toBe(true)
   })
 })

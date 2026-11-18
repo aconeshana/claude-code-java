@@ -20,7 +20,7 @@ class DetachedWebGatewayTest {
     @Test
     void reusesALiveGatewayInsteadOfLaunchingAnother() throws Exception {
         Path record = home.resolve("web-gateway.json");
-        WebGatewayRecord.write(record, new WebGatewayRecord(ProcessHandle.current().pid(), URL));
+        WebGatewayRecord.write(record, new WebGatewayRecord(ProcessHandle.current().pid(), URL, "0.2.14", 1_700_000_000_000L));
         List<List<String>> launches = new ArrayList<>();
 
         var started = gateway(record, launches, 1_000).start();
@@ -37,7 +37,7 @@ class DetachedWebGatewayTest {
         DetachedWebGateway.ProcessLauncher publishing = (command, log) -> {
             launches.add(command);
             logs.add(log);
-            WebGatewayRecord.write(record, new WebGatewayRecord(ProcessHandle.current().pid(), URL));
+            WebGatewayRecord.write(record, new WebGatewayRecord(ProcessHandle.current().pid(), URL, "0.2.14", 1_700_000_000_000L));
         };
 
         var started = new DetachedWebGateway(record, home.resolve("web-gateway.log"),

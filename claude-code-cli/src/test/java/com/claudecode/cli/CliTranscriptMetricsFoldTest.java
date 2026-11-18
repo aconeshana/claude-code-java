@@ -50,6 +50,30 @@ class CliTranscriptMetricsFoldTest {
         assertThat(fold.of("s-1", transcript)).isEmpty();
     }
 
+    /** An unchanged transcript is not replayed again: the same fold answers. */
+    @Test
+    void reusesTheFoldWhileTheTranscriptIsUnchanged(@TempDir Path project) throws IOException {
+        Path transcript = project.resolve("s-1.jsonl");
+        Files.writeString(transcript, rows("s-1"));
+
+        SessionMetricsSnapshot first = fold.of("s-1", transcript).orElseThrow();
+        SessionMetricsSnapshot second = fold.of("s-1", transcript).orElseThrow();
+
+        assertThat(second).isSameAs(first);
+    }
+
+    /** A rewritten transcript is replayed again rather than answered from the old fold. */
+    @Test
+    void replaysAgainOnceTheTranscriptChanged(@TempDir Path project) throws IOException {
+        Path transcript = project.resolve("s-1.jsonl");
+        Files.writeString(transcript, rows("s-1"));
+        assertThat(fold.of("s-1", transcript)).isPresent();
+
+        Files.writeString(transcript, rows("other-session"));
+
+        assertThat(fold.of("s-1", transcript)).isEmpty();
+    }
+
     @Test
     void reportsAbsentWhenTheTranscriptIsMissing(@TempDir Path project) {
         assertThat(fold.of("s-1", project.resolve("absent.jsonl"))).isEmpty();

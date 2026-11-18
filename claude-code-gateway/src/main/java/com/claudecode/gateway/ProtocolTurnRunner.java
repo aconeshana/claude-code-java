@@ -110,10 +110,12 @@ final class ProtocolTurnRunner {
 
         /**
          * Hands a turn to the interactive process that hosts {@code sessionId}; empty when no
-         * such process lists it. The accepted turn is observed through the mirror stream.
+         * such process lists it. The accepted turn is observed through the mirror stream. The
+         * submission carries the request's images and files as well as its text, exactly as a
+         * local session would receive it.
          */
         default Optional<CompletableFuture<Void>> submitRemote(
-                String sessionId, String prompt, String messageId) {
+                String sessionId, SessionHostSubmission submission) {
             return Optional.empty();
         }
     }
@@ -146,17 +148,20 @@ final class ProtocolTurnRunner {
             responder.respondJsonError(400, "body is not valid JSON");
             return;
         }
-        String prompt = projection.extractPrompt(request);
-        if (prompt == null) {
-            responder.respondJsonError(400,
-                "request must carry a user message with text content");
-            return;
-        }
         SubmissionAttachments attachments;
         try {
             attachments = projection.extractAttachments(request);
         } catch (IllegalArgumentException failure) {
             responder.respondJsonError(400, failure.getMessage());
+            return;
+        }
+        String prompt = projection.extractPrompt(request);
+        // The composer sends a picture with no text beside it as a turn of its
+        // own; the host renders the image as an [Image #N] chip either way.
+        if (prompt == null && !attachments.isEmpty()) prompt = "";
+        if (prompt == null) {
+            responder.respondJsonError(400,
+                "request must carry a user message with text content");
             return;
         }
         String idempotencyKey = projection.extractIdempotencyKey(request);
@@ -168,8 +173,9 @@ final class ProtocolTurnRunner {
         log.debug("[gw-turn] resolve session={} found={} requestModel={} messageId={}",
             sessionId, session != null, request.path("model").asText(""), messageId);
         if (session == null && sessionId != null) {
-            Optional<CompletableFuture<Void>> remote =
-                sessions.submitRemote(sessionId, prompt, messageId);
+            Optional<CompletableFuture<Void>> remote = sessions.submitRemote(sessionId,
+                new SessionHostSubmission(prompt, messageId,
+                    attachments.images(), attachments.files()));
             if (remote.isPresent()) {
                 respondRemoteAccepted(remote.get(), sessionId, messageId, responder);
                 return;

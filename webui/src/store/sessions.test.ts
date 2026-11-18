@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MirrorFrame } from '../api/types'
 import { useConversations } from './conversations'
-import { useSessions } from './sessions'
+import { isInteractive, useSessions } from './sessions'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -17,8 +17,8 @@ const CATALOG = {
     project_name: 'repo',
     session_count: 2,
     sessions: [
-      { id: 'active-1', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: true, headless_open: false },
-      { id: 'closed-1', summary: 'b', message_count: 1, modified_at: '2026-09-08', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: false, headless_open: false },
+      { id: 'active-1', summary: 'a', message_count: 3, modified_at: '2026-09-09', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: true, headless_open: false, interactive: true },
+      { id: 'closed-1', summary: 'b', message_count: 1, modified_at: '2026-09-08', git_branch: 'main', cwd: '/repo', custom_title: null, first_prompt: null, active: false, headless_open: false, interactive: true },
     ],
   }],
 }
@@ -424,6 +424,23 @@ describe('sessions store following the TUI', () => {
     })
     expect(urls[0]).toContain('/api/sessions')
   })
+
+  it('re-reads the catalog when a TUI starts or exits, without switching to it', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(urlOf(input))
+      return Promise.resolve(jsonResponse(CATALOG))
+    }))
+    useSessions.setState({ selectedSessionId: 'closed-1' })
+
+    useSessions.getState().applyFrame(
+      { event: 'sessions.changed', id: 0, data: { session_id: '' } } as MirrorFrame)
+
+    await vi.waitFor(() => {
+      expect(urls.some((url) => url.includes('/api/sessions'))).toBe(true)
+    })
+    expect(useSessions.getState().selectedSessionId).toBe('closed-1')
+  })
 })
 
 /**
@@ -559,5 +576,40 @@ describe('sessions store activity', () => {
     await useSessions.getState().refresh()
 
     expect(useSessions.getState().activity['closed-1']).toEqual({ running: true, completed: false })
+  })
+})
+
+describe('isInteractive', () => {
+  const projects = (interactive: boolean) => [{
+    project_path: '/repo',
+    project_name: 'repo',
+    session_count: 1,
+    sessions: [{
+      id: 's1', summary: null, message_count: 1, modified_at: '', git_branch: null,
+      cwd: null, custom_title: null, first_prompt: null, active: false,
+      headless_open: false, interactive,
+    }],
+  }]
+
+  it('is false for a listed session with no host', () => {
+    // The case that emptied the composer's menus: a transcript on disk is
+    // listed so it can be read, but its engine is gone and neither the
+    // permission mode nor the model seat has anyone to answer.
+    expect(isInteractive(projects(false), 's1')).toBe(false)
+  })
+
+  it('is true for a listed session with a host', () => {
+    expect(isInteractive(projects(true), 's1')).toBe(true)
+  })
+
+  it('is true for an id the catalog does not carry yet', () => {
+    // A session created here has no row until the next refresh. Declaring it
+    // undrivable on no evidence would hide the controls for a session that is
+    // in fact being served.
+    expect(isInteractive(projects(false), 'just-created')).toBe(true)
+  })
+
+  it('is true when no session is addressed', () => {
+    expect(isInteractive(projects(false), null)).toBe(true)
   })
 })

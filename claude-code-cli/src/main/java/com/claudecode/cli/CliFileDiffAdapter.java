@@ -31,6 +31,12 @@ final class CliFileDiffAdapter {
     /** Content beyond this is reported as oversized rather than diffed. */
     private static final int OVERSIZED_BYTES = 1_000_000;
 
+    /**
+     * Shared by every adapter: the standalone gateway builds one per request
+     * around the cached transcript list, and that list is what the memo keys.
+     */
+    private static final TurnDiffMemo TURN_DIFFS = new TurnDiffMemo();
+
     private final Function<String, Optional<List<Message>>> messagesOf;
 
     /**
@@ -85,7 +91,7 @@ final class CliFileDiffAdapter {
         if (turn < 1) return Optional.empty();
         Optional<List<Message>> messages = messagesOf.apply(sessionId);
         if (messages.isEmpty()) return Optional.empty();
-        for (TurnDiffExtractor.TurnDiff candidate : TurnDiffExtractor.extract(messages.get())) {
+        for (TurnDiffExtractor.TurnDiff candidate : TURN_DIFFS.of(messages.get())) {
             if (candidate.turnIndex() != turn) continue;
             List<GatewayFileDiffPort.ChangedFile> files = candidate.files().stream()
                 .map(CliFileDiffAdapter::summarize)
@@ -113,7 +119,7 @@ final class CliFileDiffAdapter {
         if (messages.isEmpty()) return Optional.empty();
         // Most recent turn first: the extractor already returns newest-first,
         // so the first turn that names the path is the file's latest state.
-        for (TurnDiffExtractor.TurnDiff turn : TurnDiffExtractor.extract(messages.get())) {
+        for (TurnDiffExtractor.TurnDiff turn : TURN_DIFFS.of(messages.get())) {
             for (TurnDiffExtractor.TurnFileDiff file : turn.files()) {
                 if (!file.filePath().equals(path)) continue;
                 return Optional.of(project(file));

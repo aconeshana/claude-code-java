@@ -157,6 +157,13 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     // gateway follows (the mirror stream is not session-filtered), which is
     // what lets a row light up while a different session is on screen.
     if (applyTurnActivity(get, set, frame)) return
+    // A TUI that started or exited: pull its row in (or drop it) now rather
+    // than at the next catalog poll. Nothing is selected — a new process is
+    // not a switch the user made.
+    if (frame.event === 'sessions.changed') {
+      void get().refresh()
+      return
+    }
     if (frame.event !== 'session.activated') return
     // REMOTE is this client's own open/create echoing back; those paths have
     // already selected, and re-selecting would race their in-flight `select`
@@ -276,6 +283,31 @@ export const useSessions = create<SessionsStore>((set, get) => ({
     }
   },
 }))
+
+/**
+ * Whether a live process is hosting `sessionId`, as the catalog last reported
+ * it.
+ *
+ * <p>A session with no host is a transcript on disk: the gateway lists it so
+ * the user can read it, but its engine is gone, so the permission mode and the
+ * model selection have nobody to answer for them. The composer uses this to
+ * decide whether to offer those controls at all, rather than asking and
+ * rendering empty menus when the answer comes back null.
+ *
+ * <p>An unknown id returns `true` — the catalog is the only authority here, and
+ * a session we cannot see yet (just created, row not landed) must not be
+ * declared undrivable on no evidence.
+ */
+export function isInteractive(
+  projects: readonly CatalogProject[], sessionId: string | null | undefined,
+): boolean {
+  if (sessionId == null) return true
+  for (const project of projects) {
+    const row = project.sessions.find((session) => session.id === sessionId)
+    if (row != null) return row.interactive
+  }
+  return true
+}
 
 /** Replaces one session row in the catalog tree, leaving every other untouched. */
 function mapSession(

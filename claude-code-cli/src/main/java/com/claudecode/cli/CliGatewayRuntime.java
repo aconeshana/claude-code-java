@@ -2,6 +2,7 @@ package com.claudecode.cli;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.config.VersionInfo;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
@@ -91,6 +92,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayTaskBoardPort taskBoard;
     private final GatewayFileDiffPort fileDiff;
     private final GatewayWorkspaceFilePort workspaceFile;
+    /** One fold for the gateway's life, so a replay is reused until its transcript changes. */
+    private final CliTranscriptMetricsFold remoteMetrics = new CliTranscriptMetricsFold();
     /**
      * Single-flight start state: null = never started, pending = start in
      * progress, done = running (or failed-and-resettable). Every concurrent
@@ -321,14 +324,15 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .remoteSessionState(true)
             // Addressed by the owner's work directory: this process's own
             // project holds none of the transcripts it is asked to fold.
-            .remoteMetrics((sessionId, workDir) -> new CliTranscriptMetricsFold().of(sessionId,
+            .remoteMetrics((sessionId, workDir) -> remoteMetrics.of(sessionId,
                 new SessionManager(workDir).getSessionFile(sessionId)))
             .build();
         created.start();
         String published = "http://127.0.0.1:" + created.port() + "/?token=" + token;
         try {
-            WebGatewayRecord.write(gatewayRecordFile,
-                new WebGatewayRecord(ProcessHandle.current().pid(), published));
+            WebGatewayRecord.write(gatewayRecordFile, new WebGatewayRecord(
+                ProcessHandle.current().pid(), published,
+                VersionInfo.version(), System.currentTimeMillis()));
         } catch (IOException failure) {
             created.close();
             throw failure;

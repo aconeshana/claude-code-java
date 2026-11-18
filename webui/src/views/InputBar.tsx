@@ -46,6 +46,7 @@ import { StatsPills } from '../../vendor/dsh-stats-pills/StatsPills'
 import { PermissionModeSelect } from '../../vendor/dsh-permission-select/PermissionModeSelect'
 import { useSessionContext } from '../store/sessionContext'
 import { usePermissionMode } from '../store/permissionMode'
+import { isInteractive as sessionIsInteractive, useSessions } from '../store/sessions'
 import { useTranslate } from '../i18n/useTranslate'
 import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
 import css from '@chat-styles/InputBar.module.css'
@@ -154,6 +155,13 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const permissionMode = usePermissionMode((state) => state.state)
   const refreshPermissionMode = usePermissionMode((state) => state.refresh)
   const selectPermissionMode = usePermissionMode((state) => state.select)
+  // The catalog is the only place that knows whether this session still has a
+  // process behind it. Select the array itself, not a derived boolean: a
+  // derived value would hand back a fresh `true`/`false` primitive on every
+  // store write — which zustand treats as a change — and re-render the
+  // composer on each refresh.
+  const catalogProjects = useSessions((state) => state.projects)
+  const interactive = sessionIsInteractive(catalogProjects, sessionId)
   // The stat pills' locale seat (upstream ui-chat's own 'chat' namespace).
   const statsT = useTranslate(STATS_NS, statsDicts)
   const editorRef = useRef<LexicalEditor | null>(null)
@@ -611,24 +619,32 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
             </button>
           </div>
           <div className={css.modes}>
-            <PermissionModeSelect
-              state={permissionMode}
-              busy={busy}
-              select={selectPermissionMode}
-            />
+            {interactive && (
+              <PermissionModeSelect
+                state={permissionMode}
+                busy={busy}
+                select={selectPermissionMode}
+              />
+            )}
             <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }}>
-              {queuedContent != null ? '已排队，将在当前回复结束后发送' : 'Enter 发送 · Shift+Enter 换行'}
+              {!interactive
+                ? '此会话没有正在运行的主机，仅供查看'
+                : queuedContent != null
+                  ? '已排队，将在当前回复结束后发送'
+                  : 'Enter 发送 · Shift+Enter 换行'}
             </span>
           </div>
           <div className={css.trailing}>
-            <ModelSelect
-              selection={sessionContextSelection}
-              available={sessionContextSelection != null}
-              busy={busy}
-              select={selectModel}
-              selectEffort={selectEffort}
-              s={MODEL_SELECT_STRINGS}
-            />
+            {interactive && (
+              <ModelSelect
+                selection={sessionContextSelection}
+                available={sessionContextSelection != null}
+                busy={busy}
+                select={selectModel}
+                selectEffort={selectEffort}
+                s={MODEL_SELECT_STRINGS}
+              />
+            )}
             <ContextMeter
               pressure={sessionContextUsage == null
                 ? null

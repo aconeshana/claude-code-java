@@ -6,6 +6,7 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import com.claudecode.runtime.sessionlink.SessionLinkCodec;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
@@ -24,8 +25,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -152,12 +156,14 @@ class RemoteWorkerPoolTest {
                     }
                 });
             try (RemoteWorkerPool pool = new RemoteWorkerPool(directory, new MirrorHub(registry))) {
-                var accepted = pool.submit("s-1", "hi there", "m-9");
+                var accepted = pool.submit("s-1",
+                    new SessionHostSubmission("hi there", "m-9", List.of(), List.of()));
 
                 assertThat(accepted).isPresent();
                 assertThat(accepted.get().get(Duration.ofSeconds(5).toMillis(),
                     TimeUnit.MILLISECONDS).name()).isEqualTo("turn.submit");
-                assertThat(pool.submit("missing", "x", "m-0")).isEmpty();
+                assertThat(pool.submit("missing",
+                    new SessionHostSubmission("x", "m-0", List.of(), List.of()))).isEmpty();
             }
             host.join(Duration.ofSeconds(5).toMillis());
         }
@@ -218,6 +224,71 @@ class RemoteWorkerPoolTest {
             }
             host.join(Duration.ofSeconds(5).toMillis());
         }
+    }
+
+    @Test
+    void watchingFollowsAWorkerThatStartsLaterAndAnnouncesItsComingAndGoing() throws Exception {
+        WebWorkerDirectory directory = new WebWorkerDirectory(root.resolve("workers"));
+        MirrorHub hub = new MirrorHub(emptyRegistry());
+        BlockingQueue<String> announcements = new LinkedBlockingQueue<>();
+        CompletableFuture<String> subscribed = new CompletableFuture<>();
+        Thread host;
+        try (var sink = hub.subscribe(frame -> {
+                if (Strings.CS.equals("sessions.changed", frame.event())) {
+                    announcements.add(frame.data());
+                }
+            });
+             RemoteWorkerPool pool = new RemoteWorkerPool(directory, hub)) {
+            pool.startWatching(Duration.ofMillis(50));
+            Thread.sleep(300);
+            assertThat(announcements).as("an unchanged empty directory is never announced").isEmpty();
+
+            // The worker answers every listing for as long as the link stays up; no client of the
+            // pool ever asks, so only the watcher can be what lists and attaches it.
+            host = Thread.ofVirtual().start(() -> {
+                try {
+                    peer = server.accept();
+                    peerInput = Channels.newInputStream(peer);
+                    while (true) {
+                        SessionLinkFrame request = readFrame();
+                        var payload = JsonUtils.getMapper().createObjectNode();
+                        if (Strings.CS.equals("session.list", request.name())) {
+                            payload.putArray("sessions").addObject()
+                                .put("id", "s-1").put("work_dir", "/work");
+                        }
+                        if (Strings.CS.equals("session.subscribe", request.name())) {
+                            subscribed.complete(request.sessionId());
+                        }
+                        writeFrame(SessionLinkFrame.response(
+                            request.id(), request.name(), null, payload));
+                    }
+                } catch (IOException _) {
+                    // The pool closed the link.
+                }
+            });
+            try (var registration = directory.register(new WebWorkerRegistration(
+                    ProcessHandle.current().pid(), socketPath.toString(), "tok", "/work", "test"))) {
+                assertThat(subscribed.get(5, TimeUnit.SECONDS)).isEqualTo("s-1");
+                assertThat(announcements.poll(5, TimeUnit.SECONDS))
+                    .as("the new session is announced").isNotNull();
+            }
+            assertThat(announcements.poll(5, TimeUnit.SECONDS))
+                .as("the departed session is announced").isNotNull();
+        }
+        // Closing the pool ends the link, which is what lets the fake host return.
+        host.join(Duration.ofSeconds(5).toMillis());
+    }
+
+    private static SessionHostRegistry emptyRegistry() {
+        return new SessionHostRegistry(new SessionHostRegistry.Activator() {
+            @Override public CompletableFuture<SessionHostSession> activate(
+                    SessionOpenRequest request) {
+                throw new UnsupportedOperationException("not used by this test");
+            }
+            @Override public List<SessionHostInfo> list() {
+                return List.of();
+            }
+        });
     }
 
     private SessionLinkFrame readFrame() throws IOException {

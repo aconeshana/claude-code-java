@@ -91,6 +91,10 @@ function groupFlatSessions(sessions: FlatSessionCatalog['sessions']): readonly C
       active: session.active ?? false,
       headless_open: session.headless_open ?? false,
       ...(session.running === true ? { running: true } : {}),
+      ...(session.remote === true ? { remote: true } : {}),
+      // A flat row comes from the registry, which lists only live handles, so
+      // an absent flag must not be read as "no host".
+      interactive: session.interactive ?? true,
     }
     if (existing == null) {
       byWorkDir.set(path, {

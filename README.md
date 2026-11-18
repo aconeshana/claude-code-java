@@ -118,6 +118,22 @@ token 的本地 URL；浏览器里就是完整的 chat 界面——左侧常驻�
 
 ![Context Insights 面板](docs/acceptance-assets/context-insights-panel.png)
 
+#### 独立网关：`claude web`
+
+`/web` 把网关起在**当前 TUI 进程内**，进程退出网关即消失。需要网关与 TUI 解耦时用
+独立进程的 `claude web`——它列出**所有**正在运行的 TUI 会话（本机全局单例，跨项目）：
+
+```bash
+claude web           # 启动网关并打印 URL（前台占住终端）；已在运行则复用并说明复用了谁
+claude web -d        # 后台启动：打印 URL 后立即返回，输出写入 ~/.claude/web-gateway.log
+claude web status    # 只读：在跑吗、哪个版本、服务哪几个会话、跑了多久
+claude web stop      # 关掉网关，TUI 会话不受影响
+```
+
+`status` 会标出**版本与网关不一致**的会话——网关是单例，升级后重新执行
+`claude web` 会复用旧进程，此时浏览器跑的还是旧版本的代码；先 `stop` 再启动才会
+加载新版本。`status` / 复用提示中的 token 均已脱敏。
+
 ## Architecture
 
 ```

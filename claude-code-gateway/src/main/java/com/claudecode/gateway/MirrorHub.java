@@ -349,6 +349,17 @@ public final class MirrorHub {
         publish(info.id(), "session.activated", payload);
     }
 
+    /**
+     * Tells clients the set of live sessions changed without a switch: an
+     * interactive process started or exited. It carries no catalog of its own;
+     * a client re-reads the listing. Transient, because a reconnecting client
+     * reads the listing anyway, and a journaled notice would only evict frames
+     * a replay needs.
+     */
+    public void publishSessionsChanged() {
+        publishTransient("", "sessions.changed", object());
+    }
+
     /** Publishes one pending permission ask raised by a followed session. */
     public void publishPermissionAsked(String sessionId, ObjectNode payload) {
         String requestId = payload.path("request_id").asText("");
@@ -598,14 +609,9 @@ public final class MirrorHub {
             // A retried request streams its blocks again from the start.
             case SDKMessage.ApiRetry _ -> drafts.remove(sessionId);
             case SDKMessage.System system -> {
-                String subtype = system.message().subtype();
-                String content = system.message().content();
-                if (content == null || Strings.CS.equalsAny(subtype,
-                        "system_init", "api_metrics", "thinking", "model_refusal_no_fallback")) {
-                    break;
-                }
+                if (!isChatNotice(system)) break;
                 ObjectNode payload = object();
-                payload.put("content", content);
+                payload.put("content", system.message().content());
                 payload.put("synthetic", true);
                 publish(sessionId, "output.text", payload);
             }
@@ -615,17 +621,28 @@ public final class MirrorHub {
 
     /**
      * Latches the turn's first stream-output clock, once per turn: the first
-     * text/thinking delta, Assistant or System message (Progress is
-     * control-plane, not model output). Turn-completion frames read the latch
-     * for the TTFT row; a turn with no recorded output carries no reading.
+     * text/thinking delta, Assistant message, or System notice the chat shows
+     * (Progress is control-plane, not model output). The engine's own
+     * bookkeeping notices — the session-init line it emits the instant a turn
+     * starts, metrics — are not output; latching on them read every headless
+     * turn's TTFT as zero. Turn-completion frames read the latch for the TTFT
+     * row; a turn with no recorded output carries no reading.
      */
     private void recordFirstOutput(String sessionId, SDKMessage msg) {
         if (turnFirstOutputClocks.containsKey(sessionId)) return;
-        if (msg instanceof SDKMessage.Assistant || msg instanceof SDKMessage.System
+        if (msg instanceof SDKMessage.Assistant
+                || msg instanceof SDKMessage.System system && isChatNotice(system)
                 || msg instanceof SDKMessage.StreamEvent(String eventType, Object _)
                     && deltaKind(eventType) != null) {
             turnFirstOutputClocks.put(sessionId, System.currentTimeMillis());
         }
+    }
+
+    /** Whether a system message is a notice the chat shows rather than engine bookkeeping. */
+    private static boolean isChatNotice(SDKMessage.System system) {
+        return system.message().content() != null && !Strings.CS.equalsAny(
+            system.message().subtype(),
+            "system_init", "api_metrics", "thinking", "model_refusal_no_fallback");
     }
 
     /** The draft kind a stream event appends to, or null for control events. */
