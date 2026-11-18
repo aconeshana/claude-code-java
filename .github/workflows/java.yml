@@ -69,8 +69,36 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: webui/pnpm-lock.yaml
 
+      # TEMPORARY DIAGNOSTIC: prints what the detached-session launcher actually
+      # does on this runner, so the remaining DetachedSessionTest failure can be
+      # diagnosed from facts rather than guessed at. Remove once understood.
+      - name: Probe setsid semantics
+        run: |
+          set -x
+          echo "--- which setsid ---"
+          command -v setsid || echo "NO setsid"
+          ls -la /usr/bin/setsid /bin/setsid 2>&1 || true
+          echo "--- am I a process group leader? (pid vs pgid) ---"
+          sh -c 'echo "pid=$$ pgid=$(ps -o pgid= -p $$)"'
+          echo "--- setsid WITHOUT -w ---"
+          setsid sh -c 'echo "pid=$$ pgid=$(ps -o pgid= -p $$)"; if : </dev/tty; then echo tty; else echo no-tty; fi; exit 7' 2>&1
+          echo "exit=$?"
+          echo "--- setsid WITH -w ---"
+          setsid -w sh -c 'echo "pid=$$ pgid=$(ps -o pgid= -p $$)"; if : </dev/tty; then echo tty; else echo no-tty; fi; exit 7' 2>&1
+          echo "exit=$?"
+
       - name: Test
-        run: ./gradlew test
+        run: |
+          set -o pipefail
+          ./gradlew test || {
+            status=$?
+            # Surface the full assertion messages: the CI log truncates them,
+            # and a bare "AssertionFailedError at Foo.java:112" says nothing.
+            for f in $(find . -path '*/build/test-results/test/*.xml' -newermt '-30 minutes'); do
+              grep -q 'failure' "$f" && { echo "=== $f ==="; cat "$f"; }
+            done
+            exit $status
+          }
 
   # Builds a real native image and exercises the subprocess-relaunch paths in it.
   # Slower by design (~10 min): this is the only place a native-only defect can
