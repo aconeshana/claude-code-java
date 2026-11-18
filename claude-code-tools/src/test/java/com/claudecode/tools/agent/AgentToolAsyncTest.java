@@ -218,10 +218,13 @@ class AgentToolAsyncTest {
             "released 2.1.197 uses one id for task state, output, and agent routing");
         assertEquals("toolu_agent_bg", registry.listBackground().getFirst().toolUseId().orElseThrow());
 
-        // Let it finish and verify the output file gets written.
+        // Let it finish and verify the output file gets written. The id is the one
+        // already asserted above rather than a fresh listBackground() read: releasing
+        // the child lets it complete, and a completed task may leave the background
+        // list before this thread observes it — reading the list again here made the
+        // assertion depend on that race instead of on the child finishing.
         factory.release.countDown();
-        String taskId = registry.listBackground().getFirst().id();
-        awaitTrue(() -> registry.get(taskId).map(t -> t.status() == TaskStatus.COMPLETED).orElse(false));
+        awaitTrue(() -> registry.get(agentId).map(t -> t.status() == TaskStatus.COMPLETED).orElse(false));
 
         awaitTrue(() -> Files.isRegularFile(outputFile));
         String content = Files.readString(outputFile);
