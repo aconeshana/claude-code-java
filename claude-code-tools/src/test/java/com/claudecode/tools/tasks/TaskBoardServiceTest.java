@@ -114,10 +114,20 @@ class TaskBoardServiceTest {
         Files.createDirectories(taskDir);
         writeTask(taskDir.resolve("2stale.json"), "2stale", "first on disk");
         writeTask(taskDir.resolve("10.json"), "10", "second on disk");
+
+        // "File order" is whatever readdir returned, and neither Files.newDirectoryStream
+        // (the port's fs.readdirSync counterpart) nor Node's readdirSync promises one: APFS
+        // happens to hand back creation order here, tmpfs on the CI runner does not. Reading
+        // the raw order first and comparing against it keeps the real claim — an id that is
+        // not a JavaScript number is equal to everything, so the stable insertion sort must
+        // leave the input untouched — without asserting the filesystem's own behaviour.
+        List<String> readOrder = new TodoStore(tasksBase, "session-a").list().stream()
+            .map(Task::id).toList();
+
         TodoStore store = new TodoStore(tasksBase, "session-a");
         TaskBoardService service = new TaskBoardService(store, () -> "session-a");
 
-        assertEquals(List.of("2stale", "10"), service.snapshot().tasks().stream()
+        assertEquals(readOrder, service.snapshot().tasks().stream()
             .map(TaskBoardPort.TaskItem::id).toList());
         service.close();
     }

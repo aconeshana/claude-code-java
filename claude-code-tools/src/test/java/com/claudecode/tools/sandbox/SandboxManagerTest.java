@@ -87,6 +87,27 @@ class SandboxManagerTest {
         return SandboxConfig.fromJson(root);
     }
 
+    /**
+     * A pre-raw-snapshot config: {@link SandboxConfig#fromJson} always supplies a
+     * non-null {@code permissionGlobWarnings}, marking it authoritative, so it
+     * short-circuits the filesystem scan in {@code globPatternWarnings}. The
+     * twelve-argument compatibility constructor leaves the list null, which is
+     * what selects the legacy scan this test is about.
+     */
+    private SandboxConfig legacyCfgWithFilesystem(List<String> allowWrite) {
+        ObjectNode fs = new ObjectNode(JsonNodeFactory.instance);
+        ArrayNode a = fs.putArray("allowWrite");
+        allowWrite.forEach(a::add);
+        ObjectNode root = new ObjectNode(JsonNodeFactory.instance);
+        root.put("enabled", true);
+        root.set("filesystem", fs);
+        SandboxConfig parsed = SandboxConfig.fromJson(root);
+        return new SandboxConfig(
+            true, false, true, true, false, false,
+            List.of(), null, Map.of(),
+            parsed.network(), parsed.filesystem(), parsed.ripgrep());
+    }
+
     private static String currentPlatformName() {
         return switch (Platform.CURRENT) {
             case DARWIN -> "darwin";
@@ -303,7 +324,7 @@ class SandboxManagerTest {
         // bubblewrap cannot match glob chars (a trailing /** is allowed).
         assumeTrue(Platform.CURRENT == Platform.LINUX);
         SandboxManager m = new FakeSandboxBackend(true);
-        SandboxConfig c = cfgWithFilesystem(List.of("/foo/*", "/bar/**"));
+        SandboxConfig c = legacyCfgWithFilesystem(List.of("/foo/*", "/bar/**"));
         List<String> warnings = m.globPatternWarnings(c);
         assertTrue(warnings.contains("/foo/*"), "expected glob warning for /foo/*");
         assertFalse(warnings.contains("/bar/**"), "trailing /** must not warn");

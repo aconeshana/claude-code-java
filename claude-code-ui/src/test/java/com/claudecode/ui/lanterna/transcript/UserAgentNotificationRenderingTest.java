@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import com.claudecode.core.constants.Figures;
 import com.claudecode.core.message.MessageFactory;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
@@ -15,6 +16,9 @@ import org.junit.jupiter.api.Test;
 
 /** Regression coverage for the compact background-task notification projection. */
 class UserAgentNotificationRenderingTest {
+
+    /** Platform-dispatched row gutter: ⏺ on macOS, ● elsewhere. See {@link Figures#BLACK_CIRCLE}. */
+    private static final String DOT = Figures.BLACK_CIRCLE + " ";
 
     @Test
     void completedNotificationRendersOnlyItsSummary() {
@@ -33,7 +37,7 @@ class UserAgentNotificationRenderingTest {
         new LanternaMessageDispatcher().dispatch(
             new SDKMessage.User(MessageFactory.createUserMessage(notification)), panel);
 
-        assertEquals(List.of("", "⏺ Agent \"(resumed)\" finished"), panel.textLines());
+        assertEquals(List.of("", DOT + "Agent \"(resumed)\" finished"), panel.textLines());
         assertEquals(LanternaTheme.toolSuccess(), panel.lines.get(1).getFirst().color());
         assertFalse(Strings.CS.contains(panel.allText(), "task-id"));
         assertFalse(Strings.CS.contains(panel.allText(), "tool-use-id"));
@@ -67,7 +71,7 @@ class UserAgentNotificationRenderingTest {
         new LanternaMessageDispatcher().dispatch(
             new SDKMessage.User(MessageFactory.createUserMessage(legacy)), panel);
 
-        assertEquals(List.of("", "⏺ Background command \"./gradlew test\" completed (exit code 0)"),
+        assertEquals(List.of("", DOT + "Background command \"./gradlew test\" completed (exit code 0)"),
             panel.textLines());
         assertEquals(LanternaTheme.toolSuccess(), panel.lines.get(1).getFirst().color());
         assertFalse(Strings.CS.contains(panel.allText(), "task_id"));

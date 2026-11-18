@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.claudecode.core.constants.Figures;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.SDKMessage;
@@ -21,6 +22,9 @@ import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
 
 class StreamingMarkdownDispatcherTest {
+
+    /** Platform-dispatched row gutter: ⏺ on macOS, ● elsewhere. See {@link Figures#BLACK_CIRCLE}. */
+    private static final String DOT = Figures.BLACK_CIRCLE + " ";
 
     @Test
     void streamedStrongEmphasisNeverLeaksAnsiPayloadAcrossVisualWrapping() {
@@ -56,7 +60,7 @@ class StreamingMarkdownDispatcherTest {
             "content_block_delta", "Growing"), panel);
 
         MessagePanel.StyledLine stableHeading = panel.snapshotStyledLines().getFirst();
-        assertEquals("⏺ Stable heading", panel.displayRowsForTest(100).getFirst().text());
+        assertEquals(DOT + "Stable heading", panel.displayRowsForTest(100).getFirst().text());
 
         dispatcher.dispatch(new SDKMessage.StreamEvent(
             "content_block_delta", " paragraph"), panel);
@@ -121,7 +125,7 @@ class StreamingMarkdownDispatcherTest {
         dispatcher.dispatch(new SDKMessage.StreamEvent(
             "content_block_delta", "Growing paragraph"), panel);
 
-        assertEquals(List.of("⏺ Stable heading", "", "  Growing paragraph"),
+        assertEquals(List.of(DOT + "Stable heading", "", "  Growing paragraph"),
             panel.displayRowsForTest(100).stream().map(MessagePanel.StyledLine::text).toList());
     }
 

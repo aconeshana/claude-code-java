@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.ui.Ansi;
 import com.claudecode.ui.lanterna.transcript.MessagePanel.Segment;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.apache.commons.lang3.Strings;
 
@@ -151,6 +153,17 @@ class PreviewBoxTest {
 
     @Test
     void aFencedCodeBlockKeepsTheHighlightersColours() {
+        // The highlighter short-circuits on Ansi.isColorSupported(), which is
+        // resolved once per JVM from TERM/COLORTERM/NO_COLOR/System.console().
+        // A CI runner has none of those, so the whole syntax pipeline is off and
+        // this box legitimately renders one colour. The claim under test — that a
+        // fenced block reaches the highlighter and keeps its colours — is only
+        // observable where color is supported at all; asserting it unconditionally
+        // tests the runner's environment, not the product.
+        Assumptions.assumeTrue(Ansi.isColorSupported(),
+            "no color capability in this JVM: TERM=" + System.getenv("TERM")
+                + " NO_COLOR=" + System.getenv("NO_COLOR"));
+
         PreviewBox.Rendered box = render("```java\nvar answer = 42;\n```", 20, 60);
         long distinctColours = box.rows().stream()
             .flatMap(List::stream)

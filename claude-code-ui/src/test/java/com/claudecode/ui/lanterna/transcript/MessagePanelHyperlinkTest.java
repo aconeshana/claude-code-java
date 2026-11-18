@@ -61,12 +61,15 @@ public class MessagePanelHyperlinkTest {
         String content = "Auto mode lets Claude handle permission prompts automatically — Claude "
             + "checks each tool call for risky actions and prompt injection before executing.";
 
+        // Figures.BLACK_CIRCLE is platform-dispatched (⏺ on macOS, ● elsewhere); a literal
+        // would pin this row's width — and so the wrap points asserted below — to one host.
+        String dot = Figures.BLACK_CIRCLE + " ";
         List<MessagePanel.StyledLine> rows = MessagePanel.wrapStyledSegments(List.of(
-            new MessagePanel.Segment("⏺ ", TextColor.ANSI.DEFAULT),
+            new MessagePanel.Segment(dot, TextColor.ANSI.DEFAULT),
             new MessagePanel.Segment(content, TextColor.ANSI.DEFAULT)), 80, 10);
 
         assertEquals(3, rows.size());
-        assertEquals("⏺ Auto mode lets Claude handle permission prompts automatically — Claude",
+        assertEquals(dot + "Auto mode lets Claude handle permission prompts automatically — Claude",
             rows.getFirst().text());
         assertEquals("  checks each tool call for risky actions and prompt injection before",
             rows.get(1).text());

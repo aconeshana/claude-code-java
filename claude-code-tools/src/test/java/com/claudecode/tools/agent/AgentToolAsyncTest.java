@@ -167,12 +167,13 @@ class AgentToolAsyncTest {
         input.put("prompt", "do something slow");
         input.put("run_in_background", true);
 
-        long start = System.currentTimeMillis();
+        // No wall-clock threshold here on purpose. "call() does not wait for the
+        // sub-agent" is already established deterministically below: the factory parks
+        // the sub-agent on `release` (held for the whole test), and the registry is
+        // still observed RUNNING rather than COMPLETED by the time call() returns. A
+        // timing assertion would only add the runner's speed as a failure mode.
         ToolResult toolResult = tool.call(input, context);
         String result = text(toolResult);
-        long elapsed = System.currentTimeMillis() - start;
-
-        assertTrue(elapsed < 2000, "call() should return immediately, took " + elapsed + "ms");
         @SuppressWarnings("unchecked")
         Map<String, Object> launch = (Map<String, Object>) toolResult.toolUseResult();
         String agentId = (String) launch.get("agentId");

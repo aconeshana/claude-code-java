@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.transcript;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import com.claudecode.core.constants.Figures;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.message.SystemMessage;
 import com.googlecode.lanterna.SGR;
@@ -16,6 +17,13 @@ import com.claudecode.ui.lanterna.features.settings.AutoModeEntryWarningControll
 
 class SystemInformationalRenderingTest {
 
+    /**
+     * The row gutter is {@link Figures#BLACK_CIRCLE}, which is platform-dispatched (⏺ on
+     * macOS, ● elsewhere). Spelling the glyph out would pin these assertions to whichever
+     * host captured them and fail on every other one.
+     */
+    private static final String DOT = Figures.BLACK_CIRCLE + " ";
+
     @Test
     void noticeUsesTheReleasedBlackCircleInsteadOfAnInfoGlyph() {
         StubPanel panel = new StubPanel();
@@ -24,7 +32,7 @@ class SystemInformationalRenderingTest {
             "notice-1", "informational", "notice",
             AutoModeEntryWarningController.DESCRIPTION)), panel);
 
-        assertEquals(List.of("⏺ " + AutoModeEntryWarningController.DESCRIPTION), panel.lines);
+        assertEquals(List.of(DOT + AutoModeEntryWarningController.DESCRIPTION), panel.lines);
     }
 
     @Test
@@ -74,7 +82,7 @@ class SystemInformationalRenderingTest {
             "Claude Opus 4.5 declined this request; retrying with Sonnet")), panel);
 
         assertEquals(List.of(
-            "⏺ Claude Opus 4.5 declined this request; retrying with Sonnet",
+            DOT + "Claude Opus 4.5 declined this request; retrying with Sonnet",
             "  ⎿  Tip: You can configure model switch behavior in /config"),
             panel.lines);
         assertEquals(Set.of(SGR.BOLD), panel.modifiersOfLastSegment,
@@ -95,7 +103,7 @@ class SystemInformationalRenderingTest {
 
         List<MessagePanel.Segment> body = panel.mixed.getFirst();
         assertEquals(3, body.size(), "dot + prefix + link, with an empty tail dropped: " + body);
-        assertEquals("⏺ " + prefix, body.getFirst().text() + body.get(1).text());
+        assertEquals(DOT + prefix, body.getFirst().text() + body.get(1).text());
         MessagePanel.Segment link = body.get(2);
         assertEquals("learn more", link.text(), "the url itself is replaced by the label");
         assertEquals(SystemMessageRenderer.REFUSAL_HELP_URL, link.hyperlinkUrl());
@@ -115,7 +123,7 @@ class SystemInformationalRenderingTest {
 
         List<MessagePanel.Segment> body = panel.mixed.getFirst();
         assertEquals(2, body.size(), "no link means the released path renders one bold run: " + body);
-        assertEquals("⏺ " + content, body.getFirst().text() + body.get(1).text());
+        assertEquals(DOT + content, body.getFirst().text() + body.get(1).text());
         assertNull(body.get(1).hyperlinkUrl());
     }
 
