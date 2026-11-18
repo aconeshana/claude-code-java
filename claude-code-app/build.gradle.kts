@@ -171,10 +171,13 @@ val buildWebui = tasks.register<Exec>("buildWebui") {
     outputs.dir(webuiDir.dir("dist/webui"))
     // Skip (rather than fail) where pnpm is absent — the JAR then packages
     // without the bundle and the gateway explains that at runtime. A probe
-    // that cannot even start (no sh/cmd) also means "absent".
+    // that cannot even start (no sh/cmd) also means "absent". The closure reads
+    // a local copy: referencing the script-level val would capture the script
+    // object, which the configuration cache cannot serialize.
+    val windowsProbe = isWindowsHost
     onlyIf {
         try {
-            val probe = if (isWindowsHost)
+            val probe = if (windowsProbe)
                 ProcessBuilder("cmd", "/c", "where pnpm >nul 2>nul")
             else
                 ProcessBuilder("sh", "-c", "command -v pnpm >/dev/null 2>&1")
