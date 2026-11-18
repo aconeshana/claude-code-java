@@ -27,6 +27,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -77,6 +79,15 @@ class NativeReachabilityMetadataTest {
         "com.claudecode.services.plugins.marketplace.PluginManifest",
         "com.claudecode.services.insights.SessionFacets",
         "com.claudecode.tools.plan.PlanCatalogStore$Catalog",
+        // The two on-disk records behind `claude web`: the gateway publishes its
+        // own endpoint in WebGatewayRecord, and each interactive process publishes
+        // a WebWorkerRegistration for the supervisor to discover. Both are read and
+        // written through JsonUtils, and both were missing here — which is why
+        // `claude web -d` failed in every published native build even though the
+        // JVM suite was green. everyDeserializationTargetIsReachableFromARoot now
+        // derives this requirement from the call sites instead of trusting the list.
+        "com.claudecode.cli.WebGatewayRecord",
+        "com.claudecode.runtime.webworker.WebWorkerRegistration",
         // On-disk entities for the to-do list / background-task persistence,
         // restored via TaskPersistence on launch and written by TaskStore.save().
         "com.claudecode.tools.tasks.Task",
@@ -133,6 +144,141 @@ class NativeReachabilityMetadataTest {
               {"type": "<name>"}
 
             %s""".formatted(METADATA_PATH, String.join("\n", offenders)));
+    }
+
+    /**
+     * Requires {@link #ROOTS} to keep up with the production code that deserializes
+     * into a concrete type.
+     *
+     * <p>Every other test here walks the closure hanging off {@code ROOTS}, so a type
+     * that is neither a root nor reachable from one is simply never visited — the
+     * guards pass while the native binary throws
+     * {@code MissingReflectionRegistrationError} in production. That is exactly how
+     * {@code WebGatewayRecord} escaped: {@code claude web -d} serializes it while
+     * publishing the gateway record, and it was in no root's closure, so
+     * {@code claude web -d} failed in every published native build while the full
+     * JVM suite stayed green.
+     *
+     * <p>The scan reads the call sites rather than trusting the list, because the
+     * list is what drifted. A shape it does not understand is reported as
+     * unverifiable instead of silently skipped, so the check cannot quietly lose
+     * coverage the way the hand-maintained list did.
+     */
+    @Test
+    void everyDeserializationTargetIsReachableFromARoot() throws IOException {
+        Set<Class<?>> closure = jacksonClosure().types();
+        List<String> unreachable = new ArrayList<>();
+        List<String> unresolved = new ArrayList<>();
+        for (DeserializationSite site : deserializationSites()) {
+            Class<?> target = site.target();
+            if (target == null) {
+                unresolved.add(site.describe());
+            } else if (!closure.contains(target)) {
+                unreachable.add(site.describe());
+            }
+        }
+        assertTrue(unresolved.isEmpty(), () -> """
+            could not resolve the target type of these deserialization call sites, \
+            so their native reachability is unverified. Resolve them or extend the \
+            scan in %s; leaving them unread would be the same blind spot as a \
+            hand-maintained root list.
+
+            %s""".formatted(NativeReachabilityMetadataTest.class.getSimpleName(),
+                String.join("\n", unresolved)));
+        assertTrue(unreachable.isEmpty(), () -> """
+            these types are deserialized in production but cannot be reached from \
+            the Jackson closure in %s, so their native reflection metadata is never \
+            checked. Add each to ROOTS (and register it), or the native image will \
+            fail at runtime with MissingReflectionRegistrationError.
+
+            %s""".formatted("ROOTS", String.join("\n", unreachable)));
+    }
+
+    /** One {@code readJson(file, X.class)} / {@code fromJson(text, X.class)} call site. */
+    private record DeserializationSite(Path source, int line, String rawType, Class<?> target) {
+        String describe() {
+            String where = repositoryRoot().relativize(source.toAbsolutePath()) + ":" + line;
+            return target == null ? where + " -> " + rawType : target.getName() + " (" + where + ")";
+        }
+    }
+
+    /**
+     * Matches the deserializing overloads of {@code JsonUtils} and captures their type
+     * literal. The target is written as {@code Something.class} at the call site, which
+     * is what makes this statically extractable.
+     */
+    private static final Pattern DESERIALIZE_CALL = Pattern.compile(
+        "\\b(?:readJson|fromJson|readJsonList|treeToValue)\\s*\\(\\s*[^,]+,?\\s*([A-Za-z_$][\\w.$]*)\\.class");
+
+    private static List<DeserializationSite> deserializationSites() throws IOException {
+        List<DeserializationSite> sites = new ArrayList<>();
+        Path root = repositoryRoot();
+        for (Path module : moduleSourceRoots(root)) {
+            try (var paths = Files.walk(module)) {
+                for (Path source : paths.filter(Files::isRegularFile)
+                        .filter(path -> Strings.CS.endsWith(path.toString(), ".java"))
+                        .toList()) {
+                    collectSites(source, sites);
+                }
+            }
+        }
+        return sites;
+    }
+
+    private static void collectSites(Path source, List<DeserializationSite> sites) throws IOException {
+        List<String> lines = Files.readAllLines(source);
+        for (int index = 0; index < lines.size(); index++) {
+            Matcher matcher = DESERIALIZE_CALL.matcher(lines.get(index));
+            while (matcher.find()) {
+                String raw = matcher.group(1);
+                sites.add(new DeserializationSite(source, index + 1, raw, resolveType(source, raw)));
+            }
+        }
+    }
+
+    /**
+     * Resolves a source-level type name against the file's imports and package. Only
+     * names that resolve to a class on the test classpath are returned; anything else
+     * comes back null so the caller can report it rather than assume it is fine.
+     */
+    private static Class<?> resolveType(Path source, String raw) {
+        try {
+            if (Strings.CS.contains(raw, ".")) return Class.forName(raw);
+            String body = Files.readString(source);
+            String pkg = Pattern.compile("(?m)^package\\s+([\\w.]+);")
+                .matcher(body).results().findFirst()
+                .map(match -> match.group(1)).orElse(null);
+            if (pkg != null) {
+                try {
+                    return Class.forName(pkg + "." + raw);
+                } catch (ClassNotFoundException _) {
+                    // Fall through to the import scan.
+                }
+            }
+            var importPattern = Pattern.compile(
+                "(?m)^import\\s+(?:static\\s+)?[\\w.]*\\b" + Pattern.quote(raw) + ";");
+            var imported = importPattern.matcher(body).results().findFirst();
+            if (imported.isPresent()) {
+                String fqn = imported.get().group().replaceFirst("^import\\s+(?:static\\s+)?", "")
+                    .replace(";", "").trim();
+                return Class.forName(fqn);
+            }
+            return null;
+        } catch (ClassNotFoundException | IOException _) {
+            return null;
+        }
+    }
+
+    /** Every product module's {@code src/main/java}, so the scan cannot be narrowed by accident. */
+    private static List<Path> moduleSourceRoots(Path root) throws IOException {
+        List<Path> roots = new ArrayList<>();
+        try (var modules = Files.list(root)) {
+            for (Path module : modules.filter(Files::isDirectory).toList()) {
+                Path sources = module.resolve("src/main/java");
+                if (Files.isDirectory(sources)) roots.add(sources);
+            }
+        }
+        return roots;
     }
 
     /**

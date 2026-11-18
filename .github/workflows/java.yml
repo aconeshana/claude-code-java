@@ -1,0 +1,169 @@
+name: java
+
+# The Java modules' unit tests plus a native-image smoke. The native half is the
+# reason this workflow exists: a GraalVM image is a second runtime, and several
+# classes of defect are invisible on the JVM. `CurrentCliCommand.resolve()` read
+# java.home/sun.java.command/java.class.path, which a native image reports as
+# null/absent/empty — so `claude web -d` threw an NPE in every published native
+# build while the entire JVM suite stayed green. WebGatewayRecord then failed one
+# step later, for the same reason in Jackson form. Neither could be caught by any
+# test that only runs on a JVM, so the smoke compiles a real image and runs the
+# command for real.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "claude-code-*/**"
+      - "buildSrc/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/java.yml"
+  pull_request:
+    paths:
+      - "claude-code-*/**"
+      - "buildSrc/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/java.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: java-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast gate: everything a developer would run locally. No native toolchain, so
+  # a red here is almost always a real logic failure.
+  test:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: "temurin"
+          cache: "gradle"
+
+      # The webui bundle is a resource of claude-code-app: without pnpm the
+      # buildWebui task skips and the packaging tests see an empty bundle.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: webui/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: webui/pnpm-lock.yaml
+
+      - name: Test
+        run: ./gradlew test
+
+  # Builds a real native image and exercises the subprocess-relaunch paths in it.
+  # Slower by design (~10 min): this is the only place a native-only defect can
+  # be seen before release.
+  native-smoke:
+    name: native smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM (JDK 25 + native-image)
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "25"
+          distribution: "graalvm"
+          component: "native-image"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: "gradle"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: webui/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: webui/pnpm-lock.yaml
+
+      # nativeQuickCompile is the -Ob developer flavour: same entry points and
+      # same reflection metadata as the release image, a fraction of the build
+      # time. The defects this job guards are behavioural, not optimization-level.
+      - name: Build native image
+        run: |
+          ./gradlew :claude-code-app:nativeQuickCompile
+
+      # `web -d` is the end-to-end exercise of the relaunch path: it reconstructs
+      # a command through CurrentCliCommand.resolve(), forks a detached child with
+      # it, waits for that child to publish ~/.claude/web-gateway.json, and prints
+      # the URL. Every step asserts something a JVM run cannot: before the fix the
+      # first one died in Path.of(null) because a native image reports java.home as
+      # null. `status` then proves the child is a process this one can see, and a
+      # clean `stop` proves the whole lifecycle, so nothing is left listening.
+      - name: Smoke the subprocess-relaunch path
+        shell: bash
+        env:
+          BIN: claude-code-app/build/native/nativeQuickCompile/poco
+          # A fixed, run-scoped home rather than mktemp: the cleanup step below
+          # runs as a separate shell, so it has to be able to name the same
+          # directory to stop the gateway this step detaches.
+          SMOKE_HOME: ${{ runner.temp }}/native-smoke
+        run: |
+          set -euo pipefail
+          # An isolated config home keeps the smoke from touching a real one, and
+          # makes "did this command actually publish?" unambiguous.
+          HOME="$SMOKE_HOME"
+          export HOME CLAUDE_CONFIG_DIR="$HOME/.claude"
+          rm -rf "$HOME"
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          # The token is a live credential for a socket the runner is listening on.
+          mask() { sed -E 's/(token=)[^ "&]*/\1<masked>/g'; }
+
+          step() {
+            local label="$1"; shift
+            echo "::group::native smoke: $label"
+            if ! "$BIN" "$@" 2>&1 | mask; then
+              echo "native smoke failed at: $label"
+              echo "::endgroup::"
+              return 1
+            fi
+            echo "::endgroup::"
+          }
+
+          # Fails here (NPE / no record) if CurrentCliCommand cannot rebuild a
+          # command that launches this binary.
+          step "web -d" web -d
+          # The gateway the previous step forked must be visible and alive.
+          status="$("$BIN" web status 2>&1 | mask)"
+          echo "$status"
+          grep -qE "claude web is running" <<<"$status" \
+            || { echo "web -d reported success but nothing is running:"; echo "$status"; exit 1; }
+
+      # The gateway is detached by design, so it outlives the step that started
+      # it. Stop it explicitly, or the runner keeps a bound port.
+      - name: Stop the gateway
+        if: always()
+        shell: bash
+        env:
+          BIN: claude-code-app/build/native/nativeQuickCompile/poco
+          SMOKE_HOME: ${{ runner.temp }}/native-smoke
+        run: |
+          HOME="$SMOKE_HOME" CLAUDE_CONFIG_DIR="$SMOKE_HOME/.claude" \
+            "$BIN" web stop || true

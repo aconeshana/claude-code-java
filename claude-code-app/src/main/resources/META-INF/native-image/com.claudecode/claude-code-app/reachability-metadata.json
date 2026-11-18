@@ -1228,6 +1228,18 @@
       "type": "com.claudecode.tools.plan.PlanCatalogStore$PlanRecord[]"
     },
     {
+      "type": "com.claudecode.cli.WebGatewayRecord",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.runtime.webworker.WebWorkerRegistration",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "com.claudecode.tools.tasks.DreamTaskDetails$DreamTurn[]"
     },
     {
