@@ -279,6 +279,13 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         turnTokenBudget = TurnTokenBudget.fromPrompt(prompt);
         QuerySessionSpec config = getConfig();
         SubmitOptions effectiveOptions = options != null ? options : SubmitOptions.DEFAULT;
+        if (effectiveOptions.startAborted()) {
+            // The interrupt gesture ended before this turn began, so the cancel has to be
+            // in place before QueryLoop's constructor starts the thread that dispatches the
+            // request. Aborting after the constructor — as a caller-side interrupt would —
+            // races that thread and can let a cancelled prompt reach the model.
+            abortController.abort("user-cancel");
+        }
         if (effectiveOptions.permissionMode() == null) {
             var supplier = config.permissionModeSupplier();
             if (supplier != null) {

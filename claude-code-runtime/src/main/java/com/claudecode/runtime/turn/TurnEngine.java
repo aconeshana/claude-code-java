@@ -379,6 +379,12 @@ public final class TurnEngine {
             if (input.suppressInitialAttachments()) {
                 opts = opts.withoutInitialAttachments();
             }
+            if (input.startAborted()) {
+                // Carried into submitMessage so the cancel is in place before the query
+                // loop's thread can dispatch a request; a post-submit interrupt here
+                // races that thread and can leak the cancelled prompt to the model.
+                opts = opts.asStartAborted();
+            }
             final SubmitOptions finalOpts = opts;
 
             if (input.interactiveStartupPrompt()) {
@@ -401,10 +407,10 @@ public final class TurnEngine {
     private void runTurn(UserInput input, SubmitOptions opts, long startMs) {
         int renderFailures = 0;
         try {
+            // A start-aborted turn is cancelled inside submitMessage, before the query
+            // loop can dispatch; see SubmitOptions#startAborted.
             Iterator<SDKMessage> messages = queryEngine.submission()
                 .submitMessage(input.queryContent(), opts);
-            // After submitMessage's abort reset, so the cancel sticks for this turn.
-            if (input.startAborted()) queryEngine.submission().interrupt();
             while (messages.hasNext()) {
                 SDKMessage msg = messages.next();
                 if (log.isDebugEnabled()) {

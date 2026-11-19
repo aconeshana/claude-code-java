@@ -59,7 +59,16 @@ public record SubmitOptions(
     /** Local receive time used when materializing the source user message. */
     Instant promptTimestamp,
 
-    String planContent
+    String planContent,
+
+    /**
+     * When true, the interrupt gesture that produced this submit already ended
+     * before the turn began — the prompt of a local command whose loading state
+     * the user cancelled. {@code submitMessage} aborts the query after its own
+     * reset and before the query loop can dispatch a request, so the model
+     * never sees it.
+     */
+    boolean startAborted
 ) {
     public static final SubmitOptions DEFAULT = builder().build();
 
@@ -142,6 +151,14 @@ public record SubmitOptions(
         return toBuilder().planContent(plan).build();
     }
 
+    /**
+     * Returns a copy whose query is aborted before its first request — for a
+     * prompt whose interrupt gesture already ended while it was being prepared.
+     */
+    public SubmitOptions asStartAborted() {
+        return toBuilder().startAborted(true).build();
+    }
+
     public boolean hasJsonSchema()     { return jsonSchema != null; }
     public boolean hasPastedContents() { return pastedContents != null && !pastedContents.isEmpty(); }
 
@@ -163,6 +180,7 @@ public record SubmitOptions(
         private String promptUuid;
         private Instant promptTimestamp;
         private String planContent;
+        private boolean startAborted;
 
         private Builder() {}
 
@@ -183,6 +201,7 @@ public record SubmitOptions(
             promptUuid = source.promptUuid;
             promptTimestamp = source.promptTimestamp;
             planContent = source.planContent;
+            startAborted = source.startAborted;
         }
 
         public Builder querySource(String value) { querySource = value; return this; }
@@ -219,13 +238,15 @@ public record SubmitOptions(
             return this;
         }
         public Builder planContent(String value) { planContent = value; return this; }
+        public Builder startAborted(boolean value) { startAborted = value; return this; }
 
         public SubmitOptions build() {
             return new SubmitOptions(querySource, jsonSchema,
                 pastedContents, permissionMode, fromKeybinding, slashCommand,
                 meta, modelOverride, effortOverride, precedingUserMessages,
                 additionalUserMessages, commandPermissions,
-                suppressInitialAttachments, promptUuid, promptTimestamp, planContent);
+                suppressInitialAttachments, promptUuid, promptTimestamp, planContent,
+                startAborted);
         }
     }
 }

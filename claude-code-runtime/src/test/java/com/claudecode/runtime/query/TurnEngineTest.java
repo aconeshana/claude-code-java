@@ -74,6 +74,12 @@ class TurnEngineTest {
         @Override public Iterator<SDKMessage> submitMessage(Object prompt, SubmitOptions options) {
             submittedPrompt = prompt;
             submittedOptions = options;
+            // The real submitMessage cancels a start-aborted turn at this point, before
+            // its query loop can dispatch. Aborts pre-set by a test (Esc mid-turn) are
+            // left alone: the real reset happens before this call, not inside it.
+            if (options != null && options.startAborted()) {
+                getAbortController().abort("user-cancel");
+            }
             duringSubmit.run();
             return canned.iterator();
         }
@@ -530,19 +536,23 @@ class TurnEngineTest {
 
     /**
      * 236's {@code onQuery} runs a force-ended command's late prompt against the aborted
-     * controller: the abort must outlive submitMessage's per-turn reset.
+     * controller: the abort has to be re-applied by submitMessage itself, after its
+     * per-turn reset, so it is in place before the query loop dispatches.
      */
     @Test
     void startAbortedTurnUnwindsAsUserCancel() {
         var qe = new FakeQueryEngine(List.of());
-        boolean[] abortedDuringSubmit = {true};
+        boolean[] abortedDuringSubmit = {false};
         qe.duringSubmit = () -> abortedDuringSubmit[0] = qe.getAbortController().isAborted();
         var sink = new RecordingSink();
         var engine = engine(qe, sink, new RecordingOps(), new ArrayList<>(), new ArrayList<>());
 
         engine.submit(input("/mcp-prompt").asStartAborted());
 
-        assertFalse(abortedDuringSubmit[0], "the fake stands in for submitMessage's reset");
+        assertTrue(abortedDuringSubmit[0],
+            "the cancel must be in place by the time submitMessage returns");
+        assertTrue(qe.submittedOptions.startAborted(),
+            "the gesture is carried as an option rather than a post-submit interrupt");
         assertTrue(qe.getAbortController().isAborted());
         assertTrue(sink.lastCompletion().userCancel());
     }
