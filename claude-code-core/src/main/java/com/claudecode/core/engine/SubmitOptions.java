@@ -63,10 +63,15 @@ public record SubmitOptions(
 
     /**
      * When true, the interrupt gesture that produced this submit already ended
-     * before the turn began — the prompt of a local command whose loading state
-     * the user cancelled. {@code submitMessage} aborts the query after its own
-     * reset and before the query loop can dispatch a request, so the model
-     * never sees it.
+     * before the turn began. {@code submitMessage} aborts the query after its own
+     * reset and before the query loop can dispatch a request, so the model never
+     * sees it.
+     *
+     * <p>236 does this by deriving the engine's controller from an
+     * already-aborted parent in the query engine's constructor and capturing,
+     * never resetting, it at submit time; the abort therefore precedes the first
+     * request by construction. Carrying the flag through submit recreates that
+     * ordering on our single reset-per-turn controller.
      */
     boolean startAborted
 ) {
@@ -151,10 +156,7 @@ public record SubmitOptions(
         return toBuilder().planContent(plan).build();
     }
 
-    /**
-     * Returns a copy whose query is aborted before its first request — for a
-     * prompt whose interrupt gesture already ended while it was being prepared.
-     */
+    /** Returns a copy whose query is aborted before its first request. */
     public SubmitOptions asStartAborted() {
         return toBuilder().startAborted(true).build();
     }
