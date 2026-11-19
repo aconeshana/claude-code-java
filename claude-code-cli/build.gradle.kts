@@ -37,4 +37,11 @@ tasks.named<Test>("test") {
     inputs.file(rootProject.layout.projectDirectory.file("gradle/cli-flag-smoke.json"))
         .withPropertyName("cliFlagSmokePlan")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // CliGatewayRuntime binds one fixed loopback port as its single-instance rule.
+    // The gateway tests must prove that rule without binding the production port:
+    // a developer (or a CI runner) already serving the web UI holds 19845, which
+    // would fail every one of them. This moves them to a private port; the
+    // default is untouched for the product. Must match TEST_PORT in
+    // CliGatewayRuntimeStartTest.
+    environment("CLAUDE_WEB_PORT", "29745")
 }

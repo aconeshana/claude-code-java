@@ -133,6 +133,35 @@ while (messages.hasNext()) {
 See [Architecture](architecture.md) for the current module graph and boundary
 policy.
 
+## Output, logging, and the process streams
+
+Code must not read `System.out` or `System.err` directly. A PMD rule
+(`NoDirectProcessStreamAccess` in `config/pmd/ruleset.xml`) fails the build on a
+direct field access, and `preCommitQuality` runs it over production and test
+sources.
+
+Route by purpose:
+
+- **User-facing CLI output** goes through `CliOutput`. It is the seam that lets
+  the CLI run against a captured or redirected sink, so naming the process
+  streams anywhere else pins behaviour to the single real terminal.
+- **Diagnostics** go through the project logger (slf4j), which respects the
+  configured level instead of writing to a stream the UI may be drawing on.
+
+`CliOutput` itself is the one exemption: wrapping the process streams is its
+entire job, and it carries a `@SuppressWarnings` saying so.
+
+The rule applies to test sources too. A test that genuinely needs the real
+streams suppresses it at the declaration with the reason there — a nested-JVM
+probe whose stdout is its return channel, a coverage report for an opt-in smoke
+run, or `TuiOutputGuard`, whose subject is saving and redirecting those streams.
+Both gates (`pmdStrictMain` and `pmdStrictTest`) fail the build, and each prints
+the number of files it analysed: a ruleset that fails to load is skipped in
+silence, so an unexamined run would otherwise read as a clean one.
+
+The same reasoning is why `NoPrintStackTrace` exists: `printStackTrace()` writes
+to stderr behind the logging configuration's back.
+
 ## Intentional behavior documentation
 
 Use `@Explanation` to record why a declaration intentionally differs from the

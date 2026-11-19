@@ -90,11 +90,18 @@ final class WebCliLifecycle {
      * <p>Read-only, and deliberately so — it must be safe to run at any time, and
      * it never restarts or repairs what it finds.
      *
-     * <p>The access token is redacted. Opening the UI needs it, so {@code claude web}
-     * prints the full URL; inspecting the status does not, and an unredacted line
-     * here would land in shell history and pasted bug reports.
+     * <p>The access token is redacted by default. Opening the UI needs it, so
+     * {@code claude web} prints the full URL; inspecting the status does not, and
+     * an unredacted line here would land in shell history and pasted bug reports.
+     *
+     * <p>{@code showUrl} prints it in full anyway. That is the recovery path for
+     * the URL itself: it is shown once, when the gateway starts, and a user who
+     * missed it had no way back — the record holding it is 0600 and internal,
+     * {@code web-gateway.log} is a debugging artifact, and every other line here
+     * is redacted. Asking explicitly is the point: the token still cannot reach a
+     * log or a report by accident.
      */
-    static int status(Path recordFile, Path workersDirectory, CliOutput out) {
+    static int status(Path recordFile, Path workersDirectory, CliOutput out, boolean showUrl) {
         Optional<WebGatewayRecord> live = WebGatewayRecord.readLive(recordFile);
         if (live.isEmpty()) {
             out.println("claude web is not running.");
@@ -104,7 +111,7 @@ final class WebCliLifecycle {
         out.println("claude web is running");
         out.println("  pid      " + gateway.pid());
         out.println("  version  " + gateway.version());
-        out.println("  url      " + redactToken(gateway.url()));
+        out.println("  url      " + (showUrl ? gateway.url() : redactToken(gateway.url())));
         out.println("  uptime   " + uptime(gateway.startedAtMillis()));
 
         List<WebWorkerRegistration> workers = new WebWorkerDirectory(workersDirectory).scan();

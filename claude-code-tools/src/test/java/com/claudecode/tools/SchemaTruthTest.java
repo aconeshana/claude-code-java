@@ -50,6 +50,12 @@ class SchemaTruthTest {
     // Top-level property: name at line start, followed by ':'.
     private static final Pattern PROP = Pattern.compile("(?m)^(\\s*)(\\w+)\\s*:");
 
+    /**
+     * Suppresses {@code NoDirectProcessStreamAccess}: the bracketed summary is printed so the
+     * drift report survives the failure as a single greppable block, which is how these scans
+     * are read out of CI logs. {@code fail} below still decides the test.
+     */
+    @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
     @Test
     void javaSchemaMatchesTsTruth() throws IOException {
         Assumptions.assumeTrue(Files.isDirectory(TS_ROOT),

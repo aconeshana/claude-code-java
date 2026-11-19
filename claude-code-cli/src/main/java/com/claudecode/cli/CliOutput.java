@@ -7,7 +7,16 @@ import java.util.Objects;
 
 /**
  * Non-owning stdout/stderr-like sink used by CLI session orchestration.
+ *
+ * <p>This is the one place the process streams are named. Every other production
+ * type writes through a {@code CliOutput} so the CLI can run against a captured
+ * or redirected sink — and so that a value bound at the process boundary stays
+ * swappable in tests. {@code NoDirectProcessStreamAccess} in
+ * {@code config/pmd/ruleset.xml} enforces that by failing the build on a direct
+ * {@code System.out}/{@code System.err} read anywhere else; this file is
+ * suppressed because wrapping them is exactly its job.
  */
+@SuppressWarnings("PMD.NoDirectProcessStreamAccess")
 interface CliOutput {
 
     void print(String value);

@@ -16,6 +16,14 @@ import java.nio.file.Files;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Suppresses {@code NoDirectProcessStreamAccess}: the class under test exists to save and redirect
+ * the process streams, so verifying it means reading them, asserting the originals are restored,
+ * and writing to them to prove a stray line lands in the diagnostic file instead of the screen.
+ * The rule is about shipping code pinning behaviour to the real terminal; a test that manipulates
+ * that terminal on purpose is its evidence, not a violation.
+ */
+@SuppressWarnings("PMD.NoDirectProcessStreamAccess")
 class TuiOutputGuardTest {
 
     @Test

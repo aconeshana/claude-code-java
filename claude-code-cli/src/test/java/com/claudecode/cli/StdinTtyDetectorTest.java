@@ -53,6 +53,12 @@ class StdinTtyDetectorTest {
         assertEquals("false\n", new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
     }
 
+    /**
+     * Suppresses {@code NoDirectProcessStreamAccess}: this nested JVM's stdout is its return
+     * channel — the parent asserts on the bytes it prints, so routing them through
+     * {@code CliOutput} would defeat the test rather than improve it.
+     */
+    @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
     public static final class Probe {
         public static void main(String[] args) {
             System.out.println(StdinTtyDetector.isStdinTty());

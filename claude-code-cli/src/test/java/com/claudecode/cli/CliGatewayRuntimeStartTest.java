@@ -9,11 +9,10 @@ import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -26,11 +25,31 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Start semantics of the interactive web-gateway runtime: idempotent starts,
  * single-flight sharing between the startup warmup and {@code /web}, and the
- * retry path after a failed start. These tests bind real loopback sockets —
- * the port-probing and double-binding hazards they guard against only exist
- * against the real {@code HttpServer}.
+ * fixed-port single-instance rule. These tests bind real loopback sockets —
+ * the double-binding hazard they guard against only exists against the real
+ * {@code HttpServer}.
+ *
+ * <p>Every test binds through {@link #TEST_PORT}, never the production 19845.
+ * The rule under test is "a gateway binds its one configured port, and a
+ * second one fails rather than probing upward", and that is fully exercised on
+ * any port. Binding the real one would make the suite fail on every machine
+ * that is already serving the web UI — the developer's own running gateway, or
+ * a TUI's in-process one — turning a correct system state into a red build.
+ *
+ * <p>The port is still a hard singleton within the class: the tests that
+ * occupy it for real (both anti-probing ones) cannot run concurrently with
+ * each other. JUnit runs them sequentially by default.
  */
 class CliGatewayRuntimeStartTest {
+
+    /**
+     * The port these tests bind, chosen from the ephemeral range and passed to
+     * the runtime through {@link CliGatewayRuntime#PORT_OVERRIDE_ENV}, which is
+     * the only supported way to move it — there is no probing to fall back on.
+     */
+    private static final int TEST_PORT = 29745;
+
+    private static final String TEST_URL_PREFIX = "http://127.0.0.1:" + TEST_PORT + "/?token=";
 
     private CliGatewayRuntime runtime;
 
@@ -114,36 +133,62 @@ class CliGatewayRuntimeStartTest {
 
     @Test
     @Timeout(20)
-    void startAfterExhaustedPortsFailsThenRetriesWhenPortFrees() throws Exception {
+    void bindsTheOneFixedPort() {
         runtime = isolatedRuntime();
-        // Occupy the whole probe range so the first start fails. Ports already
-        // held by other processes (a running TUI's gateway, this test JVM's
-        // own listener) need no blocker: they are busy for the probe anyway.
-        List<ServerSocket> blockers = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            ServerSocket blocker = new ServerSocket();
-            blocker.setReuseAddress(true);
-            try {
-                blocker.bind(new InetSocketAddress("127.0.0.1", 19845 + i));
-                blockers.add(blocker);
-            } catch (IOException _) {
-                try { blocker.close(); } catch (IOException _) { /* already closed */ }
-            }
-        }
-        try {
-            CompletableFuture<GatewaySupervisorPort.Started> failed = runtime.startAsync();
-            assertThatThrownBy(() -> failed.get(10, TimeUnit.SECONDS))
+
+        String url = runtime.start().url();
+
+        // The port is the single-instance lock, so it must be exactly the one
+        // configured and never a neighbour: a gateway that quietly fell back to
+        // the next port would be reachable only by whoever read the startup
+        // line, and invisible to both the record and the web UI's fixed URL.
+        assertThat(url).startsWith(TEST_URL_PREFIX);
+    }
+
+    /**
+     * The property the fixed port exists to guarantee: a second web gateway
+     * cannot come up while one holds the configured port. A peer — another TUI
+     * or a standalone {@code claude web} supervisor — is simulated by a plain
+     * listener on the port, which is what the second gateway would collide
+     * with; the start must fail rather than probe upward.
+     */
+    @Test
+    @Timeout(20)
+    void secondGatewayFailsWhileAnotherHoldsThePort() throws Exception {
+        try (ServerSocket incumbent = new ServerSocket()) {
+            incumbent.setReuseAddress(true);
+            incumbent.bind(new InetSocketAddress("127.0.0.1", TEST_PORT));
+            runtime = isolatedRuntime();
+
+            CompletableFuture<GatewaySupervisorPort.Started> blocked = runtime.startAsync();
+
+            assertThatThrownBy(() -> blocked.get(10, TimeUnit.SECONDS))
                 .isInstanceOf(ExecutionException.class)
                 .cause()
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("failed to start web gateway");
-            // The failed flight must clear so /web can retry after the ports free.
-            for (ServerSocket blocker : blockers) blocker.close();
-            assertThat(runtime.start().url()).startsWith("http://127.0.0.1:");
-        } finally {
-            for (ServerSocket blocker : blockers) {
-                try { blocker.close(); } catch (Exception _) { /* already closed */ }
-            }
         }
+        // No gateway bound: a refused start must not leave a record behind that
+        // would make `web status` promise a URL nothing is answering.
+        assertThat(WebGatewayRecord.readLive(claudeHome.resolve("web-gateway.json")))
+            .isEmpty();
+    }
+
+    @Test
+    @Timeout(20)
+    void startRetriesOnTheFixedPortAfterAFailedBind() throws Exception {
+        ServerSocket blocker = new ServerSocket();
+        blocker.setReuseAddress(true);
+        blocker.bind(new InetSocketAddress("127.0.0.1", TEST_PORT));
+        runtime = isolatedRuntime();
+        try {
+            assertThatThrownBy(() -> runtime.start()).hasMessageContaining("failed to start web gateway");
+        } finally {
+            blocker.close();
+        }
+
+        // The failed flight must clear, and the retry must land on the same
+        // fixed port rather than drifting to the next free one.
+        assertThat(runtime.start().url()).startsWith(TEST_URL_PREFIX);
     }
 }

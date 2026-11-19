@@ -28,8 +28,6 @@ import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.session.SessionManager;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -37,19 +35,28 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Owns the in-process web gateway lifecycle for one interactive CLI run.
  *
  * <p>The gateway is started eagerly in the background at REPL startup (so the
  * welcome block can surface its URL almost immediately) and on demand by the
- * {@code /web} command: it binds a fixed loopback port (default
- * {@value #DEFAULT_PORT}), probing upward when that port is busy, mints a
- * per-launch token (never persisted, never logged), and prints the
+ * {@code /web} command: it binds the fixed loopback port {@value #DEFAULT_PORT},
+ * mints a per-launch token (never persisted, never logged), and prints the
  * token-embedded URL through the TUI. Concurrent {@link #start()} calls share
  * one in-flight start — a warmup start and a {@code /web} start never bind
  * two ports. Closing the runtime stops the server with the interactive
  * session.
+ *
+ * <p>The port is deliberately not probed upward. A busy {@value #DEFAULT_PORT}
+ * means another gateway already owns the machine's web endpoint — either a
+ * standalone {@code claude web} supervisor or a peer TUI — and the answer is
+ * to fail the start rather than bind a second, undiscoverable one. Discovery
+ * is single-valued ({@code web-gateway.json} holds one record) and the web UI
+ * is addressed by one fixed URL, so a gateway on 19846 would be reachable only
+ * by whoever read the startup line: exactly the orphan-port situation the fixed
+ * port prevents.
  *
  * <p>The sessions endpoint's two-level project→session listing is fed by the
  * same {@code ProjectCatalog} aggregation the TUI project panel uses
@@ -62,17 +69,28 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /**
-     * Default loopback port the gateway tries first.
+     * The loopback port the gateway binds, and the only one it ever binds.
      *
      * <p>19845 is built from two emoji code points: {@code ⚡} (U+26A1 = 9889) contributes
      * its leading digits {@code 98}, {@code 🐭} (U+1F42D = 128045) its trailing digits
      * {@code 45}, and {@code 1} pads the result to five digits. It sits above 10000 and is
-     * not an IANA-assigned port.
+     * not an IANA-assigned port. The value is fixed so that "the web UI" has exactly one
+     * address on a machine: the port doubles as the single-instance lock (see the class
+     * javadoc).
      */
     private static final int DEFAULT_PORT = 19845;
 
-    /** How many ascending ports to probe before giving up. */
-    private static final int PORT_SEARCH_ATTEMPTS = 10;
+    /**
+     * Environment override for the port, and only for tests.
+     *
+     * <p>The fixed port is the single-instance rule, so the default must never be
+     * changed to dodge a collision — that is the behaviour this class exists to
+     * prevent. The tests that prove the rule need the opposite: a port no other
+     * gateway on the developer's machine occupies, so that they test the rule
+     * instead of rediscovering the developer's running gateway. Unset, blank, or
+     * unparseable leaves the default in place.
+     */
+    static final String PORT_OVERRIDE_ENV = "CLAUDE_WEB_PORT";
 
     private final SessionHostRegistry registry;
     private final GatewaySessionCatalogPort catalog;
@@ -296,7 +314,9 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             return new Started(global.get().url());
         }
         String token = newToken();
-        int port = findAvailablePort("127.0.0.1", DEFAULT_PORT, PORT_SEARCH_ATTEMPTS);
+        // Bind the one fixed port. A collision is not retried on a neighbouring
+        // port: it means a peer gateway already owns the machine's web endpoint.
+        int port = configuredPort();
         GatewayServer created = GatewayServer.builder(
             new GatewayServer.Config("127.0.0.1", port), token, registry)
             .catalog(catalog)
@@ -381,22 +401,20 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     }
 
     /**
-     * Finds a bindable port starting at {@code startPort}, probing upward by
-     * one on each collision. Mirrors kimi-cli's {@code find_available_port}
-     * (bind-then-release probe, ascending offsets, bounded attempts).
+     * The port to bind: the fixed default, or the test override when one is set.
+     *
+     * <p>There is no probing and no fallback whichever value is in play — an
+     * occupied port fails the start, which is the property the single-instance
+     * rule is made of.
      */
-    private static int findAvailablePort(String host, int startPort, int maxAttempts) {
-        for (int offset = 0; offset < maxAttempts; offset++) {
-            int candidate = startPort + offset;
-            try (ServerSocket probe = new ServerSocket()) {
-                probe.setReuseAddress(true);
-                probe.bind(new InetSocketAddress(host, candidate));
-                return candidate;
-            } catch (IOException _) {
-                // Port in use (or otherwise unbindable); try the next one.
-            }
+    static int configuredPort() {
+        String override = System.getenv(PORT_OVERRIDE_ENV);
+        if (StringUtils.isBlank(override)) return DEFAULT_PORT;
+        try {
+            int parsed = Integer.parseInt(override.trim());
+            return parsed > 0 && parsed <= 65535 ? parsed : DEFAULT_PORT;
+        } catch (NumberFormatException _) {
+            return DEFAULT_PORT;
         }
-        throw new IllegalStateException("Cannot find available port in range "
-            + startPort + "-" + (startPort + maxAttempts - 1));
     }
 }

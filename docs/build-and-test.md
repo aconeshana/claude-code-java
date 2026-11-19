@@ -269,6 +269,21 @@ These are validation boundaries, not a product roadmap.
   With it, the configuration home is `$CLAUDE_CONFIG_DIR` and the global config
   is `$CLAUDE_CONFIG_DIR/.claude.json`, unless the legacy
   `$CLAUDE_CONFIG_DIR/.config.json` exists
+- Web gateway port: fixed at 19845, and deliberately not configurable in normal
+  use — the port *is* the single-instance rule. A busy port means another
+  gateway already owns the machine's web endpoint, so a second start fails
+  instead of probing upward; drifting to a neighbouring port is what produced
+  undiscoverable orphan gateways, since the discovery record and the web UI
+  each name one address. `CLAUDE_WEB_PORT` overrides it for tests and must not
+  be used to dodge a collision. The CLI module's test task sets it so the
+  gateway tests exercise the rule without binding the port a developer's own
+  running gateway holds.
+- Web gateway URL: `claude web status` redacts the access token, because that
+  output is for reading and would otherwise reach shell history and pasted bug
+  reports — the token is a live credential for the UI. `claude web status
+  --show-url` prints it in full, which is the only way back to the URL once it
+  has scrolled off the screen: the discovery record holding it is `0600`, and
+  `web-gateway.log` is a debugging artifact.
 
 ## Wire-level request validation
 

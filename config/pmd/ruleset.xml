@@ -307,6 +307,22 @@
       </property>
     </properties>
   </rule>
+  <rule name="NoDirectProcessStreamAccess"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Production code must not touch System.out/System.err directly: route through CliOutput, or the project logger for diagnostics"
+        externalInfoUrl="https://claude-code-java/docs/dev-standards.md">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //FieldAccess[
+            @Name = ('out', 'err')
+          ][pmd-java:typeIs('java.io.PrintStream')]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
   <rule name="ExplanationNeedsAReason"
         language="java"
         class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"

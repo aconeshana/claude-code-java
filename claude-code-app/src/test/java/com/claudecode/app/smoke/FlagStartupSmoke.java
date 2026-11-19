@@ -207,7 +207,13 @@ class FlagStartupSmoke {
      * Reports which targets ran and fails when the plan has fallen behind the matrix. A skipped
      * native target is the normal state of a developer machine, so it is printed rather than passed
      * over: a run that covered only the jar must not read like a full one.
+     *
+     * <p>Suppresses {@code NoDirectProcessStreamAccess}: this coverage report is the opt-in
+     * smoke run's console record — the operator reads it to see which targets were actually
+     * exercised — and it has no {@code CliOutput} to route through, since the task it belongs to
+     * already owns the process's streams.
      */
+    @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
     private DynamicTest reportCoverage(SmokePlan plan, List<SmokeTarget> targets, Path smokeRoot) {
         return dynamicTest("targets and coverage", () -> {
             System.out.println("flagStartupSmoke: " + plan.templates().size() + " cases × "
@@ -276,6 +282,7 @@ class FlagStartupSmoke {
             return new Session(server, workspace, launch);
         }
 
+        @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
         void close() {
             if (!server.unexpectedPaths().isEmpty()) {
                 System.out.println("  note: unplanned request paths reached the fake server: "

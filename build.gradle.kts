@@ -208,7 +208,17 @@ subprojects {
         setSource(qualitySourceSets.named("test").get().allJava)
         classpath = qualitySourceSets.named("test").get().output +
             qualitySourceSets.named("test").get().compileClasspath
+        // The production ruleset applies to test sources too. A test that genuinely must touch
+        // the process streams declares `@SuppressWarnings("PMD.NoDirectProcessStreamAccess")`
+        // at the site, which records the reason there. A second ruleset excluding the rule for
+        // all of test/ was tried and abandoned: PMD resolves a <rule ref> against the classpath,
+        // so the reference to config/pmd/ruleset.xml did not load, and a ruleset that fails to
+        // load is skipped without error — the gate reported success having analysed no file.
         ignoreFailures = false
+        doFirst {
+            // Keeps that failure mode visible: an empty gate prints "0 files".
+            logger.lifecycle("PMD test gate: ${source.asFileTree.files.size} files")
+        }
     }
 
     tasks.withType<JavaCompile>().configureEach {

@@ -39,7 +39,13 @@ import java.util.logging.SimpleFormatter;
  * a buffered flush can split an escape sequence between its {@code ESC} and the rest, a foreign
  * byte lands in the gap, and the terminal abandons the sequence and prints the remainder as text.
  * Those characters are invisible to Lanterna's delta renderer, which therefore never erases them.
+ *
+ * <p>Suppresses {@code NoDirectProcessStreamAccess}: reading the process streams is what this
+ * class does — it saves them so the renderer can keep reaching the screen after {@code setOut}
+ * redirects them away, and it is the guard rather than a writer to them. Every other production
+ * type goes through {@code CliOutput} or the logger.
  */
+@SuppressWarnings("PMD.NoDirectProcessStreamAccess")
 public final class TuiOutputGuard implements AutoCloseable {
 
     private static final String DIAGNOSTIC_PREFIX = "claude-code-java-tui-output-";

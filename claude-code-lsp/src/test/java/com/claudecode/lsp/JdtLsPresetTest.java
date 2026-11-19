@@ -48,6 +48,12 @@ class JdtLsPresetTest {
         assertTrue(JdtLsPreset.isAvailable());
     }
 
+    /**
+     * Suppresses {@code NoDirectProcessStreamAccess}: the diagnostic count is printed so an
+     * opt-in run against a real JDT LS can be read from the console; the assertions beside it
+     * are what decide the test.
+     */
+    @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
     @Test
     @EnabledIfEnvironmentVariable(named = "JDT_LS_PATH", matches = ".+")
     void create_buildsRunnableJavaServer() throws Exception {
@@ -80,6 +86,13 @@ class JdtLsPresetTest {
         assertFalse(server.isRunning());
     }
 
+    /**
+     * Suppresses {@code NoDirectProcessStreamAccess}: the two lines print the live JDT LS
+     * diagnostic list so a failure here can be read without re-running the server by hand.
+     * This test is opt-in (it needs {@code JDT_LS_PATH}), and the assertion below — not the
+     * printing — is what decides it.
+     */
+    @SuppressWarnings("PMD.NoDirectProcessStreamAccess")
     @Test
     @EnabledIfEnvironmentVariable(named = "JDT_LS_PATH", matches = ".+")
     void create_detectsTypeErrorDiagnostics() throws Exception {

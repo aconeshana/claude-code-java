@@ -21,9 +21,19 @@ import picocli.CommandLine.Command;
 )
 public class WebCliStopCommand implements Callable<Integer> {
 
+    private final CliOutput out = CliOutput.systemOut();
+    private final CliOutput err = CliOutput.systemErr();
+
     @Override
     public Integer call() {
-        return WebCliLifecycle.stop(
-            ClaudePaths.WEB_GATEWAY_JSON, CliOutput.systemOut(), CliOutput.systemErr());
+        try {
+            return WebCliLifecycle.stop(ClaudePaths.WEB_GATEWAY_JSON, out, err);
+        } finally {
+            // System.exit follows and does not drain the stream buffers; see
+            // WebCliCommand#call for why this is kept despite nothing being
+            // measurably lost at these sizes.
+            out.flush();
+            err.flush();
+        }
     }
 }

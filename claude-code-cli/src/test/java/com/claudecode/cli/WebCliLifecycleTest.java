@@ -54,7 +54,7 @@ class WebCliLifecycleTest {
 
     @Test
     void statusWithoutAGatewaySaysSo() {
-        assertThat(WebCliLifecycle.status(recordFile(), workersDir(), out)).isZero();
+        assertThat(WebCliLifecycle.status(recordFile(), workersDir(), out, false)).isZero();
 
         assertThat(captured.toString()).contains("claude web is not running.");
     }
@@ -63,7 +63,7 @@ class WebCliLifecycleTest {
     void statusNamesTheBuildThatIsServing() throws Exception {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
 
-        assertThat(WebCliLifecycle.status(recordFile(), workersDir(), out)).isZero();
+        assertThat(WebCliLifecycle.status(recordFile(), workersDir(), out, false)).isZero();
 
         String status = captured.toString();
         assertThat(status).contains("claude web is running");
@@ -80,11 +80,28 @@ class WebCliLifecycleTest {
     void statusRedactsTheAccessToken() throws Exception {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
 
-        WebCliLifecycle.status(recordFile(), workersDir(), out);
+        WebCliLifecycle.status(recordFile(), workersDir(), out, false);
 
         assertThat(captured.toString())
             .doesNotContain(TOKEN)
             .contains("token=<redacted>");
+    }
+
+    /**
+     * The recovery path for the URL. It is printed once, at startup, and a user
+     * who missed it had nowhere to look: the record is 0600 and internal, and
+     * the log is a debugging artifact. Asking explicitly must therefore give the
+     * whole URL back, token included.
+     */
+    @Test
+    void statusShowsTheFullUrlWhenAskedExplicitly() throws Exception {
+        writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
+
+        WebCliLifecycle.status(recordFile(), workersDir(), out, true);
+
+        assertThat(captured.toString())
+            .contains(URL)
+            .doesNotContain("<redacted>");
     }
 
     @Test
@@ -92,7 +109,7 @@ class WebCliLifecycleTest {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
         try (WebWorkerDirectory.Registration _ = register(ProcessHandle.current().pid(),
                 GATEWAY_VERSION, "/tmp/project")) {
-            WebCliLifecycle.status(recordFile(), workersDir(), out);
+            WebCliLifecycle.status(recordFile(), workersDir(), out, false);
         }
 
         assertThat(captured.toString()).contains("sessions (1 registered)", "/tmp/project");
@@ -108,7 +125,7 @@ class WebCliLifecycleTest {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
         try (WebWorkerDirectory.Registration _ = register(ProcessHandle.current().pid(),
                 "0.2.14-17-gb6255e69", "/tmp/project")) {
-            WebCliLifecycle.status(recordFile(), workersDir(), out);
+            WebCliLifecycle.status(recordFile(), workersDir(), out, false);
         }
 
         assertThat(captured.toString()).contains("differs from the gateway");
@@ -119,7 +136,7 @@ class WebCliLifecycleTest {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
         try (WebWorkerDirectory.Registration _ = register(ProcessHandle.current().pid(),
                 GATEWAY_VERSION, "/tmp/project")) {
-            WebCliLifecycle.status(recordFile(), workersDir(), out);
+            WebCliLifecycle.status(recordFile(), workersDir(), out, false);
         }
 
         assertThat(captured.toString()).doesNotContain("differs from the gateway");
@@ -129,7 +146,7 @@ class WebCliLifecycleTest {
     void statusSaysWhenNoSessionIsRegistered() throws Exception {
         writeRecord(ProcessHandle.current().pid(), GATEWAY_VERSION);
 
-        WebCliLifecycle.status(recordFile(), workersDir(), out);
+        WebCliLifecycle.status(recordFile(), workersDir(), out, false);
 
         assertThat(captured.toString()).contains("No sessions are registered");
     }

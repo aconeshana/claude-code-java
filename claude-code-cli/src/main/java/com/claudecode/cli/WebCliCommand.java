@@ -73,8 +73,28 @@ public class WebCliCommand implements Callable<Integer> {
         description = "Start the gateway in the background and return; end it with 'claude web stop'")
     boolean detach;
 
+    /**
+     * Runs {@code call()} and flushes the streams before its result decides the
+     * process exit code.
+     *
+     * <p>{@code ClaudeCodeCli.main} ends with {@code System.exit(exitCode)},
+     * which does not drain a {@code PrintStream}'s buffer. Every branch below
+     * prints far less than the 8 KB capacity, so nothing is measurably lost
+     * today — but the buffer is unbounded from this class's point of view, and
+     * the cost of the guarantee is two virtual calls on one path. It is kept as
+     * insurance rather than a fix for an observed failure.
+     */
     @Override
     public Integer call() throws Exception {
+        try {
+            return run();
+        } finally {
+            out.flush();
+            err.flush();
+        }
+    }
+
+    private Integer run() throws Exception {
         Optional<WebGatewayRecord> running = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
         if (running.isPresent()) {
             WebCliLifecycle.describeReuse(running.get(), out);
