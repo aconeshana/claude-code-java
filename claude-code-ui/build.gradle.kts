@@ -14,9 +14,10 @@ dependencies {
     api(libs.lanterna)
     implementation(libs.jna)
     implementation(libs.jna.platform)
-    api(libs.tm4e) {
-        exclude(group = "org.assertj", module = "assertj-core")
-    }
+    api(libs.tm4e)
+    implementation(libs.commons.io)
+    implementation(libs.gson)
+    implementation(libs.snakeyaml.engine)
     api(libs.joni)
     api(libs.icu4j)
 

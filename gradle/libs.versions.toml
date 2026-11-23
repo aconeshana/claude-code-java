@@ -10,6 +10,7 @@ error-prone-annotations = "2.41.0"
 error-prone-core = "2.41.0"
 graaljs = "25.0.4"
 graalvm-native = "1.1.9"
+gson = "2.13.2"
 icu4j = "74.2"
 jna = "5.19.1"
 jackson = "2.18.9"
@@ -33,7 +34,8 @@ rewrite-templating = "1.29.1"
 rewrite-testing-frameworks = "3.42.1"
 shadow = "9.6.1"
 slf4j = "2.0.19"
-tm4e = "0.17.3-SNAPSHOT"
+snakeyaml-engine = "2.10"
+tm4e = "0.18.0.202608200919"
 
 [libraries]
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
@@ -48,6 +50,7 @@ error-prone-annotations = { module = "com.google.errorprone:error_prone_annotati
 error-prone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "error-prone-core" }
 graal-polyglot = { module = "org.graalvm.polyglot:polyglot", version.ref = "graaljs" }
 graal-js-language = { module = "org.graalvm.js:js-language", version.ref = "graaljs" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 icu4j = { module = "com.ibm.icu:icu4j", version.ref = "icu4j" }
 jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core" }
@@ -87,6 +90,7 @@ rewrite-migrate-java = { module = "org.openrewrite.recipe:rewrite-migrate-java",
 rewrite-static-analysis = { module = "org.openrewrite.recipe:rewrite-static-analysis", version.ref = "rewrite-static-analysis" }
 rewrite-templating = { module = "org.openrewrite:rewrite-templating", version.ref = "rewrite-templating" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml-engine" }
 tm4e = { module = "org.eclipse:org.eclipse.tm4e.core", version.ref = "tm4e" }
 
 [plugins]

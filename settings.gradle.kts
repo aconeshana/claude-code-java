@@ -23,10 +23,22 @@ dependencyResolutionManagement {
             url = uri("https://jitpack.io")
             content { includeGroup("com.github.aconeshana") }
         }
-        maven {
-            name = "tm4eSnapshots"
-            url = uri("https://repo.eclipse.org/content/repositories/tm4e-snapshots/")
-            mavenContent { snapshotsOnly() }
+        ivy {
+            // Eclipse TM4E does not publish releases to Maven Central, and its snapshot
+            // Nexus (`repo.eclipse.org`) suffers periodic 503 outages while forcing 24h
+            // metadata revalidation. Resolve the immutable release bundle directly from
+            // Eclipse's static release mirror instead.
+            name = "tm4eReleases"
+            url = uri("https://download.eclipse.org/tm4e/releases/0.18.0/plugins/")
+            patternLayout {
+                artifact("[artifact]_[revision].[ext]")
+            }
+            metadataSources {
+                artifact()
+            }
+            content {
+                includeModule("org.eclipse", "org.eclipse.tm4e.core")
+            }
         }
     }
 }
