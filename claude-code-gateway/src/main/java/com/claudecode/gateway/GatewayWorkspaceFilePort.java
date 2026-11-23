@@ -1,5 +1,6 @@
 package com.claudecode.gateway;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -23,6 +24,41 @@ public interface GatewayWorkspaceFilePort {
      * @return the file, or empty when it cannot be served
      */
     Optional<TextFile> read(String sessionId, String path);
+
+    /**
+     * One workspace directory's immediate children, or empty when the session or
+     * directory does not resolve inside its workspace.
+     *
+     * @param sessionId the session to inspect, or {@code null} for the active one
+     * @param dir       relative directory path, or blank for the workspace root
+     * @return the directory listing, or empty when it cannot be served
+     */
+    default Optional<DirectoryListing> list(String sessionId, String dir) {
+        return Optional.empty();
+    }
+
+    /**
+     * One entry inside a workspace directory listing.
+     *
+     * @param name      base entry name
+     * @param path      workspace-relative POSIX path
+     * @param directory whether this entry is a directory
+     * @param size      file size in bytes, or 0 for directories
+     */
+    record DirectoryEntry(String name, String path, boolean directory, long size) {}
+
+    /**
+     * One workspace directory listing.
+     *
+     * @param path    workspace-relative POSIX path of the listed directory (empty for root)
+     * @param entries immediate children, directories first
+     */
+    record DirectoryListing(String path, List<DirectoryEntry> entries) {
+        public DirectoryListing {
+            path = path != null ? path : "";
+            entries = entries != null ? List.copyOf(entries) : List.of();
+        }
+    }
 
     /**
      * One file's content as the preview renders it.

@@ -5,6 +5,7 @@ import css from '@chat-styles/SidebarRoot.module.css'
 import browserCss from '@chat-styles/WorkspaceBrowser.module.css'
 import triggerCss from '@chat-styles/SettingsRoot.module.css'
 import localCss from './Sidebar.module.css'
+import { useLayout } from '@vendor/ui-layout'
 import { SIDEBAR_WIDTH } from './AppFrame'
 import { useSessions } from '../store/sessions'
 import type { SessionActivity } from '../store/sessions'
@@ -132,11 +133,12 @@ export function Sidebar() {
     const timer = window.setTimeout(() => { setSettled(true) }, COLLAPSE_SETTLE_MS)
     return () => { window.clearTimeout(timer) }
   }, [collapsed])
+  const storedSidebarWidth = useLayout((state) => state.sidebar || SIDEBAR_WIDTH)
   const wide = !collapsed || !settled
   // Freeze the content at its expanded width while it fades out: the AppFrame
   // grid track then slides/clips it instead of reflowing it.
-  const lastWideWidth = useRef(SIDEBAR_WIDTH)
-  if (!collapsed) lastWideWidth.current = SIDEBAR_WIDTH
+  const lastWideWidth = useRef(storedSidebarWidth)
+  if (!collapsed) lastWideWidth.current = storedSidebarWidth
   // Rail-in only crossfades a live collapse: a refresh straight into the
   // collapsed state renders the rail statically (no delay-hidden controls).
   const everWide = useRef(!collapsed)
@@ -239,7 +241,7 @@ export function Sidebar() {
         css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn,
         collapsed && wide && css.fading, !pointerInside && css.quietBars,
       )}
-      style={wide ? { width: collapsed ? lastWideWidth.current : SIDEBAR_WIDTH } : undefined}
+      style={wide ? { width: collapsed ? lastWideWidth.current : storedSidebarWidth } : undefined}
       onPointerEnter={() => {
         cancelLinger()
         setPointerInside(true)

@@ -34,8 +34,19 @@ final class CliWorkspaceFileReader {
     }
 
     GatewayWorkspaceFilePort port() {
-        return (sessionId, path) -> rootOf.apply(sessionId)
-            .flatMap(root -> GatewayWorkspaceFiles.read(root, path));
+        return new GatewayWorkspaceFilePort() {
+            @Override
+            public Optional<TextFile> read(String sessionId, String path) {
+                return rootOf.apply(sessionId)
+                    .flatMap(root -> GatewayWorkspaceFiles.read(root, path));
+            }
+
+            @Override
+            public Optional<DirectoryListing> list(String sessionId, String dir) {
+                return rootOf.apply(sessionId)
+                    .flatMap(root -> GatewayWorkspaceFiles.list(root, dir));
+            }
+        };
     }
 
     static Optional<GatewayWorkspaceFilePort.TextFile> read(Path root, String path) {

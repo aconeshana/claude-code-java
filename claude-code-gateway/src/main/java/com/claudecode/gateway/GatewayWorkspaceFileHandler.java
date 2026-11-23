@@ -6,6 +6,7 @@ import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -44,6 +45,28 @@ final class GatewayWorkspaceFileHandler {
         body.put("kind", content.kind().name().toLowerCase(Locale.ROOT));
         if (content.kind() == GatewayWorkspaceFilePort.TextFile.Kind.TEXT) {
             body.put("text", content.text());
+        }
+        respondJson(exchange, 200, body);
+    }
+
+    void handleList(HttpExchange exchange) throws IOException {
+        String dir = StringUtils.trimToEmpty(queryParam(exchange, "path"));
+        Optional<GatewayWorkspaceFilePort.DirectoryListing> listing =
+            files.list(sessionIdOf(exchange), dir);
+        if (listing.isEmpty()) {
+            respondJson(exchange, 404, errorBody("not_found", "no readable directory at " + dir));
+            return;
+        }
+        GatewayWorkspaceFilePort.DirectoryListing result = listing.get();
+        ObjectNode body = JsonUtils.getMapper().createObjectNode();
+        body.put("path", result.path());
+        ArrayNode entries = body.putArray("entries");
+        for (GatewayWorkspaceFilePort.DirectoryEntry entry : result.entries()) {
+            ObjectNode row = entries.addObject();
+            row.put("name", entry.name());
+            row.put("path", entry.path());
+            row.put("directory", entry.directory());
+            row.put("size", entry.size());
         }
         respondJson(exchange, 200, body);
     }

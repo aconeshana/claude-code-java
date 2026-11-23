@@ -1,21 +1,104 @@
 /*
- * The right column occupant's chrome.
- *
- * The column itself (`.rightbarCol` in the vendored AppFrame stylesheet) never
- * clips and draws no border, because upstream's occupant anchors a fixed-width
- * panel to the frame's right edge and paints its own left edge. This is that
- * panel, reduced to the one presentation this app uses: a tracked panel that
- * fills the column. Upstream's trackless "hangs over the centre" form is cut
- * with the fullscreen route it belongs to.
+ * Right third-column docking panel shell (push & fullscreen presentations).
  */
 .panel {
   height: 100%;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--dsw-alias-bg-layer-1);
-  /* The frame's right edge never moves, so the border belongs here rather than
-     on the track that comes and goes. */
+  background: var(--dsw-alias-bg-base);
   border-left: 0.5px solid var(--dsw-alias-border-l3);
+  --dsh-dockkit-dock-layer: 10;
+  --dsh-dockkit-float-layer: 60;
+}
+
+.panel[data-fullscreen] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border-left: none;
+}
+
+.surfaceWrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chromeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chromeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.chromeBtn:hover {
+  background: var(--dsw-alias-state-hover-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.collapseIcon {
+  transform: scaleX(-1);
+}
+
+.tabPaneBody {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-base);
+}
+
+.tabScrollBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tabComposerWrap {
+  flex: none;
+  padding: 8px 12px 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: var(--dsw-alias-state-hover-primary);
+}
+
+.emptyNotice {
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
 }

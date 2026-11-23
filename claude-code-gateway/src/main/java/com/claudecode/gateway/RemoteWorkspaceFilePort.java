@@ -69,4 +69,12 @@ class RemoteWorkspaceFilePort implements GatewayWorkspaceFilePort {
         return remotes.workDirOf(sessionId)
             .flatMap(workDir -> GatewayWorkspaceFiles.read(Path.of(workDir), path));
     }
+
+    @Override
+    public Optional<DirectoryListing> list(String sessionId, String dir) {
+        Optional<DirectoryListing> own = local.list(sessionId, dir);
+        if (own.isPresent()) return own;
+        return remotes.workDirOf(sessionId)
+            .flatMap(workDir -> GatewayWorkspaceFiles.list(Path.of(workDir), dir));
+    }
 }

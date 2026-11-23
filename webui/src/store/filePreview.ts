@@ -6,6 +6,7 @@
  * preview is a seat like the review's and needs no address model.
  */
 import { create } from 'zustand'
+import { closeContentInRightDock, openFileInRightDock } from './rightSidebar'
 
 export interface OpenPreview {
   readonly sessionId: string
@@ -18,14 +19,19 @@ interface FilePreviewSeatState {
   readonly closePreview: () => void
 }
 
-export const useFilePreviewSeat = create<FilePreviewSeatState>()((set) => ({
+export const useFilePreviewSeat = create<FilePreviewSeatState>()((set, get) => ({
   preview: null,
 
   openPreview(sessionId, path) {
     set({ preview: { sessionId, path } })
+    openFileInRightDock(sessionId, path)
   },
 
   closePreview() {
+    const current = get().preview
     set({ preview: null })
+    if (current !== null) {
+      closeContentInRightDock(current.sessionId, `file:${current.sessionId}:${current.path}`)
+    }
   },
 }))

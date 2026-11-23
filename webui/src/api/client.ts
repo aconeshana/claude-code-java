@@ -350,6 +350,33 @@ export function restartGatewayRuntime(): Promise<RuntimeRestartResult> {
   return requestJson('POST', '/api/runtime/restart', {})
 }
 
+export interface WorkspaceTreeEntry {
+  readonly name: string
+  readonly path: string
+  readonly directory: boolean
+  readonly size: number
+}
+
+export interface WorkspaceTreeListing {
+  readonly path: string
+  readonly entries: readonly WorkspaceTreeEntry[]
+}
+
+/**
+ * GET /api/workspace-tree: immediate children of a workspace directory for the
+ * right sidebar's Files tab.
+ */
+export function fetchWorkspaceTree(
+  sessionId: string | null | undefined,
+  dir = '',
+): Promise<WorkspaceTreeListing> {
+  const params = new URLSearchParams()
+  if (sessionId != null && sessionId !== '') params.set('session_id', sessionId)
+  if (dir !== '') params.set('path', dir)
+  const query = params.toString()
+  return requestJson('GET', `/api/workspace-tree${query === '' ? '' : `?${query}`}`)
+}
+
 /**
  * DELETE /api/schedule/{id}: removes one scheduled task; 404 when absent.
  */

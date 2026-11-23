@@ -67,6 +67,17 @@ formats.
 - Run the opt-in process-level CLI startup smoke tests with
   `./gradlew :claude-code-app:flagStartupSmoke`.
 
+### Mandatory Pre-Push Verification Gate (CI Alignment)
+
+Before running `git push` to GitHub, you **MUST** verify all CI checks locally so that CI passes on the first push without repeated fixup commits:
+
+1. **Untracked File Audit (`git status`)**: Verify that every newly created Java class, TypeScript module, CSS module, vendor package, or test fixture referenced by modified files is staged (`git add`) and not left untracked.
+2. **Java CI Gate (`.github/workflows/java.yml` & quality gates)**:
+   - Run `./gradlew test` (or module tests + `pmdMain pmdTest` + `rewriteDryRun` / `preCommitQuality`) on Java 25.
+   - When touching reflection, Jackson models, CLI startup, or subprocess relaunch paths, also verify `./gradlew :claude-code-app:nativeQuickCompile` and the `web -d` / `web status` / `web stop` smoke lifecycle.
+3. **WebUI CI Gate (`.github/workflows/webui.yml`)**:
+   - In `webui/`, run `pnpm exec tsc -b` (typecheck), `pnpm test` (Vitest unit/component suite), and `pnpm build` (Vite production bundle).
+
 The Gradle wrapper pins Gradle 9.7.0, product modules compile with the Java 25 toolchain and
 `--release 25`, and Gradle itself must run on Java 25 or newer. Platform-specific distributions
 bundle ripgrep for macOS, Linux, and Windows on `arm64` and `amd64`; macOS and Linux distributions

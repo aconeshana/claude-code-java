@@ -35,6 +35,7 @@ import { SubagentChatView } from './views/SubagentChatView'
 import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
+import { openShellInRightDock, openSubagentInRightDock } from './store/rightSidebar'
 import { RightPanel } from './views/RightPanel'
 import { RightPanelToggle } from './views/RightPanelToggle'
 import { ContextView } from './views/context/ContextView'
@@ -278,15 +279,18 @@ export function App() {
         tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
         headerActions={(
           <>
-            <RightPanelToggle />
             <ShellCatalogMenu
               shells={shells}
               currentShellId={inspectedShellId ?? undefined}
               failed={shellsFailed}
               onRetry={() => { void refreshShells() }}
               onOpen={(taskId) => {
-                if (selectedId !== null) setView(selectedId, 'chat')
-                setInspected({ kind: 'shell', taskId })
+                if (selectedId === null) {
+                  setInspected({ kind: 'shell', taskId })
+                  return
+                }
+                const shell = shells.find((s) => s.id === taskId)
+                openShellInRightDock(selectedId, taskId, shell?.command || shell?.description || taskId)
               }}
             />
             <SubagentCatalogMenu
@@ -296,12 +300,12 @@ export function App() {
               onRetry={retryAgents}
               onOpen={(agentId) => {
                 if (selectedId === null) return
-                setView(selectedId, 'chat')
                 openSubagent(selectedId, agentId)
-                setAgentPromptError(null)
-                setInspected({ kind: 'subagent', agentId })
+                const rec = agents?.find((a) => (a.agentId ?? a.id) === agentId)
+                openSubagentInRightDock(selectedId, agentId, rec?.description || rec?.type || agentId)
               }}
             />
+            <RightPanelToggle />
           </>
         )}
         context={<ContextView sessionId={selectedId} />}

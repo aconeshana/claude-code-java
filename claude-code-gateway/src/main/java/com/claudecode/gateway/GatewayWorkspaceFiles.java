@@ -9,7 +9,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -37,8 +41,57 @@ public final class GatewayWorkspaceFiles {
 
     /** The size budget for one previewed file. */
     public static final long MAX_TEXT_BYTES = 1024L * 1024L;
+    /** Maximum entries returned for a single directory listing. */
+    public static final int MAX_LIST_ENTRIES = 500;
 
     private GatewayWorkspaceFiles() {}
+
+    /**
+     * Lists immediate children of {@code dir} (or workspace root when blank) inside {@code root}.
+     * Containment is enforced after following symbolic links.
+     */
+    public static Optional<GatewayWorkspaceFilePort.DirectoryListing> list(Path root, String dir) {
+        try {
+            Path realRoot = root.toRealPath();
+            String trimmed = StringUtils.trimToEmpty(dir);
+            Path target = trimmed.isEmpty()
+                ? realRoot
+                : realRoot.resolve(trimmed).normalize().toRealPath();
+            if (!target.startsWith(realRoot) || !Files.isDirectory(target)) {
+                return Optional.empty();
+            }
+            List<GatewayWorkspaceFilePort.DirectoryEntry> entries = new ArrayList<>();
+            try (Stream<Path> stream = Files.list(target)) {
+                List<Path> children = stream.toList();
+                for (Path child : children) {
+                    if (entries.size() >= MAX_LIST_ENTRIES) break;
+                    Path fileName = child.getFileName();
+                    if (fileName == null) continue;
+                    String name = fileName.toString();
+                    boolean isDir = Files.isDirectory(child);
+                    long size = 0L;
+                    if (!isDir) {
+                        try {
+                            size = Files.size(child);
+                        } catch (IOException _) {
+                            size = 0L;
+                        }
+                    }
+                    String rel = realRoot.relativize(child).toString().replace('\\', '/');
+                    entries.add(new GatewayWorkspaceFilePort.DirectoryEntry(name, rel, isDir, size));
+                }
+            }
+            entries.sort(Comparator
+                .comparing(GatewayWorkspaceFilePort.DirectoryEntry::directory).reversed()
+                .thenComparing(GatewayWorkspaceFilePort.DirectoryEntry::name, String.CASE_INSENSITIVE_ORDER));
+            String relDir = realRoot.equals(target)
+                ? ""
+                : realRoot.relativize(target).toString().replace('\\', '/');
+            return Optional.of(new GatewayWorkspaceFilePort.DirectoryListing(relDir, entries));
+        } catch (IOException | InvalidPathException _) {
+            return Optional.empty();
+        }
+    }
 
     /**
      * Reads {@code path} inside {@code root}, or empty when it cannot be

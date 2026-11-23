@@ -21,6 +21,7 @@
 import { useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { createReviewStore } from '@vendor/ui-deliverables/review-store'
+import { closeContentInRightDock, openReviewInRightDock } from './rightSidebar'
 
 /** One open review and the file a navigation asked it to show. */
 export interface OpenReview {
@@ -60,15 +61,21 @@ export const useReviewSeat = create<ReviewSeatState>()((set, get) => ({
     const current = get().open
     // Reopening the review already showing is a navigation, not a new seat:
     // the revision is what makes the vendored store re-apply the index.
+    const sameReview = current !== null && current.sessionId === sessionId && current.turn === turn
     set({
-      open: current !== null && current.sessionId === sessionId && current.turn === turn
+      open: sameReview
         ? { ...current, index, revision: current.revision + 1 }
         : { sessionId, turn, index, revision: 0 },
     })
+    openReviewInRightDock(sessionId, turn, !sameReview || index === 0)
   },
 
   closeReview() {
+    const current = get().open
     set({ open: null })
+    if (current !== null) {
+      closeContentInRightDock(current.sessionId, `review:${current.sessionId}:${current.turn}`)
+    }
   },
 }))
 
