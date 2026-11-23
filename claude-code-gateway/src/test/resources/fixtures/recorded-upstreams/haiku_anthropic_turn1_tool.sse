@@ -1,0 +1,103 @@
+event: message_start
+data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011ChKhD4MHKH6ZWsjVknsXJ","model":"anthropic.claude-haiku-5-5","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":396,"output_tokens":2,"service_tier":"standard","speed":"standard"}},"type":"message_start"}
+
+
+event: content_block_start
+data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+
+event: content_block_delta
+data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"signature":"CAQSxgYKEAgUGAI4AUIIdGhpbmtpbmcSDMqd/BA68OJ7dQOsUxoMp1LCxgtfeiIpbkEtIjBOc3Q14yrLPnBI1MjDlqN8IidvWYPgsgB5TqorfOrey8uHRirOU3o53bGf3Nl9cgkq4wWBn90Y8fN7i5Mw8QE8EY1h4jDLppJTST4kNTKyEzTEnkY6s//AvJnyVv+AwdoMRiPxlJqyIM1qsn1GMYP19wroJ5hwsDfOMXjte+kT/8p+UKAIjaviKuJNIiJFirUb92VayF2EJ7PYURbDbDAqf6wqZS4V7XcIeAZxwJioIlihnf5LH+rTkNl6g3x7jrDv9uOe8y6Qp6A/+XAsr2403cNjXYK8gLarHOkFat9HFP4hx7eD8wVZ0US8ETFx0CadSmkOuZsBNKIN9nriM+OeMkWAsEIGhIqljX73rgzJDDeQMHrCYaPoG2k7XEgXHGXzcfBTCmh0pXNyiY5XH49wXB2JMZ8CjUDDRtqpoiGUigOkVuyfOEn/ncl7Je6OsOMLsT/bou225WkIxQVNY4rVqeXQ7Wr6psitaZrIeuOa9+fv3sUUX2WhJOax/SX28nwuAnrbY1+/JXEccTtS9Eoe31eNwmWQwCE1Tp8/epIrQUvgoSAmXF4RcLyo9UeFtF/PHOrj1HobHUgEehYmBGbihAQimF/dLXVI8z/VCq5KVL4KRNBRGYKn+DboFCoQKWKstAB3YsyQ8SSl3UP37CYeltoqVTJQklZ28KF2iurWv7ij/h0EH0DCmgkCBNNyY3As7nNh/GQhudXmGrQf+g6aOG3uo24bOpyOQOc0ZtsXLMD6VWhfe89QXz1/KAmsKBEw1VhED4n/ZX21yY/7LyR3hP9GJysyI391S6XiDS5yGVATum49Od2IAfhUwm2CGpQuGJhlMj6fn0nRfwRRe/0UtIgSf5H7+o/SHW1SRGlp7fjjW9efumr0uZoHU6xj/maEiTQ4xy68IykcKP3Sld5NYKsUY69tsfbyF9bKeUoEl2ZH+envSwUD0Hn2AtFazE2VFKVOkpsfgA2KSzD4AuuWd3IZKoG6GcmrhcU5fEGxJwc1yYT6GiZdpL+VogLo8N49OQfsWaUyUEzxFSVPtqIUjbO71XtPGAE=","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+
+event: content_block_stop
+data: {"index":0,"type":"content_block_stop"}
+
+
+event: content_block_start
+data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+
+event: content_block_delta
+data: {"delta":{"text":"I","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" need","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" to open","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" logo.png to see its","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" act","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":"ual contents, since","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" I","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" can't know","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" what the","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":" image sh","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"text":"ows without reading it.","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+
+event: content_block_stop
+data: {"index":1,"type":"content_block_stop"}
+
+
+event: content_block_start
+data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01K4MPNknUftDD7bhV3i1oip","input":{},"name":"Read","type":"tool_use"},"index":2,"type":"content_block_start"}
+
+
+event: content_block_delta
+data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"partial_json":"{\"path\"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"partial_json":": \"logo","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+
+event: content_block_delta
+data: {"delta":{"partial_json":".png\"}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+
+event: content_block_stop
+data: {"index":2,"type":"content_block_stop"}
+
+
+event: message_delta
+data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":396,"output_tokens":160,"output_tokens_details":{"thinking_tokens":79}}}
+
+
+event: message_stop
+data: {"type":"message_stop"}
+

@@ -120,6 +120,66 @@ public final class ProtocolWireCodec {
     }
 
     /**
+     * Adapts cross-protocol {@code thinking} / {@code effort} fields for Anthropic Messages
+     * upstreams: upgrades budget-based {@code thinking.type="enabled"} to {@code "adaptive"}
+     * on models requiring adaptive thinking (e.g. Claude 4.6+ / 5.x such as
+     * {@code anthropic.claude-haiku-5-5}), and nests {@code effort} inside {@code output_config}
+     * with OpenAI's {@code "xhigh"} mapped to Anthropic's {@code "max"}.
+     */
+    public static CreateMessageRequest adaptForAnthropicUpstream(CreateMessageRequest request) {
+        if (request == null) return null;
+        CreateMessageRequest.ThinkingConfig thinking = request.thinking();
+        boolean adaptiveModel = CreateMessageRequest.supportsAdaptiveThinking(request.model());
+        String rawEffort = ReasoningNormalizer.resolveExplicitOrBudgetEffort(request);
+        String anthropicEffort = Strings.CS.equals("xhigh", rawEffort) ? "max" : rawEffort;
+
+        boolean upgradeToAdaptive = adaptiveModel
+            && thinking != null
+            && Strings.CS.equals("enabled", thinking.type());
+        if (upgradeToAdaptive) {
+            thinking = CreateMessageRequest.ThinkingConfig.adaptive();
+        }
+
+        CreateMessageRequest.OutputConfig outCfg = request.outputConfig();
+        if (StringUtils.isNotBlank(anthropicEffort)) {
+            JsonNode fmt = outCfg != null ? outCfg.format() : null;
+            Object taskBudget = outCfg != null ? outCfg.taskBudget() : null;
+            outCfg = new CreateMessageRequest.OutputConfig(anthropicEffort, fmt, taskBudget);
+        } else if (outCfg != null && Strings.CS.equals("xhigh", outCfg.effort())) {
+            outCfg = new CreateMessageRequest.OutputConfig("max", outCfg.format(), outCfg.taskBudget());
+        }
+
+        if (!upgradeToAdaptive && request.effort() == null && outCfg == request.outputConfig()) {
+            return request;
+        }
+        return new CreateMessageRequest(
+            request.model(),
+            request.maxTokens(),
+            request.systemPrompt(),
+            request.messages(),
+            request.tools(),
+            request.metadata(),
+            request.stopSequences(),
+            request.stream(),
+            request.temperature(),
+            request.topP(),
+            request.topK(),
+            thinking,
+            null,
+            request.toolChoice(),
+            outCfg,
+            request.speed(),
+            request.contextManagement(),
+            request.skipCacheWrite(),
+            request.promptCachingEnabled(),
+            request.promptCacheTtl(),
+            request.querySource(),
+            request.cancellationRegistrar(),
+            request.subagent(),
+            request.streamConnectTimeout());
+    }
+
+    /**
      * Parses a non-streaming wire response JSON string from {@code sourceProtocol} into the
      * canonical {@link ApiMessage}, rescuing text-written tool calls when {@code offeredTools}
      * is non-empty.

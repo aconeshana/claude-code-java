@@ -62,8 +62,8 @@ final class AgentCreateWizard extends Panel {
 
     private static final int LEFT_PAD = 2;
 
-    private boolean active;
-    private Step currentStep;
+    private volatile boolean active;
+    private volatile Step currentStep;
     private final Deque<Integer> history = new ArrayDeque<>();
 
     // ── wizard data ──────────────────────────────────────────────────────────
@@ -183,8 +183,9 @@ final class AgentCreateWizard extends Panel {
         int idx = currentStep.ordinal();
         if (idx < steps.length - 1) {
             if (!history.isEmpty()) history.addLast(idx);
-            currentStep = steps[idx + 1];
-            onEnterStep();
+            Step next = steps[idx + 1];
+            onEnterStep(next);
+            currentStep = next;
         } else {
             complete();
         }
@@ -193,11 +194,13 @@ final class AgentCreateWizard extends Panel {
 
     private void goBack() {
         if (!history.isEmpty()) {
-            currentStep = Step.values()[history.removeLast()];
-            onEnterStep();
+            Step prev = Step.values()[history.removeLast()];
+            onEnterStep(prev);
+            currentStep = prev;
         } else if (currentStep.ordinal() > 0) {
-            currentStep = Step.values()[currentStep.ordinal() - 1];
-            onEnterStep();
+            Step prev = Step.values()[currentStep.ordinal() - 1];
+            onEnterStep(prev);
+            currentStep = prev;
         } else {
             cancelWizard();
             return;
@@ -207,8 +210,8 @@ final class AgentCreateWizard extends Panel {
 
     private void goToStep(Step target) {
         history.addLast(currentStep.ordinal());
+        onEnterStep(target);
         currentStep = target;
-        onEnterStep();
         invalidate();
     }
 
@@ -228,9 +231,9 @@ final class AgentCreateWizard extends Panel {
         saving = false;
     }
 
-    /** Seeds picker sub-components / derived state when a step becomes current. */
-    private void onEnterStep() {
-        switch (currentStep) {
+    /** Seeds picker sub-components / derived state before {@code step} becomes visible as current. */
+    private void onEnterStep(Step step) {
+        switch (step) {
             case TOOLS -> toolsPicker.activate(selectedTools, availableToolNames,
                 ts -> { selectedTools = ts; goNext(); }, this::goBack);
             case MODEL -> modelPicker.activate(selectedModel,

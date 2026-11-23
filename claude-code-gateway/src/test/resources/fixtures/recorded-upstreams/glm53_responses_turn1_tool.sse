@@ -1,0 +1,63 @@
+event: response.created
+data: {"response":{"id":"e0f3df0a951746ffb5d37863c559eabb","object":"response","created_at":1795428836,"status":"in_progress","model":"DeepSeek-V4.1-Flash"},"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"e0f3df0a951746ffb5d37863c559eabb","object":"response","created_at":1795428836,"status":"in_progress","model":"DeepSeek-V4.1-Flash"},"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"output_index":0,"item":{"type":"message","id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","status":"in_progress","role":"assistant","content":[]},"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","item_id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","output_index":0,"content_index":0,"part":{"text":"","annotations":[],"type":"output_text"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","output_index":0,"content_index":0,"delta":"\n\n"}
+
+event: response.output_item.added
+data: {"output_index":1,"item":{"type":"function_call","id":"gw-fc_e47c22438f3349188189e688","call_id":"call_2549dca69c634a768a49376c","name":"Read","arguments":"","status":"in_progress"},"type":"response.output_item.added"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"{"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"\""}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"path"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"\":\""}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"log"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"o.png"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"\""}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"gw-fc_e47c22438f3349188189e688","delta":"}"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","output_index":0,"content_index":0,"delta":"\n"}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","item_id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","output_index":0,"content_index":0,"text":"\n\n\n"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","item_id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","output_index":0,"content_index":0,"part":{"text":"\n\n\n","annotations":[],"type":"output_text"}}
+
+event: response.output_item.done
+data: {"output_index":0,"item":{"type":"message","id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","status":"completed","role":"assistant","content":[{"text":"\n\n\n","annotations":[],"type":"output_text"}]},"type":"response.output_item.done"}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","output_index":1,"arguments":"{\"path\":\"logo.png\"}","item_id":"gw-fc_e47c22438f3349188189e688"}
+
+event: response.output_item.done
+data: {"output_index":1,"item":{"type":"function_call","id":"gw-fc_e47c22438f3349188189e688","call_id":"call_2549dca69c634a768a49376c","name":"Read","arguments":"{\"path\":\"logo.png\"}","status":"completed"},"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"e0f3df0a951746ffb5d37863c559eabb","object":"response","created_at":1795428836,"status":"completed","model":"DeepSeek-V4.1-Flash","output":[{"type":"message","id":"gw-msg_e0f3df0a951746ffb5d37863c559eabb","status":"completed","role":"assistant","content":[{"text":"\n\n\n","annotations":[],"type":"output_text"}]},{"type":"function_call","id":"gw-fc_e47c22438f3349188189e688","call_id":"call_2549dca69c634a768a49376c","name":"Read","arguments":"{\"path\":\"logo.png\"}","status":"completed"}],"usage":{"input_tokens":303,"output_tokens":52,"total_tokens":355,"input_tokens_details":{"cached_tokens":256}}},"type":"response.completed"}
+

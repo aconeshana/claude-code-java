@@ -507,9 +507,12 @@ final class LanModelProxyHandler {
             return;
         }
 
-        CreateMessageRequest outbound = parsed.withModelAndStream(route.resolvedModel, streaming);
         ModelApiProtocol targetProtocol = proxyPort.upstreamProtocol(route.resolvedModel)
             .orElse(ModelApiProtocol.ANTHROPIC);
+        CreateMessageRequest withTarget = parsed.withModelAndStream(route.resolvedModel, streaming);
+        CreateMessageRequest outbound = targetProtocol == ModelApiProtocol.ANTHROPIC
+            ? ProtocolWireCodec.adaptForAnthropicUpstream(withTarget)
+            : withTarget;
 
         if (!streaming) {
             handleUnaryInference(exchange, key, clientIp, clientProtocol, targetProtocol,

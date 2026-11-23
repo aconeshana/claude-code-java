@@ -37,6 +37,7 @@ import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -46,8 +47,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -444,39 +447,50 @@ class LanModelGatewayAcceptanceTest {
     }
 
     /**
-     * Deterministic CI mirror of the live multi-JCC scenario matrix:
+     * Deterministic CI replay of real wire SSE streams recorded live from {@code glm-5.3}
+     * ({@code Chat}, {@code Responses}, and {@code Anthropic Messages} endpoints) and
+     * {@code anthropic.claude-haiku-5-5} ({@code Anthropic Messages} with 1128-byte cryptographic
+     * {@code signature_delta} and strict {@code thinking.type="adaptive"} enforcement), plus
+     * {@code yetone/magpie}'s strict {@link MockGeminiServer}:
      * <ul>
-     *   <li>{@code 4 × 4 = 16} real {@link CustomModelRoutingClient} HTTP+SSE chains across
-     *       {@code Anthropic}, {@code OpenAI Chat}, {@code OpenAI Responses}, and {@code Gemini}</li>
+     *   <li>{@code 4 × 5 = 20} real {@link CustomModelRoutingClient} HTTP+SSE chains across
+     *       4 downstream JCC protocols × 5 recorded/validated upstream targets</li>
      *   <li>Multi-turn Function Call + multimodal {@link ToolResultBlock} ({@code ImageBlock} PNG)</li>
      *   <li>All 4 thinking effort levels ({@code low}, {@code medium}, {@code high}, {@code max})
-     *       plus {@code adaptive} null-budget thinking</li>
-     *   <li>Direct first-turn user {@link ImageBlock} vision across all 4 upstream protocols</li>
+     *       plus {@code adaptive} thinking & OpenAI {@code xhigh -> max} normalization</li>
+     *   <li>Direct first-turn user {@link ImageBlock} vision across all upstream protocols</li>
      * </ul>
      */
     @Test
     @Timeout(30)
-    void fullFourByFourRealLlmClientsCoverMultiToolLoopsAllThinkingEffortsAndMultimodalVision()
+    void fullFourByFiveRecordedWireMatrixCoversGlm53HaikuAndMagpieGeminiAcrossToolsEffortsAndVision()
             throws Exception {
         String pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
         List<JsonNode> anthropicBodies = new CopyOnWriteArrayList<>();
         List<JsonNode> chatBodies = new CopyOnWriteArrayList<>();
         List<JsonNode> responsesBodies = new CopyOnWriteArrayList<>();
 
-        HttpServer mockUpstreams = startMultiProtocolUpstreamServer(
+        HttpServer recordedUpstreams = startRecordedUpstreamServer(
             anthropicBodies, chatBodies, responsesBodies);
         try (MockGeminiServer mockGemini = MockGeminiServer.start()) {
-            String upBase = "http://127.0.0.1:" + mockUpstreams.getAddress().getPort();
-            Map<String, CustomModelConfig> upstreamCatalog = Map.of(
-                "up-anthropic", new CustomModelConfig("up-anthropic", ModelApiProtocol.ANTHROPIC,
-                    upBase, "sk-up-anth", Map.of(), 128_000L, true),
-                "up-chat", new CustomModelConfig("up-chat", ModelApiProtocol.OPENAI_CHAT,
-                    upBase + "/v1", "sk-up-chat", Map.of(), 128_000L, true),
-                "up-responses", new CustomModelConfig("up-responses", ModelApiProtocol.OPENAI_RESPONSES,
-                    upBase + "/v1", "sk-up-resp", Map.of(), 128_000L, true),
-                "up-gemini", new CustomModelConfig("up-gemini", ModelApiProtocol.GEMINI,
-                    mockGemini.baseUrl(), "AIza-up-gem", Map.of(), 1_048_576L, true)
-            );
+            String upBase = "http://127.0.0.1:" + recordedUpstreams.getAddress().getPort();
+            Map<String, CustomModelConfig> upstreamCatalog = new LinkedHashMap<>();
+            upstreamCatalog.put("glm-5.3-chat", new CustomModelConfig(
+                "glm-5.3-chat", ModelApiProtocol.OPENAI_CHAT,
+                upBase + "/v1", "sk-up-chat", Map.of(), 128_000L, true));
+            upstreamCatalog.put("glm-5.3-responses", new CustomModelConfig(
+                "glm-5.3-responses", ModelApiProtocol.OPENAI_RESPONSES,
+                upBase + "/v1", "sk-up-resp", Map.of(), 128_000L, true));
+            upstreamCatalog.put("glm-5.3-anthropic", new CustomModelConfig(
+                "glm-5.3-anthropic", ModelApiProtocol.ANTHROPIC,
+                upBase, "sk-up-anth", Map.of(), 128_000L, true));
+            upstreamCatalog.put("anthropic.claude-haiku-5-5", new CustomModelConfig(
+                "anthropic.claude-haiku-5-5", ModelApiProtocol.ANTHROPIC,
+                upBase, "sk-up-haiku", Map.of(), 200_000L, true));
+            upstreamCatalog.put("gemini-3-flash", new CustomModelConfig(
+                "gemini-3-flash", ModelApiProtocol.GEMINI,
+                mockGemini.baseUrl(), "AIza-up-gem", Map.of(), 1_048_576L, true));
+
             LlmClient gatewayUpstreamRouter = CustomModelRoutingClient.standard(
                 new StubProxyLlmClient(proxiedUpstreamRequests),
                 name -> Optional.ofNullable(upstreamCatalog.get(name)),
@@ -490,7 +504,7 @@ class LanModelGatewayAcceptanceTest {
                 @Override
                 public List<SharedModel> listModels(boolean includeDefaultProvider) {
                     return upstreamCatalog.values().stream()
-                        .map(c -> new SharedModel(c.modelName(), c.protocol().configValue(), false, 128_000L))
+                        .map(c -> new SharedModel(c.modelName(), c.protocol().configValue(), false, c.contextWindow()))
                         .toList();
                 }
 
@@ -518,7 +532,7 @@ class LanModelGatewayAcceptanceTest {
                 ModelApiProtocol.OPENAI_CHAT,
                 ModelApiProtocol.OPENAI_RESPONSES,
                 ModelApiProtocol.GEMINI);
-            List<String> upModels = List.of("up-anthropic", "up-chat", "up-responses", "up-gemini");
+            List<String> upModels = List.copyOf(upstreamCatalog.keySet());
 
             var readTool = new CreateMessageRequest.ToolDefinition(
                 "Read", "Read file or image",
@@ -528,22 +542,22 @@ class LanModelGatewayAcceptanceTest {
                 .put("media_type", "image/png")
                 .put("data", pngBase64);
 
-            // 1. 4 x 4 = 16 Streaming Tool-Use + Multimodal ToolResultBlock Round-Trip Matrix
+            // 1. 4 x 5 = 20 Streaming Tool-Use + Multimodal ToolResultBlock Round-Trip Matrix
             for (ModelApiProtocol downProto : protocols) {
                 LlmClient downstreamJcc = downstreamClientFor(downProto, gwHost, lanKey.secret());
                 for (String targetModel : upModels) {
-                    if (Strings.CS.equals("up-gemini", targetModel)) {
+                    if (Strings.CS.equals("gemini-3-flash", targetModel)) {
                         mockGemini.enqueue(MockGeminiServer.Reply.toolCall(
                             "plan", "sig_m1", "call_up_1", "Read",
                             JsonUtils.getMapper().createObjectNode().put("path", "logo.png")));
-                        mockGemini.enqueueText("MATRIX_OK");
+                        mockGemini.enqueueText("MATRIX_OK — red square");
                     }
 
-                    // Turn 1: downstream JCC streams tool call from upstream via LAN Gateway
+                    // Turn 1: downstream JCC streams recorded tool call from upstream via LAN Gateway
                     List<StreamEvent> turn1 = drainStream(downstreamJcc.createMessageStream(
                         CreateMessageRequest.builder()
                             .model(targetModel)
-                            .maxTokens(512)
+                            .maxTokens(2048)
                             .stream(true)
                             .tools(List.of(readTool))
                             .messages(List.of(new CreateMessageRequest.RequestMessage("user", "inspect logo.png")))
@@ -551,17 +565,22 @@ class LanModelGatewayAcceptanceTest {
                     ToolUseBlock toolCall = extractFirstToolUse(turn1);
                     assertThat(toolCall).as("down=%s up=%s", downProto, targetModel).isNotNull();
                     assertThat(toolCall.name()).isEqualTo("Read");
+                    assertThat(toolCall.input().path("path").asText()).isEqualTo("logo.png");
 
                     // Turn 2: downstream JCC returns ToolResultBlock containing PNG ImageBlock + TextBlock
+                    List<ContentBlock> assistantTurn = new ArrayList<>();
+                    extractThinkingBlock(turn1).ifPresent(assistantTurn::add);
+                    assistantTurn.add(toolCall);
+
                     List<StreamEvent> turn2 = drainStream(downstreamJcc.createMessageStream(
                         CreateMessageRequest.builder()
                             .model(targetModel)
-                            .maxTokens(512)
+                            .maxTokens(2048)
                             .stream(true)
                             .tools(List.of(readTool))
                             .messages(List.of(
                                 new CreateMessageRequest.RequestMessage("user", "inspect logo.png"),
-                                new CreateMessageRequest.RequestMessage("assistant", List.<ContentBlock>of(toolCall)),
+                                new CreateMessageRequest.RequestMessage("assistant", assistantTurn),
                                 new CreateMessageRequest.RequestMessage("user", List.<ContentBlock>of(
                                     new ToolResultBlock(toolCall.id(), List.<ContentBlock>of(
                                         new TextBlock("loaded png"),
@@ -582,33 +601,40 @@ class LanModelGatewayAcceptanceTest {
             assertThat(mockGemini.requests()).anyMatch(r ->
                 Strings.CS.contains(r.body().toString(), pngBase64));
 
-            // 2. All 4 Thinking Effort Levels (low, medium, high, max) + Adaptive + First-Turn Vision
+            // 2. All 4 Thinking Effort Levels (low, medium, high, max) across all 4 downstream protocols & Haiku 5.5
             for (String effort : List.of("low", "medium", "high", "max")) {
-                for (int i = 0; i < protocols.size(); i++) {
-                    ModelApiProtocol downProto = protocols.get(i);
-                    String targetModel = upModels.get((i + 1) % upModels.size());
-                    if (Strings.CS.equals("up-gemini", targetModel)) {
-                        mockGemini.enqueueText("EFFORT_OK");
-                    }
+                for (ModelApiProtocol downProto : protocols) {
                     LlmClient downstreamJcc = downstreamClientFor(downProto, gwHost, lanKey.secret());
-                    List<StreamEvent> events = drainStream(downstreamJcc.createMessageStream(
-                        CreateMessageRequest.builder()
-                            .model(targetModel)
-                            .maxTokens(512)
-                            .stream(true)
-                            .effort(effort)
-                            .thinking(CreateMessageRequest.ThinkingConfig.adaptive())
-                            .messages(List.of(new CreateMessageRequest.RequestMessage(
-                                "user", List.<ContentBlock>of(
-                                    new TextBlock("analyze color"),
-                                    new ImageBlock(imgSource)))))
-                            .build()));
-                    assertThat(events).as("effort=%s down=%s up=%s", effort, downProto, targetModel)
-                        .isNotEmpty();
+                    for (String targetModel : upModels) {
+                        if (Strings.CS.equals("gemini-3-flash", targetModel)) {
+                            mockGemini.enqueueText("MATRIX_OK");
+                        }
+                        List<StreamEvent> events = drainStream(downstreamJcc.createMessageStream(
+                            CreateMessageRequest.builder()
+                                .model(targetModel)
+                                .maxTokens(2048)
+                                .stream(true)
+                                .effort(effort)
+                                .thinking(CreateMessageRequest.ThinkingConfig.adaptive())
+                                .messages(List.of(new CreateMessageRequest.RequestMessage(
+                                    "user", List.<ContentBlock>of(
+                                        new TextBlock("analyze color"),
+                                        new ImageBlock(imgSource)))))
+                                .build()));
+                        assertThat(collectDeltaText(events))
+                            .as("effort=%s down=%s up=%s", effort, downProto, targetModel)
+                            .contains("MATRIX_OK");
+                    }
                 }
             }
+
+            // Confirm Claude Haiku 5.5 received adaptive thinking + valid Anthropic effort ("max", never "xhigh")
+            assertThat(anthropicBodies).anyMatch(b ->
+                Strings.CS.equals("anthropic.claude-haiku-5-5", b.path("model").asText())
+                    && Strings.CS.equals("adaptive", b.path("thinking").path("type").asText())
+                    && Strings.CS.equals("max", b.path("output_config").path("effort").asText()));
         } finally {
-            mockUpstreams.stop(0);
+            recordedUpstreams.stop(0);
         }
     }
 
@@ -760,10 +786,27 @@ class LanModelGatewayAcceptanceTest {
             () -> null);
     }
 
-    private static HttpServer startMultiProtocolUpstreamServer(
+    private static byte[] loadRecordedFixture(String fileName) throws IOException {
+        String resourcePath = "/fixtures/recorded-upstreams/" + fileName;
+        try (InputStream in = LanModelGatewayAcceptanceTest.class.getResourceAsStream(resourcePath)) {
+            Objects.requireNonNull(in, "Missing recorded SSE fixture: " + resourcePath);
+            return in.readAllBytes();
+        }
+    }
+
+    private static HttpServer startRecordedUpstreamServer(
             List<JsonNode> anthropicBodies,
             List<JsonNode> chatBodies,
             List<JsonNode> responsesBodies) throws IOException {
+        byte[] glmAnthT1 = loadRecordedFixture("glm53_anthropic_turn1_tool.sse");
+        byte[] glmAnthT2 = loadRecordedFixture("glm53_anthropic_turn2_vision.sse");
+        byte[] haikuAnthT1 = loadRecordedFixture("haiku_anthropic_turn1_tool.sse");
+        byte[] haikuAnthT2 = loadRecordedFixture("haiku_anthropic_turn2_vision.sse");
+        byte[] glmChatT1 = loadRecordedFixture("glm53_chat_turn1_tool.sse");
+        byte[] glmChatT2 = loadRecordedFixture("glm53_chat_turn2_vision.sse");
+        byte[] glmRespT1 = loadRecordedFixture("glm53_responses_turn1_tool.sse");
+        byte[] glmRespT2 = loadRecordedFixture("glm53_responses_turn2_vision.sse");
+
         HttpServer srv = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         srv.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
@@ -772,59 +815,31 @@ class LanModelGatewayAcceptanceTest {
                 String raw = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 JsonNode req = JsonUtils.parseTree(raw);
                 anthropicBodies.add(req);
+                boolean isHaiku = Strings.CS.contains(req.path("model").asText(""), "haiku");
+                if (isHaiku) {
+                    // Enforce real Claude Haiku 5.5 wire constraints observed during live recording
+                    if (Strings.CS.equals("enabled", req.path("thinking").path("type").asText(""))) {
+                        byte[] err = "{\"error\":{\"message\":\"thinking.type.enabled is not supported for this model\"}}"
+                            .getBytes(StandardCharsets.UTF_8);
+                        ex.getResponseHeaders().set("Content-Type", "application/json");
+                        ex.sendResponseHeaders(400, err.length);
+                        ex.getResponseBody().write(err);
+                        return;
+                    }
+                    if (Strings.CS.equals("xhigh", req.path("output_config").path("effort").asText(""))) {
+                        byte[] err = "{\"error\":{\"message\":\"invalid output_config.effort: xhigh\"}}"
+                            .getBytes(StandardCharsets.UTF_8);
+                        ex.getResponseHeaders().set("Content-Type", "application/json");
+                        ex.sendResponseHeaders(400, err.length);
+                        ex.getResponseBody().write(err);
+                        return;
+                    }
+                }
                 boolean hasToolResult = Strings.CS.contains(raw, "\"tool_result\"");
                 boolean wantTool = req.has("tools") && !req.path("tools").isEmpty() && !hasToolResult;
-                String sse = wantTool
-                    ? """
-                      event: message_start
-                      data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","content":[],"model":"up-anthropic","usage":{"input_tokens":10,"output_tokens":0}}}
-
-                      event: content_block_start
-                      data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
-
-                      event: content_block_delta
-                      data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"plan"}}
-
-                      event: content_block_stop
-                      data: {"type":"content_block_stop","index":0}
-
-                      event: content_block_start
-                      data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_up_1","name":"Read","input":{}}}
-
-                      event: content_block_delta
-                      data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":\\"logo.png\\"}"}}
-
-                      event: content_block_stop
-                      data: {"type":"content_block_stop","index":1}
-
-                      event: message_delta
-                      data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":6}}
-
-                      event: message_stop
-                      data: {"type":"message_stop"}
-
-                      """
-                    : """
-                      event: message_start
-                      data: {"type":"message_start","message":{"id":"m2","type":"message","role":"assistant","content":[],"model":"up-anthropic","usage":{"input_tokens":12,"output_tokens":0}}}
-
-                      event: content_block_start
-                      data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
-
-                      event: content_block_delta
-                      data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"MATRIX_OK"}}
-
-                      event: content_block_stop
-                      data: {"type":"content_block_stop","index":0}
-
-                      event: message_delta
-                      data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}
-
-                      event: message_stop
-                      data: {"type":"message_stop"}
-
-                      """;
-                byte[] out = sse.getBytes(StandardCharsets.UTF_8);
+                byte[] out = isHaiku
+                    ? (wantTool ? haikuAnthT1 : haikuAnthT2)
+                    : (wantTool ? glmAnthT1 : glmAnthT2);
                 ex.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 ex.sendResponseHeaders(200, out.length);
                 ex.getResponseBody().write(out);
@@ -838,26 +853,7 @@ class LanModelGatewayAcceptanceTest {
                 chatBodies.add(req);
                 boolean hasToolResult = Strings.CS.contains(raw, "\"role\":\"tool\"");
                 boolean wantTool = req.has("tools") && !req.path("tools").isEmpty() && !hasToolResult;
-                String sse = wantTool
-                    ? """
-                      data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"plan"}}]}
-
-                      data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_up_1","type":"function","function":{"name":"Read","arguments":"{\\"path\\":\\"logo.png\\"}"}}]}}]}
-
-                      data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":5}}
-
-                      data: [DONE]
-
-                      """
-                    : """
-                      data: {"id":"c2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"MATRIX_OK"}}]}
-
-                      data: {"id":"c2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":14,"completion_tokens":3}}
-
-                      data: [DONE]
-
-                      """;
-                byte[] out = sse.getBytes(StandardCharsets.UTF_8);
+                byte[] out = wantTool ? glmChatT1 : glmChatT2;
                 ex.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 ex.sendResponseHeaders(200, out.length);
                 ex.getResponseBody().write(out);
@@ -871,36 +867,7 @@ class LanModelGatewayAcceptanceTest {
                 responsesBodies.add(req);
                 boolean hasToolResult = Strings.CS.contains(raw, "\"function_call_output\"");
                 boolean wantTool = req.has("tools") && !req.path("tools").isEmpty() && !hasToolResult;
-                String sse = wantTool
-                    ? """
-                      event: response.created
-                      data: {"type":"response.created","response":{"id":"r1","status":"in_progress","output":[]}}
-
-                      event: response.output_item.added
-                      data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_up_1","name":"Read","arguments":""}}
-
-                      event: response.function_call_arguments.delta
-                      data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\\"path\\":\\"logo.png\\"}"}
-
-                      event: response.output_item.done
-                      data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_up_1","name":"Read","arguments":"{\\"path\\":\\"logo.png\\"}"}}
-
-                      event: response.completed
-                      data: {"type":"response.completed","response":{"id":"r1","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_up_1","name":"Read","arguments":"{\\"path\\":\\"logo.png\\"}"}],"usage":{"input_tokens":10,"output_tokens":5}}}
-
-                      """
-                    : """
-                      event: response.created
-                      data: {"type":"response.created","response":{"id":"r2","status":"in_progress","output":[]}}
-
-                      event: response.output_text.delta
-                      data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"MATRIX_OK"}
-
-                      event: response.completed
-                      data: {"type":"response.completed","response":{"id":"r2","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"MATRIX_OK"}]}],"usage":{"input_tokens":15,"output_tokens":3}}}
-
-                      """;
-                byte[] out = sse.getBytes(StandardCharsets.UTF_8);
+                byte[] out = wantTool ? glmRespT1 : glmRespT2;
                 ex.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 ex.sendResponseHeaders(200, out.length);
                 ex.getResponseBody().write(out);
@@ -915,6 +882,21 @@ class LanModelGatewayAcceptanceTest {
         List<StreamEvent> events = new ArrayList<>();
         it.forEachRemaining(events::add);
         return events;
+    }
+
+    private static Optional<ThinkingBlock> extractThinkingBlock(List<StreamEvent> events) {
+        StringBuilder thought = new StringBuilder();
+        StringBuilder sig = new StringBuilder();
+        for (StreamEvent ev : events) {
+            if (ev instanceof StreamEvent.ContentBlockDelta(_, Delta.ThinkingDelta(String t), _)) {
+                thought.append(t);
+            } else if (ev instanceof StreamEvent.ContentBlockDelta(_, Delta.SignatureDelta(String s), _)) {
+                sig.append(s);
+            }
+        }
+        if (thought.isEmpty() && sig.isEmpty()) return Optional.empty();
+        return Optional.of(new ThinkingBlock(
+            thought.toString(), sig.isEmpty() ? null : sig.toString()));
     }
 
     private static ToolUseBlock extractFirstToolUse(List<StreamEvent> events) {

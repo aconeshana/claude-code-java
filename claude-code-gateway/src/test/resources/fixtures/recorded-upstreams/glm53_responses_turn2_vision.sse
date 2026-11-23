@@ -1,0 +1,114 @@
+event: response.created
+data: {"response":{"id":"457864c265dc45f2b6d137c140aabc84","object":"response","created_at":1795428839,"status":"in_progress","model":"DeepSeek-V4.1-Flash"},"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"457864c265dc45f2b6d137c140aabc84","object":"response","created_at":1795428839,"status":"in_progress","model":"DeepSeek-V4.1-Flash"},"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"output_index":0,"item":{"type":"message","id":"gw-msg_457864c265dc45f2b6d137c140aabc84","status":"in_progress","role":"assistant","content":[]},"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"part":{"text":"","annotations":[],"type":"output_text"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"MAT"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"RI"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"X"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"_OK"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"\n\n"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"Color"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":":"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" unknown"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" —"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" the"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" read"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" returned"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" only"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" \""}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"Loaded"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" logo"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":".png"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"\""}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" with"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" no"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" color"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" data"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":","}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" and"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" the"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" image"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" renders"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" blank"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":" white"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"delta":"."}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"text":"MATRIX_OK\n\nColor: unknown — the read returned only \"Loaded logo.png\" with no color data, and the image renders blank white."}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","item_id":"gw-msg_457864c265dc45f2b6d137c140aabc84","output_index":0,"content_index":0,"part":{"text":"MATRIX_OK\n\nColor: unknown — the read returned only \"Loaded logo.png\" with no color data, and the image renders blank white.","annotations":[],"type":"output_text"}}
+
+event: response.output_item.done
+data: {"output_index":0,"item":{"type":"message","id":"gw-msg_457864c265dc45f2b6d137c140aabc84","status":"completed","role":"assistant","content":[{"text":"MATRIX_OK\n\nColor: unknown — the read returned only \"Loaded logo.png\" with no color data, and the image renders blank white.","annotations":[],"type":"output_text"}]},"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"457864c265dc45f2b6d137c140aabc84","object":"response","created_at":1795428839,"status":"completed","model":"DeepSeek-V4.1-Flash","output":[{"type":"message","id":"gw-msg_457864c265dc45f2b6d137c140aabc84","status":"completed","role":"assistant","content":[{"text":"MATRIX_OK\n\nColor: unknown — the read returned only \"Loaded logo.png\" with no color data, and the image renders blank white.","annotations":[],"type":"output_text"}]}],"usage":{"input_tokens":304,"output_tokens":167,"total_tokens":471}},"type":"response.completed"}
+
