@@ -14,6 +14,9 @@ import { useSidebarCollapse } from '../store/sidebarCollapse'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
+import { stripScheduledSessions } from './scheduledSessions'
+import { ScheduledTasksNavButton } from './ScheduledTasksWorkspace'
+import { useScheduleView } from '../store/scheduleView'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
@@ -184,22 +187,24 @@ export function Sidebar() {
     return () => { window.clearInterval(timer) }
   }, [])
 
-  // Alphabetical by project name, then the selected session's project is
-  // lifted to the top (upstream's activity promotion in compareSessionRecency
-  // hoists the current session's account; this catalog has no per-session
-  // recency order to restore behind it, so the rest keeps the name order).
+  const closeScheduleView = useScheduleView((state) => state.closeView)
+  const { regularProjects } = useMemo(
+    () => stripScheduledSessions(projects),
+    [projects],
+  )
+
   const selectedProject = useMemo(
-    () => projects.find((project) => project.sessions.some((session) => session.id === selectedId)),
-    [projects, selectedId],
+    () => regularProjects.find((project) => project.sessions.some((session) => session.id === selectedId)),
+    [regularProjects, selectedId],
   )
   const sorted = useMemo(
-    () => [...projects].sort((a, b) => {
+    () => [...regularProjects].sort((a, b) => {
       const aCurrent = a.project_path === selectedProject?.project_path
       const bCurrent = b.project_path === selectedProject?.project_path
       if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
       return a.project_name.localeCompare(b.project_name)
     }),
-    [projects, selectedProject],
+    [regularProjects, selectedProject],
   )
 
   // The rows' pending-interaction dots. The mirror stream carries every
@@ -215,8 +220,7 @@ export function Sidebar() {
   // here beyond reading it out of the store.
   const activity = useSessions((state) => state.activity)
 
-  // Groups auto-expand to reveal the selected session (upstream's
-  // groupExpansion effect on the current group).
+  // Groups auto-expand to reveal the selected session.
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   useEffect(() => {
     if (selectedProject == null) return
@@ -250,7 +254,10 @@ export function Sidebar() {
             type="button"
             className={clsx(css.brand, css.wide)}
             aria-label={t('newSession')}
-            onClick={() => { void createSession(selectedProject?.project_path ?? null) }}
+            onClick={() => {
+              closeScheduleView()
+              void createSession(selectedProject?.project_path ?? null)
+            }}
           >
             <span className={css.brandIdentity} aria-hidden="true">
               <span className={css.brandMark}>
@@ -288,7 +295,10 @@ export function Sidebar() {
           type="button"
           className={css.newSession}
           aria-label={t('newSession')}
-          onClick={() => { void createSession(selectedProject?.project_path ?? null) }}
+          onClick={() => {
+            closeScheduleView()
+            void createSession(selectedProject?.project_path ?? null)
+          }}
         >
           <IconNewChatOutline16 size={wide ? 14 : 18} />
           {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('newSession')}</span>}
@@ -337,10 +347,7 @@ export function Sidebar() {
                       ))
                     }}
                     onOpen={(session) => {
-                      // A TUI-history session that isn't live yet needs the
-                      // headless open round-trip before its snapshot/mirror
-                      // frames exist; active or already-open sessions just
-                      // switch straight to their snapshot.
+                      closeScheduleView()
                       void (session.active || session.headless_open
                         ? selectByUser(session.id)
                         : openSession(session.id, project.project_path))
@@ -379,6 +386,9 @@ export function Sidebar() {
         )}
       </div>
       <div className={css.footArea}>
+        <div className={css.footerActions}>
+          <ScheduledTasksNavButton wide={wide} />
+        </div>
         <div className={css.footerActions}>
           <ContextDashboardButton wide={wide} />
         </div>

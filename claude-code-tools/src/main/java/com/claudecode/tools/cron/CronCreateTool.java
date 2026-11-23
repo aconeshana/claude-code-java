@@ -1,5 +1,6 @@
 package com.claudecode.tools.cron;
 
+import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.tools.tasks.teammate.TeammateContext;
@@ -92,9 +93,11 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
         ObjectNode durProp = mapper().createObjectNode();
         durProp.put("type", "boolean");
         durProp.put("description",
-            "true = persist to .claude/scheduled_tasks.json and survive restarts. "
-            + "false (default) = in-memory only, dies when this Claude session ends. "
-            + "Use true only when the user asks the task to survive across sessions.");
+            "true = persist to .claude/scheduled_tasks.json so the resident daemon runs it across restarts. "
+            + "false = in-memory only, dies when this session ends. "
+            + "Use true for daily/weekday/weekly/monthly schedules or one-shots >= 6 hours ahead; "
+            + "use false for short in-session polling (e.g. every 5 min) or near-term reminders. "
+            + "If omitted, calendar-horizon schedules and >= 6h one-shots default to true.");
         props.set("durable", durProp);
 
         schema.set("required", mapper().createArrayNode().add("cron").add("prompt"));
@@ -132,14 +135,9 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
         String cron     = input.path("cron").asText("");
         String prompt   = input.path("prompt").asText("");
         boolean recurring = !input.has("recurring") || input.get("recurring").asBoolean(true);
-        boolean durable = input.has("durable") && input.get("durable").asBoolean(false)
-            && durableEnabled.getAsBoolean();
-
-        // Validation (cron expression / next-run / MAX_JOBS) now lives in
-
-
-
         TeammateContext teammate = TeammateContextHolder.get();
+        boolean durable = resolveDurable(input, cron, recurring, teammate != null);
+
         String id = CronStore.add(cron, prompt, recurring, durable,
             teammate != null ? teammate.agentId() : null,
             context == null ? null : context.sessionId());
@@ -159,6 +157,40 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
         }
     }
 
+
+    private static final long ONE_SHOT_DURABLE_THRESHOLD_MS = 6L * 60 * 60 * 1000;
+
+    @Explanation("Natural-language schedule creation defaults calendar-horizon schedules and >=6h one-shots to durable so resident web daemon runs survive session exit, while explicit durable flags always win.")
+    private boolean resolveDurable(JsonNode input, String cron, boolean recurring, boolean isTeammate) {
+        if (!durableEnabled.getAsBoolean() || isTeammate) {
+            return false;
+        }
+        if (input.has("durable") && input.get("durable").isBoolean()) {
+            return input.get("durable").asBoolean();
+        }
+        return inferDefaultDurable(cron, recurring, System.currentTimeMillis());
+    }
+
+    static boolean inferDefaultDurable(String cron, boolean recurring, long nowMs) {
+        if (cron == null) {
+            return false;
+        }
+        String[] fields = cron.trim().split("\\s+");
+        if (fields.length != 5) {
+            return false;
+        }
+        if (recurring) {
+            String hour = fields[1];
+            String dom = fields[2];
+            String month = fields[3];
+            String dow = fields[4];
+            boolean constrainedCalendar = !"*".equals(dom) || !"*".equals(month) || !"*".equals(dow);
+            boolean specificHour = !"*".equals(hour) && !hour.startsWith("*/");
+            return constrainedCalendar || specificHour;
+        }
+        Long nextMs = CronUtils.nextRunAfterMs(cron, nowMs);
+        return nextMs != null && (nextMs - nowMs) >= ONE_SHOT_DURABLE_THRESHOLD_MS;
+    }
 
     @Override public boolean isEnabled() { return cronEnabled.getAsBoolean(); }
 

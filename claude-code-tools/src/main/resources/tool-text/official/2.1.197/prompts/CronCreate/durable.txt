@@ -25,7 +25,16 @@ Only use minute 0 or 30 when the user names that exact time and clearly means it
 
 ## Durability
 
-By default (durable: false) the job lives only in this Claude session — nothing is written to disk, and the job is gone when Claude exits. Pass durable: true to write to .claude/scheduled_tasks.json so the job survives restarts. Only use durable: true when the user explicitly asks for the task to persist ("keep doing this every day", "set this up permanently"). Most "remind me in 5 minutes" / "check back in an hour" requests should stay session-only.
+Choose `durable` based on task lifetime (and always confirm the chosen scope to the user):
+- **Pass `durable: true`** (persisted to `.claude/scheduled_tasks.json`, executed by the resident background daemon even after this session exits) for:
+  - Calendar-horizon recurring schedules: daily ("every day at 9am", "每天早上9点"), weekdays, weekly, or monthly tasks.
+  - Long-horizon one-shot reminders scheduled >= 6 hours ahead (e.g. "tomorrow morning", "next Monday").
+  - Any request where the user explicitly asks for persistence ("keep doing this", "set this up permanently", "常驻/持久化").
+- **Pass `durable: false`** (in-memory only, dies when this session ends) for:
+  - Short-interval in-session polling ("every 5 minutes", "every 15 minutes", "hourly while I work").
+  - Near-term one-shot reminders within the next few hours ("remind me in 10 minutes", "check deploy in 1 hour").
+  - Any request where the user explicitly says "only for this session / 仅本次会话".
+If `durable` is omitted, calendar-horizon recurring schedules and one-shots >= 6 hours away automatically default to `durable: true`; short-interval polling and near-term reminders default to `durable: false`.
 
 ## Runtime behavior
 

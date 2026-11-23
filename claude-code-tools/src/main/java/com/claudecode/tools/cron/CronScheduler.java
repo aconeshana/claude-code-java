@@ -298,6 +298,10 @@ public final class CronScheduler {
         Set<String> seen = new HashSet<>();
         List<String> firedDurableRecurring = new ArrayList<>();
         for (CronStore.CronJob job : CronStore.list()) {
+            if (!job.resolvedOptions().enabled()) {
+                nextFireAt.remove(job.id());
+                continue;
+            }
             if (!filter.test(job)) continue;
             if (!shouldProcess(job, owner, currentSessionId.get(), processAlive)) continue;
             seen.add(job.id());

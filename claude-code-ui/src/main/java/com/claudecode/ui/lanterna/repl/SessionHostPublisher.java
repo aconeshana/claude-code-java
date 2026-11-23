@@ -364,7 +364,9 @@ final class SessionHostPublisher {
         }
         String channel = collaboration == null
             ? "" : collaboration.selection(sessionId).channel();
-        feedback.system(RemoteSessionControlFeedback.effortChanged(state, channel));
+        if (StringUtils.isNotBlank(channel)) {
+            feedback.system(RemoteSessionControlFeedback.effortChanged(state, channel));
+        }
         feedback.statusLineChanged();
     }
 

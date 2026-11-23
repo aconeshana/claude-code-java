@@ -29,6 +29,7 @@ import {
   IconDataOutline16,
 } from '@primitives'
 import css from './ModelSelect.module.css'
+import { EffortSlider, effortDisplayLabel, isDefaultEffort, isMaxEffort } from '../../src/views/EffortSlider'
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
 type Pane = 'root' | 'model' | 'effort'
@@ -272,22 +273,72 @@ export function ModelSelect(
           role="menu"
           aria-label={s.menuAria}
         >
-          {pane === 'root' && (
-            <>
-              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('model') }}>
-                <span className={css.cellLabel}>{s.menuModel}</span>
-                <span className={css.cellValue}>{modelLabel}</span>
-                <IconChevronRightOutline14 className={css.cellChevron} />
-              </button>
-              {effort !== undefined && (
-                <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
-                  <span className={css.cellLabel}>{s.menuEffort}</span>
-                  <span className={css.cellValue}>{effortLabel}</span>
+          {pane === 'root' && (() => {
+            const supportedChoices = (effort?.choices ?? []).filter(
+              (level) => level.trim().toLowerCase() !== 'ultracode',
+            )
+            // Drive the slider thumb from the user's explicit selection (`effort.current`)
+            // rather than `effort.effective`, so sliding left to `auto` (默认) stays at
+            // `默认` instead of bouncing back to the model's default effective level (e.g. high).
+            const explicitCurrent = effort?.current ?? ''
+            const currentEffortVal = supportedChoices.includes(explicitCurrent)
+              ? explicitCurrent
+              : supportedChoices.includes(effectiveEffort ?? '')
+                ? (effectiveEffort ?? '')
+                : (supportedChoices[0] ?? '')
+            // Shorter track when a model supports fewer levels, inside a constant-width popover.
+            const trackPct = supportedChoices.length >= 5
+              ? '100%'
+              : `${Math.max(58, Math.round((supportedChoices.length / 5) * 100))}%`
+            const friendlyError = error == null
+              ? null
+              : /unsupported effort/i.test(error)
+                ? '当前模型不支持该思考强度'
+                : s.selectError(error)
+            return (
+              <div className={css.codexRoot}>
+                {friendlyError !== null && (
+                  <div className={css.error}>{friendlyError}</div>
+                )}
+                <button ref={itemRef()} type="button" role="menuitem" className={css.codexModelRow} onClick={() => { setPane('model') }}>
+                  <span className={css.codexModelName}>{modelLabel}</span>
+                  {supportedChoices.length > 0 && (
+                    <span
+                      className={clsx(
+                        css.codexEffortBadge,
+                        !isDefaultEffort(currentEffortVal) && (
+                          isMaxEffort(currentEffortVal, supportedChoices)
+                            ? css.codexEffortRainbow
+                            : css.codexEffortBlue
+                        ),
+                      )}
+                    >
+                      {effortDisplayLabel(currentEffortVal)}
+                    </span>
+                  )}
                   <IconChevronRightOutline14 className={css.cellChevron} />
                 </button>
-              )}
-            </>
-          )}
+                {supportedChoices.length > 1 && (
+                  <div className={css.codexSliderWrap}>
+                    <EffortSlider
+                      choices={supportedChoices}
+                      value={currentEffortVal}
+                      disabled={busy}
+                      compact
+                      trackWidth={trackPct}
+                      onChange={(level) => {
+                        setError(null)
+                        void selectEffort(level).then((msg) => {
+                          if (msg !== null) setError(msg)
+                        })
+                      }}
+                      ariaLabel={s.menuEffort}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {pane === 'model' && (
             <>

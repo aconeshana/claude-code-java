@@ -17,6 +17,7 @@ import { usePermissionMode } from './store/permissionMode'
 import { isInteractive as sessionIsInteractive, useSessions } from './store/sessions'
 import { useShells } from './store/shells'
 import { useSidebarCollapse } from './store/sidebarCollapse'
+import { useScheduleView } from './store/scheduleView'
 import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
@@ -28,6 +29,7 @@ import { QuestionCard } from './views/QuestionCard'
 import { ShellCatalogMenu } from './views/ShellCatalogMenu'
 import { ShellDetailView } from './views/ShellDetailView'
 import { Sidebar } from './views/Sidebar'
+import { ScheduledTasksWorkspace } from './views/ScheduledTasksWorkspace'
 import { SubagentChatView } from './views/SubagentChatView'
 import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
@@ -59,6 +61,7 @@ function plainTextOf(content: string | readonly UserContentBlock[]): string {
 export function App() {
   const [connected, setConnected] = useState<'connecting' | 'open' | 'error'>('connecting')
   const sidebarCollapsed = useSidebarCollapse((state) => state.collapsed)
+  const scheduleViewOpen = useScheduleView((state) => state.open)
 
   useEffect(() => {
     captureTokenFromUrl()
@@ -245,6 +248,9 @@ export function App() {
 
   return (
     <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed} right={(owner) => <RightPanel {...owner} />}>
+      {scheduleViewOpen ? (
+        <ScheduledTasksWorkspace />
+      ) : (
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
@@ -381,6 +387,7 @@ export function App() {
           )
         }
       />
+      )}
       <ContextModal
         sessionId={selectedId}
         open={contextModalOpen}

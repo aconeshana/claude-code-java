@@ -1,4 +1,4 @@
-import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
+import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -267,10 +267,63 @@ export function fetchScheduleTasks(): Promise<ScheduleListing> {
  * POST /api/schedule: adds one scheduled task. `model` is the optional
  * per-task model override; null keeps the session model at fire time.
  */
-export function addScheduleTask(cron: string, prompt: string, recurring: boolean, durable: boolean, model: string | null): Promise<{ id: string }> {
-  return requestJson('POST', '/api/schedule', model == null
-    ? { cron, prompt, recurring, durable }
-    : { cron, prompt, recurring, durable, model })
+export function addScheduleTask(
+  cron: string,
+  prompt: string,
+  recurring: boolean,
+  durable: boolean,
+  model: string | null,
+  options?: import('./types').ScheduleTaskOptions,
+): Promise<{ id: string }> {
+  return requestJson('POST', '/api/schedule', {
+    cron,
+    prompt,
+    recurring,
+    durable,
+    ...(model != null && model !== '' ? { model } : {}),
+    ...(options?.effort ? { effort: options.effort } : {}),
+    ...(options?.working_directory ? { working_directory: options.working_directory } : {}),
+    ...(options?.new_session_per_run !== undefined ? { new_session_per_run: options.new_session_per_run } : {}),
+    ...(options?.notification_mode ? { notification_mode: options.notification_mode } : {}),
+    ...(options?.archive_on_success !== undefined ? { archive_on_success: options.archive_on_success } : {}),
+    ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
+  })
+}
+
+/**
+ * PUT /api/schedule/{id}: updates an existing scheduled task in place.
+ */
+export function updateScheduleTask(
+  id: string,
+  cron: string,
+  prompt: string,
+  recurring: boolean,
+  durable: boolean,
+  options?: import('./types').ScheduleTaskOptions,
+): Promise<{ updated: boolean; id: string }> {
+  return requestJson('PUT', `/api/schedule/${encodeURIComponent(id)}`, {
+    cron,
+    prompt,
+    recurring,
+    durable,
+    ...(options?.model ? { model: options.model } : {}),
+    ...(options?.effort ? { effort: options.effort } : {}),
+    ...(options?.working_directory ? { working_directory: options.working_directory } : {}),
+    ...(options?.new_session_per_run !== undefined ? { new_session_per_run: options.new_session_per_run } : {}),
+    ...(options?.notification_mode ? { notification_mode: options.notification_mode } : {}),
+    ...(options?.archive_on_success !== undefined ? { archive_on_success: options.archive_on_success } : {}),
+    ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
+  })
+}
+
+/**
+ * PATCH /api/schedule/{id}: enables or pauses one scheduled task without deleting it.
+ */
+export function toggleScheduleTask(
+  id: string,
+  enabled: boolean,
+): Promise<{ updated: boolean; id: string; enabled: boolean }> {
+  return requestJson('PATCH', `/api/schedule/${encodeURIComponent(id)}`, { enabled })
 }
 
 /**
@@ -278,6 +331,14 @@ export function addScheduleTask(cron: string, prompt: string, recurring: boolean
  */
 export function removeScheduleTask(id: string): Promise<{ removed: boolean }> {
   return requestJson('DELETE', `/api/schedule/${encodeURIComponent(id)}`)
+}
+
+/**
+ * POST /api/schedule/{id}/run: triggers one scheduled task immediately in a
+ * fresh headless session (bypassPermissions).
+ */
+export function runScheduleTask(id: string): Promise<{ triggered: boolean; id: string }> {
+  return requestJson('POST', `/api/schedule/${encodeURIComponent(id)}/run`, {})
 }
 
 /**
@@ -487,6 +548,49 @@ export function removeCustomModel(modelName: string): Promise<{ removed: boolean
 }
 
 /**
+ * POST /api/models/discover: queries a provider's `/models` endpoint server-side
+ * (OpenAI, Anthropic, or Gemini shape) so the user can pick multiple models to
+ * import into the standard flat `model.json` catalogue.
+ */
+export function discoverProviderModels(input: {
+  readonly protocol: ModelProtocol
+  readonly baseUrl: string
+  readonly apiKey?: string
+  readonly headers?: Readonly<Record<string, string>>
+}): Promise<DiscoverModelsResponse> {
+  return requestJson('POST', '/api/models/discover', {
+    protocol: input.protocol,
+    base_url: input.baseUrl,
+    ...(input.apiKey == null || input.apiKey === '' ? {} : { api_key: input.apiKey }),
+    ...(input.headers == null ? {} : { headers: input.headers }),
+  })
+}
+
+/**
+ * POST /api/models/batch: saves multiple discovered models sharing one provider's
+ * credentials and endpoint into `~/.claude/model.json` as standard flat entries.
+ */
+export function batchSaveCustomModels(input: {
+  readonly protocol: ModelProtocol
+  readonly baseUrl: string
+  readonly apiKey?: string | null
+  readonly headers?: Readonly<Record<string, string>>
+  readonly contextWindow?: number | null
+  readonly multimodal?: boolean | null
+  readonly models: readonly { readonly model_name: string; readonly context_window?: number }[]
+}): Promise<BatchSaveModelsResponse> {
+  return requestJson('POST', '/api/models/batch', {
+    protocol: input.protocol,
+    base_url: input.baseUrl,
+    ...(input.apiKey === undefined ? {} : { api_key: input.apiKey }),
+    ...(input.headers == null ? {} : { headers: input.headers }),
+    ...(input.contextWindow == null ? {} : { context_window: input.contextWindow }),
+    ...(input.multimodal === undefined ? {} : { multimodal: input.multimodal }),
+    models: input.models,
+  })
+}
+
+/**
  * The model the user persisted in settings (`effective.model`). Turns are
  * never sent with a model the user did not choose, so a missing value fails
  * the submit instead of falling back to a built-in name.
@@ -569,3 +673,69 @@ export async function fetchWorkspaceFile(sessionId: string, path: string): Promi
   const params = new URLSearchParams({ session_id: sessionId, path })
   return requestJson<WorkspaceFileContent>('GET', `/api/workspace-file?${params.toString()}`)
 }
+
+// ---------------------------------------------------------------------------
+// LAN Model Gateway admin endpoints
+// ---------------------------------------------------------------------------
+
+export function fetchLanGatewayStatus(): Promise<import('./types').LanGatewayStatus> {
+  return requestJson('GET', '/api/lan-gateway')
+}
+
+export function updateLanGatewaySettings(input: {
+  readonly enabled?: boolean
+  readonly exposeDefaultProvider?: boolean
+  readonly tierStandInModel?: string
+  readonly preventMacSleep?: boolean
+  readonly allowedCidrs?: readonly string[]
+}): Promise<import('./types').LanGatewayStatus> {
+  return requestJson('POST', '/api/lan-gateway', {
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.exposeDefaultProvider === undefined
+      ? {} : { expose_default_provider: input.exposeDefaultProvider }),
+    ...(input.tierStandInModel === undefined
+      ? {} : { tier_stand_in_model: input.tierStandInModel }),
+    ...(input.preventMacSleep === undefined
+      ? {} : { prevent_mac_sleep: input.preventMacSleep }),
+    ...(input.allowedCidrs === undefined
+      ? {} : { allowed_cidrs: input.allowedCidrs }),
+  })
+}
+
+export function createLanGatewayKey(input: {
+  readonly name: string
+  readonly allowedModels?: readonly string[]
+}): Promise<import('./types').LanGatewayStatus> {
+  return requestJson('POST', '/api/lan-gateway/keys', {
+    name: input.name,
+    ...(input.allowedModels == null ? {} : { allowed_models: input.allowedModels }),
+  })
+}
+
+export function updateLanGatewayKey(
+  id: string,
+  input: {
+    readonly name?: string
+    readonly enabled?: boolean
+    readonly allowedModels?: readonly string[]
+  },
+): Promise<import('./types').LanGatewayStatus> {
+  return requestJson('POST', `/api/lan-gateway/keys/${encodeURIComponent(id)}`, {
+    ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.allowedModels === undefined ? {} : { allowed_models: input.allowedModels }),
+  })
+}
+
+export function deleteLanGatewayKey(id: string): Promise<import('./types').LanGatewayStatus> {
+  return requestJson('DELETE', `/api/lan-gateway/keys/${encodeURIComponent(id)}`)
+}
+
+export function fetchLanGatewayCalls(): Promise<import('./types').LanGatewayCallsResponse> {
+  return requestJson('GET', '/api/lan-gateway/calls')
+}
+
+export function clearLanGatewayCalls(): Promise<import('./types').LanGatewayCallsResponse> {
+  return requestJson('DELETE', '/api/lan-gateway/calls')
+}
+

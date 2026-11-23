@@ -219,6 +219,65 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* Codex-style root popover: fixed width so model switches never jitter/flicker */
+.codexRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 268px;
+  box-sizing: border-box;
+  padding: 4px 6px 6px;
+}
+
+.codexModelRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 110ms ease;
+}
+
+.codexModelRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.codexModelName {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codexEffortBadge {
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.codexEffortBlue {
+  color: #2563eb;
+}
+
+.codexEffortRainbow {
+  background: linear-gradient(90deg, #4f46e5 0%, #9333ea 45%, #ec4899 80%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.codexSliderWrap {
+  padding: 2px 4px 2px;
+}
+
 /* Two-level root cells (figma 496:26454 .Menu_cell): 40px row, 10px side
    padding, 8px gap, 10px radius; 14/22 label in primary, value in the
    #81858C tertiary tone, right chevron drilling into the sub-list. */

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { fetchCustomModels, removeCustomModel, saveCustomModel } from '../api/client'
+import { batchSaveCustomModels, fetchCustomModels, removeCustomModel, saveCustomModel } from '../api/client'
 import type { CustomModelEntry, ModelProtocol } from '../api/types'
 
 /**
@@ -19,12 +19,23 @@ export interface SaveModelInput {
   readonly multimodal?: boolean | null
 }
 
+export interface BatchSaveModelsInput {
+  readonly protocol: ModelProtocol
+  readonly baseUrl: string
+  readonly apiKey?: string | null
+  readonly headers?: Readonly<Record<string, string>>
+  readonly contextWindow?: number | null
+  readonly multimodal?: boolean | null
+  readonly models: readonly { readonly model_name: string; readonly context_window?: number }[]
+}
+
 export interface ModelsStore {
   readonly models: readonly CustomModelEntry[]
   readonly loading: boolean
   readonly error: string | null
   refresh(): Promise<void>
   save(input: SaveModelInput): Promise<void>
+  saveBatch(input: BatchSaveModelsInput): Promise<number>
   remove(modelName: string): Promise<void>
 }
 
@@ -49,6 +60,17 @@ export const useModels = create<ModelsStore>((set, get) => ({
       set({ models: listing.models, error: null })
     } catch (failure) {
       set({ error: messageOf(failure) })
+    }
+  },
+
+  async saveBatch(input) {
+    try {
+      const listing = await batchSaveCustomModels(input)
+      set({ models: listing.models, error: null })
+      return listing.saved
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+      throw failure
     }
   },
 

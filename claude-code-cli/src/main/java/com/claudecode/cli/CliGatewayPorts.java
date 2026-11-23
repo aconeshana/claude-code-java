@@ -1,10 +1,18 @@
 package com.claudecode.cli;
 
 import com.claudecode.commands.CommandRegistry;
+import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.tools.files.WorkspaceFileSearch;
+import com.claudecode.tools.skills.Skill;
+import com.claudecode.tools.skills.SkillLoader;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Read-only gateway surfaces that describe the <em>host's</em> installed
@@ -48,16 +56,39 @@ final class CliGatewayPorts {
      * arrives with its server) is visible to a webui client without a restart.
      */
     static GatewayCommandsPort commands(CommandRegistry registry) {
+        SkillLoader skillLoader = new SkillLoader();
+        skillLoader.addSource(Skill.SkillSource.USER, ClaudePaths.CLAUDE_HOME.resolve("skills"));
+        skillLoader.addLegacyCommandsSource(
+            Skill.SkillSource.USER, ClaudePaths.CLAUDE_HOME.resolve("commands"));
+        Path cwdPath = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        skillLoader.addSource(Skill.SkillSource.PROJECT, cwdPath.resolve(".claude").resolve("skills"));
+        skillLoader.addLegacyCommandsSource(
+            Skill.SkillSource.PROJECT, cwdPath.resolve(".claude").resolve("commands"));
         return new GatewayCommandsPort() {
             @Override public List<CommandEntry> list() {
-                return registry.snapshot().commands().stream()
-                    .filter(command -> !command.isHidden())
-                    .map(command -> new CommandEntry(
+                List<CommandEntry> out = new ArrayList<>();
+                Set<String> seen = new HashSet<>();
+                for (var command : registry.snapshot().commands()) {
+                    if (command.isHidden()) continue;
+                    String key = command.name().toLowerCase(Locale.ROOT);
+                    if (!seen.add(key)) continue;
+                    out.add(new CommandEntry(
                         command.name(),
                         command.menuDescription(),
                         command.argumentHint(),
-                        command instanceof CliSkillPromptCommand ? "skill" : "command"))
-                    .toList();
+                        command instanceof CliSkillPromptCommand ? "skill" : "command"));
+                }
+                for (Skill skill : skillLoader.loadAll()) {
+                    if (skill == null || skill.name() == null || !skill.userInvocable()) continue;
+                    String key = skill.name().toLowerCase(Locale.ROOT);
+                    if (!seen.add(key)) continue;
+                    out.add(new CommandEntry(
+                        skill.name(),
+                        skill.menuDescription(),
+                        skill.argumentHint(),
+                        "skill"));
+                }
+                return List.copyOf(out);
             }
         };
     }

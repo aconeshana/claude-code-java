@@ -390,7 +390,9 @@ final class CliInteractiveSessionRunner {
                     client, toolRegistry, input.querySessionFactory(),
                     permissionGate, resolvedModel, interactiveCwd, customModelCatalog,
                     showBuiltInModelFamilies),
-                interactiveCwd);
+                interactiveCwd,
+                new CliLanProxyAdapter(
+                    customModelCatalog, llmClient, resolvedModel, showBuiltInModelFamilies));
             interactiveRuntime.bindHeadlessSessions(headlessSessions);
             CliGatewayRuntime gatewayRuntime = new CliGatewayRuntime(
                 sessionHostRuntime.registry(),
@@ -399,7 +401,7 @@ final class CliInteractiveSessionRunner {
                 sessionHostRuntime.interactions(),
                 headlessSessions.messagesPort(interactiveCwd),
                 gatewaySettings(interactiveCwd),
-                gatewaySchedule(),
+                gatewaySchedule(headlessSessions, interactiveCwd),
                 gatewayModels(customModelCatalog),
                 CliGatewayPorts.commands(cmdRegistry),
                 gatewaySessionContext(sessionHostRuntime.registry(), engine,
@@ -877,26 +879,53 @@ final class CliInteractiveSessionRunner {
      * (expression syntax / next-run / capacity) with the webui add form;
      * no cwd is needed.
      */
-    private static GatewaySchedulePort gatewaySchedule() {
+    private static GatewaySchedulePort gatewaySchedule(
+            CliHeadlessGatewaySessions headless, String cwd) {
         return new GatewaySchedulePort() {
             @Override public List<ScheduleEntry> list() {
                 return CronStore.list().stream()
-                    .map(job -> new ScheduleEntry(
-                        job.id(), job.cron(), job.prompt(), job.recurring(),
-                        job.durable(), job.createdAt(), job.lastFiredAt(),
-                        job.kind(), job.agentId(), job.createdBySessionId(),
-                        job.model()))
+                    .map(CliWebCronDaemon::toEntry)
                     .toList();
             }
             @Override public String validateAdd(String cron) {
                 return CronStore.validateNewJob(cron);
             }
+            @Override public String validateUpdate(String cron) {
+                return CronStore.validateCronExpression(cron);
+            }
             @Override public String add(String cron, String prompt,
                     boolean recurring, boolean durable, String model) {
                 return CronStore.addWithModel(cron, prompt, recurring, durable, model);
             }
+            @Override public String add(String cron, String prompt,
+                    boolean recurring, boolean durable, TaskOptions options) {
+                return CronStore.addWithOptions(cron, prompt, recurring, durable,
+                    CliWebCronDaemon.toCronOptions(options));
+            }
+            @Override public boolean update(String id, String cron, String prompt,
+                    boolean recurring, boolean durable, TaskOptions options) {
+                return CronStore.update(id, cron, prompt, recurring, durable,
+                    CliWebCronDaemon.toCronOptions(options));
+            }
+            @Override public boolean setEnabled(String id, boolean enabled) {
+                return CronStore.setEnabled(id, enabled);
+            }
             @Override public boolean remove(String id) {
                 return CronStore.removeById(id);
+            }
+            @Override public boolean runNow(String id) {
+                if (headless == null) return false;
+                CronStore.CronJob job = CronStore.list().stream()
+                    .filter(candidate -> candidate.id().equals(id))
+                    .findFirst()
+                    .orElse(null);
+                if (job == null) return false;
+                try (CliWebCronDaemon runner = new CliWebCronDaemon(headless, cwd)) {
+                    runner.fireAsync(new com.claudecode.tools.cron.CronScheduler.FiredTask(
+                        job.id(), job.prompt(), job.prompt(), job.kind(),
+                        job.recurring(), job.agentId(), job.model()));
+                }
+                return true;
             }
         };
     }

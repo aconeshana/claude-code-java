@@ -130,13 +130,15 @@ describe('slashMenuCandidates & plusMenuCandidates', () => {
     { name: 'code-review', description: 'Review code changes', kind: 'skill' },
   ]
 
-  it('orders pinned built-ins first and attaches localized labels for an empty slash query', () => {
+  it('orders pinned built-ins first and attaches localized labels, descriptions, and icons', () => {
     const rows = slashMenuCandidates(catalogue, '')
     expect(rows.map((r) => r.name)).toEqual(['compact', 'clear', 'help', 'code-review'])
-    expect(rows[0]?.label).toBe('压缩上下文')
-    expect(rows[0]?.hint).toBe('[instructions]')
-    expect(rows.every((r) => r.section === '指令')).toBe(true)
-    expect(rows[3]?.icon).toBeDefined()
+    expect(rows[0]?.label).toBe('压缩')
+    expect(rows[0]?.description).toBe('压缩以上对话内容')
+    expect(rows[0]?.hint).toBeUndefined()
+    expect(rows.every((r) => r.icon !== undefined)).toBe(true)
+    expect(rows.slice(0, 3).every((r) => r.section === '指令')).toBe(true)
+    expect(rows[3]?.section).toBe('技能')
   })
 
   it('ranks prefix, fuzzy subsequence, and localized Chinese label matches', () => {

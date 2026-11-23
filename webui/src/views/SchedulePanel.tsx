@@ -56,16 +56,19 @@ export function ScheduleSection() {
   const refresh = useSchedule((state) => state.refresh)
   const addTask = useSchedule((state) => state.addTask)
   const removeTask = useSchedule((state) => state.removeTask)
+  const runTask = useSchedule((state) => state.runTask)
   const modelSelection = useSessionContext((state) => state.selection)
   const refreshSelection = useSessionContext((state) => state.refresh)
   const selectedSessionId = useSessions((state) => state.selectedSessionId)
+  const refreshSessions = useSessions((state) => state.refresh)
 
   const [cron, setCron] = useState('')
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<string | null>(null)
   const [recurring, setRecurring] = useState(true)
-  const [durable, setDurable] = useState(false)
+  const [durable, setDurable] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [runningId, setRunningId] = useState<string | null>(null)
 
   const cronProblem = cron.trim() !== '' && cron.trim().split(/\s+/).length !== 5
     ? 'cron 表达式需要 5 个字段：分 时 日 月 周'
@@ -103,14 +106,61 @@ export function ScheduleSection() {
         </button>
       </div>
 
-      <ul className={localCss.list}>
-        {tasks.length === 0 && !loading && (
+      {tasks.length === 0 && !loading && (
+        <ul className={localCss.list}>
           <li className={localCss.empty}>暂无任务。</li>
-        )}
-        {tasks.map((task) => (
-          <TaskRow key={task.id} task={task} onRemove={() => { void removeTask(task.id) }} />
-        ))}
-      </ul>
+        </ul>
+      )}
+      {tasks.some((t) => t.durable) && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)', marginBottom: 6 }}>
+            常驻守护任务（Web 进程托管 · 独立会话 · Bypass 权限）
+          </div>
+          <ul className={localCss.list}>
+            {tasks.filter((t) => t.durable).map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                running={runningId === task.id}
+                onRun={() => {
+                  setRunningId(task.id)
+                  void runTask(task.id)
+                    .then((ok) => {
+                      if (ok) window.setTimeout(() => { void refreshSessions() }, 1_200)
+                    })
+                    .finally(() => { setRunningId(null) })
+                }}
+                onRemove={() => { void removeTask(task.id) }}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+      {tasks.some((t) => !t.durable) && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)', marginBottom: 6 }}>
+            会话级任务（仅内存 · 随会话结束销毁）
+          </div>
+          <ul className={localCss.list}>
+            {tasks.filter((t) => !t.durable).map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                running={runningId === task.id}
+                onRun={() => {
+                  setRunningId(task.id)
+                  void runTask(task.id)
+                    .then((ok) => {
+                      if (ok) window.setTimeout(() => { void refreshSessions() }, 1_200)
+                    })
+                    .finally(() => { setRunningId(null) })
+                }}
+                onRemove={() => { void removeTask(task.id) }}
+              />
+            ))}
+          </ul>
+        </>
+      )}
 
       <form
         className={localCss.form}
@@ -127,7 +177,7 @@ export function ScheduleSection() {
               setPrompt('')
               setModel(null)
               setRecurring(true)
-              setDurable(false)
+              setDurable(true)
             })
             .finally(() => { setAdding(false) })
         }}
@@ -175,11 +225,11 @@ export function ScheduleSection() {
               label="循环触发"
             />
           </SettingsRow>
-          <SettingsRow title="持久" description="写入 .claude/scheduled_tasks.json，跨进程重启保留">
+          <SettingsRow title="常驻持久" description="开启后写入 .claude/scheduled_tasks.json，由 Web 守护进程常驻调度，不依赖 TUI 存活">
             <Switch
               checked={durable}
               onChange={setDurable}
-              label="跨重启持久"
+              label="常驻守护"
             />
           </SettingsRow>
           <div className={localCss.submitRow}>
@@ -194,12 +244,17 @@ export function ScheduleSection() {
   )
 }
 
-function TaskRow({ task, onRemove }: { task: ScheduleTask; onRemove: () => void }) {
+function TaskRow({ task, running, onRun, onRemove }: {
+  task: ScheduleTask
+  running: boolean
+  onRun: () => void
+  onRemove: () => void
+}) {
   return (
     <li className={clsx(listCss.row, localCss.rowWrap)}>
       <span className={listCss.status}>
         <span className={listCss.statusDot} aria-hidden="true" />
-        <span>{task.recurring ? '循环' : '单次'}{task.durable && ' · 持久'}</span>
+        <span>{task.recurring ? '循环' : '单次'}{task.durable ? ' · 常驻' : ' · 会话级'}</span>
       </span>
       <span className={listCss.prompt}>{task.prompt}</span>
       <span className={listCss.metadata}>
@@ -219,9 +274,21 @@ function TaskRow({ task, onRemove }: { task: ScheduleTask; onRemove: () => void 
           </>
         )}
       </span>
-      <button type="button" className={localCss.remove} aria-label={`删除任务 ${task.id}`} onClick={onRemove}>
-        <IconTrashOutline16 size={14} />
-      </button>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type="button"
+          className={localCss.iconButton}
+          disabled={running}
+          onClick={onRun}
+          style={{ width: 'auto', padding: '0 8px', fontSize: 12 }}
+          aria-label={`立即运行任务 ${task.id}`}
+        >
+          {running ? '触发中…' : '立即运行'}
+        </button>
+        <button type="button" className={localCss.remove} aria-label={`删除任务 ${task.id}`} onClick={onRemove}>
+          <IconTrashOutline16 size={14} />
+        </button>
+      </div>
     </li>
   )
 }

@@ -144,22 +144,24 @@ public class WebCliCommand implements Callable<Integer> {
              CliResourceScope resources = new CliResourceScope()) {
             CliHeadlessGatewaySessions headless = WebHeadlessSessions.create(mcpRuntime, resources, err);
             String cwd = System.getProperty("user.dir");
-            CommandRegistry commandRegistry = webCommands();
-            GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
-            CliGatewayRuntime runtime = new CliGatewayRuntime(
-                emptyRegistry(), new GatewaySessionCatalogPort() {}, headless,
-                // This process raises no interaction of its own: every permission ask it
-                // serves belongs to a TUI session and is forwarded over that session's
-                // Session Link, which carries its own id. The supplier is therefore never
-                // consulted, and a local ask would be a defect rather than a mode the
-                // gateway should silently attribute to an empty session.
-                new InteractionCoordinator(() -> {
-                    throw new IllegalStateException(
-                        "the web gateway raises no local interaction to attribute a session to");
-                }),
-                sessionMessages,
-                CliInteractiveSessionRunner.gatewaySettings(cwd),
-                null,
+            try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd)) {
+                cronDaemon.start();
+                CommandRegistry commandRegistry = webCommands();
+                GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
+                CliGatewayRuntime runtime = new CliGatewayRuntime(
+                    emptyRegistry(), new GatewaySessionCatalogPort() {}, headless,
+                    // This process raises no interaction of its own: every permission ask it
+                    // serves belongs to a TUI session and is forwarded over that session's
+                    // Session Link, which carries its own id. The supplier is therefore never
+                    // consulted, and a local ask would be a defect rather than a mode the
+                    // gateway should silently attribute to an empty session.
+                    new InteractionCoordinator(() -> {
+                        throw new IllegalStateException(
+                            "the web gateway raises no local interaction to attribute a session to");
+                    }),
+                    sessionMessages,
+                    CliInteractiveSessionRunner.gatewaySettings(cwd),
+                    cronDaemon.port(),
                 CliInteractiveSessionRunner.gatewayModels(new CustomModelJsonStore()),
                 CliGatewayPorts.commands(commandRegistry),
                 // Sessions a TUI hosts are answered from its transcript and
@@ -200,9 +202,10 @@ public class WebCliCommand implements Callable<Integer> {
                 runtime.close();
                 stopped.countDown();
             }));
-            out.println(runtime.start().url());
-            stopped.await();
-            return 0;
+                out.println(runtime.start().url());
+                stopped.await();
+                return 0;
+            }
         }
     }
 

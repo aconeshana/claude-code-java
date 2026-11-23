@@ -3,9 +3,29 @@
  * fuzzy ranking (`rankByName` from `@primitives`), argument-hint detection,
  * and `@`-directory breadcrumb helpers.
  */
-import { IconPaperclipOutline16, IconSkillOutline16, rankByName } from '@primitives'
+import {
+  IconAlarmClockOutline16,
+  IconBrowseOutline16,
+  IconClockOutline16,
+  IconCodeOutline16,
+  IconContextInjectionOutline16,
+  IconDatabaseOutline16,
+  IconDownloadOutline16,
+  IconGaugeOutline16,
+  IconLinkOutline16,
+  IconListPenOutline16,
+  IconPaperclipOutline16,
+  IconProjectAddOutline16,
+  IconSendOutline16,
+  IconSettingsOutline16,
+  IconShieldOutline16,
+  IconSkillOutline16,
+  IconThinkOutline16,
+  IconTrashOutline16,
+  rankByName,
+} from '@primitives'
 import type { ComposerCommandEntry } from '../api/types'
-import type { MenuCandidate } from '../../vendor/dsh-composer-menu/menuCore'
+import type { MenuCandidate, MenuIconComponent } from '../../vendor/dsh-composer-menu/menuCore'
 import { sectionRows } from '../../vendor/dsh-composer-menu/sectionRows'
 
 /** The active `/` token under the caret, or null when there is none. */
@@ -39,20 +59,30 @@ const BUILTIN_ORDER: readonly string[] = [
   'init',
 ]
 
-const BUILTIN_LABELS: Readonly<Record<string, string>> = {
-  compact: '压缩上下文',
-  clear: '清空对话',
-  context: '上下文详情',
-  model: '切换模型',
-  permissions: '权限管理',
-  plan: '规划模式',
-  review: '代码审查',
-  help: '帮助',
-  export: '导出对话',
-  cost: '用量统计',
-  memory: '记忆管理',
-  mcp: 'MCP 服务',
-  init: '初始化项目',
+interface BuiltinFace {
+  readonly label: string
+  readonly description: string
+  readonly icon: MenuIconComponent
+}
+
+const BUILTIN_FACES: Readonly<Record<string, BuiltinFace>> = {
+  compact: { label: '压缩', description: '压缩以上对话内容', icon: IconContextInjectionOutline16 },
+  clear: { label: '清空', description: '清空当前对话历史', icon: IconTrashOutline16 },
+  context: { label: '上下文', description: '查看当前上下文占用详情', icon: IconGaugeOutline16 },
+  model: { label: '模型', description: '选择本会话使用的模型', icon: IconDatabaseOutline16 },
+  permissions: { label: '权限', description: '切换权限预设（沙箱模式与审批策略）', icon: IconShieldOutline16 },
+  plan: { label: '计划', description: '进入或退出计划模式', icon: IconListPenOutline16 },
+  review: { label: '审查', description: '审查当前代码变更', icon: IconCodeOutline16 },
+  help: { label: '帮助', description: '查看帮助与可用指令', icon: IconBrowseOutline16 },
+  export: { label: '导出', description: '导出当前对话到文件或剪贴板', icon: IconDownloadOutline16 },
+  cost: { label: '用量', description: '查看本次会话的 Token 与耗时统计', icon: IconClockOutline16 },
+  memory: { label: '记忆', description: '管理项目与个人记忆', icon: IconThinkOutline16 },
+  mcp: { label: 'MCP', description: '管理 MCP 工具服务连接', icon: IconLinkOutline16 },
+  init: { label: '初始化', description: '初始化项目 CLAUDE.md 配置', icon: IconProjectAddOutline16 },
+  feedback: { label: '反馈', description: '发送关于当前会话的反馈', icon: IconSendOutline16 },
+  loop: { label: '定时', description: '设置循环或定时执行的任务', icon: IconAlarmClockOutline16 },
+  schedule: { label: '定时', description: '管理后台定时任务', icon: IconAlarmClockOutline16 },
+  config: { label: '设置', description: '查看或修改配置项', icon: IconSettingsOutline16 },
 }
 
 /**
@@ -150,13 +180,14 @@ function commandRows(catalogue: readonly ComposerCommandEntry[]): readonly MenuC
   }
   const sorted = [...catalogue].sort((a, b) => orderOf(a.name) - orderOf(b.name))
   return sorted.map((entry) => {
-    const localized = BUILTIN_LABELS[entry.name.toLowerCase()]
+    const face = BUILTIN_FACES[entry.name.toLowerCase()]
+    const description = face?.description ?? entry.description
+    const icon = face?.icon ?? (entry.kind === 'skill' ? IconSkillOutline16 : IconCodeOutline16)
     return {
       name: entry.name,
-      ...(localized == null ? {} : { label: localized }),
-      ...(entry.description == null ? {} : { description: entry.description }),
-      ...(entry.argument_hint == null ? {} : { hint: entry.argument_hint }),
-      ...(entry.kind === 'skill' ? { icon: IconSkillOutline16 } : {}),
+      ...(face == null ? {} : { label: face.label }),
+      ...(description == null ? {} : { description }),
+      icon,
       value: 'command',
     }
   })
@@ -193,7 +224,11 @@ export function slashMenuCandidates(
   const rows = commandRows(catalogue)
   const trimmed = query.trim()
   if (trimmed === '') {
-    return sectionRows(null, rows, { add: '添加', commands: '指令' })
+    const commandEntries = catalogue.filter((c) => c.kind !== 'skill')
+    const skillEntries = catalogue.filter((c) => c.kind === 'skill')
+    const cmdRows = commandRows(commandEntries).map((r) => ({ ...r, section: '指令' }))
+    const skillRows = commandRows(skillEntries).map((r) => ({ ...r, section: '技能' }))
+    return [...cmdRows, ...skillRows]
   }
   const byName = rankByName(rows, trimmed)
   const seen = new Set(byName.map((r) => r.name))

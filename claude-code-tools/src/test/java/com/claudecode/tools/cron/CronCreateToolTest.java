@@ -159,4 +159,52 @@ class CronCreateToolTest {
         assertFalse(new CronCreateTool(() -> false, () -> true).isEnabled());
     }
 
+    @Test
+    void omittedDurableDefaultsToTrueForCalendarSchedules(@TempDir Path projectRoot) {
+        CronStore.configureProjectRootForTest(projectRoot);
+        CronCreateTool tool = new CronCreateTool(() -> true, () -> true);
+
+        tool.call(input("0 9 * * *", "daily analysis"), ctx());
+        tool.call(input("3 9 * * 1-5", "weekday standup"), ctx());
+        tool.call(input("0 18 * * 5", "weekly summary"), ctx());
+
+        assertEquals(3, CronStore.list().size());
+        assertTrue(CronStore.list().stream().allMatch(CronStore.CronJob::durable),
+            "daily/weekday/weekly schedules without explicit durable flag should default to durable");
+    }
+
+    @Test
+    void omittedDurableDefaultsToFalseForShortIntervalPolling() {
+        CronCreateTool tool = new CronCreateTool(() -> true, () -> true);
+
+        tool.call(input("*/5 * * * *", "poll build"), ctx());
+        tool.call(input("7 * * * *", "hourly check"), ctx());
+
+        assertEquals(2, CronStore.list().size());
+        assertTrue(CronStore.list().stream().noneMatch(CronStore.CronJob::durable),
+            "short-interval polling without explicit durable flag should stay session-only");
+    }
+
+    @Test
+    void explicitDurableFalseOverridesCalendarInference() {
+        CronCreateTool tool = new CronCreateTool(() -> true, () -> true);
+        var node = (ObjectNode) input("0 9 * * *", "daily but session-only");
+        node.put("durable", false);
+
+        tool.call(node, ctx());
+
+        assertFalse(CronStore.list().getFirst().durable(),
+            "explicit durable=false must always override inferred default");
+    }
+
+    @Test
+    void inferDefaultDurableHandlesOneShotThreshold() {
+        long now = java.time.ZonedDateTime.of(2026, 11, 22, 10, 0, 0, 0,
+            java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        assertFalse(CronCreateTool.inferDefaultDurable("30 10 22 11 *", false, now),
+            "30 minutes ahead should stay session-only");
+        assertTrue(CronCreateTool.inferDefaultDurable("0 9 23 11 *", false, now),
+            "next morning (>= 6h ahead) should default to durable");
+    }
+
 }

@@ -81,10 +81,92 @@ public final class CronStore {
      */
     public static synchronized String addWithModel(String cron, String prompt,
                                    boolean recurring, boolean durable, String model) {
-        return add(cron, prompt, recurring, durable, null,
-            Instant.now().toEpochMilli(), null,
-            UUID.randomUUID().toString().replace("-", "").substring(0, 8),
-            null, false, null, null, null, model);
+        return addWithOptions(cron, prompt, recurring, durable,
+            new CronOptions(model, null, null, true, "off", false));
+    }
+
+    /** Application-facing full options form used by the WebUI scheduled-tasks center. */
+    public static synchronized String addWithOptions(String cron, String prompt,
+                                   boolean recurring, boolean durable, CronOptions options) {
+        CronOptions normalized = CronOptions.normalize(options);
+        String id = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        CronJob job = new CronJob(id, cron, prompt, recurring, durable,
+            Instant.now().toEpochMilli(), null, false, null, null,
+            null, null, null, normalized.model(), normalized);
+        JOBS.add(job);
+        scheduledTasksEnabled = true;
+        if (durable) persist();
+        return id;
+    }
+
+    /** Updates an existing scheduled task in place; returns false when {@code id} is absent. */
+    public static synchronized boolean update(String id, String cron, String prompt,
+                                   boolean recurring, boolean durable, CronOptions options) {
+        if (StringUtils.isBlank(id)) return false;
+        CronOptions normalized = CronOptions.normalize(options);
+        for (int i = 0; i < JOBS.size(); i++) {
+            CronJob existing = JOBS.get(i);
+            if (!existing.id().equals(id)) continue;
+            boolean wasDurable = existing.durable();
+            CronJob updated = new CronJob(
+                existing.id(), cron, prompt, recurring, durable,
+                existing.createdAt(), existing.lastFiredAt(), existing.permanent(),
+                durable ? null : existing.agentId(),
+                durable ? null : existing.kind(),
+                durable ? existing.createdBySessionId() : null,
+                durable ? existing.createdByPid() : null,
+                durable ? existing.createdByProcStart() : null,
+                normalized.model(), normalized);
+            JOBS.set(i, updated);
+            if (durable || wasDurable) {
+                persistAllowEmpty();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** Enables or pauses one scheduled task without deleting it; returns false when absent. */
+    public static synchronized boolean setEnabled(String id, boolean enabled) {
+        if (StringUtils.isBlank(id)) return false;
+        for (int i = 0; i < JOBS.size(); i++) {
+            CronJob existing = JOBS.get(i);
+            if (!existing.id().equals(id)) continue;
+            CronOptions nextOpts = existing.resolvedOptions().withEnabled(enabled);
+            CronJob updated = new CronJob(
+                existing.id(), existing.cron(), existing.prompt(), existing.recurring(),
+                existing.durable(), existing.createdAt(), existing.lastFiredAt(),
+                existing.permanent(), existing.agentId(), existing.kind(),
+                existing.createdBySessionId(), existing.createdByPid(),
+                existing.createdByProcStart(), nextOpts.model(), nextOpts);
+            JOBS.set(i, updated);
+            if (existing.durable()) {
+                persistAllowEmpty();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** Looks up one job by id; returns null when absent. */
+    public static CronJob findById(String id) {
+        if (StringUtils.isBlank(id)) return null;
+        for (CronJob job : JOBS) {
+            if (job.id().equals(id)) return job;
+        }
+        return null;
+    }
+
+    /** Validates cron syntax and next-run without checking MAX_JOBS capacity (used by updates). */
+    public static String validateCronExpression(String cron) {
+        if (!CronUtils.isValid(cron)) {
+            return "Invalid cron expression '" + cron + "'. Expected 5 fields: M H DoM Mon DoW.";
+        }
+        if (CronUtils.nextRunMs(cron) == null) {
+            return "Cron expression '" + cron
+                + "' does not match any calendar date in the next year.";
+        }
+        return null;
     }
 
     /**
@@ -175,8 +257,9 @@ public final class CronStore {
 
 
     static synchronized boolean remove(String id) {
+        boolean durableRemoved = JOBS.stream().anyMatch(j -> j.id().equals(id) && j.durable());
         boolean removed = JOBS.removeIf(j -> j.id().equals(id));
-        if (removed) persist();
+        if (durableRemoved) persistAllowEmpty();
         return removed;
     }
 
@@ -250,10 +333,25 @@ public final class CronStore {
                 String model = node.path("model").isTextual()
                     && StringUtils.isNotBlank(node.path("model").asText())
                     ? node.path("model").asText() : null;
+                String effort = node.path("effort").isTextual()
+                    && StringUtils.isNotBlank(node.path("effort").asText())
+                    ? node.path("effort").asText() : null;
+                String workingDir = node.path("workingDirectory").isTextual()
+                    && StringUtils.isNotBlank(node.path("workingDirectory").asText())
+                    ? node.path("workingDirectory").asText() : null;
+                boolean newSessionPerRun = !node.has("newSessionPerRun")
+                    || node.path("newSessionPerRun").asBoolean(true);
+                String notificationMode = node.path("notificationMode").isTextual()
+                    ? node.path("notificationMode").asText("off") : "off";
+                boolean archiveOnSuccess = node.path("archiveOnSuccess").asBoolean(false);
+                boolean enabled = !node.has("enabled") || node.path("enabled").asBoolean(true);
+                CronOptions options = CronOptions.normalize(new CronOptions(
+                    model, effort, workingDir, newSessionPerRun, notificationMode,
+                    archiveOnSuccess, enabled));
                 if (!id.isEmpty() && !cron.isEmpty() && CronUtils.isValid(cron)) {
                     JOBS.add(new CronJob(id, cron, prompt, recur, true, createdAt,
                         lastFiredAt, permanent, null, null, createdBySessionId,
-                        createdByPid, createdByProcStart, model));
+                        createdByPid, createdByProcStart, options.model(), options));
                 }
             }
         } catch (IOException _) {}
@@ -307,6 +405,10 @@ public final class CronStore {
         // the file. remove()/removeWhere() persist unconditionally so a session-only
         // store would otherwise blank out durable jobs owned by another process.
         if (JOBS.stream().noneMatch(CronJob::durable)) return;
+        persistAllowEmpty();
+    }
+
+    private static void persistAllowEmpty() {
         if (projectRootOverride == null && isTestRuntime()) {
             // A durable task reaching persist() without an injected root would be
             // written into the real checkout's .claude/scheduled_tasks.json and then
@@ -338,7 +440,18 @@ public final class CronStore {
                 if (j.createdByProcStart() != null) {
                     n.put("createdByProcStart", j.createdByProcStart());
                 }
-                if (StringUtils.isNotBlank(j.model())) n.put("model", j.model());
+                CronOptions opts = j.resolvedOptions();
+                if (StringUtils.isNotBlank(opts.model())) n.put("model", opts.model());
+                if (StringUtils.isNotBlank(opts.effort())) n.put("effort", opts.effort());
+                if (StringUtils.isNotBlank(opts.workingDirectory())) {
+                    n.put("workingDirectory", opts.workingDirectory());
+                }
+                if (!opts.newSessionPerRun()) n.put("newSessionPerRun", false);
+                if (!"off".equals(opts.notificationMode())) {
+                    n.put("notificationMode", opts.notificationMode());
+                }
+                if (opts.archiveOnSuccess()) n.put("archiveOnSuccess", true);
+                if (!opts.enabled()) n.put("enabled", false);
                 arr.add(n);
             }
             Path temp = Files.createTempFile(path.getParent(), ".scheduled_tasks-", ".tmp");
@@ -382,28 +495,85 @@ public final class CronStore {
         scheduledTasksEnabled = false;
     }
 
+    /** Advanced per-task execution options (Codex-style automations settings). */
+    public record CronOptions(
+            String model,
+            String effort,
+            String workingDirectory,
+            boolean newSessionPerRun,
+            String notificationMode,
+            boolean archiveOnSuccess,
+            boolean enabled) {
+        public static final CronOptions DEFAULT =
+            new CronOptions(null, null, null, true, "off", false, true);
+
+        public CronOptions(String model, String effort, String workingDirectory,
+                boolean newSessionPerRun, String notificationMode, boolean archiveOnSuccess) {
+            this(model, effort, workingDirectory, newSessionPerRun, notificationMode,
+                archiveOnSuccess, true);
+        }
+
+        public CronOptions withEnabled(boolean nextEnabled) {
+            return new CronOptions(model, effort, workingDirectory, newSessionPerRun,
+                notificationMode, archiveOnSuccess, nextEnabled);
+        }
+
+        public static CronOptions normalize(CronOptions raw) {
+            if (raw == null) return DEFAULT;
+            String notif = switch (StringUtils.defaultString(raw.notificationMode()).trim().toLowerCase(Locale.ROOT)) {
+                case "always", "on_error", "off" -> raw.notificationMode().trim().toLowerCase(Locale.ROOT);
+                default -> "off";
+            };
+            return new CronOptions(
+                StringUtils.defaultIfBlank(raw.model(), null),
+                StringUtils.defaultIfBlank(raw.effort(), null),
+                StringUtils.defaultIfBlank(raw.workingDirectory(), null),
+                raw.newSessionPerRun(),
+                notif,
+                raw.archiveOnSuccess(),
+                raw.enabled());
+        }
+    }
+
     public record CronJob(String id, String cron, String prompt, boolean recurring,
                    boolean durable, long createdAt, Long lastFiredAt,
                    boolean permanent, String agentId, String kind,
                    String createdBySessionId, Long createdByPid,
-                   String createdByProcStart, String model) {
+                   String createdByProcStart, String model, CronOptions options) {
         public CronJob(String id, String cron, String prompt, boolean recurring,
                        boolean durable, long createdAt, Long lastFiredAt,
                        boolean permanent, String agentId, String kind) {
             this(id, cron, prompt, recurring, durable, createdAt, lastFiredAt,
-                permanent, agentId, kind, null, null, null, null);
+                permanent, agentId, kind, null, null, null, null, CronOptions.DEFAULT);
+        }
+
+        public CronJob(String id, String cron, String prompt, boolean recurring,
+                       boolean durable, long createdAt, Long lastFiredAt,
+                       boolean permanent, String agentId, String kind,
+                       String createdBySessionId, Long createdByPid,
+                       String createdByProcStart, String model) {
+            this(id, cron, prompt, recurring, durable, createdAt, lastFiredAt,
+                permanent, agentId, kind, createdBySessionId, createdByPid,
+                createdByProcStart, model,
+                CronOptions.normalize(new CronOptions(model, null, null, true, "off", false)));
+        }
+
+        public CronOptions resolvedOptions() {
+            return options != null
+                ? options
+                : CronOptions.normalize(new CronOptions(model, null, null, true, "off", false));
         }
 
         CronJob withLastFiredAt(long firedAt) {
             return new CronJob(id, cron, prompt, recurring, durable, createdAt,
                 firedAt, permanent, agentId, kind, createdBySessionId,
-                createdByPid, createdByProcStart, model);
+                createdByPid, createdByProcStart, model, resolvedOptions());
         }
 
         CronJob withCreatorProcess(long pid, String procStart) {
             return new CronJob(id, cron, prompt, recurring, durable, createdAt,
                 lastFiredAt, permanent, agentId, kind, createdBySessionId,
-                pid, procStart, model);
+                pid, procStart, model, resolvedOptions());
         }
     }
 }

@@ -508,6 +508,18 @@ export type PermissionBehaviorKind = 'allow' | 'deny' | 'ask'
 // GET/POST /api/schedule, DELETE /api/schedule/{id} — scheduled tasks
 // ---------------------------------------------------------------------------
 
+export type ScheduleNotificationMode = 'off' | 'on_error' | 'always'
+
+export interface ScheduleTaskOptions {
+  readonly model?: string | null
+  readonly effort?: string | null
+  readonly working_directory?: string | null
+  readonly new_session_per_run?: boolean
+  readonly notification_mode?: ScheduleNotificationMode
+  readonly archive_on_success?: boolean
+  readonly enabled?: boolean
+}
+
 export interface ScheduleTask {
   readonly id: string
   readonly cron: string
@@ -521,6 +533,18 @@ export interface ScheduleTask {
   readonly created_by_session_id?: string
   /** Per-task model override; absent keeps the session model at fire time. */
   readonly model?: string
+  /** Per-task reasoning effort override (low | medium | high | max). */
+  readonly effort?: string
+  /** Target project working directory for execution. */
+  readonly working_directory?: string
+  /** True (default) opens a fresh session per run; false reuses one thread. */
+  readonly new_session_per_run?: boolean
+  /** Native macOS notification mode: off | on_error | always. */
+  readonly notification_mode?: ScheduleNotificationMode
+  /** True auto-closes/archives clean successful runs. */
+  readonly archive_on_success?: boolean
+  /** False pauses automatic scheduling without deleting the task (default true). */
+  readonly enabled?: boolean
 }
 
 export interface ScheduleListing {
@@ -531,7 +555,7 @@ export interface ScheduleListing {
 // GET/POST /api/models, DELETE /api/models/{name} — custom model catalogue
 // ---------------------------------------------------------------------------
 
-export type ModelProtocol = 'anthropic' | 'chat' | 'responses'
+export type ModelProtocol = 'anthropic' | 'chat' | 'responses' | 'gemini'
 
 export interface CustomModelEntry {
   readonly model_name: string
@@ -546,6 +570,22 @@ export interface CustomModelEntry {
 
 export interface ModelsListing {
   readonly models: readonly CustomModelEntry[]
+}
+
+export interface DiscoveredModelEntry {
+  readonly id: string
+  readonly display_name?: string
+  readonly owned_by?: string
+  readonly context_window?: number
+}
+
+export interface DiscoverModelsResponse {
+  readonly endpoint: string
+  readonly models: readonly DiscoveredModelEntry[]
+}
+
+export interface BatchSaveModelsResponse extends ModelsListing {
+  readonly saved: number
 }
 
 // ---------------------------------------------------------------------------
@@ -739,4 +779,75 @@ export interface SessionTaskBoard {
   readonly hidden: boolean
   readonly tasks: readonly SessionTaskBoardItem[]
 }
+
+// ---------------------------------------------------------------------------
+// LAN Model Gateway — GET/POST /api/lan-gateway, keys, and recent calls
+// ---------------------------------------------------------------------------
+
+export type LanEndpointKind = 'lan' | 'mdns' | 'tailscale' | 'public'
+
+export interface LanGatewayEndpoint {
+  readonly kind: LanEndpointKind
+  readonly host: string
+  readonly url: string
+}
+
+export interface LanGatewaySharedModel {
+  readonly id: string
+  readonly protocol: string
+  readonly built_in: boolean
+  readonly context_window: number | null
+}
+
+export interface LanGatewayKey {
+  readonly id: string
+  readonly name: string
+  readonly secret: string
+  readonly masked_secret: string
+  readonly enabled: boolean
+  readonly allowed_models: readonly string[]
+  readonly created_at: string
+  readonly last_used_at: string | null
+  readonly total_requests: number
+  readonly input_tokens: number
+  readonly output_tokens: number
+}
+
+export interface LanGatewayStatus {
+  readonly enabled: boolean
+  readonly listening_host: string
+  readonly port: number
+  readonly expose_default_provider: boolean
+  readonly tier_stand_in_model: string
+  readonly prevent_mac_sleep: boolean
+  readonly awake_active: boolean
+  readonly allowed_cidrs: readonly string[]
+  readonly endpoints: readonly LanGatewayEndpoint[]
+  readonly available_models: readonly LanGatewaySharedModel[]
+  readonly keys: readonly LanGatewayKey[]
+}
+
+export interface LanGatewayCall {
+  readonly id: number
+  readonly timestamp: string
+  readonly key_id: string
+  readonly key_name: string
+  readonly client_ip: string
+  readonly source_protocol: string
+  readonly target_protocol: string
+  readonly requested_model: string
+  readonly resolved_model: string
+  readonly streaming: boolean
+  readonly status: number
+  readonly ttft_ms: number
+  readonly duration_ms: number
+  readonly input_tokens: number
+  readonly output_tokens: number
+  readonly error: string | null
+}
+
+export interface LanGatewayCallsResponse {
+  readonly calls: readonly LanGatewayCall[]
+}
+
 

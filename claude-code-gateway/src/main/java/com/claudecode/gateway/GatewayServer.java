@@ -113,13 +113,20 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayChangesHandler changesApi;
     private final GatewayWorkspaceFileHandler workspaceFileApi;
     private final GatewayBackgroundTasksHandler backgroundTasksApi;
+    private final LanGatewayConfigStore lanConfigStore;
+    private final LanModelProxyHandler lanModelProxy;
+    private final GatewayLanAdminHandler lanAdminApi;
+    private final MacAwakeGuard awakeGuard = new MacAwakeGuard();
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
     /** The registry activation feed; released by {@link #close()}. */
     private final AutoCloseable registrySubscription;
     private final Optional<RemoteWorkerPool> remoteWorkers;
     private final AtomicBoolean started = new AtomicBoolean();
+    private final Object bindLock = new Object();
+    private volatile String currentBoundHost;
     private volatile HttpServer server;
+    private final String localMachineHostName;
 
     /**
      * Assembles a server from its required facts plus the optional capability
@@ -164,6 +171,8 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
         private GatewayWorkspaceFilePort workspaceFile = GatewayWorkspaceFilePort.none();
         private GatewayBackgroundTasksPort backgroundTasks = new GatewayBackgroundTasksPort() {};
+        private LanGatewayConfigStore lanConfigStore = LanGatewayConfigStore.inMemory();
+        private GatewayLanProxyPort lanProxy = new GatewayLanProxyPort() {};
         private WebWorkerDirectory webWorkers;
         private boolean remoteSessionState;
         private RemoteSessionContextPort.MetricsFold remoteMetrics =
@@ -291,6 +300,13 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder backgroundTasks(GatewayBackgroundTasksPort value) {
             this.backgroundTasks = Objects.requireNonNull(value, "backgroundTasks");
+            return this;
+        }
+
+        public Builder lanGateway(
+                LanGatewayConfigStore configStore, GatewayLanProxyPort proxyPort) {
+            this.lanConfigStore = Objects.requireNonNull(configStore, "configStore");
+            this.lanProxy = Objects.requireNonNull(proxyPort, "proxyPort");
             return this;
         }
 
@@ -454,6 +470,20 @@ public final class GatewayServer implements AutoCloseable {
         this.changesApi = new GatewayChangesHandler(fileDiff);
         this.workspaceFileApi = new GatewayWorkspaceFileHandler(workspaceFile);
         this.backgroundTasksApi = new GatewayBackgroundTasksHandler(builder.backgroundTasks);
+        this.lanConfigStore = builder.lanConfigStore;
+        this.lanModelProxy = new LanModelProxyHandler(this.lanConfigStore, builder.lanProxy);
+        this.currentBoundHost = Strings.CS.equals("0.0.0.0", config.host()) || this.lanConfigStore.load().enabled()
+            ? "0.0.0.0" : "127.0.0.1";
+        this.localMachineHostName = detectLocalHostName();
+        this.lanAdminApi = new GatewayLanAdminHandler(
+            this.lanConfigStore,
+            this.lanModelProxy,
+            builder.lanProxy,
+            this.awakeGuard,
+            this::port,
+            this::boundHost,
+            this::rebindLanSharing,
+            this::withBindLock);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -481,27 +511,107 @@ public final class GatewayServer implements AutoCloseable {
     /** Binds the port and starts serving; returns once the socket is live. */
     public void start() throws IOException {
         if (!started.compareAndSet(false, true)) return;
-        InetAddress address = Strings.CS.equals("0.0.0.0", config.host())
-            ? InetAddress.getByName("0.0.0.0")
-            : InetAddress.getLoopbackAddress();
-        HttpServer created = HttpServer.create(
-            new InetSocketAddress(address, config.port()), 0);
-        // One virtual thread per exchange: every SSE connection parks its own
-        // lane thread while REST handlers finish quickly.
-        created.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-        created.createContext("/", this::routeGuarded);
-        created.start();
-        server = created;
+        synchronized (bindLock) {
+            LanGatewayConfigStore.LanGatewayConfig lanCfg = lanConfigStore.load();
+            String initialHost = Strings.CS.equals("0.0.0.0", config.host()) || lanCfg.enabled()
+                ? "0.0.0.0" : "127.0.0.1";
+            server = createAndStartHttpServer(initialHost, config.port());
+            currentBoundHost = initialHost;
+            awakeGuard.sync(lanCfg.enabled() && lanCfg.preventMacSleep());
+        }
         // Other processes' sessions are followed from the moment they start,
         // not from whichever request next happens to list them.
         remoteWorkers.ifPresent(pool -> pool.startWatching(RemoteWorkerPool.WATCH_INTERVAL));
     }
 
+    /** Currently bound host ({@code "127.0.0.1"} or {@code "0.0.0.0"}). */
+    public String boundHost() {
+        synchronized (bindLock) {
+            return currentBoundHost;
+        }
+    }
+
+    void withBindLock(GatewayLanAdminHandler.IoAction action) throws IOException {
+        synchronized (bindLock) {
+            action.execute();
+        }
+    }
+
+    /** Hot-swaps the listener between loopback and all interfaces on the same port. */
+    void rebindLanSharing(boolean shareOnLan) throws IOException {
+        synchronized (bindLock) {
+            HttpServer current = server;
+            if (current == null) return;
+            String targetHost = shareOnLan ? "0.0.0.0" : "127.0.0.1";
+            if (Strings.CS.equals(currentBoundHost, targetHost)) return;
+            int activePort = current.getAddress().getPort();
+            String previousHost = currentBoundHost;
+            current.stop(0);
+            try {
+                server = bindWithRetry(targetHost, activePort);
+                currentBoundHost = targetHost;
+                log.info("Rebound gateway listener from {}:{} to {}:{}",
+                    previousHost, activePort, targetHost, activePort);
+            } catch (IOException failure) {
+                // Restore previous listener so local Web UI stays reachable.
+                try {
+                    server = bindWithRetry(previousHost, activePort);
+                    currentBoundHost = previousHost;
+                } catch (IOException _) {
+                    // Nothing further to recover.
+                }
+                throw failure;
+            }
+        }
+    }
+
+    private HttpServer bindWithRetry(String host, int targetPort) throws IOException {
+        IOException lastError = null;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            try {
+                return createAndStartHttpServer(host, targetPort);
+            } catch (IOException bindErr) {
+                lastError = bindErr;
+                try {
+                    Thread.sleep(15L);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                    throw bindErr;
+                }
+            }
+        }
+        throw lastError != null ? lastError : new IOException("Unable to bind " + host + ":" + targetPort);
+    }
+
+    private HttpServer createAndStartHttpServer(String host, int targetPort) throws IOException {
+        InetAddress address = Strings.CS.equals("0.0.0.0", host)
+            ? InetAddress.getByName("0.0.0.0")
+            : InetAddress.getLoopbackAddress();
+        HttpServer created = HttpServer.create(
+            new InetSocketAddress(address, targetPort), 0);
+        // One virtual thread per exchange: every SSE connection parks its own
+        // lane thread while REST handlers finish quickly.
+        created.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        created.createContext("/", this::routeGuarded);
+        created.start();
+        return created;
+    }
+
+    private static String detectLocalHostName() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (Exception _) {
+            return "";
+        }
+    }
+
     /** The bound port — meaningful when {@code Config.port} was 0 (auto). */
     public int port() {
-        HttpServer snapshot = server;
-        if (snapshot == null) throw new IllegalStateException("gateway server is not started");
-        return snapshot.getAddress().getPort();
+        synchronized (bindLock) {
+            HttpServer snapshot = server;
+            if (snapshot == null) throw new IllegalStateException("gateway server is not started");
+            return snapshot.getAddress().getPort();
+        }
     }
 
     /** The mirror fan-out hub, for interaction presenters to publish into. */
@@ -511,8 +621,12 @@ public final class GatewayServer implements AutoCloseable {
 
     @Override
     public void close() {
-        HttpServer snapshot = server;
-        server = null;
+        awakeGuard.close();
+        HttpServer snapshot;
+        synchronized (bindLock) {
+            snapshot = server;
+            server = null;
+        }
         if (snapshot != null) snapshot.stop(0);
         mirror.detach();
         contextTimeline.close();
@@ -650,10 +764,25 @@ public final class GatewayServer implements AutoCloseable {
     }
 
     private void route(HttpExchange exchange) throws IOException {
+        boolean directLoopback = LanModelProxyHandler.isDirectLoopback(exchange);
+        if (!directLoopback || LanModelProxyHandler.carriesGatewayKey(exchange)) {
+            serveAsync(exchange, () -> lanModelProxy.handle(exchange));
+            return;
+        }
+        if (LanModelProxyHandler.isDnsRebindingAttempt(exchange, localMachineHostName)
+                && !auth.authenticated(exchange)) {
+            try (exchange) {
+                respondJson(exchange, 403, errorBody("forbidden",
+                    "Refused browser request with foreign Host header (DNS rebinding guard)"));
+            }
+            return;
+        }
         String targetPath = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
         boolean get = Strings.CS.equals("GET", method);
         boolean post = Strings.CS.equals("POST", method);
+        boolean put = Strings.CS.equals("PUT", method);
+        boolean patch = Strings.CS.equals("PATCH", method);
         boolean delete = Strings.CS.equals("DELETE", method);
         // Static webui serving takes the GET paths the API never claims: the
         // landing page and the bundle's /webui/** assets. Every API route
@@ -770,7 +899,7 @@ public final class GatewayServer implements AutoCloseable {
                     return;
                 }
                 serveAsync(exchange, () -> {
-                    if ("/prompt".equals(suffix)) {
+                    if (Strings.CS.equals("/prompt", suffix)) {
                         backgroundTasksApi.handlePromptAgent(exchange, sessionId, agentId);
                     } else {
                         backgroundTasksApi.handleStopAgent(exchange, sessionId, agentId);
@@ -779,7 +908,7 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
         }
-        if (get && "/api/shells".equals(targetPath)) {
+        if (get && Strings.CS.equals("/api/shells", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> backgroundTasksApi.handleListShells(exchange));
             return;
@@ -788,7 +917,7 @@ public final class GatewayServer implements AutoCloseable {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             String taskId = URLDecoder.decode(
                 targetPath.substring("/api/shells/".length()), StandardCharsets.UTF_8);
-            if (taskId.isEmpty() || taskId.contains("/")) {
+            if (taskId.isEmpty() || Strings.CS.contains(taskId, "/")) {
                 try (exchange) {
                     respondJson(exchange, 400, errorBody("invalid_request",
                         "shell task id is required"));
@@ -804,7 +933,7 @@ public final class GatewayServer implements AutoCloseable {
             String taskId = URLDecoder.decode(
                 targetPath.substring("/api/shells/".length(),
                     targetPath.length() - "/stop".length()), StandardCharsets.UTF_8);
-            if (taskId.isEmpty() || taskId.contains("/")) {
+            if (taskId.isEmpty() || Strings.CS.contains(taskId, "/")) {
                 try (exchange) {
                     respondJson(exchange, 400, errorBody("invalid_request",
                         "shell task id is required"));
@@ -904,6 +1033,23 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
+        if (post && Strings.CS.startsWith(targetPath, "/api/schedule/")
+                && Strings.CS.endsWith(targetPath, "/run")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String id = URLDecoder.decode(
+                targetPath.substring("/api/schedule/".length(),
+                    targetPath.length() - "/run".length()),
+                StandardCharsets.UTF_8);
+            serveAsync(exchange, () -> scheduleApi.handleRun(exchange, id));
+            return;
+        }
+        if ((put || patch) && Strings.CS.startsWith(targetPath, "/api/schedule/")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String taskId = URLDecoder.decode(
+                targetPath.substring("/api/schedule/".length()), StandardCharsets.UTF_8);
+            serve(exchange, () -> scheduleApi.handleUpdate(exchange, taskId));
+            return;
+        }
         if (delete && Strings.CS.startsWith(targetPath, "/api/schedule/")) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             String taskId = URLDecoder.decode(
@@ -999,11 +1145,66 @@ public final class GatewayServer implements AutoCloseable {
             });
             return;
         }
+        if (post && Strings.CS.equals("/api/models/discover", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> modelsApi.handleDiscover(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/models/batch", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> modelsApi.handleBatchSave(exchange));
+            return;
+        }
         if (delete && Strings.CS.startsWith(targetPath, "/api/models/")) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             String modelName = URLDecoder.decode(
                 targetPath.substring("/api/models/".length()), StandardCharsets.UTF_8);
             serve(exchange, () -> modelsApi.handleDelete(exchange, modelName));
+            return;
+        }
+        if (get && Strings.CS.equals("/api/lan-gateway", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> lanAdminApi.handleGetStatus(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/lan-gateway", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            lanAdminApi.handleUpdateSettings(exchange);
+            return;
+        }
+        if (post && Strings.CS.equals("/api/lan-gateway/keys", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> lanAdminApi.handleCreateKey(exchange));
+            return;
+        }
+        if ((post || patch || delete) && Strings.CS.startsWith(targetPath, "/api/lan-gateway/keys/")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String keyId = URLDecoder.decode(
+                targetPath.substring("/api/lan-gateway/keys/".length()), StandardCharsets.UTF_8);
+            if (keyId.isEmpty() || Strings.CS.contains(keyId, "/")) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request", "key id is required"));
+                }
+                return;
+            }
+            serve(exchange, () -> {
+                if (delete) {
+                    lanAdminApi.handleDeleteKey(exchange, keyId);
+                } else {
+                    lanAdminApi.handleUpdateKey(exchange, keyId);
+                }
+            });
+            return;
+        }
+        if ((get || delete) && Strings.CS.equals("/api/lan-gateway/calls", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> {
+                if (get) {
+                    lanAdminApi.handleGetCalls(exchange);
+                } else {
+                    lanAdminApi.handleClearCalls(exchange);
+                }
+            });
             return;
         }
         try (exchange) {
