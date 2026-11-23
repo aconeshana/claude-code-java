@@ -144,7 +144,9 @@ public class WebCliCommand implements Callable<Integer> {
              CliResourceScope resources = new CliResourceScope()) {
             CliHeadlessGatewaySessions headless = WebHeadlessSessions.create(mcpRuntime, resources, err);
             String cwd = System.getProperty("user.dir");
-            try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd)) {
+            CustomModelJsonStore modelCatalog = new CustomModelJsonStore();
+            try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd);
+                 CliWebRuntimeControl runtimeControl = new CliWebRuntimeControl(cronDaemon, modelCatalog)) {
                 cronDaemon.start();
                 CommandRegistry commandRegistry = webCommands();
                 GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
@@ -162,7 +164,7 @@ public class WebCliCommand implements Callable<Integer> {
                     sessionMessages,
                     CliInteractiveSessionRunner.gatewaySettings(cwd),
                     cronDaemon.port(),
-                CliInteractiveSessionRunner.gatewayModels(new CustomModelJsonStore()),
+                CliInteractiveSessionRunner.gatewayModels(modelCatalog),
                 CliGatewayPorts.commands(commandRegistry),
                 // Sessions a TUI hosts are answered from its transcript and
                 // Session Link by the gateway's own remote decorators before
@@ -197,6 +199,7 @@ public class WebCliCommand implements Callable<Integer> {
                     TaskRegistry.global(),
                     headless::liveEngine,
                     headless::toolRegistry));
+            runtime.setRuntimeControl(runtimeControl);
             CountDownLatch stopped = new CountDownLatch(1);
             Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().unstarted(() -> {
                 runtime.close();

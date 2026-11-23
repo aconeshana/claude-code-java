@@ -13,6 +13,7 @@ import type { PendingInteraction } from '../store/approvals'
 import { useSidebarCollapse } from '../store/sidebarCollapse'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
+import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
 import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
 import { stripScheduledSessions } from './scheduledSessions'
 import { ScheduledTasksNavButton } from './ScheduledTasksWorkspace'
@@ -118,6 +119,7 @@ export function Sidebar() {
   const [deleteTarget, setDeleteTarget] = useState<CatalogSession | null>(null)
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
+  const uiT = useTranslate(UI_NS, uiDicts)
 
   const collapsed = useSidebarCollapse((state) => state.collapsed)
   const toggleCollapsed = useSidebarCollapse((state) => state.toggle)
@@ -400,10 +402,10 @@ export function Sidebar() {
               onClick={() => { setSettingsOpen(true) }}
               aria-haspopup="dialog"
               aria-expanded={settingsOpen}
-              aria-label="打开设置面板"
+              aria-label={uiT('sidebar.openSettings')}
             >
               <IconSettingsOutline16 size={16} />
-              {wide && <span className={triggerCss.triggerLabel}>设置</span>}
+              {wide && <span className={triggerCss.triggerLabel}>{uiT('sidebar.settings')}</span>}
             </button>
           </div>
         </div>

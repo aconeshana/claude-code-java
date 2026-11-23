@@ -13,6 +13,7 @@ import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.MirrorHub;
 import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewayWorkspaceFilePort;
+import com.claudecode.gateway.GatewayRuntimeControlPort;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.gateway.GatewayServer;
 import com.claudecode.gateway.GatewayTaskBoardPort;
@@ -112,6 +113,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayFileDiffPort fileDiff;
     private final GatewayWorkspaceFilePort workspaceFile;
     private final GatewayBackgroundTasksPort backgroundTasks;
+    private volatile GatewayRuntimeControlPort runtimeControl =
+        new GatewayRuntimeControlPort() {};
     /** One fold for the gateway's life, so a replay is reused until its transcript changes. */
     private final CliTranscriptMetricsFold remoteMetrics = new CliTranscriptMetricsFold();
     /**
@@ -323,6 +326,12 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         return flight;
     }
 
+    void setRuntimeControl(GatewayRuntimeControlPort control) {
+        this.runtimeControl = control != null
+            ? control
+            : new GatewayRuntimeControlPort() {};
+    }
+
     private Started bind() throws IOException {
         GatewayServer existing = server;
         if (existing != null) {
@@ -357,6 +366,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
             .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
             .backgroundTasks(backgroundTasks != null ? backgroundTasks : new GatewayBackgroundTasksPort() {})
+            .runtimeControl(runtimeControl)
             .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
             // Every session a webui client addresses belongs to this process or
             // to another TUI on the machine; the gateway forwards the halves

@@ -326,6 +326,30 @@ export function toggleScheduleTask(
   return requestJson('PATCH', `/api/schedule/${encodeURIComponent(id)}`, { enabled })
 }
 
+export interface RuntimeKeepaliveState {
+  readonly enabled: boolean
+  readonly supported: boolean
+  readonly active: boolean
+}
+
+export interface RuntimeRestartResult {
+  readonly restarted: boolean
+  readonly reloaded_tasks: number
+  readonly reloaded_models: number
+}
+
+export function fetchKeepaliveState(): Promise<RuntimeKeepaliveState> {
+  return requestJson('GET', '/api/runtime/keepalive')
+}
+
+export function setKeepaliveEnabled(enabled: boolean): Promise<RuntimeKeepaliveState> {
+  return requestJson('POST', '/api/runtime/keepalive', { enabled })
+}
+
+export function restartGatewayRuntime(): Promise<RuntimeRestartResult> {
+  return requestJson('POST', '/api/runtime/restart', {})
+}
+
 /**
  * DELETE /api/schedule/{id}: removes one scheduled task; 404 when absent.
  */

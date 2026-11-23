@@ -134,6 +134,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           key={index}
           text={text}
           running={message.open && index === message.thinkingBlocks.length - 1}
+          defaultOpen={defaultOpen}
         />
       ))}
       {message.textBlocks.map((text: string, index: number) => (

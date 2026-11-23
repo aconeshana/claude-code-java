@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DisclosureRow, IconThinkOutline14 } from '@primitives'
 import css from '@chat-styles/ReasoningRow.module.css'
 import toolCss from '@chat-styles/ToolRow.module.css'
+import { useTranscriptView } from '../store/transcriptView'
 
 function firstLine(text: string): string {
   const newline = text.indexOf('\n')
@@ -19,8 +20,17 @@ function latestLine(text: string): string {
  * `thinking` segment of a message renders an independent instance; only the
  * streaming tail segment is `running`.
  */
-export function ReasoningRow({ text, running }: { text: string; running: boolean }) {
-  const [expanded, setExpanded] = useState(false)
+export function ReasoningRow({ text, running, defaultOpen = false }: { text: string; running: boolean; defaultOpen?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultOpen)
+  const transcriptMode = useTranscriptView((state) => state.mode)
+  const transcriptRevision = useTranscriptView((state) => state.revision)
+  const lastRevision = useRef(transcriptRevision)
+  useEffect(() => {
+    if (transcriptRevision !== lastRevision.current) {
+      lastRevision.current = transcriptRevision
+      setExpanded(transcriptMode === 'normal')
+    }
+  }, [transcriptMode, transcriptRevision])
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll('**', '')
 
   return (

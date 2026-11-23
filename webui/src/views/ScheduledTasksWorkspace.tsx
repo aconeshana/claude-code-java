@@ -27,6 +27,8 @@ import {
   type TaskWithRuns,
 } from './scheduledSessions'
 import { EffortSlider, effortDisplayLabel, isDefaultEffort, isMaxEffort } from './EffortSlider'
+import { useTranslate } from '../i18n/useTranslate'
+import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
 import css from './ScheduledTasksWorkspace.module.css'
 
 type TabKey = 'tasks' | 'runs'
@@ -147,6 +149,7 @@ function DshSelect({
 
 /** Independent left-rail entry aligned identically to ContextDashboardButton and Settings. */
 export function ScheduledTasksNavButton({ wide = true }: { wide?: boolean }) {
+  const uiT = useTranslate(UI_NS, uiDicts)
   const open = useScheduleView((s) => s.open)
   const toggleView = useScheduleView((s) => s.toggleView)
   const tasks = useSchedule((s) => s.tasks)
@@ -163,7 +166,7 @@ export function ScheduledTasksNavButton({ wide = true }: { wide?: boolean }) {
     return scheduledRuns.some((run) => activity[run.session.id]?.running === true || run.session.headless_open === true)
   }, [projects, activity])
 
-  const label = '定时任务'
+  const label = uiT('sidebar.scheduled')
   return (
     <Tooltip label={label} delayMs={500} disabled={wide}>
       <button
@@ -246,6 +249,7 @@ function projectBaseName(path: string): string {
 }
 
 export function ScheduledTasksWorkspace() {
+  const uiT = useTranslate(UI_NS, uiDicts)
   const tasks = useSchedule((s) => s.tasks)
   const loading = useSchedule((s) => s.loading)
   const error = useSchedule((s) => s.error)
@@ -354,8 +358,8 @@ export function ScheduledTasksWorkspace() {
     <div className={css.root}>
       <header className={css.header}>
         <div className={css.headerLeft}>
-          <h1 className={css.title}>定时任务</h1>
-          <div className={css.segmented} role="tablist" aria-label="视图">
+          <h1 className={css.title}>{uiT('schedule.title')}</h1>
+          <div className={css.segmented} role="tablist" aria-label={uiT('schedule.title')}>
             <button
               type="button"
               role="tab"
@@ -363,7 +367,7 @@ export function ScheduledTasksWorkspace() {
               className={clsx(css.segTab, tab === 'tasks' && css.segTabActive)}
               onClick={() => { setTab('tasks') }}
             >
-              <span>任务</span>
+              <span>{uiT('schedule.tabTasks')}</span>
               <span className={css.segCount}>{tasks.length}</span>
             </button>
             <button
@@ -373,17 +377,17 @@ export function ScheduledTasksWorkspace() {
               className={clsx(css.segTab, tab === 'runs' && css.segTabActive)}
               onClick={() => { setTab('runs') }}
             >
-              <span>记录</span>
+              <span>{uiT('schedule.tabRuns')}</span>
               <span className={css.segCount}>{scheduledRuns.length}</span>
             </button>
           </div>
         </div>
         <div className={css.headerActions}>
           <Button variant="ghost" size="sm" onClick={handleNaturalLanguageCreate}>
-            对话创建
+            {uiT('schedule.nlCreate')}
           </Button>
           <Button variant="primary" size="sm" onClick={openCreateModal}>
-            新建
+            {uiT('schedule.new')}
           </Button>
         </div>
       </header>

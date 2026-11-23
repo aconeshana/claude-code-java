@@ -57,6 +57,7 @@ import { usePermissionMode } from '../store/permissionMode'
 import { isInteractive as sessionIsInteractive, useSessions } from '../store/sessions'
 import { useTranslate } from '../i18n/useTranslate'
 import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
+import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
 import css from '@chat-styles/InputBar.module.css'
 
 /**
@@ -114,7 +115,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   disabled: boolean
   busy: boolean
   placeholder: string
-  onSubmit: (content: string | readonly UserContentBlock[]) => void
+  onSubmit: (content: string | readonly UserContentBlock[], options?: { readonly steer?: boolean }) => void
   /**
    * Stops the running turn. Absent on surfaces that expose no cancellation —
    * the primary control then never renders its stop form.
@@ -173,6 +174,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const interactive = sessionIsInteractive(catalogProjects, sessionId)
   // The stat pills' locale seat (upstream ui-chat's own 'chat' namespace).
   const statsT = useTranslate(STATS_NS, statsDicts)
+  const uiT = useTranslate(UI_NS, uiDicts)
   const editorRef = useRef<LexicalEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const enterBehavior = useEnterBehavior((state) => state.behavior)
@@ -595,6 +597,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
       setQueuedContent(content)
       return
     }
+    if (busy && enterBehavior === 'steer') {
+      onSubmit(content, { steer: true })
+      return
+    }
     onSubmit(content)
   }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, sessionId, onClientCommand])
 
@@ -741,10 +747,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
             )}
             <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }}>
               {!interactive
-                ? '此会话没有正在运行的主机，仅供查看'
+                ? uiT('composer.readOnly')
                 : queuedContent != null
-                  ? '已排队，将在当前回复结束后发送'
-                  : 'Enter 发送 · Shift+Enter 换行'}
+                  ? uiT('composer.queued')
+                  : uiT('composer.hint')}
             </span>
           </div>
           <div className={css.trailing}>

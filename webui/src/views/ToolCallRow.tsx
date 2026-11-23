@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useTranscriptView } from '../store/transcriptView'
 import clsx from 'clsx'
 import {
   DiffBlock, DisclosureRow, IconApiOutline14, ReadBlock, StateDot, TerminalBlock,
@@ -50,6 +51,15 @@ function argsSummary(call: ToolCallState): string {
  */
 export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen)
+  const transcriptMode = useTranscriptView((state) => state.mode)
+  const transcriptRevision = useTranscriptView((state) => state.revision)
+  const lastRevision = useRef(transcriptRevision)
+  useEffect(() => {
+    if (transcriptRevision !== lastRevision.current) {
+      lastRevision.current = transcriptRevision
+      setExpanded(transcriptMode === 'normal')
+    }
+  }, [transcriptMode, transcriptRevision])
   const state = stateOf(call)
   const hasArgs = call.args != null && Object.keys(call.args).length > 0
   const body = call.ready ? renderBody(call, state) : null

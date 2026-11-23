@@ -30,20 +30,25 @@ function readMode(): TranscriptViewMode {
 
 export interface TranscriptViewStore {
   readonly mode: TranscriptViewMode
+  /** Monotonic revision incremented on every mode change so mounted rows re-fold dynamically. */
+  readonly revision: number
   setMode(next: TranscriptViewMode): void
 }
 
 export const useTranscriptView = create<TranscriptViewStore>(set => ({
   mode: readMode(),
+  revision: 0,
 
   setMode(next) {
     try {
       localStorage.setItem(STORAGE_KEY, next)
     } catch { /* storage unavailable (private mode): preference stays session-only */ }
-    set({ mode: next })
+    set((state) => ({ mode: next, revision: state.revision + 1 }))
   },
 }))
 
 window.addEventListener('storage', (event) => {
-  if (event.key === STORAGE_KEY) useTranscriptView.setState({ mode: readMode() })
+  if (event.key === STORAGE_KEY) {
+    useTranscriptView.setState((state) => ({ mode: readMode(), revision: state.revision + 1 }))
+  }
 })

@@ -102,6 +102,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
     private final GatewaySettingsHandler settingsApi;
     private final GatewayScheduleHandler scheduleApi;
+    private final GatewayRuntimeControlHandler runtimeControlApi;
     private final GatewayModelsHandler modelsApi;
     private final GatewayCommandsHandler commandsApi;
     private final GatewaySpinnerVerbsHandler spinnerVerbsApi;
@@ -159,6 +160,7 @@ public final class GatewayServer implements AutoCloseable {
         private GatewaySessionMessagesPort sessionMessages = new GatewaySessionMessagesPort() {};
         private GatewaySettingsPort settings = new GatewaySettingsPort() {};
         private GatewaySchedulePort schedule = new GatewaySchedulePort() {};
+        private GatewayRuntimeControlPort runtimeControl = new GatewayRuntimeControlPort() {};
         private GatewayModelsPort models = new GatewayModelsPort() {};
         private GatewayCommandsPort commands = new GatewayCommandsPort() {};
         private GatewaySessionContextPort sessionContext = new GatewaySessionContextPort() {};
@@ -240,6 +242,11 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder schedule(GatewaySchedulePort value) {
             this.schedule = Objects.requireNonNull(value, "schedule");
+            return this;
+        }
+
+        public Builder runtimeControl(GatewayRuntimeControlPort value) {
+            this.runtimeControl = Objects.requireNonNull(value, "runtimeControl");
             return this;
         }
 
@@ -459,6 +466,7 @@ public final class GatewayServer implements AutoCloseable {
             mirror::runningSince, mirror::streamingDraft);
         this.settingsApi = new GatewaySettingsHandler(settings);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
+        this.runtimeControlApi = new GatewayRuntimeControlHandler(builder.runtimeControl);
         this.modelsApi = new GatewayModelsHandler(models);
         this.commandsApi = new GatewayCommandsHandler(commands);
         this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
@@ -1020,6 +1028,22 @@ public final class GatewayServer implements AutoCloseable {
                     settingsApi.handlePost(exchange);
                 }
             });
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/runtime/keepalive", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> {
+                if (get) {
+                    runtimeControlApi.handleGetKeepalive(exchange);
+                } else {
+                    runtimeControlApi.handleSetKeepalive(exchange);
+                }
+            });
+            return;
+        }
+        if (post && Strings.CS.equals("/api/runtime/restart", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> runtimeControlApi.handleRestart(exchange));
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/schedule", targetPath)) {

@@ -18,7 +18,7 @@
  * leaves, and the shared-task footer. Those browse a session tree this product
  * does not have; recorded as deviations in `webui/UPSTREAM.md`.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DisclosureRow, ReadBlock, StateDot } from '@primitives'
 import clsx from 'clsx'
 import css from '@chat-styles/ToolRow.module.css'
@@ -28,6 +28,7 @@ import { isSubagentDelegationTool } from '../store/turnProcess'
 import { useAgentTranscript } from '../store/agentTranscript'
 import { useAgentRecord } from '../store/contextTimeline'
 import { useSubagentFocus } from '../store/subagentFocus'
+import { useTranscriptView } from '../store/transcriptView'
 import { useTranslate } from '../i18n/useTranslate'
 import { SUBAGENT_NS, subagentDicts } from '../i18n/dictionaries/subagent'
 import { readLabels } from './labels'
@@ -220,6 +221,15 @@ export function SubagentRow({ call, sessionId = null, defaultOpen = false }: {
 }) {
   const t = useTranslate(SUBAGENT_NS, subagentDicts)
   const [expanded, setExpanded] = useState(defaultOpen)
+  const transcriptMode = useTranscriptView((state) => state.mode)
+  const transcriptRevision = useTranscriptView((state) => state.revision)
+  const lastRevision = useRef(transcriptRevision)
+  useEffect(() => {
+    if (transcriptRevision !== lastRevision.current) {
+      lastRevision.current = transcriptRevision
+      setExpanded(transcriptMode === 'normal')
+    }
+  }, [transcriptMode, transcriptRevision])
   const [showTranscript, setShowTranscript] = useState(false)
   const loadTranscript = useAgentTranscript((state) => state.load)
 

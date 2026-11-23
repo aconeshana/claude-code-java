@@ -2,11 +2,22 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
+  Button,
   IconApiOutline14, IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
   IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconFolderOpenOutline16,
   IconFollowsystemOutline16, IconLightOutline16, IconRefreshOutline16, IconSettingsOutline16,
   Input, Menu, Pill, Switch,
 } from '@primitives'
+import {
+  fetchKeepaliveState,
+  restartGatewayRuntime,
+  setKeepaliveEnabled,
+  type RuntimeKeepaliveState,
+} from '../api/client'
+import { useModels } from '../store/models'
+import { useSchedule } from '../store/schedule'
+import { useSessions } from '../store/sessions'
+import { useComposerCommands } from '../store/commands'
 import css from '@chat-styles/SettingsRoot.module.css'
 import sectionCss from '@chat-styles/GeneralSection.module.css'
 import rowCss from '@chat-styles/PermissionRow.module.css'
@@ -76,26 +87,15 @@ const BEHAVIORS: readonly { key: PermissionBehaviorKind; label: string }[] = [
   { key: 'ask', label: '询问' },
 ]
 
-const THEME_CUBE_LABELS: Readonly<Record<ThemePreference, string>> = {
-  light: '浅色', dark: '深色', system: '跟随系统',
-}
 const THEME_CUBE_ICONS: Readonly<Record<ThemePreference, typeof IconLightOutline16>> = {
   light: IconLightOutline16, dark: IconDarkOutline16, system: IconFollowsystemOutline16,
 }
-
-const TRANSCRIPT_VIEW_OPTIONS: readonly { id: string; label: string }[] = [
-  { id: 'normal', label: '详细' },
-  { id: 'compact', label: '简洁' },
-]
-const ENTER_BEHAVIOR_OPTIONS: readonly { id: string; label: string }[] = [
-  { id: 'queue', label: '加入队列' },
-  { id: 'steer', label: '插话引导' },
-]
 
 export function SettingsPanel({ open, onClose }: {
   open: boolean
   onClose: () => void
 }) {
+  const t = useTranslate(SETTINGS_NS, settingsDicts)
   const effective = useSettings((state) => state.effective)
   const sources = useSettings((state) => state.sources)
   const loading = useSettings((state) => state.loading)
@@ -133,12 +133,31 @@ export function SettingsPanel({ open, onClose }: {
     ? permissions.defaultMode : ''
   const additionalDirectories = stringArray(permissions.additionalDirectories)
 
+  const navLabelOf = (id: SectionId): string => {
+    switch (id) {
+      case 'general': return t('nav.general')
+      case 'permissions': return t('nav.permissions')
+      case 'directories': return t('nav.directories')
+      case 'models': return t('nav.models')
+      case 'schedule': return t('nav.schedule')
+      case 'context': return t('nav.context')
+    }
+  }
+  const transcriptOptions = [
+    { id: 'normal', label: t('transcript.normal') },
+    { id: 'compact', label: t('transcript.compact') },
+  ]
+  const enterBehaviorOptions = [
+    { id: 'queue', label: t('enterBehavior.queue') },
+    { id: 'steer', label: t('enterBehavior.steer') },
+  ]
+
   return (
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div className={css.panel} role="dialog" aria-modal="true" aria-label="设置">
+      <div className={css.panel} role="dialog" aria-modal="true" aria-label={t('panel.title')}>
         <nav className={css.nav}>
-          <div className={css.navTitle}>设置</div>
+          <div className={css.navTitle}>{t('panel.title')}</div>
           <div className={css.navList}>
             {SECTIONS.map((section) => (
               <button
@@ -149,7 +168,7 @@ export function SettingsPanel({ open, onClose }: {
                 onClick={() => { setActiveSection(section.id) }}
               >
                 {section.icon}
-                <span className={css.navLabel}>{section.label}</span>
+                <span className={css.navLabel}>{navLabelOf(section.id)}</span>
               </button>
             ))}
           </div>
@@ -157,11 +176,11 @@ export function SettingsPanel({ open, onClose }: {
         <div className={css.content}>
           <div className={css.header}>
             <div className={css.actions}>
-              {loading && <span className={localCss.hint}>加载中…</span>}
+              {loading && <span className={localCss.hint}>{t('panel.loading')}</span>}
               <button
                 type="button"
                 className={localCss.iconButton}
-                aria-label="重新加载"
+                aria-label={t('panel.reload')}
                 onClick={() => { void refresh() }}
               >
                 <IconRefreshOutline16 size={14} />
@@ -169,7 +188,7 @@ export function SettingsPanel({ open, onClose }: {
             </div>
             <button type="button" className={css.close} onClick={onClose}>
               <IconCloseOutline16 size={14} />
-              <span className={css.hiddenLabel}>关闭设置</span>
+              <span className={css.hiddenLabel}>{t('panel.close')}</span>
             </button>
           </div>
           <div className={css.options}>
@@ -180,26 +199,26 @@ export function SettingsPanel({ open, onClose }: {
                 <LanguageRow />
                 <AppearanceRow />
                 <FontSizeRow />
-                <SettingsRow title="对话显示" description="控制历史消息中思考过程和工具调用的默认展开方式">
+                <SettingsRow title={t('transcript.title')} description={t('transcript.desc')}>
                   <MenuSelect
                     value={transcriptViewMode}
-                    label={transcriptViewMode === 'normal' ? '详细' : '简洁'}
-                    options={TRANSCRIPT_VIEW_OPTIONS}
+                    label={transcriptViewMode === 'normal' ? t('transcript.normal') : t('transcript.compact')}
+                    options={transcriptOptions}
                     onChange={(id) => { setTranscriptViewMode(id as 'normal' | 'compact') }}
                     ariaLabel="transcript view mode"
                   />
                 </SettingsRow>
-                <SettingsRow title="回复中按 Enter" description="智能体正在回复时，按 Enter 发送新消息的处理方式">
+                <SettingsRow title={t('enterBehavior.title')} description={t('enterBehavior.desc')}>
                   <MenuSelect
                     value={enterBehavior}
-                    label={enterBehavior === 'queue' ? '加入队列' : '插话引导'}
-                    options={ENTER_BEHAVIOR_OPTIONS}
+                    label={enterBehavior === 'queue' ? t('enterBehavior.queue') : t('enterBehavior.steer')}
+                    options={enterBehaviorOptions}
                     onChange={(id) => { setEnterBehavior(id as 'queue' | 'steer') }}
                     ariaLabel="busy enter behavior"
                   />
                 </SettingsRow>
                 <SettingsRow
-                  title="持续显示思考过程"
+                  title={t('alwaysThinking.title')}
                   description={<SourceBadge sources={sources} field="alwaysThinkingEnabled" />}
                 >
                   <Switch
@@ -208,6 +227,14 @@ export function SettingsPanel({ open, onClose }: {
                     label="alwaysThinkingEnabled"
                   />
                 </SettingsRow>
+                <KeepaliveRow />
+                <RestartRuntimeRow onReloadAll={() => {
+                  void refresh()
+                  void useSessions.getState().refresh()
+                  void useModels.getState().refresh()
+                  void useSchedule.getState().refresh()
+                  void useComposerCommands.getState().refresh()
+                }} />
               </div>
             )}
 
@@ -335,11 +362,17 @@ function LanguageRow() {
 
 /** Appearance preference: title + three theme cubes, vendored from dsh's `AppearanceRow`. */
 function AppearanceRow() {
+  const t = useTranslate(SETTINGS_NS, settingsDicts)
   const preference = useTheme((state) => state.preference)
   const setPreference = useTheme((state) => state.setPreference)
+  const themeLabel = (id: ThemePreference): string => {
+    if (id === 'light') return t('appearance.light')
+    if (id === 'dark') return t('appearance.dark')
+    return t('appearance.system')
+  }
   return (
     <div className={appearanceCss.group}>
-      <div className={appearanceCss.title}>外观</div>
+      <div className={appearanceCss.title}>{t('appearance.title')}</div>
       <div className={appearanceCss.cubeRow}>
         {THEME_PREFERENCES.map((id) => {
           const Icon = THEME_CUBE_ICONS[id]
@@ -352,7 +385,7 @@ function AppearanceRow() {
               onClick={() => { setPreference(id) }}
             >
               <Icon />
-              {THEME_CUBE_LABELS[id]}
+              {themeLabel(id)}
             </button>
           )
         })}
@@ -361,14 +394,80 @@ function AppearanceRow() {
   )
 }
 
+function KeepaliveRow() {
+  const t = useTranslate(SETTINGS_NS, settingsDicts)
+  const [state, setState] = useState<RuntimeKeepaliveState | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void fetchKeepaliveState().then((res) => {
+      if (active) setState(res)
+    }).catch(() => { /* endpoint unavailable on older gateways */ })
+    return () => { active = false }
+  }, [])
+
+  const supported = state?.supported !== false
+  return (
+    <SettingsRow
+      title={t('keepalive.title')}
+      description={supported ? t('keepalive.desc') : t('keepalive.unsupported')}
+    >
+      <Switch
+        checked={state?.enabled === true}
+        disabled={busy || !supported}
+        onChange={(next) => {
+          setBusy(true)
+          void setKeepaliveEnabled(next).then((res) => {
+            setState(res)
+          }).finally(() => { setBusy(false) })
+        }}
+        label={t('keepalive.title')}
+      />
+    </SettingsRow>
+  )
+}
+
+function RestartRuntimeRow({ onReloadAll }: { onReloadAll: () => void }) {
+  const t = useTranslate(SETTINGS_NS, settingsDicts)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  async function handleRestart() {
+    if (busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const res = await restartGatewayRuntime()
+      setNotice(
+        t('restart.done')
+          .replace('{tasks}', String(res.reloaded_tasks))
+          .replace('{models}', String(res.reloaded_models)),
+      )
+      onReloadAll()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsRow title={t('restart.title')} description={notice ?? t('restart.desc')}>
+      <Button variant="outline" size="sm" disabled={busy} onClick={() => { void handleRestart() }}>
+        {busy ? t('restart.busy') : t('restart.action')}
+      </Button>
+    </SettingsRow>
+  )
+}
+
 /** Font-size preference: title/description + stepper pill, vendored from dsh's `FontSizeRow`. */
 function FontSizeRow() {
+  const t = useTranslate(SETTINGS_NS, settingsDicts)
   const fontSize = useTheme((state) => state.fontSize)
   const setFontSize = useTheme((state) => state.setFontSize)
   return (
     <div className={fontSizeCss.row}>
       <div className={fontSizeCss.rowText}>
-        <div className={fontSizeCss.title}>字号大小</div>
+        <div className={fontSizeCss.title}>{t('fontSize.title')}</div>
         <div className={fontSizeCss.desc}>调整对话内容的文字大小</div>
       </div>
       <div className={fontSizeCss.control}>

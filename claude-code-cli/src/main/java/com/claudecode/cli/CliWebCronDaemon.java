@@ -63,6 +63,11 @@ final class CliWebCronDaemon implements AutoCloseable {
         scheduler.start();
     }
 
+    /** Reloads durable tasks from disk in place (used by Restart Runtime). */
+    void reloadNow() {
+        scheduler.reloadNow();
+    }
+
     /** Gateway port wired into {@code /api/schedule} for the web daemon. */
     GatewaySchedulePort port() {
         return new GatewaySchedulePort() {

@@ -4,6 +4,7 @@ import { subscribeMirror, type MirrorConnection } from './api/events'
 import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
 import { ApiError, type UserContentBlock } from './api/types'
 import { CONTEXT_NS, contextDicts } from './i18n/dictionaries/context'
+import { UI_NS, uiDicts } from './i18n/dictionaries/ui'
 import { useTranslate } from './i18n/useTranslate'
 import { pendingAskFor, useApprovals } from './store/approvals'
 import { pendingSudoFor, useSudoAsks } from './store/sudoAsks'
@@ -122,8 +123,21 @@ export function App() {
   const sudoAsks = useSudoAsks((state) => state.asks)
   const visibleSudo = pendingSudoFor(sudoAsks, selectedId)
 
-  const onSubmit = useCallback((content: string | readonly UserContentBlock[]) => {
-    void submitTurn(selectedId, content).catch((failure: unknown) => {
+  const onSubmit = useCallback((
+    content: string | readonly UserContentBlock[],
+    options?: { readonly steer?: boolean },
+  ) => {
+    const run = async () => {
+      if (options?.steer === true && selectedId != null) {
+        await cancelTurn({ session_id: selectedId }).catch((failure: unknown) => {
+          if (failure instanceof ApiError && failure.status === 404) return
+          console.error('steer cancellation failed', failure)
+        })
+        await new Promise((resolve) => { window.setTimeout(resolve, 120) })
+      }
+      await submitTurn(selectedId, content)
+    }
+    void run().catch((failure: unknown) => {
       console.error('turn submission failed', failure)
     })
   }, [selectedId])
@@ -150,6 +164,7 @@ export function App() {
     return true
   }, [])
   const contextT = useTranslate(CONTEXT_NS, contextDicts)
+  const uiT = useTranslate(UI_NS, uiDicts)
   const board = useTaskBoard((state) => state.board)
 
   // The subagent catalog and background shell catalog in the header.
@@ -253,7 +268,7 @@ export function App() {
       ) : (
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}
-        subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
+        subtitle={connected === 'open' ? uiT('status.connected') : connected === 'error' ? uiT('status.reconnecting') : uiT('status.connecting')}
         breadcrumbChild={breadcrumbChild}
         view={inspected == null ? view : 'chat'}
         onView={(next) => {
@@ -377,7 +392,7 @@ export function App() {
             <InputBar
               disabled={selectedId == null}
               busy={conversation?.turnRunning === true}
-              placeholder={selectedId == null ? '先在侧栏选择一个会话' : '输入消息，Enter 发送'}
+              placeholder={selectedId == null ? uiT('composer.placeholderNone') : uiT('composer.placeholder')}
               onSubmit={onSubmit}
               onStop={onStop}
               sessionId={selectedId}
