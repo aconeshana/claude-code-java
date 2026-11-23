@@ -71,6 +71,7 @@ class NativeReachabilityMetadataTest {
         "com.claudecode.core.message.Message",
         "com.claudecode.api.CreateMessageRequest",
         "com.claudecode.api.ApiMessage",
+        "com.claudecode.api.Delta",
         "com.claudecode.api.MessageDeltaData",
         "com.claudecode.core.diff.FileChangeResult",
         "com.claudecode.core.diff.StructuredPatchHunk",
