@@ -4,24 +4,13 @@ import type { MessageState } from './conversations'
 import { toMessageState } from './conversations'
 
 /**
- * Restored sub-agent conversations, keyed by `sessionId` + `agentId`.
+ * Restored & live sub-agent conversations, keyed by `sessionId` + `agentId`.
  *
- * A sub-agent's work lives in its own sidechain transcript
- * (`<project>/<sessionId>/subagents/agent-<agentId>.jsonl`), which the gateway
- * serves through `GET /api/sessions/{id}/agents/{agentId}/transcript` — parsed
- * with the same implementation the TUI's local-agent viewer uses, so both
- * surfaces read one transcript rather than two nearly-equal ones.
- *
- * Rows arrive in the parent snapshot's own shape, so they are reduced with the
- * shared {@link toMessageState} and rendered by the same row components
- * (`MessageItem`) the chat uses. Loading is per-agent and lazy: the row only
- * asks when the reader expands the transcript, and the cache is keyed so a
- * second open of the same agent never refetches. A failure is kept on the
- * entry (with a retry) rather than thrown, so a missing sidechain reads as
- * "no record" instead of breaking the row.
+ * Served through `GET /api/sessions/{id}/agents/{agentId}/transcript`, which
+ * returns the live in-memory display transcript while the agent is running and
+ * falls back to its persisted sidechain JSONL once completed.
  */
 
-/** The fetch status of one agent's transcript. */
 export type AgentTranscriptStatus = 'loading' | 'ready' | 'failed'
 
 export interface AgentTranscriptEntry {
@@ -30,24 +19,32 @@ export interface AgentTranscriptEntry {
   readonly messages: readonly MessageState[]
   /** A human-readable reason for `failed`. */
   readonly message: string | null
+  /** True when the gateway reports an active in-process run for this agent. */
+  readonly running: boolean
 }
 
 export interface AgentTranscriptStore {
   readonly transcripts: Readonly<Record<string, AgentTranscriptEntry>>
-  /**
-   * Ensure the transcript for `agentId` in `sessionId` is loaded. Idempotent:
-   * a key already loading or loaded is left alone (open the same agent twice
-   * and the second call is a no-op).
-   */
+  /** Ensure the transcript is loaded (no-op if already loading or ready). */
   load(sessionId: string, agentId: string): void
-  /** Drop one entry and read it again (the failure note's retry). */
+  /** Drop one entry and read it again (shows loading state). */
   reload(sessionId: string, agentId: string): void
+  /**
+   * Silent background refresh: updates messages and running flag in place
+   * without flashing a loading state (used while polling a live/resumed agent).
+   */
+  refresh(sessionId: string, agentId: string): Promise<boolean>
+  /** Optimistically append a user follow-up message while a continuation starts. */
+  appendOptimisticUser(sessionId: string, agentId: string, text: string): void
+  /** Clear or set the running flag (e.g. when a continuation request fails). */
+  setRunning(sessionId: string, agentId: string, running: boolean): void
 }
 
-/** The cache key. Both halves are opaque ids, so a separator that cannot appear in either is enough. */
 function keyOf(sessionId: string, agentId: string): string {
   return `${sessionId}\u0000${agentId}`
 }
+
+let optimisticSeq = 0
 
 export const useAgentTranscript = create<AgentTranscriptStore>((set, get) => ({
   transcripts: {},
@@ -56,9 +53,12 @@ export const useAgentTranscript = create<AgentTranscriptStore>((set, get) => ({
     const key = keyOf(sessionId, agentId)
     if (get().transcripts[key] !== undefined) return
     set((state) => ({
-      transcripts: { ...state.transcripts, [key]: { status: 'loading', messages: [], message: null } },
+      transcripts: {
+        ...state.transcripts,
+        [key]: { status: 'loading', messages: [], message: null, running: false },
+      },
     }))
-    void read(set, sessionId, agentId)
+    void read(set, sessionId, agentId, false)
   },
 
   reload(sessionId, agentId) {
@@ -68,27 +68,83 @@ export const useAgentTranscript = create<AgentTranscriptStore>((set, get) => ({
     })
     get().load(sessionId, agentId)
   },
+
+  async refresh(sessionId, agentId) {
+    return read(set, sessionId, agentId, true)
+  },
+
+  appendOptimisticUser(sessionId, agentId, text) {
+    const key = keyOf(sessionId, agentId)
+    const current = get().transcripts[key]
+    const optimistic: MessageState = {
+      kind: 'user',
+      id: `optimistic-user-${++optimisticSeq}`,
+      text,
+      time: Date.now(),
+    }
+    set((state) => ({
+      transcripts: {
+        ...state.transcripts,
+        [key]: {
+          status: 'ready',
+          messages: [...(current?.messages ?? []), optimistic],
+          message: null,
+          running: true,
+        },
+      },
+    }))
+  },
+
+  setRunning(sessionId, agentId, running) {
+    const key = keyOf(sessionId, agentId)
+    const current = get().transcripts[key]
+    if (current == null) return
+    set((state) => ({
+      transcripts: {
+        ...state.transcripts,
+        [key]: { ...current, running },
+      },
+    }))
+  },
 }))
 
-/** One read, landing into the entry the caller's `load` already claimed. */
 async function read(
   set: (updater: (state: AgentTranscriptStore) => Partial<AgentTranscriptStore>) => void,
   sessionId: string,
   agentId: string,
-): Promise<void> {
+  silent: boolean,
+): Promise<boolean> {
   const key = keyOf(sessionId, agentId)
-  const land = (entry: AgentTranscriptEntry): void => {
-    set((state) => ({ transcripts: { ...state.transcripts, [key]: entry } }))
-  }
   try {
     const snapshot = await fetchAgentTranscript(sessionId, agentId)
-    land({ status: 'ready', messages: snapshot.messages.map(toMessageState), message: null })
+    const running = snapshot.running === true
+    set((state) => ({
+      transcripts: {
+        ...state.transcripts,
+        [key]: {
+          status: 'ready',
+          messages: snapshot.messages.map(toMessageState),
+          message: null,
+          running,
+        },
+      },
+    }))
+    return running
   } catch (error) {
-    land({
-      status: 'failed',
-      messages: [],
-      message: error instanceof Error ? error.message : String(error),
-    })
+    if (!silent) {
+      set((state) => ({
+        transcripts: {
+          ...state.transcripts,
+          [key]: {
+            status: 'failed',
+            messages: [],
+            message: error instanceof Error ? error.message : String(error),
+            running: false,
+          },
+        },
+      }))
+    }
+    return false
   }
 }
 

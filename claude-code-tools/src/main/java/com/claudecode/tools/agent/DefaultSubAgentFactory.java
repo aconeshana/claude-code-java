@@ -555,14 +555,29 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     TranscriptRecorder buildSidechainTranscriptSink(String agentId,
                                                      String transcriptSubdir,
                                                      String attributionAgent) {
-        if (sessionIdentity == null) {
+        return buildSidechainTranscriptSink(agentId, transcriptSubdir, attributionAgent, null);
+    }
+
+    TranscriptRecorder buildSidechainTranscriptSink(String agentId,
+                                                     String transcriptSubdir,
+                                                     String attributionAgent,
+                                                     String parentSessionId) {
+        String effectiveSessionId = sidechainSessionId(parentSessionId);
+        if (effectiveSessionId == null) {
             return null;
         }
         SessionManager sidechainSessionManager = sidechainSessionManager();
-        Path explicit = sidechainTranscriptPath(agentId, transcriptSubdir);
+        Path explicit = sidechainTranscriptPath(agentId, transcriptSubdir, effectiveSessionId);
         return new TranscriptRecorder(sidechainSessionManager, new SessionStorage(),
             workingDirectory, /* isSidechain */ true, agentId, explicit,
             attributionAgent);
+    }
+
+    private String sidechainSessionId(String parentSessionId) {
+        if (StringUtils.isNotBlank(parentSessionId)) {
+            return parentSessionId;
+        }
+        return sessionIdentity != null ? sessionIdentity.get() : null;
     }
 
     private SessionManager sidechainSessionManager() {
@@ -572,13 +587,19 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
     }
 
     private Path sidechainTranscriptPath(String agentId, String transcriptSubdir) {
-        if (sessionIdentity == null) return null;
+        return sidechainTranscriptPath(agentId, transcriptSubdir, null);
+    }
+
+    private Path sidechainTranscriptPath(String agentId, String transcriptSubdir,
+                                         String parentSessionId) {
+        String effectiveSessionId = sidechainSessionId(parentSessionId);
+        if (effectiveSessionId == null) return null;
         SessionManager manager = sidechainSessionManager();
         if (StringUtils.isBlank(transcriptSubdir)) {
-            return manager.getAgentTranscriptPath(sessionIdentity.get(), agentId).normalize();
+            return manager.getAgentTranscriptPath(effectiveSessionId, agentId).normalize();
         }
         Path base = manager.getProjectDir()
-            .resolve(sessionIdentity.get()).resolve("subagents").normalize();
+            .resolve(effectiveSessionId).resolve("subagents").normalize();
         Path explicit = base.resolve(transcriptSubdir)
             .resolve("agent-" + agentId + ".jsonl").normalize();
         if (!explicit.startsWith(base)) {
@@ -692,8 +713,10 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                 parentContext.permissionAskCallback());
         }
 
+        String parentSessionId = parentContext != null ? parentContext.sessionId() : null;
         TranscriptRecorder sidechainRecorder = buildSidechainTranscriptSink(
-            agentId, effectiveRequest.transcriptSubdir(), effectiveRequest.subagentType());
+            agentId, effectiveRequest.transcriptSubdir(), effectiveRequest.subagentType(),
+            parentSessionId);
         if (sidechainRecorder != null) {
             TeamInfo teamInfo = currentTeamInfo();
             if (StringUtils.isNotBlank(teamInfo.teamName())
@@ -748,7 +771,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             String effort = EffortHelpers.resolveAppliedEffort(
                 config.model(), effectiveRequest.effort());
             Path transcriptPath = sidechainTranscriptPath(
-                agentId, effectiveRequest.transcriptSubdir());
+                agentId, effectiveRequest.transcriptSubdir(), parentSessionId);
             HookDispatcher childHooks = lifecycleListener.createSubAgentHookDispatcher(
                 new SubAgentLifecycleListener.SubAgentHookContext(
                     agentId,
@@ -1339,7 +1362,9 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
 
     private void writeAgentMetadata(String agentId, SubAgentRequest request,
                                     WorktreeService.AgentWorktree agentWorktree) {
-        Path transcript = sidechainTranscriptPath(agentId, null);
+        String parentSessionId = request != null && request.parentContext() != null
+            ? request.parentContext().sessionId() : null;
+        Path transcript = sidechainTranscriptPath(agentId, null, parentSessionId);
         if (transcript == null) return;
         SessionStorage storage = new SessionStorage();
         String worktreePath = agentWorktree == null ? null : agentWorktree.worktreePath();

@@ -2,6 +2,7 @@ package com.claudecode.gateway;
 
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +44,15 @@ final class GatewayRequests {
             respondJson(exchange, 400, errorBody("invalid_request", "body is not valid JSON"));
             return null;
         }
+    }
+
+    /** Like {@link #readJson}, rejecting non-object JSON payloads with HTTP 400. */
+    static ObjectNode readJsonObject(HttpExchange exchange) throws IOException {
+        JsonNode node = readJson(exchange);
+        if (node == null) return null;
+        if (node instanceof ObjectNode object) return object;
+        respondJson(exchange, 400, errorBody("invalid_request", "body must be a JSON object"));
+        return null;
     }
 
     /** The field as text, or {@code null} when absent or not a JSON string. */

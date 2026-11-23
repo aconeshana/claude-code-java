@@ -186,6 +186,49 @@ export interface AgentTranscriptSnapshot {
   /** The sub-agent id this transcript belongs to (the sidechain file's key). */
   readonly agent_id: string
   readonly messages: readonly SnapshotMessage[]
+  /** True when the sub-agent currently has an active in-process run. */
+  readonly running?: boolean
+}
+
+export interface AgentPromptResponse {
+  readonly ok: boolean
+  readonly status: 'queued' | 'resumed'
+  readonly agent_id: string
+}
+
+export interface AgentStopResponse {
+  readonly stopped: boolean
+  readonly agent_id: string
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/shells — background shell tasks
+// ---------------------------------------------------------------------------
+
+export type ShellStatus = 'running' | 'completed' | 'failed' | 'killed' | 'unknown'
+
+export interface ShellEntry {
+  readonly id: string
+  readonly command?: string
+  readonly description?: string
+  readonly status: ShellStatus
+  readonly start_time_ms: number
+  readonly end_time_ms?: number
+  readonly exit_code?: number
+}
+
+export interface ShellsListing {
+  readonly shells: readonly ShellEntry[]
+}
+
+export interface ShellOutputDetail extends ShellEntry {
+  readonly output: string
+  readonly truncated: boolean
+}
+
+export interface ShellStopResponse {
+  readonly stopped: boolean
+  readonly id: string
 }
 
 // ---------------------------------------------------------------------------

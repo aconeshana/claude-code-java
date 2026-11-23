@@ -1,4 +1,4 @@
-import { ApiError, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
+import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -135,6 +135,42 @@ export function fetchAgentTranscript(sessionId: string, agentId: string): Promis
     'GET',
     `/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}/transcript`,
   )
+}
+
+/**
+ * POST /api/sessions/{id}/agents/{agentId}/prompt: sends a follow-up message
+ * to a sub-agent (queues onto a running agent or resumes from its sidechain).
+ */
+export function promptAgent(sessionId: string, agentId: string, prompt: string): Promise<AgentPromptResponse> {
+  return requestJson(
+    'POST',
+    `/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}/prompt`,
+    { prompt },
+  )
+}
+
+/** POST /api/sessions/{id}/agents/{agentId}/stop: interrupts a running sub-agent. */
+export function stopAgent(sessionId: string, agentId: string): Promise<AgentStopResponse> {
+  return requestJson(
+    'POST',
+    `/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}/stop`,
+    {},
+  )
+}
+
+/** GET /api/shells: lists background shell tasks in the host process. */
+export function fetchShells(): Promise<ShellsListing> {
+  return requestJson('GET', '/api/shells')
+}
+
+/** GET /api/shells/{taskId}: detail and captured output for one background shell. */
+export function fetchShellOutput(taskId: string): Promise<ShellOutputDetail> {
+  return requestJson('GET', `/api/shells/${encodeURIComponent(taskId)}`)
+}
+
+/** POST /api/shells/{taskId}/stop: terminates a running background shell. */
+export function stopShell(taskId: string): Promise<ShellStopResponse> {
+  return requestJson('POST', `/api/shells/${encodeURIComponent(taskId)}/stop`, {})
 }
 
 export function openHeadlessSession(sessionId: string | null, projectPath: string | null): Promise<OpenSessionResponse> {

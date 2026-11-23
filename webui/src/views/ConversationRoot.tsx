@@ -10,9 +10,21 @@ import css from '@chat-styles/ConversationRoot.module.css'
  */
 export type ConversationView = 'chat' | 'context'
 
-export function ConversationRoot({ title, subtitle, transcript, composer, view, onView, context, tabLabels, headerActions }: {
+export interface BreadcrumbChild {
+  readonly title: string
+  readonly badge?: string | undefined
+  readonly onExit: () => void
+}
+
+export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript, composer, view, onView, context, tabLabels, headerActions }: {
   title: string
   subtitle?: string | undefined
+  /**
+   * When viewing a subagent conversation or background shell, renders the
+   * vendored breadcrumb lineage (`Parent / Child`) so clicking the parent crumb
+   * returns to the main conversation.
+   */
+  breadcrumbChild?: BreadcrumbChild | undefined
   transcript: ReactNode
   composer: ReactNode
   /**
@@ -66,9 +78,33 @@ export function ConversationRoot({ title, subtitle, transcript, composer, view, 
       <div className={css.header}>
         <div className={css.titleRow}>
           <div className={css.titleCluster}>
-            <nav className={css.crumbs}>
-              <span className={`${css.crumb} ${css.crumbCurrent}`}>{title}</span>
-              {subtitle != null && <span className={css.crumbSubagent}>{subtitle}</span>}
+            <nav className={css.crumbs} aria-label="会话路径">
+              {breadcrumbChild == null ? (
+                <>
+                  <span className={`${css.crumb} ${css.crumbCurrent}`}>{title}</span>
+                  {subtitle != null && <span className={css.crumbSubagent}>{subtitle}</span>}
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={css.crumb}
+                    onClick={breadcrumbChild.onExit}
+                    title={`返回 ${title}`}
+                  >
+                    {title}
+                  </button>
+                  <span className={css.crumbSep} aria-hidden>/</span>
+                  <span className={css.crumbSeg}>
+                    <span className={`${css.crumb} ${css.crumbCurrent}`} title={breadcrumbChild.title}>
+                      {breadcrumbChild.title}
+                    </span>
+                    {breadcrumbChild.badge != null && (
+                      <span className={css.crumbSubagent}>{breadcrumbChild.badge}</span>
+                    )}
+                  </span>
+                </>
+              )}
             </nav>
           </div>
           {headerActions != null && <div className={css.headerActions}>{headerActions}</div>}

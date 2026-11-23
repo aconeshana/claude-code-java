@@ -112,6 +112,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayTaskBoardHandler taskBoardApi;
     private final GatewayChangesHandler changesApi;
     private final GatewayWorkspaceFileHandler workspaceFileApi;
+    private final GatewayBackgroundTasksHandler backgroundTasksApi;
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
     /** The registry activation feed; released by {@link #close()}. */
@@ -162,6 +163,7 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayTaskBoardPort taskBoard = _ -> Optional.empty();
         private GatewayFileDiffPort fileDiff = GatewayFileDiffPort.none();
         private GatewayWorkspaceFilePort workspaceFile = GatewayWorkspaceFilePort.none();
+        private GatewayBackgroundTasksPort backgroundTasks = new GatewayBackgroundTasksPort() {};
         private WebWorkerDirectory webWorkers;
         private boolean remoteSessionState;
         private RemoteSessionContextPort.MetricsFold remoteMetrics =
@@ -284,6 +286,11 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder workspaceFile(GatewayWorkspaceFilePort value) {
             this.workspaceFile = Objects.requireNonNull(value, "workspaceFile");
+            return this;
+        }
+
+        public Builder backgroundTasks(GatewayBackgroundTasksPort value) {
+            this.backgroundTasks = Objects.requireNonNull(value, "backgroundTasks");
             return this;
         }
 
@@ -446,6 +453,7 @@ public final class GatewayServer implements AutoCloseable {
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
         this.changesApi = new GatewayChangesHandler(fileDiff);
         this.workspaceFileApi = new GatewayWorkspaceFileHandler(workspaceFile);
+        this.backgroundTasksApi = new GatewayBackgroundTasksHandler(builder.backgroundTasks);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -738,7 +746,72 @@ public final class GatewayServer implements AutoCloseable {
             // Reading a sidechain transcript walks a JSONL file; run it off
             // the exchange thread like the other session reads.
             serveAsync(exchange, () -> messagesSnapshotApi.handleAgent(
-                exchange, sessionId, agentId));
+                exchange, sessionId, agentId, backgroundTasksApi.isAgentRunning(agentId)));
+            return;
+        }
+        if (post && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && (Strings.CS.endsWith(targetPath, "/prompt")
+                    || Strings.CS.endsWith(targetPath, "/stop"))) {
+            String suffix = Strings.CS.endsWith(targetPath, "/prompt") ? "/prompt" : "/stop";
+            String tail = targetPath.substring("/api/sessions/".length(),
+                targetPath.length() - suffix.length());
+            int marker = tail.indexOf("/agents/");
+            if (marker > 0 && marker + "/agents/".length() < tail.length()) {
+                if (rejectIfUnauthenticated(auth, exchange)) return;
+                String sessionId = URLDecoder.decode(
+                    tail.substring(0, marker), StandardCharsets.UTF_8);
+                String agentId = URLDecoder.decode(
+                    tail.substring(marker + "/agents/".length()), StandardCharsets.UTF_8);
+                if (sessionId.isEmpty() || agentId.isEmpty()) {
+                    try (exchange) {
+                        respondJson(exchange, 400, errorBody("invalid_request",
+                            "session id and agent id are required"));
+                    }
+                    return;
+                }
+                serveAsync(exchange, () -> {
+                    if ("/prompt".equals(suffix)) {
+                        backgroundTasksApi.handlePromptAgent(exchange, sessionId, agentId);
+                    } else {
+                        backgroundTasksApi.handleStopAgent(exchange, sessionId, agentId);
+                    }
+                });
+                return;
+            }
+        }
+        if (get && "/api/shells".equals(targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> backgroundTasksApi.handleListShells(exchange));
+            return;
+        }
+        if (get && Strings.CS.startsWith(targetPath, "/api/shells/")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String taskId = URLDecoder.decode(
+                targetPath.substring("/api/shells/".length()), StandardCharsets.UTF_8);
+            if (taskId.isEmpty() || taskId.contains("/")) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "shell task id is required"));
+                }
+                return;
+            }
+            serveAsync(exchange, () -> backgroundTasksApi.handleGetShell(exchange, taskId));
+            return;
+        }
+        if (post && Strings.CS.startsWith(targetPath, "/api/shells/")
+                && Strings.CS.endsWith(targetPath, "/stop")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String taskId = URLDecoder.decode(
+                targetPath.substring("/api/shells/".length(),
+                    targetPath.length() - "/stop".length()), StandardCharsets.UTF_8);
+            if (taskId.isEmpty() || taskId.contains("/")) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "shell task id is required"));
+                }
+                return;
+            }
+            serveAsync(exchange, () -> backgroundTasksApi.handleStopShell(exchange, taskId));
             return;
         }
         if (post && Strings.CS.startsWith(targetPath, "/api/sessions/") && (Strings.CS.endsWith(

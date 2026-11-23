@@ -123,6 +123,11 @@ final class GatewayMessagesSnapshotHandler {
      * tool use id.
      */
     void handleAgent(HttpExchange exchange, String sessionId, String agentId) throws IOException {
+        handleAgent(exchange, sessionId, agentId, false);
+    }
+
+    void handleAgent(HttpExchange exchange, String sessionId, String agentId, boolean running)
+            throws IOException {
         List<Message> rows;
         try {
             rows = messages.agentMessages(sessionId, agentId).orElse(null);
@@ -136,6 +141,7 @@ final class GatewayMessagesSnapshotHandler {
         }
         ObjectNode body = snapshot(sessionId, rows, false);
         body.put("agent_id", agentId);
+        body.put("running", running);
         respondJson(exchange, 200, body);
     }
 

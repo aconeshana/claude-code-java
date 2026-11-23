@@ -62,16 +62,15 @@ Product-scope deviations (documented, not gaps):
 - **The `hint`/`argument_hint` field is carried but not rendered as ghost
   text.** Upstream renders a claim's hint as CSS generated content after the
   draft; that ghost-text mechanism is part of the claim machine above.
-- **No `/`-typed trigger.** Upstream opens the same menu from a typed `/`
-  under the caret (the ui-input-trigger detect pipeline). This composer opens
-  the "+" menu from the "+" button only; a typed `/` stays plain text. (The
-  typed **`@`** half of that pipeline IS now ported — see the `@`-reference
-  section below; the `/` half remains unported, so `+` stays the only way in
-  for commands.)
-- **No fuzzy query filtering.** Upstream's empty-query menu shows sections;
-  a typed query ranks every row by name/label (`rankByName` from
-  ui-primitives). The "+" menu here opens with an empty query and no search
-  input — it is a pick list, not a search box.
+- **Typed `/` trigger and fuzzy query filtering (ported).** Typing `/` at the
+  start of the draft opens the same `ComposerMenu` shell via
+  `SlashTriggerPlugin` + `src/views/slashCommand.ts` over the shared
+  `src/store/commands.ts` (`GET /api/commands`) store. An empty `/` query shows
+  all commands under the Commands section; typing further filters and ranks
+  every row client-side with vendored `rankByName` (`@primitives`), auto-closing
+  when no candidate matches. Picking a row via click, `Enter`, or `Tab`
+  replaces the active `/query` token with `/name `. The "+" button continues to
+  open the full Add (File) + Commands pick list.
 
 ### `@`-file references (typed trigger, 2026-11-02)
 
@@ -1594,22 +1593,22 @@ plausible-looking implementation goes wrong:
    produced in full lives in its sidechain, which the row loads separately via
    the transcript endpoint. The frame carries one line on purpose.
 
-#### Honest boundaries
+#### Header switching, continuation & background shells
 
-What this port delivers: the session's subagents are **listed** (description,
-type, status dot, tokens, duration), each **watched live** while running, and
-each opens the **transcript** the
-gateway serves (`GET /api/sessions/{id}/agents/{agentId}/transcript`).
+Picking a subagent from `SubagentCatalogMenu` now switches the conversation
+column into `SubagentChatView` with a parent/child breadcrumb in
+`ConversationRoot` (`Parent / Subagent`) and a bottom `InputBar` wired to
+`POST /api/sessions/{id}/agents/{agentId}/prompt` (queuing onto a running
+`LocalAgentTask` or resuming via `AgentContinuationService`) and
+`POST /api/sessions/{id}/agents/{agentId}/stop`. Live runs serve
+`LocalAgentTask.displayTranscript()` through `GET /api/sessions/{id}/agents/{agentId}/transcript`
+with a `running` flag for polling.
 
-What it does **not** deliver, and must not imply: dsh's child-session model.
-There are no subagent tabs, no `dsh-resource://subagentchat/...` addresses, no
-independent subagent conversation, and no read-only composer. Continuing or
-interrupting a subagent from this menu is **not** wired: the gateway exposes
-no such route, so `onOpen` opens the transcript and nothing else. A
-continuation entry point would need a `resumeAgent`/`interruptAgent` pair on
-`GatewaySessionContextPort` plus a CLI implementation that can reach the
-agent's `ToolExecutionContext` — the row menu must stay read-only until that
-exists.
+Background shells (`TaskType.LOCAL_BASH` in `TaskRegistry`) sit beside the
+subagent catalog in the same header band (`ShellCatalogMenu`, reusing
+`SubagentCatalogMenu.module.css`) and switch into `ShellDetailView` (backed by
+`GET /api/shells`, `GET /api/shells/{id}`, `POST /api/shells/{id}/stop`, and
+vendored `TerminalBlock`).
 
 ## Local modifications
 

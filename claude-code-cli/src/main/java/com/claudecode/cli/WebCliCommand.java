@@ -190,7 +190,11 @@ public class WebCliCommand implements Callable<Integer> {
                 // workspaceFile stays null: RemoteWorkspaceFilePort resolves
                 // every remote session's files through its owner's reported
                 // work directory, which is the only correct root here.
-                null);
+                null,
+                new CliBackgroundTasksPort(
+                    com.claudecode.tools.tasks.TaskRegistry.global(),
+                    headless::liveEngine,
+                    headless::toolRegistry));
             CountDownLatch stopped = new CountDownLatch(1);
             Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().unstarted(() -> {
                 runtime.close();

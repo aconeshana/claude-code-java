@@ -106,6 +106,11 @@ final class CliHeadlessSessionFactory {
             AbortController abort,
             String projectPath) {}
 
+    /** Tool registry shared by headless sessions assembled by this factory. */
+    ToolRegistry toolRegistry() {
+        return toolRegistry;
+    }
+
     /**
      * Assembles one headless session bound to {@code projectPath}, optionally
      * resuming {@code priorMessages}.

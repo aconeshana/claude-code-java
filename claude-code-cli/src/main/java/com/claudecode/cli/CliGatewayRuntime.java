@@ -3,6 +3,7 @@ package com.claudecode.cli;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.VersionInfo;
+import com.claudecode.gateway.GatewayBackgroundTasksPort;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
 import com.claudecode.gateway.GatewaySpinnerVerbsPort;
@@ -110,6 +111,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayTaskBoardPort taskBoard;
     private final GatewayFileDiffPort fileDiff;
     private final GatewayWorkspaceFilePort workspaceFile;
+    private final GatewayBackgroundTasksPort backgroundTasks;
     /** One fold for the gateway's life, so a replay is reused until its transcript changes. */
     private final CliTranscriptMetricsFold remoteMetrics = new CliTranscriptMetricsFold();
     /**
@@ -239,6 +241,22 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel,
             GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff,
             GatewayWorkspaceFilePort workspaceFile) {
+        this(registry, catalog, headless, interactions, sessionMessages, settings, schedule,
+            models, commands, sessionContext, actions, permissionMode, spinnerVerbs,
+            fileSuggestions, sessionCancel, taskBoard, fileDiff, workspaceFile, null);
+    }
+
+    CliGatewayRuntime(SessionHostRegistry registry, GatewaySessionCatalogPort catalog,
+            CliHeadlessGatewaySessions headless, InteractionCoordinator interactions,
+            GatewaySessionMessagesPort sessionMessages,
+            GatewaySettingsPort settings, GatewaySchedulePort schedule,
+            GatewayModelsPort models, GatewayCommandsPort commands,
+            GatewaySessionContextPort sessionContext, GatewaySessionActionsPort actions,
+            GatewayPermissionModePort permissionMode, GatewaySpinnerVerbsPort spinnerVerbs,
+            GatewayFileSuggestionsPort fileSuggestions, GatewaySessionCancelPort sessionCancel,
+            GatewayTaskBoardPort taskBoard, GatewayFileDiffPort fileDiff,
+            GatewayWorkspaceFilePort workspaceFile,
+            GatewayBackgroundTasksPort backgroundTasks) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.headless = headless;
@@ -257,6 +275,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         this.taskBoard = taskBoard;
         this.fileDiff = fileDiff;
         this.workspaceFile = workspaceFile;
+        this.backgroundTasks = backgroundTasks;
     }
 
     @Override
@@ -337,6 +356,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .taskBoard(taskBoard != null ? taskBoard : _ -> Optional.empty())
             .fileDiff(fileDiff != null ? fileDiff : GatewayFileDiffPort.none())
             .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
+            .backgroundTasks(backgroundTasks != null ? backgroundTasks : new GatewayBackgroundTasksPort() {})
             .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
             // Every session a webui client addresses belongs to this process or
             // to another TUI on the machine; the gateway forwards the halves

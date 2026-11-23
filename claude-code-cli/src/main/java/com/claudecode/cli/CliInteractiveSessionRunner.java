@@ -23,6 +23,7 @@ import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.engine.CostCalculator;
 import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.core.engine.StreamingClient;
@@ -418,7 +419,19 @@ final class CliInteractiveSessionRunner {
                         return Optional.of(Path.of(interactiveCwd));
                     }
                     return headlessSessions.projectPathOf(sessionId).map(Path::of);
-                }).port());
+                }).port(),
+                new CliBackgroundTasksPort(
+                    TaskRegistry.global(),
+                    sessionId -> {
+                        Optional<QuerySession> headlessEngine = headlessSessions.liveEngine(sessionId);
+                        if (headlessEngine.isPresent()) return headlessEngine;
+                        String activeId = engine.conversation().getSessionId();
+                        if (StringUtils.isBlank(sessionId) || sessionId.equals(activeId)) {
+                            return Optional.of(engine);
+                        }
+                        return Optional.empty();
+                    },
+                    () -> toolRegistry));
             DoctorPort doctorPort = CliRuntimeAdapters.newDoctorPort(
                 permissionGate, toolRegistry, interactiveCwd, pluginRuntime);
             CliSettingsManagementAdapter settingsManagement =

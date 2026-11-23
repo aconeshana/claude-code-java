@@ -16,9 +16,8 @@ import {
   type EditorState,
   type LexicalEditor,
 } from 'lexical'
-import { IconPaperclipOutline16, IconPlusOutline16, IconSendOutline16, IconSkillOutline16, IconStopFill16 } from '@primitives'
+import { IconPlusOutline16, IconSendOutline16, IconStopFill16 } from '@primitives'
 import type { FileCandidate, UserContentBlock } from '../api/types'
-import { fetchComposerCommands, type ComposerCommandEntry } from '../api/client'
 import {
   AttachmentError,
   buildContentBlocks,
@@ -36,10 +35,17 @@ import {
 import { useEnterBehavior } from '../store/enterBehavior'
 import { AtTriggerPlugin } from './AtTriggerPlugin'
 import { formatMention, type AtToken } from './atReference'
+import { SlashTriggerPlugin } from './SlashTriggerPlugin'
+import {
+  applySlashPick,
+  plusMenuCandidates,
+  slashMenuCandidates,
+  type SlashToken,
+} from './slashCommand'
+import { useComposerCommands } from '../store/commands'
 import { useFileSuggestions } from '../store/fileSuggestions'
 import { ComposerMenu } from '../../vendor/dsh-composer-menu/ComposerMenu'
 import { menuReduce, MENU_CLOSED, type MenuCandidate, type MenuState } from '../../vendor/dsh-composer-menu/menuCore'
-import { sectionRows } from '../../vendor/dsh-composer-menu/sectionRows'
 import { ModelSelect } from '../../vendor/dsh-model-select/ModelSelect'
 import { ContextMeter } from '../../vendor/dsh-context-meter/ContextMeter'
 import { StatsPills } from '../../vendor/dsh-stats-pills/StatsPills'
@@ -128,16 +134,17 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   // notice row and the flush effect both react to it; localStorage stays the
   // source of truth (it survives a reload mid-turn).
   const [queuedContent, setQueuedContent] = useState<string | readonly UserContentBlock[] | null>(null)
-  // "+" menu: the vendored reducer state over the /api/commands catalogue.
-  // The catalogue fetch is per-open (not interval-polled) — dsh warms its
-  // directory per session scope; a fresh open is this app's equivalent.
+  // "+" and typed "/" menu: the vendored reducer state over the /api/commands
+  // catalogue. Both entry points share one menu shell (`menuMode` distinguishes
+  // the "+" button's Add+Commands pick list from a typed `/` fuzzy-ranked list).
   const [menu, setMenu] = useState<MenuState>(MENU_CLOSED)
+  const [menuMode, setMenuMode] = useState<'plus' | 'slash' | null>(null)
+  const [slashToken, setSlashToken] = useState<SlashToken | null>(null)
   // The `@`-reference menu is a second, independent menu over the same
   // vendored shell and reducer: it owns a files-only group, opens on a typed
   // `@` token under the caret (AtTriggerPlugin) and closes when that token
   // goes away. The two menus never show together — a `@` pick consumes the
-  // key before the "+" menu sees it, and opening the "+" menu clears the
-  // token's menu.
+  // key before the command menu sees it, and opening one closes the other.
   const [atToken, setAtToken] = useState<AtToken | null>(null)
   const [fileMenu, setFileMenu] = useState<MenuState>(MENU_CLOSED)
   // Selectors, not the whole-store subscription: zustand hands a new state
@@ -167,6 +174,11 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const editorRef = useRef<LexicalEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const enterBehavior = useEnterBehavior((state) => state.behavior)
+  const composerCommands = useComposerCommands((state) => state.commands)
+  const commandsLoaded = useComposerCommands((state) => state.loaded)
+  const commandsFailed = useComposerCommands((state) => state.failed)
+  const refreshCommands = useComposerCommands((state) => state.refresh)
+  const wasSlashActiveRef = useRef(false)
   const fileFiles = useFileSuggestions((state) => state.files)
   const filePending = useFileSuggestions((state) => state.pending)
   const fileQuery = useFileSuggestions((state) => state.query)
@@ -244,9 +256,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     setAttachments((current) => current.filter((a) => a.id !== id))
   }
 
-  // --- "+" menu (vendored dsh ComposerMenu over the /api/commands catalogue) ---
+  // --- "+" and "/" menu (vendored dsh ComposerMenu over /api/commands) ---
 
   const closeMenu = useCallback((): void => {
+    setMenuMode(null)
     setMenu((current) => menuReduce(current, { type: 'close' }))
   }, [])
 
@@ -257,9 +270,8 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     if (disabled) closeMenu()
   }, [disabled, closeMenu])
 
-  /** Opens the menu: seeds the pending group, then settles the fetch. */
-  const openMenu = useCallback((): void => {
-    if (disabled) return
+  /** Seeds/refines the single 'command' group in the vendored reducer. */
+  const hitCommandMenu = useCallback((): void => {
     setMenu((current) => {
       const hit = menuReduce(current, { type: 'hit' })
       // The vendored reducer only ever UPDATES already-registered groups —
@@ -274,31 +286,73 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
         groups: [...hit.groups, { source: 'command', status: 'pending' as const, items: [] }],
       }
     })
-    void (async () => {
-      try {
-        const listing = await fetchComposerCommands()
-        setMenu((current) => menuReduce(current, {
-          type: 'source-settled',
-          generation: current.generation,
-          source: 'command',
-          items: composerCandidates(listing.commands),
-        }))
-      } catch {
-        // A failed source drops its group silently (upstream behavior); an
-        // empty ready group auto-closes the menu.
-        setMenu((current) => menuReduce(current, {
-          type: 'source-failed',
-          generation: current.generation,
-          source: 'command',
-        }))
-      }
-    })()
-  }, [disabled])
+  }, [])
+
+  /** Opens the "+" menu: seeds the pending group, then refreshes the catalogue. */
+  const openMenu = useCallback((): void => {
+    if (disabled) return
+    setFileMenu((current) => menuReduce(current, { type: 'close' }))
+    setMenuMode('plus')
+    hitCommandMenu()
+    void refreshCommands()
+  }, [disabled, hitCommandMenu, refreshCommands])
 
   /**
-   * A menu pick: the File row opens the picker; a command row inserts
-   * "/name " at the draft head (this composer has no argument-claim machine
-   * — the token lands as plain text and the turn pipeline dispatches it).
+   * The SlashTriggerPlugin reports the active `/` token on every editor update.
+   * Entering a `/` token opens/refines the command menu and refreshes the
+   * catalogue once per `/` session (subsequent keystrokes rank client-side via
+   * vendored `rankByName` with zero network latency). Leaving the token closes
+   * a slash-opened menu without disturbing a "+"-opened menu.
+   */
+  useEffect(() => {
+    if (slashToken == null) {
+      wasSlashActiveRef.current = false
+      setMenuMode((current) => {
+        if (current !== 'slash') return current
+        setMenu((m) => menuReduce(m, { type: 'close' }))
+        return null
+      })
+      return
+    }
+    if (disabled) return
+    setFileMenu((current) => menuReduce(current, { type: 'close' }))
+    setMenuMode('slash')
+    hitCommandMenu()
+    if (!wasSlashActiveRef.current) {
+      wasSlashActiveRef.current = true
+      void refreshCommands()
+    }
+  }, [slashToken, disabled, hitCommandMenu, refreshCommands])
+
+  // Settle the command menu whenever the catalogue loads/updates or the typed
+  // `/` query refines. Empty ranked results auto-close the menu via reducer.
+  useEffect(() => {
+    if (menuMode == null) return
+    if (commandsFailed && !commandsLoaded) {
+      setMenu((current) => menuReduce(current, {
+        type: 'source-failed',
+        generation: current.generation,
+        source: 'command',
+      }))
+      setMenuMode(null)
+      return
+    }
+    if (!commandsLoaded) return
+    const items = menuMode === 'plus'
+      ? plusMenuCandidates(composerCommands)
+      : slashMenuCandidates(composerCommands, slashToken?.query ?? '')
+    setMenu((current) => menuReduce(current, {
+      type: 'source-settled',
+      generation: current.generation,
+      source: 'command',
+      items,
+    }))
+  }, [menuMode, composerCommands, commandsLoaded, commandsFailed, slashToken])
+
+  /**
+   * A menu pick: the File row opens the picker; a command row replaces the
+   * active `/` token when triggered by typing `/` (or inserts "/name " at the
+   * draft head when opened from the "+" button).
    */
   const pickMenuItem = useCallback((source: string, index: number): void => {
     const group = menu.groups.find((g) => g.source === source)
@@ -310,10 +364,24 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
       return
     }
     if (item.value === 'command') {
+      const activeToken = menuMode === 'slash' ? slashToken : null
       closeMenu()
+      if (activeToken != null) {
+        const editor = editorRef.current
+        if (editor == null) return
+        editor.update(() => {
+          const root = $getRoot()
+          const { text: merged, caret } = applySlashPick(root.getTextContent(), activeToken, item.name)
+          root.clear()
+          const node = $createTextNode(merged)
+          root.append($createParagraphNode().append(node))
+          node.select(caret, caret)
+        })
+        return
+      }
       insertAtDraftHead(`/${item.name} `)
     }
-  }, [menu.groups, closeMenu])
+  }, [menu.groups, menuMode, slashToken, closeMenu])
 
   // --- "@" reference menu (typed trigger over GET /api/file-suggestions) ---
 
@@ -328,6 +396,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
       setFileMenu((current) => menuReduce(current, { type: 'close' }))
       return
     }
+    closeMenu()
     setFileMenu((current) => {
       const hit = menuReduce(current, { type: 'hit' })
       if (hit.groups.some((group) => group.source === 'file')) return hit
@@ -337,7 +406,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
       }
     })
     void searchFiles(atToken.query)
-  }, [atToken, searchFiles])
+  }, [atToken, searchFiles, closeMenu])
 
   // Mirror the store's rows onto the menu's single 'file' group — but only
   // once it has actually answered *this* token's query. Settling on the
@@ -459,13 +528,14 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   }, [])
 
   /**
-   * The open menu's keyboard share (combobox pattern): ArrowUp/ArrowDown
-   * cycle the shared highlight, Escape closes, Enter settles the
-   * highlighted row. Returns true only when the key was consumed; a closed
-   * menu consumes nothing so plain editing is untouched.
+   * The open command menu's keyboard share (combobox pattern): ArrowUp/ArrowDown
+   * cycle the shared highlight, Escape closes, Enter (and Tab in typed `/` mode)
+   * settles the highlighted row. Returns true only when the key was consumed; a
+   * closed menu or active IME composition consumes nothing.
    */
   const onMenuKeyDown = useCallback((event: KeyboardEvent): boolean => {
     if (!menu.open) return false
+    if (event.isComposing || event.keyCode === 229) return false
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       setMenu((current) => menuReduce(current, { type: 'move', dir: event.key === 'ArrowDown' ? 1 : -1 }))
@@ -476,13 +546,13 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
       closeMenu()
       return true
     }
-    if (event.key === 'Enter' && menu.highlight !== null) {
+    if ((event.key === 'Enter' || (event.key === 'Tab' && menuMode === 'slash')) && menu.highlight !== null) {
       event.preventDefault()
       pickMenuItem(menu.highlight.source, menu.highlight.index)
       return true
     }
     return false
-  }, [menu.open, menu.highlight, closeMenu, pickMenuItem])
+  }, [menu.open, menu.highlight, menuMode, closeMenu, pickMenuItem])
 
   const submit = useCallback((): void => {
     if (disabled || !hasSubmittableContent(draftText, attachments)) return
@@ -599,6 +669,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
               onFileMenuKeyDown(event) || onMenuKeyDown(event)} />
             <PasteFilesPlugin onFiles={addFiles} />
             <AtTriggerPlugin onToken={setAtToken} />
+            <SlashTriggerPlugin onToken={setSlashToken} />
           </div>
         </LexicalComposer>
         <div className={css.row}>
@@ -714,30 +785,6 @@ const MODEL_SELECT_STRINGS = {
 }
 
 /**
- * Projects the /api/commands listing onto the menu's Add + Commands
- * sections: the File row (this composer's one client-side addition, dsh
- * registers File through the same menu API) then every catalogue row in
- * registry order — skills and commands interleaved, as dsh merges host
- * commands with client contributions.
- */
-function composerCandidates(catalogue: readonly ComposerCommandEntry[]): readonly MenuCandidate[] {
-  const fileRow: MenuCandidate = {
-    name: 'file',
-    label: '文件',
-    description: '添加图片或文件到输入框',
-    icon: IconPaperclipOutline16,
-    value: 'file',
-  }
-  const rows: readonly MenuCandidate[] = catalogue.map((entry) => ({
-    name: entry.name,
-    ...(entry.description == null ? {} : { description: entry.description }),
-    ...(entry.kind === 'skill' ? { icon: IconSkillOutline16 } : {}),
-    value: 'command',
-  }))
-  return sectionRows(fileRow, rows, { add: '添加', commands: '指令' })
-}
-
-/**
  * Projects the gateway's file candidates onto the menu's one 'file' group.
  * A directory row keeps its trailing slash and takes the folder glyph, so the
  * row reads as drillable; the pick inserts the same slash-terminated path,
@@ -816,6 +863,9 @@ function MenuArrowKeysPlugin({ onMenuKeyDown }: {
   const [editor] = useLexicalComposerContext()
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      // Enter is handled exclusively by SubmitKeyPlugin's KEY_ENTER_COMMAND so
+      // a single keypress cannot settle a menu pick twice in one event tick.
+      if (event.key === 'Enter') return
       if (onMenuKeyDown(event)) event.preventDefault()
     }
     return editor.registerRootListener((root, previous) => {

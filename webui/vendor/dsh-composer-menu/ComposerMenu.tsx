@@ -101,6 +101,7 @@ export function ComposerMenu({
       ref={listRef}
       className={css.menu}
       style={{ maxHeight }}
+      data-trigger-menu=""
       data-overflow-below={hasOverflowBelow || undefined}
     >
       <div

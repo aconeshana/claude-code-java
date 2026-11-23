@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'vitest'
+import type { ComposerCommandEntry } from '../api/types'
+import {
+  activeSlashToken,
+  applySlashPick,
+  plusMenuCandidates,
+  sameSlashToken,
+  slashMenuCandidates,
+} from './slashCommand'
+
+describe('activeSlashToken', () => {
+  it('detects a bare slash at the start of the draft', () => {
+    expect(activeSlashToken('/', 1)).toEqual({ start: 0, end: 1, query: '' })
+  })
+
+  it('detects a command prefix at the start of the draft', () => {
+    expect(activeSlashToken('/comp', 5)).toEqual({ start: 0, end: 5, query: 'comp' })
+  })
+
+  it('allows leading horizontal whitespace before slash', () => {
+    expect(activeSlashToken('  /he', 5)).toEqual({ start: 2, end: 5, query: 'he' })
+  })
+
+  it('returns null when caret is before the slash', () => {
+    expect(activeSlashToken('  /he', 2)).toBeNull()
+    expect(activeSlashToken('/he', 0)).toBeNull()
+  })
+
+  it('closes once whitespace follows the command token', () => {
+    expect(activeSlashToken('/compact ', 9)).toBeNull()
+    expect(activeSlashToken('/compact now', 12)).toBeNull()
+  })
+
+  it('stays active when caret returns inside the command token before args', () => {
+    expect(activeSlashToken('/comp now', 5)).toEqual({ start: 0, end: 5, query: 'comp' })
+    expect(activeSlashToken('/compact now', 4)).toEqual({ start: 0, end: 8, query: 'com' })
+  })
+
+  it('ignores slashes in the middle of prose or on later lines', () => {
+    expect(activeSlashToken('check /compact', 14)).toBeNull()
+    expect(activeSlashToken('http://example.com', 18)).toBeNull()
+    expect(activeSlashToken('\n/compact', 9)).toBeNull()
+  })
+
+  it('returns null for out-of-range caret', () => {
+    expect(activeSlashToken('/help', 99)).toBeNull()
+    expect(activeSlashToken('', 0)).toBeNull()
+  })
+})
+
+describe('sameSlashToken', () => {
+  it('compares tokens by value', () => {
+    expect(sameSlashToken(null, null)).toBe(true)
+    expect(sameSlashToken({ start: 0, end: 2, query: 'h' }, { start: 0, end: 2, query: 'h' })).toBe(true)
+    expect(sameSlashToken({ start: 0, end: 2, query: 'h' }, { start: 0, end: 3, query: 'he' })).toBe(false)
+    expect(sameSlashToken({ start: 0, end: 2, query: 'h' }, null)).toBe(false)
+  })
+})
+
+describe('applySlashPick', () => {
+  it('replaces a bare slash with /name and trailing space', () => {
+    const token = activeSlashToken('/', 1)!
+    expect(applySlashPick('/', token, 'compact')).toEqual({
+      text: '/compact ',
+      caret: 9,
+    })
+  })
+
+  it('replaces a partial query with /name and trailing space', () => {
+    const token = activeSlashToken('/com', 4)!
+    expect(applySlashPick('/com', token, 'compact')).toEqual({
+      text: '/compact ',
+      caret: 9,
+    })
+  })
+
+  it('replaces the full token without duplicating an existing space before args', () => {
+    const token = activeSlashToken('/com focus on tests', 4)!
+    expect(applySlashPick('/com focus on tests', token, 'compact')).toEqual({
+      text: '/compact focus on tests',
+      caret: 9,
+    })
+  })
+
+  it('preserves leading whitespace when present', () => {
+    const token = activeSlashToken('  /he', 5)!
+    expect(applySlashPick('  /he', token, 'help')).toEqual({
+      text: '  /help ',
+      caret: 8,
+    })
+  })
+})
+
+describe('slashMenuCandidates & plusMenuCandidates', () => {
+  const catalogue: readonly ComposerCommandEntry[] = [
+    { name: 'help', description: 'Show help', kind: 'command' },
+    { name: 'compact', description: 'Compact conversation', argument_hint: '[instructions]', kind: 'command' },
+    { name: 'clear', description: 'Clear history', kind: 'command' },
+    { name: 'code-review', description: 'Review code changes', kind: 'skill' },
+  ]
+
+  it('shows all commands under the Commands section for an empty slash query', () => {
+    const rows = slashMenuCandidates(catalogue, '')
+    expect(rows.map((r) => r.name)).toEqual(['help', 'compact', 'clear', 'code-review'])
+    expect(rows.every((r) => r.section === '指令')).toBe(true)
+    expect(rows[1]?.hint).toBe('[instructions]')
+    expect(rows[3]?.icon).toBeDefined()
+  })
+
+  it('ranks prefix and fuzzy subsequence matches using vendored rankByName', () => {
+    const rows = slashMenuCandidates(catalogue, 'c')
+    expect(rows.map((r) => r.name)).toEqual(['compact', 'clear', 'code-review'])
+    // Filtered results drop section headings so rank order is preserved.
+    expect(rows.every((r) => r.section === undefined)).toBe(true)
+
+    const fuzzy = slashMenuCandidates(catalogue, 'cr')
+    expect(fuzzy.map((r) => r.name)).toEqual(['code-review', 'clear'])
+  })
+
+  it('returns empty list when no command matches the query', () => {
+    expect(slashMenuCandidates(catalogue, 'zzz')).toEqual([])
+  })
+
+  it('prepends the File row in Add section for the + menu', () => {
+    const rows = plusMenuCandidates(catalogue)
+    expect(rows[0]).toMatchObject({ name: 'file', section: '添加', value: 'file' })
+    expect(rows.slice(1).map((r) => r.name)).toEqual(['help', 'compact', 'clear', 'code-review'])
+    expect(rows.slice(1).every((r) => r.section === '指令')).toBe(true)
+  })
+})

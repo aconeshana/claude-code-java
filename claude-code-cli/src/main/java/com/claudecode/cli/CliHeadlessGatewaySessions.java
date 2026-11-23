@@ -268,6 +268,11 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         return entry == null ? Optional.empty() : Optional.of(entry.assembled().engine());
     }
 
+    /** Shared tool registry backing sessions opened by this gateway. */
+    com.claudecode.tools.ToolRegistry toolRegistry() {
+        return factory.toolRegistry();
+    }
+
     /**
      * The snapshot adapter for the gateway's messages endpoint: an open
      * headless session serves its live in-memory conversation (engine
@@ -329,6 +334,13 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                     String sessionId, String agentId) {
                 if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(agentId)) {
                     return Optional.empty();
+                }
+                // Live in-memory display transcript wins while an agent is
+                // actively running (or just resumed), matching the TUI viewer.
+                var liveHandle = TaskRegistry.global().getAgentHandle(agentId).orElse(null);
+                if (liveHandle != null) {
+                    List<Message> live = liveHandle.displayTranscript();
+                    if (!live.isEmpty()) return Optional.of(live);
                 }
                 Path transcript = new SessionManager(mainCwd)
                     .getAgentTranscriptPath(sessionId, agentId);

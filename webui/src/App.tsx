@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { cancelTurn, submitTurn } from './api/client'
+import { cancelTurn, promptAgent, stopAgent, submitTurn } from './api/client'
 import { subscribeMirror, type MirrorConnection } from './api/events'
 import { captureTokenFromUrl, currentToken, initTokenSync } from './api/token'
 import { ApiError, type UserContentBlock } from './api/types'
@@ -8,22 +8,27 @@ import { useTranslate } from './i18n/useTranslate'
 import { pendingAskFor, useApprovals } from './store/approvals'
 import { pendingSudoFor, useSudoAsks } from './store/sudoAsks'
 import { useAuth } from './store/auth'
+import { useAgentTranscript } from './store/agentTranscript'
 import { useContextTimeline, useSessionAgents } from './store/contextTimeline'
 import { dropForeignSubagentFocus, useSubagentFocus } from './store/subagentFocus'
 import { useConversations } from './store/conversations'
 import { useConversationView } from './store/conversationView'
 import { usePermissionMode } from './store/permissionMode'
-import { useSessions } from './store/sessions'
+import { isInteractive as sessionIsInteractive, useSessions } from './store/sessions'
+import { useShells } from './store/shells'
 import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useTaskBoard } from './store/taskBoard'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
 import { SudoCard } from './views/SudoCard'
 import { ChatView } from './views/ChatView'
-import { ConversationRoot } from './views/ConversationRoot'
+import { ConversationRoot, type BreadcrumbChild } from './views/ConversationRoot'
 import { InputBar } from './views/InputBar'
 import { QuestionCard } from './views/QuestionCard'
+import { ShellCatalogMenu } from './views/ShellCatalogMenu'
+import { ShellDetailView } from './views/ShellDetailView'
 import { Sidebar } from './views/Sidebar'
+import { SubagentChatView } from './views/SubagentChatView'
 import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
@@ -31,6 +36,20 @@ import { RightPanel } from './views/RightPanel'
 import { RightPanelToggle } from './views/RightPanelToggle'
 import { ContextView } from './views/context/ContextView'
 import { SubagentCatalogMenu } from '@vendor/ui-subagent/SubagentCatalogMenu.tsx'
+
+type InspectedTarget =
+  | { readonly kind: 'subagent'; readonly agentId: string }
+  | { readonly kind: 'shell'; readonly taskId: string }
+  | null
+
+function plainTextOf(content: string | readonly UserContentBlock[]): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((block): block is { readonly type: 'text'; readonly text: string } => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim()
+}
 
 /**
  * App shell: sidebar + conversation column over the vendored dsh layout,
@@ -54,6 +73,7 @@ export function App() {
     if (token == null) return
     const sessions = useSessions.getState()
     void sessions.refresh().then(() => { void sessions.selectActiveOrFirst() })
+    void useShells.getState().refresh()
 
     const connection: MirrorConnection = subscribeMirror((frame) => {
       useConversations.getState().applyFrame(frame)
@@ -63,12 +83,16 @@ export function App() {
       useSessions.getState().applyFrame(frame)
       usePermissionMode.getState().applyFrame(frame)
       useTaskBoard.getState().applyFrame(frame)
+      if (frame.event === 'turn.completed' || frame.event === 'tool.started' || frame.event === 'tool.completed') {
+        void useShells.getState().refresh()
+      }
     }, setConnected)
 
     // Session switches from the TUI arrive as `session.activated` frames and
     // are handled above; this only keeps counts and titles from drifting.
     const catalogTimer = window.setInterval(() => {
       void useSessions.getState().refresh()
+      void useShells.getState().refresh()
     }, 10_000)
 
     return () => {
@@ -125,18 +149,95 @@ export function App() {
   const contextT = useTranslate(CONTEXT_NS, contextDicts)
   const board = useTaskBoard((state) => state.board)
 
-  // The subagent catalog in the header. Its record read is the same per-session
-  // detail ledger the Context tab trails, so the catalog is a viewer in its own
-  // right (a session whose tab was never opened still loads its agents).
+  // The subagent catalog and background shell catalog in the header.
   const { agents, failed: agentsFailed, retry: retryAgents } = useSessionAgents(selectedId)
   const openSubagent = useSubagentFocus((state) => state.open)
-  // The catalog's prop is "no mark" as `undefined`, its own vocabulary; the
-// store's is `null`. Convert here rather than widening the vendored prop.
+  const clearSubagentFocus = useSubagentFocus((state) => state.clear)
   const currentAgent = useSubagentFocus((state) => state.current)
-  const currentAgentId = currentAgent ?? undefined
-  // An address into a session the reader has left would expand an unrelated
-  // row that happens to reuse the id, so a switch drops it.
-  useEffect(() => { dropForeignSubagentFocus(selectedId) }, [selectedId])
+  const shells = useShells((state) => state.shells)
+  const shellsFailed = useShells((state) => state.failed)
+  const refreshShells = useShells((state) => state.refresh)
+  const catalogProjects = useSessions((state) => state.projects)
+  const interactive = sessionIsInteractive(catalogProjects, selectedId)
+
+  const [inspected, setInspected] = useState<InspectedTarget>(null)
+  const [agentPromptBusy, setAgentPromptBusy] = useState(false)
+  const [agentPromptError, setAgentPromptError] = useState<string | null>(null)
+
+  // Session switches return to the main conversation and drop foreign state.
+  useEffect(() => {
+    dropForeignSubagentFocus(selectedId)
+    setInspected(null)
+    setAgentPromptError(null)
+    setAgentPromptBusy(false)
+  }, [selectedId])
+
+  const inspectedAgentId = inspected?.kind === 'subagent' ? inspected.agentId : null
+  const inspectedAgentRecord = inspectedAgentId == null
+    ? undefined
+    : agents?.find((a) => (a.agentId ?? a.id) === inspectedAgentId)
+  const inspectedAgentTranscript = useAgentTranscript((state) =>
+    selectedId != null && inspectedAgentId != null
+      ? state.transcripts[`${selectedId}\u0000${inspectedAgentId}`]
+      : undefined)
+  const inspectedAgentRunning = agentPromptBusy
+    || inspectedAgentTranscript?.running === true
+    || inspectedAgentRecord?.status === 'running'
+
+  const inspectedShellId = inspected?.kind === 'shell' ? inspected.taskId : null
+  const inspectedShell = inspectedShellId == null
+    ? undefined
+    : shells.find((s) => s.id === inspectedShellId)
+
+  const onSubmitAgent = useCallback((content: string | readonly UserContentBlock[]) => {
+    if (selectedId == null || inspectedAgentId == null) return
+    const text = plainTextOf(content)
+    if (text === '') return
+    setAgentPromptError(null)
+    setAgentPromptBusy(true)
+    useAgentTranscript.getState().appendOptimisticUser(selectedId, inspectedAgentId, text)
+    void promptAgent(selectedId, inspectedAgentId, text)
+      .then(() => {
+        void useAgentTranscript.getState().refresh(selectedId, inspectedAgentId)
+      })
+      .catch((failure: unknown) => {
+        useAgentTranscript.getState().setRunning(selectedId, inspectedAgentId, false)
+        setAgentPromptError(failure instanceof Error ? failure.message : '续聊发送失败')
+      })
+      .finally(() => {
+        setAgentPromptBusy(false)
+      })
+  }, [selectedId, inspectedAgentId])
+
+  const onStopAgent = useCallback(() => {
+    if (selectedId == null || inspectedAgentId == null) return
+    void stopAgent(selectedId, inspectedAgentId)
+      .then(() => { void useAgentTranscript.getState().refresh(selectedId, inspectedAgentId) })
+      .catch((failure: unknown) => {
+        if (failure instanceof ApiError && failure.status === 404) return
+        setAgentPromptError(failure instanceof Error ? failure.message : '停止子智能体失败')
+      })
+  }, [selectedId, inspectedAgentId])
+
+  const currentAgentId = inspectedAgentId ?? currentAgent ?? undefined
+
+  const breadcrumbChild: BreadcrumbChild | undefined = inspected?.kind === 'subagent'
+    ? {
+        title: inspectedAgentRecord?.description || inspectedAgentRecord?.type || inspected.agentId,
+        badge: '子智能体',
+        onExit: () => {
+          setInspected(null)
+          setAgentPromptError(null)
+          clearSubagentFocus()
+        },
+      }
+    : inspected?.kind === 'shell'
+      ? {
+          title: inspectedShell?.command || inspectedShell?.description || inspected.taskId,
+          badge: '后台终端',
+          onExit: () => { setInspected(null) },
+        }
+      : undefined
 
   if (token == null) {
     return <MissingToken />
@@ -147,12 +248,26 @@ export function App() {
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}
         subtitle={connected === 'open' ? '已连接' : connected === 'error' ? '重连中…' : '连接中…'}
-        view={view}
-        onView={(next) => { setView(selectedId, next) }}
+        breadcrumbChild={breadcrumbChild}
+        view={inspected == null ? view : 'chat'}
+        onView={(next) => {
+          setInspected(null)
+          setView(selectedId, next)
+        }}
         tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
         headerActions={(
           <>
             <RightPanelToggle />
+            <ShellCatalogMenu
+              shells={shells}
+              currentShellId={inspectedShellId ?? undefined}
+              failed={shellsFailed}
+              onRetry={() => { void refreshShells() }}
+              onOpen={(taskId) => {
+                if (selectedId !== null) setView(selectedId, 'chat')
+                setInspected({ kind: 'shell', taskId })
+              }}
+            />
             <SubagentCatalogMenu
               agents={agents}
               currentAgentId={currentAgentId}
@@ -160,20 +275,45 @@ export function App() {
               onRetry={retryAgents}
               onOpen={(agentId) => {
                 if (selectedId === null) return
-                // Show the transcript the row lives in before addressing it, or
-                // the request lands on a hidden tab.
                 setView(selectedId, 'chat')
                 openSubagent(selectedId, agentId)
+                setAgentPromptError(null)
+                setInspected({ kind: 'subagent', agentId })
               }}
             />
           </>
         )}
         context={<ContextView sessionId={selectedId} />}
         transcript={
-          <ChatView key={selectedId ?? 'none'} conversation={conversation} sessionId={selectedId} />
+          inspected?.kind === 'subagent' && selectedId != null ? (
+            <SubagentChatView
+              key={`${selectedId}:${inspected.agentId}`}
+              sessionId={selectedId}
+              agentId={inspected.agentId}
+              agent={inspectedAgentRecord}
+              promptError={agentPromptError}
+              promptBusy={agentPromptBusy}
+            />
+          ) : inspected?.kind === 'shell' ? (
+            <ShellDetailView key={inspected.taskId} taskId={inspected.taskId} />
+          ) : (
+            <ChatView key={selectedId ?? 'none'} conversation={conversation} sessionId={selectedId} />
+          )
         }
         composer={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          inspected?.kind === 'shell' ? null : inspected?.kind === 'subagent' ? (
+            <InputBar
+              disabled={selectedId == null || !interactive}
+              busy={inspectedAgentRunning}
+              placeholder={!interactive
+                ? '此会话没有正在运行的主机，仅供查看'
+                : '向子智能体发送续聊消息，Enter 发送'}
+              onSubmit={onSubmitAgent}
+              onStop={onStopAgent}
+              sessionId={selectedId}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {visibleSudo != null && (
               <SudoCard
                 key={visibleSudo.request_id}
@@ -238,6 +378,7 @@ export function App() {
               onClientCommand={onClientCommand}
             />
           </div>
+          )
         }
       />
       <ContextModal
