@@ -17,6 +17,8 @@ import com.claudecode.http.HttpCalls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -124,8 +126,9 @@ public final class GeminiClient implements LlmClient {
             Request httpRequest = buildHttpRequest(url, buildGeminiRequestBody(request, model), request, false);
             Duration timeout = timeoutMillis > 0
                 ? Duration.ofMillis(timeoutMillis) : ApiTimeouts.apiTimeout();
-            try (Response response = HttpCalls.execute(
-                    nonStreamingHttpClient, httpRequest, timeout, request.cancellationRegistrar())) {
+            try (Response response = request.cancellationRegistrar() != null
+                    ? HttpCalls.execute(nonStreamingHttpClient, httpRequest, timeout, request.cancellationRegistrar())
+                    : HttpCalls.execute(nonStreamingHttpClient, httpRequest, timeout)) {
                 String responseBody = response.body().string();
                 if (!response.isSuccessful()) {
                     throw apiError(response.code(), responseBody);
@@ -154,11 +157,13 @@ public final class GeminiClient implements LlmClient {
         String effectiveModel = StringUtils.isNotBlank(model) ? cleanModelPathId(model) : cleanModelPathId(config.model());
         String url = actionUrl(basePrefix, effectiveModel, "countTokens");
         try {
-            CreateMessageRequest req = CreateMessageRequest.builder()
+            CreateMessageRequest.Builder reqBuilder = CreateMessageRequest.builder()
                 .model(effectiveModel)
-                .messages(messages)
-                .tools(tools)
-                .build();
+                .messages(messages != null ? messages : List.of());
+            if (tools != null) {
+                reqBuilder.tools(tools);
+            }
+            CreateMessageRequest req = reqBuilder.build();
             ObjectNode body = buildGeminiRequestBody(req, effectiveModel);
             body.remove("generationConfig");
             body.remove("toolConfig");
@@ -166,12 +171,12 @@ public final class GeminiClient implements LlmClient {
             body.remove("systemInstruction");
             Request httpRequest = buildHttpRequest(url, body, req, false);
             try (Response response = HttpCalls.execute(
-                    nonStreamingHttpClient, httpRequest, ApiTimeouts.apiTimeout(), null)) {
+                    nonStreamingHttpClient, httpRequest, ApiTimeouts.apiTimeout())) {
                 if (!response.isSuccessful()) return -1;
                 JsonNode root = JsonUtils.getMapper().readTree(response.body().string());
                 return root.path("totalTokens").asLong(-1);
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return -1;
         } catch (Exception _) {
@@ -201,15 +206,37 @@ public final class GeminiClient implements LlmClient {
 
     static String normalizeBasePrefix(String baseUrl) {
         String base = StringUtils.isBlank(baseUrl) ? DEFAULT_BASE_URL : baseUrl.trim();
+        if (!Strings.CS.contains(base, "://")) {
+            base = "https://" + base;
+        }
+        int qIdx = base.indexOf('?');
+        if (qIdx >= 0) base = base.substring(0, qIdx);
+        int hIdx = base.indexOf('#');
+        if (hIdx >= 0) base = base.substring(0, hIdx);
         while (Strings.CS.endsWith(base, "/")) {
             base = base.substring(0, base.length() - 1);
         }
-        if (Strings.CS.endsWith(base, "/v1beta")
-                || Strings.CS.endsWith(base, "/v1")
-                || Strings.CS.endsWith(base, "/v1alpha")) {
-            return base;
+        int modelsIdx = base.indexOf("/models/");
+        if (modelsIdx > 0) {
+            base = base.substring(0, modelsIdx);
+        } else if (Strings.CS.endsWith(base, "/models")) {
+            base = base.substring(0, base.length() - "/models".length());
         }
-        return base + "/v1beta";
+        try {
+            URI uri = URI.create(base);
+            String path = uri.getPath();
+            if (StringUtils.isEmpty(path) || Strings.CS.equals("/", path)) {
+                return base + "/v1beta";
+            }
+            return base;
+        } catch (IllegalArgumentException _) {
+            if (Strings.CS.endsWith(base, "/v1beta")
+                    || Strings.CS.endsWith(base, "/v1")
+                    || Strings.CS.endsWith(base, "/v1alpha")) {
+                return base;
+            }
+            return base + "/v1beta";
+        }
     }
 
     static String actionUrl(String basePrefix, String model, String action) {
@@ -509,8 +536,9 @@ public final class GeminiClient implements LlmClient {
                 if (isGeminiGenerationThreeOrNewer(model)) {
                     tc.put("thinkingLevel", toGeminiThinkingLevel(effort, model));
                 } else {
-                    int budget = request.thinking() != null && request.thinking().budgetTokens() > 0
-                        ? (int) request.thinking().budgetTokens()
+                    Integer rawBudget = request.thinking() != null ? request.thinking().budgetTokens() : null;
+                    int budget = rawBudget != null && rawBudget > 0
+                        ? rawBudget
                         : ReasoningNormalizer.budgetOfEffort(effort);
                     tc.put("thinkingBudget", budget);
                 }
@@ -531,20 +559,35 @@ public final class GeminiClient implements LlmClient {
         return gen;
     }
 
+    static int geminiGeneration(String model) {
+        if (StringUtils.isBlank(model)) return 0;
+        String lower = model.trim().toLowerCase(Locale.ROOT);
+        int slash = lower.lastIndexOf('/');
+        String leaf = slash >= 0 ? lower.substring(slash + 1) : lower;
+        if (!Strings.CS.startsWith(leaf, "gemini-")) return 0;
+        int pos = "gemini-".length();
+        int end = pos;
+        while (end < leaf.length() && Character.isDigit(leaf.charAt(end))) {
+            end++;
+        }
+        if (end == pos) return 0;
+        try {
+            return Integer.parseInt(leaf.substring(pos, end));
+        } catch (NumberFormatException _) {
+            return 0;
+        }
+    }
+
     private static boolean isGeminiGenerationThreeOrNewer(String model) {
-        if (StringUtils.isBlank(model)) return false;
-        String lower = model.toLowerCase(Locale.ROOT);
-        int idx = lower.indexOf("gemini-");
-        if (idx < 0) return false;
-        int verPos = idx + "gemini-".length();
-        return verPos < lower.length() && lower.charAt(verPos) >= '3' && lower.charAt(verPos) <= '9';
+        return geminiGeneration(model) >= 3;
     }
 
     private static String toGeminiThinkingLevel(String effort, String model) {
         String norm = ReasoningNormalizer.normalizeEffort(effort);
+        int gen = geminiGeneration(model);
         return switch (norm) {
             case "low" -> "low";
-            case "medium" -> Strings.CI.contains(model, "flash") ? "medium" : "high";
+            case "medium" -> (gen >= 4 || Strings.CI.contains(model, "flash")) ? "medium" : "high";
             default -> "high";
         };
     }
@@ -675,6 +718,9 @@ public final class GeminiClient implements LlmClient {
         String text = part.path("text").asText("");
         if (StringUtils.isNotEmpty(text)) {
             blocks.add(new TextBlock(text));
+        }
+        if (StringUtils.isNotEmpty(sig)) {
+            blocks.add(new ThinkingBlock("", sig));
         }
         return false;
     }
@@ -861,13 +907,16 @@ public final class GeminiClient implements LlmClient {
             }
 
             if (part.path("thought").asBoolean(false)) {
+                String text = part.path("text").asText("");
+                if (StringUtils.isEmpty(text) && StringUtils.isEmpty(sig)) {
+                    return;
+                }
                 closeText(rawChunk, sink);
                 if (thinkingBlockIndex == null) {
                     thinkingBlockIndex = nextBlockIndex++;
                     sink.accept(new StreamEvent.ContentBlockStart(
                         thinkingBlockIndex, new ThinkingBlock("", null), rawChunk));
                 }
-                String text = part.path("text").asText("");
                 if (StringUtils.isNotEmpty(text)) {
                     sink.accept(new StreamEvent.ContentBlockDelta(
                         thinkingBlockIndex, new Delta.ThinkingDelta(text), rawChunk));
@@ -885,6 +934,16 @@ public final class GeminiClient implements LlmClient {
                 closeThinking(rawChunk, sink);
                 String immediate = textRescue.onTextDelta(text);
                 emitTextDelta(immediate, rawChunk, sink);
+            }
+            if (StringUtils.isNotEmpty(sig)) {
+                closeText(rawChunk, sink);
+                if (thinkingBlockIndex == null) {
+                    thinkingBlockIndex = nextBlockIndex++;
+                    sink.accept(new StreamEvent.ContentBlockStart(
+                        thinkingBlockIndex, new ThinkingBlock("", null), rawChunk));
+                }
+                sink.accept(new StreamEvent.ContentBlockDelta(
+                    thinkingBlockIndex, new Delta.SignatureDelta(sig), rawChunk));
             }
         }
 

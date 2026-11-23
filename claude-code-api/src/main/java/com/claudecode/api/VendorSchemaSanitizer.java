@@ -297,8 +297,8 @@ final class VendorSchemaSanitizer {
             Map.Entry<String, JsonNode> entry = fields.next();
             String key = entry.getKey();
             JsonNode val = entry.getValue();
-            if (Strings.CS.startsWith(key, "x-")) {
-                // Drop vendor x-* schema keywords (user property names live inside "properties").
+            if (Strings.CS.startsWith(key, "x-") || Strings.CS.equals("$schema", key)) {
+                // Drop vendor x-* schema keywords and $schema (user property names live inside "properties").
                 continue;
             }
             if (SCHEMA_MAP_CONTAINERS.contains(key) && val.isObject()) {

@@ -172,7 +172,7 @@ final class EventSourceStreamBridge {
             throw new ApiException("Request interrupted", 0, e);
         }
 
-        return new QueueIterator(state.queue, diagnostics);
+        return new QueueIterator(state.queue, diagnostics, state::abort);
     }
 
     private static final class BridgeState {
@@ -428,15 +428,24 @@ final class EventSourceStreamBridge {
         }
     }
 
-    private static final class QueueIterator implements Iterator<StreamEvent> {
+    private static final class QueueIterator implements Iterator<StreamEvent>, AutoCloseable {
         private final BlockingQueue<Object> queue;
         private final ApiStreamDiagnostics.Trace diagnostics;
+        private final Runnable onClose;
         private StreamEvent nextEvent;
         private boolean done;
 
-        QueueIterator(BlockingQueue<Object> queue, ApiStreamDiagnostics.Trace diagnostics) {
+        QueueIterator(BlockingQueue<Object> queue, ApiStreamDiagnostics.Trace diagnostics,
+                Runnable onClose) {
             this.queue = queue;
             this.diagnostics = diagnostics;
+            this.onClose = onClose;
+        }
+
+        @Override
+        public void close() {
+            done = true;
+            if (onClose != null) onClose.run();
         }
 
         @Override

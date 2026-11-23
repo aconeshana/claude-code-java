@@ -8,6 +8,8 @@ import com.claudecode.tools.tasks.teammate.TeammateContextHolder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -199,8 +201,8 @@ class CronCreateToolTest {
 
     @Test
     void inferDefaultDurableHandlesOneShotThreshold() {
-        long now = java.time.ZonedDateTime.of(2026, 11, 22, 10, 0, 0, 0,
-            java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long now = ZonedDateTime.of(2026, 11, 22, 10, 0, 0, 0,
+            ZoneId.systemDefault()).toInstant().toEpochMilli();
         assertFalse(CronCreateTool.inferDefaultDurable("30 10 22 11 *", false, now),
             "30 minutes ahead should stay session-only");
         assertTrue(CronCreateTool.inferDefaultDurable("0 9 23 11 *", false, now),

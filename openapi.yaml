@@ -705,6 +705,110 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SpinnerVerbs' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/lan-gateway:
+    get:
+      tags: [Models]
+      summary: Read LAN model gateway status, reachable endpoints, and device keys
+      responses:
+        '200':
+          description: Current LAN gateway snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Models]
+      summary: Update LAN model gateway settings and hot-rebind listener when enabled toggles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LanGatewayUpdateRequest' }
+      responses:
+        '200':
+          description: Updated LAN gateway snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayStatus' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/lan-gateway/keys:
+    post:
+      tags: [Models]
+      summary: Create a named sk-poco-... LAN gateway key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LanGatewayKeySaveRequest' }
+      responses:
+        '200':
+          description: Updated LAN gateway snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayStatus' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/lan-gateway/keys/{id}:
+    post:
+      tags: [Models]
+      summary: Update a LAN gateway key's name, enabled state, or allowed models
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LanGatewayKeySaveRequest' }
+      responses:
+        '200':
+          description: Updated LAN gateway snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayStatus' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Models]
+      summary: Revoke and delete a LAN gateway key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated LAN gateway snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/lan-gateway/calls:
+    get:
+      tags: [Models]
+      summary: List recent stateless LAN model proxy calls (bounded ring buffer)
+      responses:
+        '200':
+          description: Recent LAN proxy calls, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayCallList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Models]
+      summary: Clear the recent LAN model proxy calls buffer
+      responses:
+        '200':
+          description: Cleared call list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LanGatewayCallList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/file-suggestions:
     get:
       tags: [Commands]
@@ -2445,6 +2549,138 @@ components:
           type: boolean
           nullable: true
           description: Absent keeps the existing flag, false marks the endpoint text-only
+    LanGatewayStatus:
+      type: object
+      required:
+        - enabled
+        - listening_host
+        - port
+        - expose_default_provider
+        - tier_stand_in_model
+        - prevent_mac_sleep
+        - awake_active
+        - allowed_cidrs
+        - endpoints
+        - available_models
+        - keys
+      properties:
+        enabled: { type: boolean }
+        listening_host: { type: string }
+        port: { type: integer }
+        expose_default_provider: { type: boolean }
+        tier_stand_in_model: { type: string }
+        prevent_mac_sleep: { type: boolean }
+        awake_active: { type: boolean }
+        allowed_cidrs:
+          type: array
+          items: { type: string }
+        endpoints:
+          type: array
+          items:
+            type: object
+            required: [kind, host, url]
+            properties:
+              kind: { type: string, enum: [lan, mdns, tailscale, public] }
+              host: { type: string }
+              url: { type: string }
+        available_models:
+          type: array
+          items:
+            type: object
+            required: [id, protocol, built_in]
+            properties:
+              id: { type: string }
+              protocol: { type: string }
+              built_in: { type: boolean }
+              context_window: { type: integer, nullable: true }
+        keys:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - secret
+              - masked_secret
+              - enabled
+              - allowed_models
+              - created_at
+              - total_requests
+              - input_tokens
+              - output_tokens
+            properties:
+              id: { type: string }
+              name: { type: string }
+              secret: { type: string }
+              masked_secret: { type: string }
+              enabled: { type: boolean }
+              allowed_models:
+                type: array
+                items: { type: string }
+              created_at: { type: string }
+              last_used_at: { type: string, nullable: true }
+              total_requests: { type: integer }
+              input_tokens: { type: integer }
+              output_tokens: { type: integer }
+    LanGatewayUpdateRequest:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        expose_default_provider: { type: boolean }
+        tier_stand_in_model: { type: string, nullable: true }
+        prevent_mac_sleep: { type: boolean }
+        allowed_cidrs:
+          type: array
+          items: { type: string }
+    LanGatewayKeySaveRequest:
+      type: object
+      properties:
+        name: { type: string }
+        enabled: { type: boolean }
+        allowed_models:
+          type: array
+          items: { type: string }
+    LanGatewayCallList:
+      type: object
+      required: [calls]
+      properties:
+        calls:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - timestamp
+              - key_id
+              - key_name
+              - client_ip
+              - source_protocol
+              - target_protocol
+              - requested_model
+              - resolved_model
+              - streaming
+              - status
+              - ttft_ms
+              - duration_ms
+              - input_tokens
+              - output_tokens
+            properties:
+              id: { type: integer }
+              timestamp: { type: string }
+              key_id: { type: string }
+              key_name: { type: string }
+              client_ip: { type: string }
+              source_protocol: { type: string }
+              target_protocol: { type: string }
+              requested_model: { type: string }
+              resolved_model: { type: string }
+              streaming: { type: boolean }
+              status: { type: integer }
+              ttft_ms: { type: integer }
+              duration_ms: { type: integer }
+              input_tokens: { type: integer }
+              output_tokens: { type: integer }
+              error: { type: string, nullable: true }
   parameters:
     ContextSessionId:
       name: session_id

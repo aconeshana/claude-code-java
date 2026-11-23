@@ -193,7 +193,7 @@ final class GatewayModelsHandler {
                 }
                 respondJson(exchange, 200, body);
                 return;
-            } catch (InterruptedException interrupted) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 respondJson(exchange, 504, errorBody("timeout", "model discovery interrupted"));
                 return;
@@ -280,7 +280,7 @@ final class GatewayModelsHandler {
         URI uri;
         try {
             uri = URI.create(trimmed);
-        } catch (IllegalArgumentException invalid) {
+        } catch (IllegalArgumentException _) {
             throw new IllegalArgumentException("invalid base_url: " + rawBaseUrl);
         }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);

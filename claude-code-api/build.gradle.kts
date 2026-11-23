@@ -1,4 +1,7 @@
-plugins { `java-library` }
+plugins {
+    `java-library`
+    `java-test-fixtures`
+}
 
 dependencies {
     implementation(project(":claude-code-core"))

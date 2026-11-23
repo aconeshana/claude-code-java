@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -242,7 +243,7 @@ final class ProtocolTurnRunner {
             String prompt,
             SubmissionAttachments attachments,
             String messageId,
-            java.util.function.Consumer<String> onSubmitFailure) {
+            Consumer<String> onSubmitFailure) {
         String sessionId = session.info().id();
         SessionHostSubmission submission = new SessionHostSubmission(
             prompt, messageId, attachments.images(), attachments.files());

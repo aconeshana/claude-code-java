@@ -90,6 +90,14 @@ public record CreateMessageRequest(
             cancellationRegistrar, subagent, timeout);
     }
 
+    public CreateMessageRequest withModelAndStream(String newModel, boolean newStream) {
+        return new CreateMessageRequest(
+            newModel, maxTokens, systemPrompt, messages, tools, metadata, stopSequences, newStream,
+            temperature, topP, topK, thinking, effort, toolChoice, outputConfig, speed,
+            contextManagement, skipCacheWrite, promptCachingEnabled, promptCacheTtl, querySource,
+            cancellationRegistrar, subagent, streamConnectTimeout);
+    }
+
     private static final Pattern RELEASE_DATE_SUFFIX = Pattern.compile("-\\d{8}$");
     private static final Pattern TWO_PART_MODEL_VERSION =
         Pattern.compile("-(\\d{1,2})-(\\d{1,2})$");

@@ -48,8 +48,8 @@ class GatewayModelsDiscoverTest {
             """);
         var parsedOpenAi = GatewayModelsHandler.parseDiscoveredModels(openAi);
         assertEquals(2, parsedOpenAi.size());
-        assertEquals("deepseek-chat", parsedOpenAi.get(0).id());
-        assertEquals(128000L, parsedOpenAi.get(0).contextWindow());
+        assertEquals("deepseek-chat", parsedOpenAi.getFirst().id());
+        assertEquals(128000L, parsedOpenAi.getFirst().contextWindow());
         assertEquals("DeepSeek R1", parsedOpenAi.get(1).displayName());
 
         JsonNode gemini = JsonUtils.getMapper().readTree("""
@@ -61,9 +61,9 @@ class GatewayModelsDiscoverTest {
             """);
         var parsedGemini = GatewayModelsHandler.parseDiscoveredModels(gemini);
         assertEquals(1, parsedGemini.size());
-        assertEquals("gemini-2.5-pro", parsedGemini.get(0).id());
-        assertEquals("Gemini 2.5 Pro", parsedGemini.get(0).displayName());
-        assertEquals(1048576L, parsedGemini.get(0).contextWindow());
+        assertEquals("gemini-2.5-pro", parsedGemini.getFirst().id());
+        assertEquals("Gemini 2.5 Pro", parsedGemini.getFirst().displayName());
+        assertEquals(1048576L, parsedGemini.getFirst().contextWindow());
         assertTrue(GatewayModelsHandler.parseDiscoveredModels(null).isEmpty());
     }
 }

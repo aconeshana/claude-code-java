@@ -12,6 +12,7 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * HTTP handlers for background shell inspection/control and sub-agent
@@ -87,9 +88,10 @@ final class GatewayBackgroundTasksHandler {
         GatewayBackgroundTasksPort.AgentPromptResult result =
             port.promptAgent(sessionId, agentId, prompt);
         if (!result.ok()) {
-            int status = "unavailable".equals(result.status()) ? 409 : 500;
+            boolean unavailable = Strings.CS.equals("unavailable", result.status());
+            int status = unavailable ? 409 : 500;
             respondJson(exchange, status, errorBody(
-                "unavailable".equals(result.status()) ? "conflict" : "api_error",
+                unavailable ? "conflict" : "api_error",
                 StringUtils.defaultIfBlank(result.message(), "failed to continue sub-agent")));
             return;
         }

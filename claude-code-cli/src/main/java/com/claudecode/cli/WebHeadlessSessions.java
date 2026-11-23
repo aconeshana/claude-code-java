@@ -34,6 +34,11 @@ final class WebHeadlessSessions {
             toolchain.toolRegistry(), new DefaultQuerySessionFactory(),
             toolchain.permissionGate(), workspace.launch().model(), workspace.cwd(),
             toolchain.customModelCatalog(), toolchain.modelAvailability().showBuiltInModelFamilies());
-        return new CliHeadlessGatewaySessions(factory, workspace.cwd());
+        CliLanProxyAdapter lanProxy = new CliLanProxyAdapter(
+            toolchain.customModelCatalog(),
+            toolchain.llmClient(),
+            workspace.launch().model(),
+            toolchain.modelAvailability().showBuiltInModelFamilies());
+        return new CliHeadlessGatewaySessions(factory, workspace.cwd(), lanProxy);
     }
 }

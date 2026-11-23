@@ -74,6 +74,9 @@ public final class ClaudePaths {
     public static final Path WEB_WORKERS_DIR  = CLAUDE_HOME.resolve("web-workers");
     /** {@code ~/.claude/web-gateway.json} — the singleton supervisor's handshake. */
     public static final Path WEB_GATEWAY_JSON = CLAUDE_HOME.resolve("web-gateway.json");
+    /** {@code ~/.claude/gateway.json} — LAN model gateway settings and device keys. */
+    @Explanation("Persists LAN model-sharing settings and named gateway keys")
+    public static final Path LAN_GATEWAY_JSON = CLAUDE_HOME.resolve("gateway.json");
 
 
 

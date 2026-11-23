@@ -1,28 +1,10 @@
 package com.claudecode.cli;
 
+import com.claudecode.api.CustomModelJsonStore;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.VersionInfo;
-import com.claudecode.gateway.GatewayBackgroundTasksPort;
-import com.claudecode.gateway.GatewayCommandsPort;
-import com.claudecode.gateway.GatewayFileSuggestionsPort;
-import com.claudecode.gateway.GatewaySpinnerVerbsPort;
-import com.claudecode.gateway.GatewayHeadlessSessions;
-import com.claudecode.gateway.GatewayModelsPort;
-import com.claudecode.gateway.GatewayPermissionModePort;
-import com.claudecode.gateway.MirrorHub;
-import com.claudecode.gateway.GatewayFileDiffPort;
-import com.claudecode.gateway.GatewayWorkspaceFilePort;
-import com.claudecode.gateway.GatewayRuntimeControlPort;
-import com.claudecode.gateway.GatewaySchedulePort;
-import com.claudecode.gateway.GatewayServer;
-import com.claudecode.gateway.GatewayTaskBoardPort;
-import com.claudecode.gateway.GatewaySessionActionsPort;
-import com.claudecode.gateway.GatewaySessionCancelPort;
-import com.claudecode.gateway.GatewaySessionCatalogPort;
-import com.claudecode.gateway.GatewaySessionContextPort;
-import com.claudecode.gateway.GatewaySessionMessagesPort;
-import com.claudecode.gateway.GatewaySettingsPort;
+import com.claudecode.gateway.*;
 import com.claudecode.runtime.gateway.GatewaySupervisorPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -126,6 +108,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final AtomicReference<CompletableFuture<Started>> startFlight = new AtomicReference<>();
     private Path gatewayRecordFile = ClaudePaths.WEB_GATEWAY_JSON;
     private Path webWorkersDirectory = ClaudePaths.WEB_WORKERS_DIR;
+    private Path lanGatewayFile = ClaudePaths.LAN_GATEWAY_JSON;
     private volatile GatewayServer server;
     private volatile String url;
 
@@ -345,8 +328,13 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
         // Bind the one fixed port. A collision is not retried on a neighbouring
         // port: it means a peer gateway already owns the machine's web endpoint.
         int port = configuredPort();
+        LanGatewayConfigStore lanConfigStore = new LanGatewayConfigStore(lanGatewayFile);
+        String bindHost = lanConfigStore.load().enabled() ? "0.0.0.0" : "127.0.0.1";
+        GatewayLanProxyPort lanProxyPort = headless != null
+            ? headless.lanProxyPort()
+            : CliLanProxyAdapter.catalogOnly(new CustomModelJsonStore());
         GatewayServer created = GatewayServer.builder(
-            new GatewayServer.Config("127.0.0.1", port), token, registry)
+            new GatewayServer.Config(bindHost, port), token, registry)
             .catalog(catalog)
             .headless(headless != null ? headless : new GatewayHeadlessSessions() {})
             .interactions(interactions)
@@ -367,6 +355,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .workspaceFile(workspaceFile != null ? workspaceFile : GatewayWorkspaceFilePort.none())
             .backgroundTasks(backgroundTasks != null ? backgroundTasks : new GatewayBackgroundTasksPort() {})
             .runtimeControl(runtimeControl)
+            .lanGateway(lanConfigStore, lanProxyPort)
             .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
             // Every session a webui client addresses belongs to this process or
             // to another TUI on the machine; the gateway forwards the halves
@@ -396,6 +385,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     void useWebStateDirectory(Path claudeHome) {
         gatewayRecordFile = claudeHome.resolve(ClaudePaths.WEB_GATEWAY_JSON.getFileName());
         webWorkersDirectory = claudeHome.resolve(ClaudePaths.WEB_WORKERS_DIR.getFileName());
+        lanGatewayFile = claudeHome.resolve(ClaudePaths.LAN_GATEWAY_JSON.getFileName());
     }
 
     /**

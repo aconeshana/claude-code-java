@@ -36,6 +36,7 @@ import type { PermissionBehaviorKind, SettingsTier } from '../api/types'
 import localCss from './SettingsPanel.module.css'
 import { ContextSettingsSection } from './context/ContextSettingsSection'
 import { ContextIcon } from '@dsh-context/client/icon'
+import { LanGatewaySection } from './LanGatewaySection'
 import { ModelsSection } from './ModelsSection'
 import { ScheduleSection } from './SchedulePanel'
 
@@ -67,13 +68,14 @@ import { ScheduleSection } from './SchedulePanel'
  * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'schedule' | 'context'
+type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'lan-gateway' | 'schedule' | 'context'
 
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
   { id: 'permissions', label: '权限', icon: <IconChecklistOutline14 className={css.navIcon} size={16} /> },
   { id: 'directories', label: '目录', icon: <IconFolderOpenOutline16 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
+  { id: 'lan-gateway', label: '局域网网关', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
   { id: 'context', label: '上下文', icon: <ContextIcon className={css.navIcon} size={16} /> },
 ]
@@ -139,6 +141,7 @@ export function SettingsPanel({ open, onClose }: {
       case 'permissions': return t('nav.permissions')
       case 'directories': return t('nav.directories')
       case 'models': return t('nav.models')
+      case 'lan-gateway': return t('nav.lanGateway')
       case 'schedule': return t('nav.schedule')
       case 'context': return t('nav.context')
     }
@@ -322,6 +325,12 @@ export function SettingsPanel({ open, onClose }: {
             {activeSection === 'models' && (
               <div className={sectionCss.section}>
                 <ModelsSection />
+              </div>
+            )}
+
+            {activeSection === 'lan-gateway' && (
+              <div className={sectionCss.section}>
+                <LanGatewaySection />
               </div>
             )}
 

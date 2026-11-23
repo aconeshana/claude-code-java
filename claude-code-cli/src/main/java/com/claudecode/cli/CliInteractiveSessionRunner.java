@@ -96,6 +96,7 @@ import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.bash.BashTool;
+import com.claudecode.tools.cron.CronScheduler;
 import com.claudecode.tools.cron.CronStore;
 import com.claudecode.tools.loop.LoopPromptResolver;
 import com.claudecode.tools.mcp.McpRuntime;
@@ -921,7 +922,7 @@ final class CliInteractiveSessionRunner {
                     .orElse(null);
                 if (job == null) return false;
                 try (CliWebCronDaemon runner = new CliWebCronDaemon(headless, cwd)) {
-                    runner.fireAsync(new com.claudecode.tools.cron.CronScheduler.FiredTask(
+                    runner.fireAsync(new CronScheduler.FiredTask(
                         job.id(), job.prompt(), job.prompt(), job.kind(),
                         job.recurring(), job.agentId(), job.model()));
                 }

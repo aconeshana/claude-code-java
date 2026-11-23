@@ -4,6 +4,8 @@ import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.Usage;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Locale;
+import java.util.function.Consumer;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -67,6 +69,7 @@ final class ReasoningNormalizer {
             return explicit;
         }
         if (request.thinking() != null && Strings.CS.equals("enabled", request.thinking().type())
+                && request.thinking().budgetTokens() != null
                 && request.thinking().budgetTokens() > 0) {
             return effortOfBudget(request.thinking().budgetTokens());
         }
@@ -200,20 +203,20 @@ final class ReasoningNormalizer {
         private char runFenceChar;
         private int runFenceLen;
 
-        void feed(String chunk, java.util.function.Consumer<String> onThinking,
-                  java.util.function.Consumer<String> onContent) {
+        void feed(String chunk, Consumer<String> onThinking,
+                  Consumer<String> onContent) {
             if (StringUtils.isEmpty(chunk)) return;
             pending.append(chunk);
             drain(false, onThinking, onContent);
         }
 
-        void finish(java.util.function.Consumer<String> onThinking,
-                    java.util.function.Consumer<String> onContent) {
+        void finish(Consumer<String> onThinking,
+                    Consumer<String> onContent) {
             drain(true, onThinking, onContent);
         }
 
-        private void drain(boolean eof, java.util.function.Consumer<String> onThinking,
-                           java.util.function.Consumer<String> onContent) {
+        private void drain(boolean eof, Consumer<String> onThinking,
+                           Consumer<String> onContent) {
             while (!pending.isEmpty()) {
                 if (inThink) {
                     int closeIdx = pending.indexOf(THINK_CLOSE);

@@ -4,15 +4,13 @@ import com.claudecode.core.engine.AbortController;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.gateway.GatewayBackgroundTasksPort;
 import com.claudecode.runtime.query.QuerySession;
+import com.claudecode.session.SessionManager;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.agent.AgentContinuationService;
 import com.claudecode.tools.agent.AgentTool;
-import com.claudecode.tools.tasks.LocalShellTask;
-import com.claudecode.tools.tasks.TaskRegistry;
-import com.claudecode.tools.tasks.TaskState;
-import com.claudecode.tools.tasks.TaskStatus;
-import com.claudecode.tools.tasks.TaskType;
+import com.claudecode.tools.tasks.*;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
@@ -20,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -81,7 +80,7 @@ final class CliBackgroundTasksPort implements GatewayBackgroundTasksPort {
             task.description(),
             statusWire(task.status()),
             task.startTime().toEpochMilli(),
-            task.endTime().map(java.time.Instant::toEpochMilli).orElse(null),
+            task.endTime().map(Instant::toEpochMilli).orElse(null),
             task.exitCode().orElse(null),
             tail.text(),
             tail.truncated()));
@@ -121,9 +120,9 @@ final class CliBackgroundTasksPort implements GatewayBackgroundTasksPort {
         try {
             ToolExecutionContext context = buildContext(engine);
             new AgentContinuationService(agentTool.subAgentFactory(), taskRegistry,
-                (ctx, id) -> new com.claudecode.session.SessionManager(ctx.workingDirectory())
+                (ctx, id) -> new SessionManager(ctx.workingDirectory())
                     .getAgentTranscriptPath(ctx.sessionId(), id),
-                (ctx, id) -> com.claudecode.tools.tasks.TaskOutputPaths.outputPath(id, ctx))
+                (ctx, id) -> TaskOutputPaths.outputPath(id, ctx))
                 .resume(agentId, prompt, context, true);
             return AgentPromptResult.resumed();
         } catch (IllegalStateException failure) {
@@ -159,7 +158,7 @@ final class CliBackgroundTasksPort implements GatewayBackgroundTasksPort {
             task.description(),
             statusWire(task.status()),
             task.startTime().toEpochMilli(),
-            task.endTime().map(java.time.Instant::toEpochMilli).orElse(null),
+            task.endTime().map(Instant::toEpochMilli).orElse(null),
             task.exitCode().orElse(null));
     }
 

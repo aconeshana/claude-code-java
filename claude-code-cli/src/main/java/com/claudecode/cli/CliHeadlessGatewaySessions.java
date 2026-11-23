@@ -1,8 +1,10 @@
 package com.claudecode.cli;
 
+import com.claudecode.api.CustomModelJsonStore;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.message.Message;
 import com.claudecode.gateway.GatewayHeadlessSessions;
+import com.claudecode.gateway.GatewayLanProxyPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
@@ -13,6 +15,7 @@ import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptLoader;
 import com.claudecode.session.TranscriptMessageCache;
+import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.tasks.TaskState;
 import com.claudecode.tools.tasks.TaskStatus;
@@ -39,6 +42,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
 
     private final CliHeadlessSessionFactory factory;
     private final String mainCwd;
+    private final GatewayLanProxyPort lanProxyPort;
     private final ConcurrentMap<String, Entry> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -59,8 +63,21 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
             boolean locallyOwned) {}
 
     CliHeadlessGatewaySessions(CliHeadlessSessionFactory factory, String mainCwd) {
+        this(factory, mainCwd, CliLanProxyAdapter.catalogOnly(new CustomModelJsonStore()));
+    }
+
+    CliHeadlessGatewaySessions(
+            CliHeadlessSessionFactory factory,
+            String mainCwd,
+            GatewayLanProxyPort lanProxyPort) {
         this.factory = factory;
         this.mainCwd = mainCwd;
+        this.lanProxyPort = lanProxyPort != null
+            ? lanProxyPort : CliLanProxyAdapter.catalogOnly(new CustomModelJsonStore());
+    }
+
+    GatewayLanProxyPort lanProxyPort() {
+        return lanProxyPort;
     }
 
     @Override
@@ -269,7 +286,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     }
 
     /** Shared tool registry backing sessions opened by this gateway. */
-    com.claudecode.tools.ToolRegistry toolRegistry() {
+    ToolRegistry toolRegistry() {
         return factory.toolRegistry();
     }
 

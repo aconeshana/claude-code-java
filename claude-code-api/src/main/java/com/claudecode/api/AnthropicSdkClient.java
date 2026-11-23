@@ -185,7 +185,9 @@ public class AnthropicSdkClient implements LlmClient {
 
         ObjectNode root = mapper.createObjectNode();
         root.put("model", requestedModel != null ? requestedModel : model);
-        root.set("messages", mapper.valueToTree(effectiveMessages));
+        root.set("messages", ProtocolWireCodec.hasContentBlockMessages(effectiveMessages)
+            ? ProtocolWireCodec.encodeAnthropicMessagesNode(effectiveMessages)
+            : mapper.valueToTree(effectiveMessages));
         root.set("tools", mapper.valueToTree(effectiveTools));
         normalizeToolSchemas(root);
         normalizeServerToolResultBlocks(root);
@@ -580,6 +582,9 @@ public class AnthropicSdkClient implements LlmClient {
             String defaultModel) throws IOException {
         ObjectMapper mapper = JsonUtils.getMapper();
         ObjectNode root = mapper.valueToTree(request);
+        if (ProtocolWireCodec.hasContentBlockMessages(request.messages())) {
+            root.set("messages", ProtocolWireCodec.encodeAnthropicMessagesNode(request.messages()));
+        }
         String effectiveModel = request.model() != null ? request.model() : defaultModel;
         if (effectiveModel != null) {
             root.put("model", effectiveModel);

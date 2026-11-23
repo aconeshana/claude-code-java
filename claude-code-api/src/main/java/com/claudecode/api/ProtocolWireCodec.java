@@ -19,11 +19,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -181,6 +184,50 @@ public final class ProtocolWireCodec {
             Set<String> offeredTools) {
         List<StreamEvent> events = decodeSseToStreamEvents(from, upstreamSse, fallbackModel, offeredTools);
         return encodeStreamEventsToSse(to, events, fallbackModel);
+    }
+
+    /**
+     * Stateful incremental SSE frame projector from canonical {@link StreamEvent}s to a target
+     * protocol's wire SSE chunks, used by live streaming gateways for zero-buffering forwarding.
+     */
+    public interface StreamProjector {
+        /** Projects one incremental {@link StreamEvent} into zero or more SSE frames (ending in {@code \n\n}). */
+        List<String> onEvent(StreamEvent event);
+
+        /** Emits any closing SSE frames when the stream completes. */
+        List<String> finish();
+
+        /** Accumulated token usage observed across the stream. */
+        Usage usage();
+
+        /** True once at least one text, thinking, or tool-call delta has been projected. */
+        boolean emittedContent();
+    }
+
+    /**
+     * Creates a live incremental {@link StreamProjector} for {@code targetProtocol}.
+     */
+    public static StreamProjector newStreamProjector(ModelApiProtocol targetProtocol, String fallbackModel) {
+        return switch (targetProtocol) {
+            case ANTHROPIC -> new AnthropicLiveProjector();
+            case OPENAI_CHAT -> new ChatLiveProjector(fallbackModel);
+            case OPENAI_RESPONSES -> new ResponsesLiveProjector(fallbackModel);
+            case GEMINI -> new GeminiLiveProjector(fallbackModel);
+        };
+    }
+
+    /**
+     * Encodes an input token count into the wire JSON shape expected by {@code targetProtocol}
+     * ({@code {"input_tokens": N}} for Anthropic, {@code {"totalTokens": N}} for Gemini).
+     */
+    public static String encodeCountTokensResponse(ModelApiProtocol targetProtocol, long inputTokens) {
+        ObjectNode out = JsonUtils.getMapper().createObjectNode();
+        if (targetProtocol == ModelApiProtocol.GEMINI) {
+            out.put("totalTokens", inputTokens);
+        } else {
+            out.put("input_tokens", inputTokens);
+        }
+        return out.toString();
     }
 
     // ── Inbound Request Parsers (Wire -> IR) ──────────────────────────────────
@@ -510,7 +557,33 @@ public final class ProtocolWireCodec {
         return b.build();
     }
 
-    private static CreateMessageRequest parseGeminiRequest(ObjectNode root) {
+    private static final Set<String> GEMINI_USER_OWNED_FIELDS = Set.of(
+        "args", "response", "parameters", "parametersJsonSchema",
+        "responseSchema", "responseJsonSchema", "labels");
+
+    private static JsonNode camelGeminiKeys(JsonNode node) {
+        if (node == null || node.isNull()) return node;
+        if (node.isArray()) {
+            ArrayNode arr = JsonUtils.getMapper().createArrayNode();
+            for (JsonNode item : node) {
+                arr.add(camelGeminiKeys(item));
+            }
+            return arr;
+        }
+        if (!node.isObject()) return node;
+        ObjectNode out = JsonUtils.getMapper().createObjectNode();
+        node.properties().forEach(entry -> {
+            String camel = snakeToCamel(entry.getKey());
+            JsonNode val = GEMINI_USER_OWNED_FIELDS.contains(camel)
+                ? entry.getValue().deepCopy()
+                : camelGeminiKeys(entry.getValue());
+            out.set(camel, val);
+        });
+        return out;
+    }
+
+    private static CreateMessageRequest parseGeminiRequest(ObjectNode rawRoot) {
+        ObjectNode root = (ObjectNode) camelGeminiKeys(rawRoot);
         CreateMessageRequest.Builder b = CreateMessageRequest.builder();
         b.model(GeminiClient.cleanModelPathId(root.path("model").asText("")));
         b.stream(root.path("stream").asBoolean(false));
@@ -665,18 +738,29 @@ public final class ProtocolWireCodec {
                 }
             }
         }
-        if (!tools.isEmpty()) b.tools(tools);
-
         JsonNode fcConfig = root.path("toolConfig").path("functionCallingConfig");
         if (fcConfig.isObject()) {
             String mode = fcConfig.path("mode").asText("AUTO").toUpperCase(Locale.ROOT);
+            JsonNode allowedNode = fcConfig.get("allowedFunctionNames");
+            Set<String> allowedSet = new LinkedHashSet<>();
+            if (allowedNode != null && allowedNode.isArray()) {
+                for (JsonNode n : allowedNode) {
+                    String fn = GeminiClient.fromGeminiFuncName(n.asText(""));
+                    if (StringUtils.isNotBlank(fn)) allowedSet.add(fn);
+                }
+            }
+            if ((Strings.CS.equals("ANY", mode) || Strings.CS.equals("VALIDATED", mode))
+                    && !allowedSet.isEmpty()) {
+                tools = tools.stream()
+                    .filter(td -> allowedSet.contains(td.name()))
+                    .toList();
+            }
             if (Strings.CS.equals("NONE", mode)) {
                 b.toolChoice(new CreateMessageRequest.ToolChoice("none", null));
             } else if (Strings.CS.equals("ANY", mode)) {
-                JsonNode allowed = fcConfig.get("allowedFunctionNames");
-                if (allowed != null && allowed.isArray() && allowed.size() == 1) {
+                if (allowedSet.size() == 1) {
                     b.toolChoice(new CreateMessageRequest.ToolChoice(
-                        "tool", GeminiClient.fromGeminiFuncName(allowed.get(0).asText())));
+                        "tool", allowedSet.iterator().next()));
                 } else {
                     b.toolChoice(new CreateMessageRequest.ToolChoice("any", null));
                 }
@@ -684,6 +768,7 @@ public final class ProtocolWireCodec {
                 b.toolChoice(new CreateMessageRequest.ToolChoice("auto", null));
             }
         }
+        if (!tools.isEmpty()) b.tools(tools);
         return b.build();
     }
 
@@ -709,8 +794,9 @@ public final class ProtocolWireCodec {
         } else {
             String effort = ReasoningNormalizer.resolveEffectiveEffort(request);
             if (StringUtils.isNotBlank(effort)) {
-                int budget = request.thinking() != null && request.thinking().budgetTokens() > 0
-                    ? (int) request.thinking().budgetTokens()
+                Integer rawBudget = request.thinking() != null ? request.thinking().budgetTokens() : null;
+                int budget = rawBudget != null && rawBudget > 0
+                    ? rawBudget
                     : ReasoningNormalizer.budgetOfEffort(effort);
                 ObjectNode t = root.putObject("thinking");
                 t.put("type", "enabled");
@@ -731,25 +817,7 @@ public final class ProtocolWireCodec {
             }
         }
 
-        List<ToolPairingHealer.HealedTurn> turns = ToolPairingHealer.healRequestMessages(request.messages());
-        ArrayNode messages = root.putArray("messages");
-        for (ToolPairingHealer.HealedTurn turn : turns) {
-            String role = Strings.CS.equals("assistant", turn.role()) ? "assistant" : "user";
-            ArrayNode content = JsonUtils.getMapper().createArrayNode();
-            for (ContentBlock block : turn.blocks()) {
-                ObjectNode b = encodeAnthropicBlock(block);
-                if (b != null) content.add(b);
-            }
-            if (content.isEmpty()) continue;
-            if (!messages.isEmpty()
-                    && Strings.CS.equals(role, messages.get(messages.size() - 1).path("role").asText())) {
-                ((ArrayNode) messages.get(messages.size() - 1).path("content")).addAll(content);
-            } else {
-                ObjectNode msg = messages.addObject();
-                msg.put("role", role);
-                msg.set("content", content);
-            }
-        }
+        root.set("messages", encodeAnthropicMessagesNode(request.messages()));
 
         if (request.tools() != null && !request.tools().isEmpty()) {
             ArrayNode tools = root.putArray("tools");
@@ -771,6 +839,41 @@ public final class ProtocolWireCodec {
             }
         }
         return LlmWireBodyFinalizer.finalizeForApi(root);
+    }
+
+    static boolean hasContentBlockMessages(List<CreateMessageRequest.RequestMessage> requestMessages) {
+        if (requestMessages == null) return false;
+        for (CreateMessageRequest.RequestMessage msg : requestMessages) {
+            if (msg != null && msg.content() instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof ContentBlock) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static ArrayNode encodeAnthropicMessagesNode(List<CreateMessageRequest.RequestMessage> requestMessages) {
+        List<ToolPairingHealer.HealedTurn> turns = ToolPairingHealer.healRequestMessages(requestMessages);
+        ArrayNode messages = JsonUtils.getMapper().createArrayNode();
+        for (ToolPairingHealer.HealedTurn turn : turns) {
+            String role = Strings.CS.equals("assistant", turn.role()) ? "assistant" : "user";
+            ArrayNode content = JsonUtils.getMapper().createArrayNode();
+            for (ContentBlock block : turn.blocks()) {
+                ObjectNode b = encodeAnthropicBlock(block);
+                if (b != null) content.add(b);
+            }
+            if (content.isEmpty()) continue;
+            if (!messages.isEmpty()
+                    && Strings.CS.equals(role, messages.get(messages.size() - 1).path("role").asText())) {
+                ((ArrayNode) messages.get(messages.size() - 1).path("content")).addAll(content);
+            } else {
+                ObjectNode msg = messages.addObject();
+                msg.put("role", role);
+                msg.set("content", content);
+            }
+        }
+        return messages;
     }
 
     private static ObjectNode encodeAnthropicBlock(ContentBlock block) {
@@ -827,7 +930,7 @@ public final class ProtocolWireCodec {
                 }
                 yield node;
             }
-            default -> null;
+            default -> (ObjectNode) JsonUtils.getMapper().valueToTree(block);
         };
     }
 
@@ -874,6 +977,15 @@ public final class ProtocolWireCodec {
                 t.put("type", "thinking");
                 t.put("thinking", thinking.thinking() == null ? "" : thinking.thinking());
                 t.put("signature", StringUtils.defaultIfBlank(thinking.signature(), ""));
+            } else if (block instanceof ToolUseBlock tu) {
+                // Keep base64url __ts<thoughtSignature> intact for downstream Anthropic clients
+                // so multi-turn tool loops against a Gemini upstream preserve thoughtSignature.
+                ObjectNode node = content.addObject();
+                node.put("type", "tool_use");
+                node.put("id", ToolPairingHealer.sanitizeAnthropicToolId(tu.id()));
+                node.put("name", tu.name());
+                node.set("input", tu.input() != null ? tu.input().deepCopy()
+                    : JsonUtils.getMapper().createObjectNode());
             } else {
                 ObjectNode encoded = encodeAnthropicBlock(block);
                 if (encoded != null) content.add(encoded);
@@ -1716,7 +1828,7 @@ public final class ProtocolWireCodec {
         }
 
         @Override
-        public void translate(String type, String data, java.util.function.Consumer<StreamEvent> sink) {
+        public void translate(String type, String data, Consumer<StreamEvent> sink) {
             StreamEvent ev = decodeAnthropicSseEvent(type, data);
             if (ev == null) return;
             if (offeredTools == null || offeredTools.isEmpty()) {
@@ -1816,7 +1928,7 @@ public final class ProtocolWireCodec {
         }
 
         @Override
-        public void onClosed(java.util.function.Consumer<StreamEvent> sink) {
+        public void onClosed(Consumer<StreamEvent> sink) {
             buffered.forEach(sink);
             buffered.clear();
         }
@@ -1833,7 +1945,7 @@ public final class ProtocolWireCodec {
         }
 
         @Override
-        public void translate(String type, String data, java.util.function.Consumer<StreamEvent> sink) {
+        public void translate(String type, String data, Consumer<StreamEvent> sink) {
             if (StringUtils.isBlank(data) || Strings.CS.equals("[DONE]", data.trim())) return;
             try {
                 chunks.add(JsonUtils.getMapper().readTree(data));
@@ -1841,7 +1953,7 @@ public final class ProtocolWireCodec {
         }
 
         @Override
-        public void onClosed(java.util.function.Consumer<StreamEvent> sink) {
+        public void onClosed(Consumer<StreamEvent> sink) {
             String responseId = "gem_" + UUID.randomUUID().toString().substring(0, 8);
             String model = fallbackModel;
             Usage usage = Usage.EMPTY;
@@ -1934,6 +2046,529 @@ public final class ProtocolWireCodec {
                 }
             }
             return out;
+        }
+    }
+
+    // ── Live Incremental SSE Projectors (StreamEvent -> Target SSE Frames) ───
+
+    private static Usage mergeStreamUsage(Usage current, Usage delta) {
+        if (delta == null) return current;
+        long inTok = delta.inputTokens() > 0 ? delta.inputTokens() : current.inputTokens();
+        long cacheRead = delta.cacheReadInputTokens() > 0
+            ? delta.cacheReadInputTokens() : current.cacheReadInputTokens();
+        long cacheWrite = delta.cacheCreationInputTokens() > 0
+            ? delta.cacheCreationInputTokens() : current.cacheCreationInputTokens();
+        long outTok = delta.outputTokens() > 0 ? delta.outputTokens() : current.outputTokens();
+        return new Usage(inTok, outTok, cacheWrite, cacheRead);
+    }
+
+    private static final class AnthropicLiveProjector implements StreamProjector {
+        private Usage usage = Usage.EMPTY;
+        private boolean contentEmitted;
+
+        @Override
+        public List<String> onEvent(StreamEvent event) {
+            switch (event) {
+                case StreamEvent.MessageStart ms -> {
+                    if (ms.message().usage() != null) usage = mergeStreamUsage(usage, ms.message().usage());
+                }
+                case StreamEvent.ContentBlockDelta _ -> contentEmitted = true;
+                case StreamEvent.MessageDelta md -> usage = mergeStreamUsage(usage, md.usage());
+                default -> { }
+            }
+            StreamEventSseCodec.EncodedEvent enc = StreamEventSseCodec.encode(event);
+            if (enc == null) return List.of();
+            return List.of("event: " + enc.type() + "\ndata: " + enc.data() + "\n\n");
+        }
+
+        @Override
+        public List<String> finish() {
+            return List.of();
+        }
+
+        @Override
+        public Usage usage() {
+            return usage;
+        }
+
+        @Override
+        public boolean emittedContent() {
+            return contentEmitted;
+        }
+    }
+
+    private static final class ChatLiveProjector implements StreamProjector {
+        private String id = "chatcmpl_" + UUID.randomUUID().toString().substring(0, 12);
+        private String model;
+        private final long created = Instant.now().getEpochSecond();
+        private final Map<Integer, Integer> toolBlockToCallIdx = new LinkedHashMap<>();
+        private int nextToolIdx;
+        private boolean roleSent;
+        private boolean doneSent;
+        private Usage usage = Usage.EMPTY;
+        private boolean contentEmitted;
+
+        ChatLiveProjector(String fallbackModel) {
+            this.model = StringUtils.defaultIfBlank(fallbackModel, "");
+        }
+
+        @Override
+        public List<String> onEvent(StreamEvent event) {
+            StringBuilder sb = new StringBuilder();
+            switch (event) {
+                case StreamEvent.MessageStart ms -> {
+                    if (StringUtils.isNotEmpty(ms.message().id())) id = ms.message().id();
+                    if (StringUtils.isNotEmpty(ms.message().model())) model = ms.message().model();
+                    if (ms.message().usage() != null) usage = mergeStreamUsage(usage, ms.message().usage());
+                    ObjectNode delta = JsonUtils.getMapper().createObjectNode();
+                    delta.put("role", "assistant");
+                    delta.put("content", "");
+                    appendChatChunk(sb, id, model, created, delta, null, null);
+                    roleSent = true;
+                }
+                case StreamEvent.ContentBlockStart cbs -> {
+                    if (!roleSent) {
+                        ObjectNode d = JsonUtils.getMapper().createObjectNode().put("role", "assistant");
+                        appendChatChunk(sb, id, model, created, d, null, null);
+                        roleSent = true;
+                    }
+                    if (cbs.contentBlock() instanceof ToolUseBlock tu) {
+                        contentEmitted = true;
+                        int callIdx = nextToolIdx++;
+                        toolBlockToCallIdx.put(cbs.index(), callIdx);
+                        ObjectNode delta = JsonUtils.getMapper().createObjectNode();
+                        ObjectNode tc = delta.putArray("tool_calls").addObject();
+                        tc.put("index", callIdx);
+                        tc.put("id", tu.id());
+                        tc.put("type", "function");
+                        tc.putObject("function").put("name", tu.name()).put("arguments", "");
+                        appendChatChunk(sb, id, model, created, delta, null, null);
+                    }
+                }
+                case StreamEvent.ContentBlockDelta cbd -> {
+                    contentEmitted = true;
+                    ObjectNode delta = JsonUtils.getMapper().createObjectNode();
+                    switch (cbd.delta()) {
+                        case Delta.TextDelta(String text) -> {
+                            delta.put("content", text);
+                            appendChatChunk(sb, id, model, created, delta, null, null);
+                        }
+                        case Delta.ThinkingDelta(String thinking) -> {
+                            delta.put("reasoning_content", thinking);
+                            appendChatChunk(sb, id, model, created, delta, null, null);
+                        }
+                        case Delta.InputJsonDelta(String partialJson) -> {
+                            int callIdx = toolBlockToCallIdx.getOrDefault(cbd.index(), 0);
+                            ObjectNode tc = delta.putArray("tool_calls").addObject();
+                            tc.put("index", callIdx);
+                            tc.putObject("function").put("arguments", partialJson);
+                            appendChatChunk(sb, id, model, created, delta, null, null);
+                        }
+                        default -> { }
+                    }
+                }
+                case StreamEvent.MessageDelta md -> {
+                    usage = mergeStreamUsage(usage, md.usage());
+                    String reason = md.delta().stopReason();
+                    String finish = Strings.CS.equals("tool_use", reason) ? "tool_calls"
+                        : Strings.CS.equals("max_tokens", reason) ? "length" : "stop";
+                    appendChatChunk(sb, id, model, created,
+                        JsonUtils.getMapper().createObjectNode(), finish, usage);
+                }
+                case StreamEvent.MessageStop _ -> {
+                    if (!doneSent) {
+                        doneSent = true;
+                        sb.append("data: [DONE]\n\n");
+                    }
+                }
+                default -> { }
+            }
+            return sb.isEmpty() ? List.of() : List.of(sb.toString());
+        }
+
+        @Override
+        public List<String> finish() {
+            if (doneSent) return List.of();
+            doneSent = true;
+            return List.of("data: [DONE]\n\n");
+        }
+
+        @Override
+        public Usage usage() {
+            return usage;
+        }
+
+        @Override
+        public boolean emittedContent() {
+            return contentEmitted;
+        }
+    }
+
+    private static final class ResponsesLiveProjector implements StreamProjector {
+        private String respId = "resp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        private final long createdAt = Instant.now().getEpochSecond();
+        private String model;
+        private int seq;
+        private int nextOutputIdx;
+        private boolean createdSent;
+        private boolean completedSent;
+        private String stopReason = "end_turn";
+        private Usage usage = Usage.EMPTY;
+        private boolean contentEmitted;
+        private final Map<Integer, BlockAccum> activeBlocks = new LinkedHashMap<>();
+        private final Map<Integer, Integer> blockToOutputIdx = new LinkedHashMap<>();
+        private final Map<Integer, String> blockToItemId = new LinkedHashMap<>();
+        private final ArrayNode completedItems = JsonUtils.getMapper().createArrayNode();
+
+        ResponsesLiveProjector(String fallbackModel) {
+            this.model = StringUtils.defaultIfBlank(fallbackModel, "");
+        }
+
+        @Override
+        public List<String> onEvent(StreamEvent event) {
+            StringBuilder sb = new StringBuilder();
+            switch (event) {
+                case StreamEvent.MessageStart ms -> {
+                    if (StringUtils.isNotEmpty(ms.message().id())) respId = ms.message().id();
+                    if (StringUtils.isNotEmpty(ms.message().model())) model = ms.message().model();
+                    if (ms.message().usage() != null) usage = mergeStreamUsage(usage, ms.message().usage());
+                    ensureCreated(sb);
+                }
+                case StreamEvent.ContentBlockStart cbs -> {
+                    ensureCreated(sb);
+                    int outIdx = nextOutputIdx++;
+                    activeBlocks.put(cbs.index(), new BlockAccum(cbs.contentBlock()));
+                    blockToOutputIdx.put(cbs.index(), outIdx);
+                    ObjectNode item = JsonUtils.getMapper().createObjectNode();
+                    switch (cbs.contentBlock()) {
+                        case ThinkingBlock _ -> {
+                            String itemId = "rs_" + outIdx;
+                            blockToItemId.put(cbs.index(), itemId);
+                            item.put("id", itemId).put("type", "reasoning").putArray("summary");
+                        }
+                        case ToolUseBlock tu -> {
+                            contentEmitted = true;
+                            String itemId = "fc_" + outIdx;
+                            blockToItemId.put(cbs.index(), itemId);
+                            item.put("id", itemId)
+                                .put("type", "function_call")
+                                .put("status", "in_progress")
+                                .put("call_id", tu.id())
+                                .put("name", tu.name())
+                                .put("arguments", "");
+                        }
+                        default -> {
+                            String itemId = "msg_" + outIdx;
+                            blockToItemId.put(cbs.index(), itemId);
+                            item.put("id", itemId)
+                                .put("type", "message")
+                                .put("status", "in_progress")
+                                .put("role", "assistant")
+                                .putArray("content");
+                        }
+                    }
+                    ObjectNode added = JsonUtils.getMapper().createObjectNode();
+                    added.put("type", "response.output_item.added");
+                    added.put("sequence_number", seq++);
+                    added.put("output_index", outIdx);
+                    added.set("item", item);
+                    appendResponsesEvent(sb, "response.output_item.added", added);
+                }
+                case StreamEvent.ContentBlockDelta cbd -> {
+                    contentEmitted = true;
+                    BlockAccum acc = activeBlocks.get(cbd.index());
+                    if (acc != null) acc.apply(cbd.delta());
+                    int outIdx = blockToOutputIdx.getOrDefault(cbd.index(), 0);
+                    String itemId = blockToItemId.getOrDefault(cbd.index(), "msg_0");
+                    switch (cbd.delta()) {
+                        case Delta.TextDelta(String text) -> {
+                            ObjectNode d = JsonUtils.getMapper().createObjectNode();
+                            d.put("type", "response.output_text.delta");
+                            d.put("sequence_number", seq++);
+                            d.put("output_index", outIdx);
+                            d.put("content_index", 0);
+                            d.put("item_id", itemId);
+                            d.put("delta", text);
+                            appendResponsesEvent(sb, "response.output_text.delta", d);
+                        }
+                        case Delta.ThinkingDelta(String thinking) -> {
+                            ObjectNode d = JsonUtils.getMapper().createObjectNode();
+                            d.put("type", "response.reasoning_summary_text.delta");
+                            d.put("sequence_number", seq++);
+                            d.put("output_index", outIdx);
+                            d.put("summary_index", 0);
+                            d.put("item_id", itemId);
+                            d.put("delta", thinking);
+                            appendResponsesEvent(sb, "response.reasoning_summary_text.delta", d);
+                        }
+                        case Delta.InputJsonDelta(String partialJson) -> {
+                            ObjectNode d = JsonUtils.getMapper().createObjectNode();
+                            d.put("type", "response.function_call_arguments.delta");
+                            d.put("sequence_number", seq++);
+                            d.put("output_index", outIdx);
+                            d.put("item_id", itemId);
+                            d.put("delta", partialJson);
+                            appendResponsesEvent(sb, "response.function_call_arguments.delta", d);
+                        }
+                        default -> { }
+                    }
+                }
+                case StreamEvent.ContentBlockStop cbStop -> {
+                    BlockAccum acc = activeBlocks.remove(cbStop.index());
+                    if (acc != null) {
+                        ContentBlock built = acc.build();
+                        int outIdx = blockToOutputIdx.getOrDefault(cbStop.index(), 0);
+                        String itemId = blockToItemId.getOrDefault(cbStop.index(), "msg_" + outIdx);
+                        ObjectNode doneItem = buildResponsesDoneItem(built, itemId);
+                        completedItems.add(doneItem);
+                        ObjectNode done = JsonUtils.getMapper().createObjectNode();
+                        done.put("type", "response.output_item.done");
+                        done.put("sequence_number", seq++);
+                        done.put("output_index", outIdx);
+                        done.set("item", doneItem.deepCopy());
+                        appendResponsesEvent(sb, "response.output_item.done", done);
+                    }
+                }
+                case StreamEvent.MessageDelta md -> {
+                    if (StringUtils.isNotEmpty(md.delta().stopReason())) {
+                        stopReason = md.delta().stopReason();
+                    }
+                    usage = mergeStreamUsage(usage, md.usage());
+                }
+                case StreamEvent.MessageStop _ -> emitCompleted(sb);
+                default -> { }
+            }
+            return sb.isEmpty() ? List.of() : List.of(sb.toString());
+        }
+
+        @Override
+        public List<String> finish() {
+            if (completedSent) return List.of();
+            StringBuilder sb = new StringBuilder();
+            ensureCreated(sb);
+            emitCompleted(sb);
+            return sb.isEmpty() ? List.of() : List.of(sb.toString());
+        }
+
+        private void ensureCreated(StringBuilder sb) {
+            if (createdSent) return;
+            createdSent = true;
+            ObjectNode createdShell = JsonUtils.getMapper().createObjectNode();
+            createdShell.put("id", respId);
+            createdShell.put("object", "response");
+            createdShell.put("created_at", createdAt);
+            createdShell.put("status", "in_progress");
+            createdShell.put("model", model);
+            createdShell.putArray("output");
+            ObjectNode ev = JsonUtils.getMapper().createObjectNode();
+            ev.put("type", "response.created");
+            ev.put("sequence_number", seq++);
+            ev.set("response", createdShell);
+            appendResponsesEvent(sb, "response.created", ev);
+        }
+
+        private void emitCompleted(StringBuilder sb) {
+            if (completedSent) return;
+            completedSent = true;
+            boolean incomplete = Strings.CS.equals("max_tokens", stopReason);
+            String status = incomplete ? "incomplete" : "completed";
+            ObjectNode resp = JsonUtils.getMapper().createObjectNode();
+            resp.put("id", respId);
+            resp.put("object", "response");
+            resp.put("created_at", createdAt);
+            resp.put("status", status);
+            resp.put("model", model);
+            if (incomplete) {
+                resp.putObject("incomplete_details").put("reason", "max_output_tokens");
+            }
+            resp.set("output", completedItems.deepCopy());
+            long input = usage.inputTokens() + usage.cacheReadInputTokens() + usage.cacheCreationInputTokens();
+            ObjectNode u = resp.putObject("usage");
+            u.put("input_tokens", input);
+            u.put("output_tokens", usage.outputTokens());
+            u.put("total_tokens", input + usage.outputTokens());
+            if (usage.cacheReadInputTokens() > 0) {
+                u.putObject("input_tokens_details").put("cached_tokens", usage.cacheReadInputTokens());
+            }
+            String terminalType = "response." + status;
+            ObjectNode ev = JsonUtils.getMapper().createObjectNode();
+            ev.put("type", terminalType);
+            ev.put("sequence_number", seq++);
+            ev.set("response", resp);
+            appendResponsesEvent(sb, terminalType, ev);
+        }
+
+        private static ObjectNode buildResponsesDoneItem(ContentBlock block, String itemId) {
+            ObjectNode item = JsonUtils.getMapper().createObjectNode();
+            switch (block) {
+                case ThinkingBlock thinking -> {
+                    item.put("id", itemId).put("type", "reasoning");
+                    ArrayNode sum = item.putArray("summary");
+                    if (StringUtils.isNotEmpty(thinking.thinking())) {
+                        sum.addObject().put("type", "summary_text").put("text", thinking.thinking());
+                    }
+                    if (StringUtils.isNotEmpty(thinking.signature())) {
+                        String enc = ClaudeSeal.isSealed(thinking.signature())
+                            ? thinking.signature()
+                            : ClaudeSeal.sealThinking(thinking.thinking(), thinking.signature());
+                        item.put("encrypted_content", enc);
+                    }
+                }
+                case ToolUseBlock tu -> item.put("id", itemId)
+                    .put("type", "function_call")
+                    .put("status", "completed")
+                    .put("call_id", tu.id())
+                    .put("name", tu.name())
+                    .put("arguments", tu.input() == null ? "{}" : tu.input().toString());
+                case TextBlock(String s) -> {
+                    item.put("id", itemId)
+                        .put("type", "message")
+                        .put("status", "completed")
+                        .put("role", "assistant");
+                    item.putArray("content").addObject()
+                        .put("type", "output_text")
+                        .put("text", s)
+                        .putArray("annotations");
+                }
+                default -> item.put("id", itemId).put("type", "message").put("status", "completed");
+            }
+            return item;
+        }
+
+        @Override
+        public Usage usage() {
+            return usage;
+        }
+
+        @Override
+        public boolean emittedContent() {
+            return contentEmitted;
+        }
+    }
+
+    private static final class GeminiLiveProjector implements StreamProjector {
+        private String responseId = "gem_" + UUID.randomUUID().toString().substring(0, 12);
+        private String model;
+        private String stopReason = "end_turn";
+        private Usage usage = Usage.EMPTY;
+        private boolean contentEmitted;
+        private boolean finished;
+        private final Map<Integer, BlockAccum> toolBlocks = new LinkedHashMap<>();
+
+        GeminiLiveProjector(String fallbackModel) {
+            this.model = StringUtils.defaultIfBlank(fallbackModel, "");
+        }
+
+        @Override
+        public List<String> onEvent(StreamEvent event) {
+            switch (event) {
+                case StreamEvent.MessageStart ms -> {
+                    if (StringUtils.isNotEmpty(ms.message().id())) responseId = ms.message().id();
+                    if (StringUtils.isNotEmpty(ms.message().model())) model = ms.message().model();
+                    if (ms.message().usage() != null) usage = mergeStreamUsage(usage, ms.message().usage());
+                    return List.of();
+                }
+                case StreamEvent.ContentBlockStart cbs -> {
+                    if (cbs.contentBlock() instanceof ToolUseBlock) {
+                        contentEmitted = true;
+                        toolBlocks.put(cbs.index(), new BlockAccum(cbs.contentBlock()));
+                    }
+                    return List.of();
+                }
+                case StreamEvent.ContentBlockDelta cbd -> {
+                    contentEmitted = true;
+                    BlockAccum toolAcc = toolBlocks.get(cbd.index());
+                    if (toolAcc != null) {
+                        toolAcc.apply(cbd.delta());
+                        return List.of();
+                    }
+                    return switch (cbd.delta()) {
+                        case Delta.ThinkingDelta(String t) -> StringUtils.isEmpty(t) ? List.of()
+                            : List.of(encodePartChunk(
+                                JsonUtils.getMapper().createObjectNode().put("text", t).put("thought", true),
+                                null, false));
+                        case Delta.TextDelta(String t) -> StringUtils.isEmpty(t) ? List.of()
+                            : List.of(encodePartChunk(
+                                JsonUtils.getMapper().createObjectNode().put("text", t),
+                                null, false));
+                        default -> List.of();
+                    };
+                }
+                case StreamEvent.ContentBlockStop cbStop -> {
+                    BlockAccum acc = toolBlocks.remove(cbStop.index());
+                    if (acc != null && acc.build() instanceof ToolUseBlock tu) {
+                        GeminiThoughtSignature.UnsignedToolId u = GeminiThoughtSignature.unsignToolId(tu.id());
+                        ObjectNode part = JsonUtils.getMapper().createObjectNode();
+                        ObjectNode fc = part.putObject("functionCall");
+                        fc.put("id", StringUtils.defaultIfBlank(u.id(),
+                            "call_" + UUID.randomUUID().toString().substring(0, 8)));
+                        fc.put("name", tu.name());
+                        fc.set("args", tu.input() != null ? tu.input().deepCopy()
+                            : JsonUtils.getMapper().createObjectNode());
+                        if (StringUtils.isNotEmpty(u.signature())) {
+                            part.put("thoughtSignature", u.signature());
+                        }
+                        return List.of(encodePartChunk(part, null, false));
+                    }
+                    return List.of();
+                }
+                case StreamEvent.MessageDelta md -> {
+                    if (StringUtils.isNotEmpty(md.delta().stopReason())) {
+                        stopReason = md.delta().stopReason();
+                    }
+                    usage = mergeStreamUsage(usage, md.usage());
+                    return List.of();
+                }
+                case StreamEvent.MessageStop _ -> {
+                    return finish();
+                }
+                default -> {
+                    return List.of();
+                }
+            }
+        }
+
+        @Override
+        public List<String> finish() {
+            if (finished) return List.of();
+            finished = true;
+            String finish = Strings.CS.equals("max_tokens", stopReason) ? "MAX_TOKENS"
+                : Strings.CS.equals("refusal", stopReason) ? "SAFETY" : "STOP";
+            return List.of(encodePartChunk(null, finish, true));
+        }
+
+        private String encodePartChunk(ObjectNode part, String finishReason, boolean includeUsage) {
+            ObjectNode out = JsonUtils.getMapper().createObjectNode();
+            ObjectNode cand = out.putArray("candidates").addObject();
+            cand.put("index", 0);
+            ObjectNode content = cand.putObject("content");
+            content.put("role", "model");
+            ArrayNode parts = content.putArray("parts");
+            if (part != null) parts.add(part);
+            if (finishReason != null) cand.put("finishReason", finishReason);
+            out.put("modelVersion", model);
+            out.put("responseId", responseId);
+            if (includeUsage) {
+                long prompt = usage.inputTokens() + usage.cacheReadInputTokens() + usage.cacheCreationInputTokens();
+                ObjectNode meta = out.putObject("usageMetadata");
+                meta.put("promptTokenCount", prompt);
+                meta.put("candidatesTokenCount", usage.outputTokens());
+                meta.put("totalTokenCount", prompt + usage.outputTokens());
+                if (usage.cacheReadInputTokens() > 0) {
+                    meta.put("cachedContentTokenCount", usage.cacheReadInputTokens());
+                }
+            }
+            return "data: " + out + "\n\n";
+        }
+
+        @Override
+        public Usage usage() {
+            return usage;
+        }
+
+        @Override
+        public boolean emittedContent() {
+            return contentEmitted;
         }
     }
 }
