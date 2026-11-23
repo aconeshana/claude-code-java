@@ -37,7 +37,9 @@ import { AtTriggerPlugin } from './AtTriggerPlugin'
 import { formatMention, type AtToken } from './atReference'
 import { SlashTriggerPlugin } from './SlashTriggerPlugin'
 import {
+  activeCommandHint,
   applySlashPick,
+  atBreadcrumbSegments,
   plusMenuCandidates,
   slashMenuCandidates,
   type SlashToken,
@@ -471,6 +473,24 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     setFileMenu((current) => menuReduce(current, { type: 'hover', source: 'file', index }))
   }, [])
 
+  /** Jump back up to a parent directory prefix from the `@` menu breadcrumb. */
+  const navigateAtDirectory = useCallback((prefix: string): void => {
+    if (atToken == null) return
+    const editor = editorRef.current
+    if (editor == null) return
+    const inserted = formatMention(prefix)
+    editor.update(() => {
+      const root = $getRoot()
+      const text = root.getTextContent()
+      const merged = text.slice(0, atToken.start) + inserted + text.slice(atToken.end)
+      root.clear()
+      const node = $createTextNode(merged)
+      root.append($createParagraphNode().append(node))
+      const caret = atToken.start + inserted.length
+      node.select(caret, caret)
+    })
+  }, [atToken])
+
   /**
    * The file menu's keyboard share. Runs before the "+" menu's handler (the
    * two are exclusive in practice — the file menu only exists while a token
@@ -592,6 +612,9 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     })
   }, [])
 
+  const commandHint = activeCommandHint(draftText, composerCommands)
+  const fileBreadcrumbSegments = atToken == null ? [] : atBreadcrumbSegments(atToken.query)
+
   return (
     <div className={css.root}>
       <div
@@ -618,6 +641,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
         <ComposerMenu
           state={fileMenu}
           onPick={(_source, index) => pickFile(index, 'settle')}
+          onDrill={(_source, index) => pickFile(index, 'drill')}
+          breadcrumb={fileBreadcrumbSegments.length > 0
+            ? { segments: fileBreadcrumbSegments, onNavigate: navigateAtDirectory }
+            : undefined}
           onHover={(_source, index) => hoverFile(index)}
           onDismiss={() => {
             setFileMenu((current) => menuReduce(current, { type: 'close' }))
@@ -670,6 +697,21 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
             <PasteFilesPlugin onFiles={addFiles} />
             <AtTriggerPlugin onToken={setAtToken} />
             <SlashTriggerPlugin onToken={setSlashToken} />
+            {commandHint != null && (
+              <div
+                aria-live="polite"
+                style={{
+                  padding: '0 2px 4px',
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: 'var(--dsw-alias-label-caption)',
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                }}
+              >
+                参数提示：/{commandHint.name} {commandHint.hint}
+              </div>
+            )}
           </div>
         </LexicalComposer>
         <div className={css.row}>
@@ -793,7 +835,7 @@ const MODEL_SELECT_STRINGS = {
 function fileCandidates(files: readonly FileCandidate[]): readonly MenuCandidate[] {
   return files.map((file) => ({
     name: file.path,
-    ...(file.directory ? { icon: 'folder' as const } : {}),
+    ...(file.directory ? { icon: 'folder' as const, drillable: true } : {}),
     value: 'file',
   }))
 }

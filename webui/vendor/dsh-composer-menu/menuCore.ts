@@ -25,6 +25,8 @@ export interface MenuCandidate {
   readonly label?: string
   /** Opaque pick payload distinguishing the row kinds ('file' | 'command'). */
   readonly value?: string
+  /** True when the row represents a directory that supports Tab-drill descent. */
+  readonly drillable?: boolean
 }
 
 /** An icon component from the vendored shared icon set (IconProps shape). */

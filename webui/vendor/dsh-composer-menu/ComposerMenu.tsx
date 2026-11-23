@@ -33,11 +33,22 @@ function optionId(source: string, index: number): string {
   return `ccj-composer-option-${source}-${index}`
 }
 
+export interface ComposerMenuBreadcrumb {
+  /** Directory segments currently drilled into (e.g. `['src', 'views']`). */
+  readonly segments: readonly string[]
+  /** Jump back to a parent directory prefix (`''` for root, `'src/'` for `src`). */
+  readonly onNavigate: (prefix: string) => void
+}
+
 export interface ComposerMenuProps {
   /** The reducer state driving the render; `open === false` renders null. */
   readonly state: MenuState
   /** Settling pick of one row (mousedown — the composer keeps focus). */
   readonly onPick: (source: string, index: number) => void
+  /** Optional directory drill handler (Tab keycap / chevron click). */
+  readonly onDrill?: ((source: string, index: number) => void) | undefined
+  /** Optional directory breadcrumb header for `@`-reference descent. */
+  readonly breadcrumb?: ComposerMenuBreadcrumb | undefined
   /** Pointer parking of the shared highlight (mousemove, not mouseenter). */
   readonly onHover: (source: string, index: number) => void
   /** Dismiss request: Escape key or a pointer press outside card and menu. */
@@ -55,7 +66,7 @@ export interface ComposerMenuProps {
  * @returns the dropdown while open; null while closed.
  */
 export function ComposerMenu({
-  state, onPick, onHover, onDismiss, groupTitle, loadingLabel, listboxLabel,
+  state, onPick, onDrill, breadcrumb, onHover, onDismiss, groupTitle, loadingLabel, listboxLabel,
 }: ComposerMenuProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -104,6 +115,38 @@ export function ComposerMenu({
       data-trigger-menu=""
       data-overflow-below={hasOverflowBelow || undefined}
     >
+      {breadcrumb != null && breadcrumb.segments.length > 0 && (
+        <div className={css.breadcrumb} aria-label="目录路径">
+          <button
+            type="button"
+            className={css.breadcrumbBtn}
+            onMouseDown={(ev) => {
+              ev.preventDefault()
+              breadcrumb.onNavigate('')
+            }}
+          >
+            根目录
+          </button>
+          {breadcrumb.segments.map((seg, i) => {
+            const prefix = `${breadcrumb.segments.slice(0, i + 1).join('/')}/`
+            return (
+              <Fragment key={prefix}>
+                <span className={css.breadcrumbSep} aria-hidden>/</span>
+                <button
+                  type="button"
+                  className={css.breadcrumbBtn}
+                  onMouseDown={(ev) => {
+                    ev.preventDefault()
+                    breadcrumb.onNavigate(prefix)
+                  }}
+                >
+                  {seg}
+                </button>
+              </Fragment>
+            )
+          })}
+        </div>
+      )}
       <div
         ref={viewportRef}
         className={css.viewport}
@@ -163,7 +206,24 @@ export function ComposerMenu({
                         {item.label !== undefined && item.label.toLowerCase() !== item.name.toLowerCase() && (
                           <span className={css.itemAlias}>{item.name}</span>
                         )}
+                        {item.hint !== undefined && item.hint !== '' && (
+                          <span className={css.itemHint}>{item.hint}</span>
+                        )}
                         {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
+                        {item.drillable === true && onDrill !== undefined && (
+                          <span
+                            className={css.drillSeat}
+                            title="按 Tab 或点击进入下级目录"
+                            onMouseDown={(ev) => {
+                              ev.preventDefault()
+                              ev.stopPropagation()
+                              onDrill(group.source, index)
+                            }}
+                          >
+                            <kbd className={css.drillKey}>Tab</kbd>
+                            <span aria-hidden>›</span>
+                          </span>
+                        )}
                       </button>
                     </Fragment>
                   )

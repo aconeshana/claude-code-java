@@ -26,7 +26,8 @@ public final class SessionHostPermissionOptions {
 
     /** The full state for {@code gate}'s owning session. */
     public static SessionHostPermissionState build(PermissionGate gate) {
-        boolean bypassAvailable = gate.isBypassPermissionsModeAvailable();
+        boolean disabledByPolicy = gate.isBypassPermissionsModeDisabledByPolicy();
+        boolean bypassAvailable = !disabledByPolicy;
         List<SessionHostPermissionMode> options = new ArrayList<>();
         for (PermissionMode mode : SELECTABLE) {
             boolean available = mode != PermissionMode.BYPASS_PERMISSIONS || bypassAvailable;
@@ -34,7 +35,7 @@ public final class SessionHostPermissionOptions {
                 mode.shortTitle(), mode.symbol(), mode.colorKey().name(), available));
         }
         return new SessionHostPermissionState(gate.currentMode().external(),
-            List.copyOf(options), bypassAvailable, gate.isBypassPermissionsModeDisabledByPolicy());
+            List.copyOf(options), bypassAvailable, disabledByPolicy);
     }
 
     /** True when {@code selected} names one of the selectable modes. */

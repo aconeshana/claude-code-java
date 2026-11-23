@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ComposerCommandEntry } from '../api/types'
 import {
+  activeCommandHint,
   activeSlashToken,
   applySlashPick,
+  atBreadcrumbSegments,
   plusMenuCandidates,
   sameSlashToken,
   slashMenuCandidates,
@@ -91,6 +93,35 @@ describe('applySlashPick', () => {
   })
 })
 
+describe('activeCommandHint', () => {
+  const catalogue: readonly ComposerCommandEntry[] = [
+    { name: 'compact', description: 'Compact', argument_hint: '[focus instructions]', kind: 'command' },
+    { name: 'clear', description: 'Clear', kind: 'command' },
+  ]
+
+  it('returns the argument hint when a command is followed by whitespace and no args yet', () => {
+    expect(activeCommandHint('/compact ', catalogue)).toEqual({
+      name: 'compact',
+      hint: '[focus instructions]',
+    })
+  })
+
+  it('returns null when arguments are already typed or no hint exists', () => {
+    expect(activeCommandHint('/compact keep tests', catalogue)).toBeNull()
+    expect(activeCommandHint('/clear ', catalogue)).toBeNull()
+    expect(activeCommandHint('/compact', catalogue)).toBeNull()
+  })
+})
+
+describe('atBreadcrumbSegments', () => {
+  it('extracts directory segments from nested queries', () => {
+    expect(atBreadcrumbSegments('')).toEqual([])
+    expect(atBreadcrumbSegments('README.md')).toEqual([])
+    expect(atBreadcrumbSegments('src/')).toEqual(['src'])
+    expect(atBreadcrumbSegments('src/views/In')).toEqual(['src', 'views'])
+  })
+})
+
 describe('slashMenuCandidates & plusMenuCandidates', () => {
   const catalogue: readonly ComposerCommandEntry[] = [
     { name: 'help', description: 'Show help', kind: 'command' },
@@ -99,22 +130,25 @@ describe('slashMenuCandidates & plusMenuCandidates', () => {
     { name: 'code-review', description: 'Review code changes', kind: 'skill' },
   ]
 
-  it('shows all commands under the Commands section for an empty slash query', () => {
+  it('orders pinned built-ins first and attaches localized labels for an empty slash query', () => {
     const rows = slashMenuCandidates(catalogue, '')
-    expect(rows.map((r) => r.name)).toEqual(['help', 'compact', 'clear', 'code-review'])
+    expect(rows.map((r) => r.name)).toEqual(['compact', 'clear', 'help', 'code-review'])
+    expect(rows[0]?.label).toBe('压缩上下文')
+    expect(rows[0]?.hint).toBe('[instructions]')
     expect(rows.every((r) => r.section === '指令')).toBe(true)
-    expect(rows[1]?.hint).toBe('[instructions]')
     expect(rows[3]?.icon).toBeDefined()
   })
 
-  it('ranks prefix and fuzzy subsequence matches using vendored rankByName', () => {
+  it('ranks prefix, fuzzy subsequence, and localized Chinese label matches', () => {
     const rows = slashMenuCandidates(catalogue, 'c')
     expect(rows.map((r) => r.name)).toEqual(['compact', 'clear', 'code-review'])
-    // Filtered results drop section headings so rank order is preserved.
     expect(rows.every((r) => r.section === undefined)).toBe(true)
 
     const fuzzy = slashMenuCandidates(catalogue, 'cr')
     expect(fuzzy.map((r) => r.name)).toEqual(['code-review', 'clear'])
+
+    const chinese = slashMenuCandidates(catalogue, '压缩')
+    expect(chinese.map((r) => r.name)).toEqual(['compact'])
   })
 
   it('returns empty list when no command matches the query', () => {
@@ -124,7 +158,7 @@ describe('slashMenuCandidates & plusMenuCandidates', () => {
   it('prepends the File row in Add section for the + menu', () => {
     const rows = plusMenuCandidates(catalogue)
     expect(rows[0]).toMatchObject({ name: 'file', section: '添加', value: 'file' })
-    expect(rows.slice(1).map((r) => r.name)).toEqual(['help', 'compact', 'clear', 'code-review'])
+    expect(rows.slice(1).map((r) => r.name)).toEqual(['compact', 'clear', 'help', 'code-review'])
     expect(rows.slice(1).every((r) => r.section === '指令')).toBe(true)
   })
 })

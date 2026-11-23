@@ -224,16 +224,17 @@ final class CliHeadlessSessionFactory {
                             "permission mode is not available for this session");
                     }
                     PermissionMode parsed = PermissionGate.parseMode(selected);
-                    if (!gate.trySetMode(parsed)) {
-                        // Same two rejection reasons SdkInboundControlHandler
-                        // reports for the SDK control-request path.
-                        String reason = gate.isBypassPermissionsModeDisabledByPolicy()
-                            ? "because it is disabled by settings or configuration"
-                            : "because the session was not launched with "
-                                + "--dangerously-skip-permissions";
-                        throw new IllegalArgumentException(
-                            "Cannot set permission mode to bypassPermissions " + reason);
+                    if (parsed == PermissionMode.BYPASS_PERMISSIONS) {
+                        if (gate.isBypassPermissionsModeDisabledByPolicy()) {
+                            throw new IllegalArgumentException(
+                                "Cannot set permission mode to bypassPermissions "
+                                    + "because it is disabled by settings or configuration");
+                        }
+                        if (!gate.isBypassPermissionsModeAvailable()) {
+                            gate.setBypassPermissionsModeAvailable(true);
+                        }
                     }
+                    gate.setMode(parsed);
                     return SessionHostPermissionOptions.build(gate);
                 }
             },
