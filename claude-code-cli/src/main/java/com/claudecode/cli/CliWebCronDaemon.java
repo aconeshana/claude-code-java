@@ -9,7 +9,6 @@ import com.claudecode.tools.cron.CronStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Resident scheduled-task daemon hosted inside the {@code claude web} process.
@@ -39,8 +39,7 @@ final class CliWebCronDaemon implements AutoCloseable {
     }
 
     private static final Logger log = Logger.getLogger(CliWebCronDaemon.class.getName());
-    private static final boolean IS_MAC = System.getProperty("os.name", "")
-        .toLowerCase(Locale.ROOT).contains("mac");
+    private static final boolean IS_MAC = Strings.CI.contains(System.getProperty("os.name", ""), "mac");
 
     private final CliHeadlessGatewaySessions headless;
     private final String workingDirectory;
@@ -187,7 +186,7 @@ final class CliWebCronDaemon implements AutoCloseable {
             }
             String body = StringUtils.defaultIfBlank(task.resolvedPrompt(), task.prompt()).trim();
             String tag = formatScheduledTag(task.id());
-            String taggedPrompt = body.startsWith("[定时任务") ? body : tag + body;
+            String taggedPrompt = Strings.CS.startsWith(body, "[定时任务") ? body : tag + body;
             SessionHostSubmission submission = new SessionHostSubmission(
                 taggedPrompt,
                 "cron-" + task.id() + "-" + UUID.randomUUID().toString().substring(0, 8),
@@ -207,7 +206,8 @@ final class CliWebCronDaemon implements AutoCloseable {
 
     private static void maybeNotify(CronScheduler.FiredTask task, String mode, boolean succeeded) {
         if (!IS_MAC) return;
-        boolean shouldSend = "always".equals(mode) || ("on_error".equals(mode) && !succeeded);
+        boolean shouldSend = Strings.CS.equals("always", mode)
+            || (Strings.CS.equals("on_error", mode) && !succeeded);
         if (!shouldSend) return;
         String headline = task.prompt().trim().split("\\R", 2)[0];
         if (headline.length() > 42) {

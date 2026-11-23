@@ -447,7 +447,7 @@ public final class CronStore {
                     n.put("workingDirectory", opts.workingDirectory());
                 }
                 if (!opts.newSessionPerRun()) n.put("newSessionPerRun", false);
-                if (!"off".equals(opts.notificationMode())) {
+                if (!Strings.CS.equals("off", opts.notificationMode())) {
                     n.put("notificationMode", opts.notificationMode());
                 }
                 if (opts.archiveOnSuccess()) n.put("archiveOnSuccess", true);

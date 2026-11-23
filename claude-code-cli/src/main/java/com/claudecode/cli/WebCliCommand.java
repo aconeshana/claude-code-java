@@ -194,7 +194,7 @@ public class WebCliCommand implements Callable<Integer> {
                 // work directory, which is the only correct root here.
                 null,
                 new CliBackgroundTasksPort(
-                    com.claudecode.tools.tasks.TaskRegistry.global(),
+                    TaskRegistry.global(),
                     headless::liveEngine,
                     headless::toolRegistry));
             CountDownLatch stopped = new CountDownLatch(1);

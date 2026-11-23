@@ -184,8 +184,9 @@ public class CronCreateTool extends AnnotatedTool<JsonNode, String> {
             String dom = fields[2];
             String month = fields[3];
             String dow = fields[4];
-            boolean constrainedCalendar = !"*".equals(dom) || !"*".equals(month) || !"*".equals(dow);
-            boolean specificHour = !"*".equals(hour) && !hour.startsWith("*/");
+            boolean constrainedCalendar = !Strings.CS.equals("*", dom)
+                || !Strings.CS.equals("*", month) || !Strings.CS.equals("*", dow);
+            boolean specificHour = !Strings.CS.equals("*", hour) && !Strings.CS.startsWith(hour, "*/");
             return constrainedCalendar || specificHour;
         }
         Long nextMs = CronUtils.nextRunAfterMs(cron, nowMs);
