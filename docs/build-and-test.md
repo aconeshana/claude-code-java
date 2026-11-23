@@ -22,7 +22,7 @@ java -jar claude-code-app/build/libs/poco-*.jar
 ~~~
 
 The Gradle wrapper pins Gradle 9.7.0 and its distribution checksum. Dependency
-versions live in `gradle/libs.versions.toml`. The 15 product modules compile
+versions live in `gradle/libs.versions.toml`. The 16 product modules compile
 with the Java 25 toolchain and `--release 25`; `build-recipes` is a separate
 build-time helper project. Gradle itself must also run on Java 25 or newer.
 Build caching, configuration caching, and parallel project execution are

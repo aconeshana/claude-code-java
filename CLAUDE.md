@@ -1,8 +1,10 @@
 # Claude Code Java — Development Guide
 
-A terminal coding agent implemented in Java, with Anthropic and user-defined Anthropic or
-OpenAI-compatible model endpoints. The repository contains the product modules listed below plus
-the build-time `build-recipes` helper project.
+A terminal and web-enabled coding agent implemented in Java 25. It supports Anthropic endpoints as
+well as user-defined Anthropic-compatible, OpenAI-compatible (`chat` / `responses`), and Google
+Gemini (`gemini`) model endpoints, with an in-process HTTP+SSE Web UI gateway and optional LAN
+multi-protocol model relay. The repository contains the 16 product modules listed below, the
+`webui/` React + Vite frontend, and the build-time `build-recipes` helper project.
 
 ## Quick Reference
 
@@ -12,10 +14,12 @@ the build-time `build-recipes` helper project.
 | Run | `java -jar claude-code-app/build/libs/poco-*.jar` |
 | Test | `./gradlew test` |
 | Package | `./gradlew :claude-code-app:shadowJar` |
+| Native quick image | `./gradlew :claude-code-app:nativeQuickCompile` |
 | Single module | `./gradlew :claude-code-core:build` |
 | Commit-time quality gates | `./gradlew --no-configuration-cache --no-parallel preCommitQuality` |
+| WebUI typecheck / test / build | `pnpm --dir webui exec tsc -b && pnpm --dir webui test && pnpm --dir webui build` |
 
-Gradle with Kotlin DSL is the only build system. See
+The product modules and `build-recipes` use Gradle with Kotlin DSL. See
 [docs/build-and-test.md](docs/build-and-test.md) for build, test, packaging, native-image,
 and platform-asset details.
 
@@ -24,10 +28,10 @@ and platform-asset details.
 ```
 claude-code-core     → stable model protocols, policies, value objects
 claude-code-http     → shared OkHttp transport
-claude-code-api      → provider configuration, routing, and API clients
+claude-code-api      → provider configuration, routing, multi-protocol wire codec, and API clients
 claude-code-permissions → allow/deny/ask system
 claude-code-runtime  → QuerySession + headless session/turn orchestration + UI application ports
-claude-code-gateway  → in-process HTTP+SSE third session endpoint (web/API entry)
+claude-code-gateway  → in-process HTTP+SSE third session endpoint (web UI, scheduled tasks, LAN model proxy)
 claude-code-tools    → built-in + runtime-provided tool system (some tools are platform- or feature-gated)
 claude-code-commands → slash command registry (commands, availability gates, and hidden stubs)
 claude-code-mcp      → Model Context Protocol
@@ -40,9 +44,11 @@ claude-code-sdk      → out-of-process Agent SDK and in-process SDK MCP servers
 claude-code-app      → assembly + packaging
 ```
 
-`build-recipes` is a build-time OpenRewrite/Refaster helper project and is not part of the product
-runtime module graph. The executable module graph, allowed dependency directions, and ownership
-boundaries live in `ModuleArchitectureTest` and [docs/architecture.md](docs/architecture.md).
+`build-recipes` is a build-time OpenRewrite/Refaster helper project and is not part of the
+product runtime module graph. `webui/` is the standalone React + Vite frontend bundled into
+`claude-code-app` via `:claude-code-app:buildWebui`. The executable module graph, allowed
+dependency directions, and ownership boundaries live in `ModuleArchitectureTest`,
+`GuideOwnershipTest`, and [docs/architecture.md](docs/architecture.md).
 
 ## Code Standards (enforced)
 
@@ -53,8 +59,9 @@ boundaries live in `ModuleArchitectureTest` and [docs/architecture.md](docs/arch
   original product. Do not use it for ordinary refactoring, language-level implementation details,
   or unfinished work.
 
-**IMPORTANT**: Before changing compatibility-sensitive behavior, read the public protocol documentation,
-the local behavioral contract, and the relevant tests. Do not invent APIs or wire formats.
+**IMPORTANT**: Before changing compatibility-sensitive behavior, read the public protocol
+documentation, the current implementation, and the relevant tests. Do not invent APIs or wire
+formats.
 
 ## Testing and Verification
 
@@ -67,27 +74,57 @@ the local behavioral contract, and the relevant tests. Do not invent APIs or wir
 - Run the opt-in process-level CLI startup smoke tests with
   `./gradlew :claude-code-app:flagStartupSmoke`.
 
-The Gradle wrapper pins Gradle 9.7.0, and product modules compile with the Java 25 toolchain.
-Platform-specific distributions bundle ripgrep for macOS, Linux, and Windows on `arm64` and
-`amd64`; macOS and Linux distributions also bundle cc-connect. See
-[docs/build-and-test.md](docs/build-and-test.md) for native-image commands, bundled asset
-verification, local Lanterna development, and checks outside the default test task.
+### Mandatory Pre-Push Verification Gate (CI Alignment)
+
+Before running `git push` to GitHub, you **MUST** verify all CI checks locally so that CI passes on the first push without repeated fixup commits:
+
+1. **Untracked File Audit (`git status`)**: Verify that every newly created Java class, TypeScript module, CSS module, vendor package, or test fixture referenced by modified files is staged (`git add`) and not left untracked.
+2. **Java CI Gate (`.github/workflows/java.yml` & quality gates)**:
+   - Run `./gradlew test` (or module tests + `pmdMain pmdTest` + `rewriteDryRun` / `preCommitQuality`) on Java 25.
+   - When touching reflection, Jackson models, CLI startup, or subprocess relaunch paths, also verify `./gradlew :claude-code-app:nativeQuickCompile` and the `web -d` / `web status` / `web stop` smoke lifecycle.
+3. **WebUI CI Gate (`.github/workflows/webui.yml`)**:
+   - In `webui/`, run `pnpm exec tsc -b` (typecheck), `pnpm test` (Vitest unit/component suite), and `pnpm build` (Vite production bundle).
+
+The Gradle wrapper pins Gradle 9.7.0, product modules compile with the Java 25 toolchain and
+`--release 25`, and Gradle itself must run on Java 25 or newer. Platform-specific distributions
+bundle ripgrep for macOS, Linux, and Windows on `arm64` and `amd64`; macOS and Linux distributions
+also bundle cc-connect. See [docs/build-and-test.md](docs/build-and-test.md) for native-image
+commands, bundled asset verification, local Lanterna development, and checks outside the default
+test task.
 
 ## Configuration
 
 - Bearer authentication for the independent gateway channel: `ANTHROPIC_AUTH_TOKEN`.
-- Settings sources: user-level `~/.claude/settings.json`, project-level
-  `.claude/settings.json`, local `.claude/settings.local.json`, `--settings` file or inline overrides,
-  and OS-specific managed policy settings.
-- Transcript storage: `~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl`.
-- Configuration directory override: `CLAUDE_CONFIG_DIR` (default: `~/.claude`). It relocates the
-  Claude configuration home and resolves the global config as `$CLAUDE_CONFIG_DIR/.claude.json`
-  unless the legacy `$CLAUDE_CONFIG_DIR/.config.json` exists.
+- Custom model catalog (`$CLAUDE_CONFIG_DIR/model.json`, default `~/.claude/model.json`): defines
+  custom endpoints with `protocol` (`anthropic`, `chat`, `responses`, or `gemini`), `baseUrl`,
+  `apiKey`, `contextWindow`, `multimodal`, and custom `headers`. Managed via `/models` in TUI or
+  the Web UI Models Settings (including single-provider `/v1/models` & `/v1beta/models` batch
+  discovery).
+- Web gateway & LAN model proxy:
+  - Fixed single-instance port `19845` (test override: `CLAUDE_WEB_PORT`); discovery record at
+    `$CLAUDE_CONFIG_DIR/web-gateway.json`.
+  - Scheduled tasks store at `$CLAUDE_CONFIG_DIR/scheduled_tasks.json` (executed by both interactive
+    TUI sessions and the resident `CliWebCronDaemon` hosted by `claude web`).
+  - LAN model proxy configuration & keys (`ccgw_*`) at `$CLAUDE_CONFIG_DIR/lan-gateway.json`.
+- File-backed settings sources: user-level `$CLAUDE_CONFIG_DIR/settings.json` (default:
+  `~/.claude/settings.json`; `cowork_settings.json` when cowork plugins are enabled), project-level
+  `<project>/.claude/settings.json`, local `<project>/.claude/settings.local.json`, the OS-specific
+  administrator-managed `managed-settings.json` and sibling `managed-settings.d` drop-ins, and an
+  optional `--settings` file or inline JSON object.
+- Transcript storage: `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/<sessionId>.jsonl` (default:
+  `~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl`).
+- Configuration directory override: `CLAUDE_CONFIG_DIR` (default configuration home:
+  `~/.claude`). It relocates the Claude configuration home and resolves the global config as
+  `$CLAUDE_CONFIG_DIR/.claude.json` unless the legacy `$CLAUDE_CONFIG_DIR/.config.json` exists.
 
 ## Architecture Notes
 
 - `claude-code-runtime` owns query-session creation, turn submission, streaming, tool-use
   orchestration, interruption recovery, and application-facing ports.
+- `claude-code-gateway` owns the embedded HTTP+SSE server for the Web UI (`/`), session mirror/link
+  multiplexing, workspace file tree/preview endpoints, scheduled tasks management, runtime control,
+  and the multi-protocol LAN model gateway (`/v1/messages`, `/v1/chat/completions`, `/v1/responses`,
+  `/v1beta/models/*`).
 - `claude-code-services` owns concrete integrations such as hooks, compaction, memory,
   settings, plugins, and platform processes.
 - `claude-code-sdk` is an external-consumer leaf. Its query implementation launches the CLI
@@ -104,3 +141,5 @@ verification, local Lanterna development, and checks outside the default test ta
 - [Build, test & configuration](docs/build-and-test.md)
 - [Memory system — CLAUDE.md scopes + @include + /memory](docs/memory-system.md)
 - [Prompt cache tiers — @CacheTier & scenario model keys](docs/prompt-cache-tiers.md)
+- [Brand & theme assets](docs/brand-assets.md)
+- [Session Host & IM integration](docs/session-host-im.md)

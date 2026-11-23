@@ -6,9 +6,10 @@
 claude-code-java/
 ├── claude-code-core/          # Stable model protocols, policies, and value objects
 ├── claude-code-http/          # Shared OkHttp transport infrastructure
-├── claude-code-api/           # Provider configuration, routing, and API clients
+├── claude-code-api/           # Provider configuration, routing, multi-protocol wire codec, and API clients
 ├── claude-code-permissions/   # Permission system (allow/deny/ask)
 ├── claude-code-runtime/       # Query sessions plus headless session/turn orchestration
+├── claude-code-gateway/       # In-process HTTP+SSE Web UI, session link, scheduled tasks, and LAN model proxy
 ├── claude-code-tools/         # Built-in and runtime-provided tool system
 ├── claude-code-commands/      # Slash commands, availability gates, and hidden stubs
 ├── claude-code-mcp/           # Model Context Protocol integration
@@ -22,7 +23,8 @@ claude-code-java/
 ```
 
 The Gradle build also includes `build-recipes`, a build-time OpenRewrite/Refaster helper project.
-It is not part of the 15-module product runtime graph.
+It is not part of the 16-module product runtime graph. `webui/` at the repository root is the
+standalone React + Vite frontend bundled into `claude-code-app`.
 
 ## Module Dependencies
 
