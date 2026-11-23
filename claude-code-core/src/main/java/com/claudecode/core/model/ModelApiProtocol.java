@@ -13,7 +13,8 @@ import java.util.Locale;
 public enum ModelApiProtocol {
     ANTHROPIC("anthropic"),
     OPENAI_CHAT("chat"),
-    OPENAI_RESPONSES("responses");
+    OPENAI_RESPONSES("responses"),
+    GEMINI("gemini");
 
     private final String configValue;
 
@@ -31,6 +32,7 @@ public enum ModelApiProtocol {
             case ANTHROPIC -> "Anthropic Messages";
             case OPENAI_CHAT -> "Chat Completions";
             case OPENAI_RESPONSES -> "Responses";
+            case GEMINI -> "Google Gemini";
         };
     }
 
@@ -42,6 +44,7 @@ public enum ModelApiProtocol {
             case "anthropic", "messages" -> ANTHROPIC;
             case "chat", "openai-chat", "chat-completions" -> OPENAI_CHAT;
             case "responses", "openai-responses" -> OPENAI_RESPONSES;
+            case "gemini", "google", "google-gemini" -> GEMINI;
             default -> throw new IllegalArgumentException("Unsupported model protocol: " + value);
         };
     }

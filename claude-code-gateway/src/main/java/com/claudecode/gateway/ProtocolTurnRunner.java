@@ -11,7 +11,6 @@ import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -31,52 +30,21 @@ import org.slf4j.LoggerFactory;
 /**
  * Shared turn orchestration for every Messages-protocol-shaped endpoint
  * (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses).
- *
- * <p>All three protocol faces differ only in their wire projection; the turn
- * lifecycle is identical and lives here:
- * <ul>
- *   <li>the client's message history is discarded — only the extracted prompt
- *       reaches the session; the host transcript is the single source of truth</li>
- *   <li>the idempotency key goes through the submission ledger, so a retried
- *       POST never re-submits the turn</li>
- *   <li>a request carrying {@code metadata.session_id} routes to that headless
- *       session (bypassing the registry's single activation); requests without
- *       one keep submitting to the active session</li>
- *   <li>a turn already in flight on the same session returns the protocol's
- *       error shape — queueing stays a TUI concern because session events
- *       carry no turn id to attribute queued turns to</li>
- *   <li>disconnecting from the SSE stream never cancels the turn: the turn
- *       belongs to the session, and the mirror stream keeps following it</li>
- * </ul>
  */
 final class ProtocolTurnRunner {
 
-    /**
-     * One protocol face. The projection factory pattern keeps per-turn
-     * translation state: tool_use→tool_result block correlation spans several
-     * messages of one turn, so each turn gets its own projection instance.
-     */
     interface TurnProjection {
 
-        /** A fresh per-turn stateful projection for one request. */
         PerTurnProjection newTurn(JsonNode request);
 
-        /** The prompt extracted from the protocol request, or null when invalid. */
         String extractPrompt(JsonNode request);
 
-        /**
-         * Attachments extracted from the protocol request, or an empty list
-         * when the request carries none. Split into images (inline base64
-         * picture blocks) and files (persisted to disk by the session owner).
-         */
         default SubmissionAttachments extractAttachments(JsonNode request) {
             return SubmissionAttachments.NONE;
         }
 
-        /** The idempotency key from the request, or null for a fresh one. */
         default String extractIdempotencyKey(JsonNode request) { return null; }
 
-        /** The headless session id from the request, or null for the active session. */
         default String extractSessionId(JsonNode request) {
             JsonNode sessionId = request.path("metadata").path("session_id");
             if (sessionId.isTextual() && !StringUtils.isBlank(sessionId.asText())) {
@@ -85,35 +53,26 @@ final class ProtocolTurnRunner {
             return null;
         }
 
-        /** The protocol's JSON error body for one status class. */
         String errorBody(int status, String reason);
     }
 
     /** Per-turn wire projection; owns translation state for one turn. */
     interface PerTurnProjection {
-        /** Frames to emit before the turn starts (the protocol's opening event). */
         List<SseFrame> openingFrames();
 
-        /** Frames for one assistant/tool-result message inside this turn. */
         List<SseFrame> messageFrames(SDKMessage message);
 
-        /** The protocol's terminal frames, including its usage/finish event. */
         List<SseFrame> closingFrames(boolean userCancel);
+
+        /** Renders the accumulated turn as a single unary {@code application/json} response body. */
+        String unaryResponse(boolean userCancel);
     }
 
-    /** One pre-serialized SSE frame. */
     record SseFrame(String event, String data) {}
 
-    /** Resolves the submit target for one turn: a headless id, or the activation. */
     interface SessionResolver {
         Optional<SessionHostSession> resolve(String sessionId);
 
-        /**
-         * Hands a turn to the interactive process that hosts {@code sessionId}; empty when no
-         * such process lists it. The accepted turn is observed through the mirror stream. The
-         * submission carries the request's images and files as well as its text, exactly as a
-         * local session would receive it.
-         */
         default Optional<CompletableFuture<Void>> submitRemote(
                 String sessionId, SessionHostSubmission submission) {
             return Optional.empty();
@@ -122,6 +81,7 @@ final class ProtocolTurnRunner {
 
     private static final int TOO_MANY_REQUESTS = 429;
     private static final Duration REMOTE_ACCEPT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration UNARY_TURN_TIMEOUT = Duration.ofMinutes(5);
 
     private final SessionResolver sessions;
     private final SessionHostSubmissionLedger ledger = new SessionHostSubmissionLedger();
@@ -134,7 +94,6 @@ final class ProtocolTurnRunner {
         this.inFlight = inFlight;
     }
 
-    /** Handles one protocol exchange end-to-end; owns the SSE lane it opens. */
     void handle(InputStream requestBody, ProtocolResponder responder,
             TurnProjection projection) throws IOException {
         String body;
@@ -148,6 +107,10 @@ final class ProtocolTurnRunner {
             responder.respondJsonError(400, "body is not valid JSON");
             return;
         }
+        if (request == null || !request.isObject()) {
+            responder.respondJsonError(400, "request body must be a JSON object");
+            return;
+        }
         SubmissionAttachments attachments;
         try {
             attachments = projection.extractAttachments(request);
@@ -156,8 +119,6 @@ final class ProtocolTurnRunner {
             return;
         }
         String prompt = projection.extractPrompt(request);
-        // The composer sends a picture with no text beside it as a turn of its
-        // own; the host renders the image as an [Image #N] chip either way.
         if (prompt == null && !attachments.isEmpty()) prompt = "";
         if (prompt == null) {
             responder.respondJsonError(400,
@@ -197,21 +158,62 @@ final class ProtocolTurnRunner {
         }
         log.debug("[gw-turn] acquired session={} messageId={}", targetId, messageId);
 
-        SseConnection connection = responder.beginSse();
+        boolean streaming = !request.has("stream")
+            || !request.get("stream").isBoolean()
+            || request.get("stream").asBoolean();
+
         PerTurnProjection perTurn = projection.newTurn(request);
+        if (!streaming) {
+            handleUnary(session, targetId, prompt, attachments, messageId, perTurn, responder);
+            return;
+        }
+
+        SseConnection connection = responder.beginSse();
         TurnScopeSink turnScope = new TurnScopeSink(perTurn, connection, targetId);
-        // Subscribe before submitting: onTurnStart fires synchronously on the
-        // submitting thread, so the subscription must already be in place.
         turnScope.attach(session.events());
         try {
             for (SseFrame frame : perTurn.openingFrames()) {
                 connection.offer(SseFrameWriter.event(frame.event(), null, frame.data()));
             }
-            submitPrompt(session, prompt, attachments, messageId, turnScope);
+            submitPrompt(session, prompt, attachments, messageId, turnScope::fail);
         } catch (RuntimeException failure) {
             inFlight.release(targetId);
             turnScope.fail(StringUtils.defaultIfBlank(failure.getMessage(),
                 "turn submission failed"));
+        }
+    }
+
+    private void handleUnary(
+            SessionHostSession session,
+            String targetId,
+            String prompt,
+            SubmissionAttachments attachments,
+            String messageId,
+            PerTurnProjection perTurn,
+            ProtocolResponder responder) throws IOException {
+        UnaryTurnScope unaryScope = new UnaryTurnScope(perTurn, targetId);
+        unaryScope.attach(session.events());
+        perTurn.openingFrames();
+        try {
+            submitPrompt(session, prompt, attachments, messageId, unaryScope::fail);
+        } catch (RuntimeException failure) {
+            inFlight.release(targetId);
+            unaryScope.fail(StringUtils.defaultIfBlank(failure.getMessage(), "turn submission failed"));
+        }
+        try {
+            String json = unaryScope.resultFuture().get(UNARY_TURN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            responder.respondUnaryJson(json);
+        } catch (ExecutionException failure) {
+            responder.respondJsonError(502, StringUtils.defaultIfBlank(
+                failure.getCause() == null ? null : failure.getCause().getMessage(),
+                "turn failed"));
+        } catch (TimeoutException _) {
+            unaryScope.fail("turn timed out");
+            responder.respondJsonError(504, "turn timed out");
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            unaryScope.fail("interrupted");
+            responder.respondJsonError(502, "interrupted while waiting for turn");
         }
     }
 
@@ -235,8 +237,12 @@ final class ProtocolTurnRunner {
         responder.respondAccepted(sessionId, messageId);
     }
 
-    private void submitPrompt(SessionHostSession session, String prompt,
-            SubmissionAttachments attachments, String messageId, TurnScopeSink turnScope) {
+    private void submitPrompt(
+            SessionHostSession session,
+            String prompt,
+            SubmissionAttachments attachments,
+            String messageId,
+            java.util.function.Consumer<String> onSubmitFailure) {
         String sessionId = session.info().id();
         SessionHostSubmission submission = new SessionHostSubmission(
             prompt, messageId, attachments.images(), attachments.files());
@@ -247,11 +253,8 @@ final class ProtocolTurnRunner {
                 log.debug("[gw-turn] submit settled session={} failure={}", sessionId,
                     failure == null ? "none" : failure.toString());
                 if (failure != null) {
-                    // The submission never reached the engine; release the
-                    // in-flight slot and end the stream. Successful turns do
-                    // both at turn end.
                     inFlight.release(sessionId);
-                    turnScope.fail(StringUtils.defaultIfBlank(failure.getMessage(),
+                    onSubmitFailure.accept(StringUtils.defaultIfBlank(failure.getMessage(),
                         "turn submission failed"));
                 }
             });
@@ -264,13 +267,13 @@ final class ProtocolTurnRunner {
         return body;
     }
 
-    /** Opens the SSE response and returns the connection lane owning it. */
     interface ProtocolResponder {
         SseConnection beginSse() throws IOException;
 
+        void respondUnaryJson(String jsonBody) throws IOException;
+
         void respondJsonError(int status, String message) throws IOException;
 
-        /** Acknowledges a turn that another process will run; its events arrive on the mirror stream. */
         void respondAccepted(String sessionId, String messageId) throws IOException;
 
         static String acceptedBody(String sessionId, String messageId) {
@@ -282,19 +285,71 @@ final class ProtocolTurnRunner {
         }
     }
 
-    /**
-     * Turn-scoped projection feeding the request's SSE lane.
-     *
-     * <p>Subscribes to the session hub without replay (the recorded prefix
-     * belongs to earlier turns), projects this turn's events through the
-     * protocol projection, and on turn completion releases the session's
-     * in-flight slot and finishes the lane: the closing frames are flushed and
-     * the response body ends, so the client's HTTP connection is freed rather
-     * than held open by heartbeats (browsers allow six per host). Events
-     * before the first
-     * {@code onTurnStart} are ignored so a turn that was already draining when
-     * the request arrived cannot leak into this stream.
-     */
+    private final class UnaryTurnScope {
+        private final PerTurnProjection projection;
+        private final String sessionId;
+        private final CompletableFuture<String> future = new CompletableFuture<>();
+        private volatile AutoCloseable subscription;
+        private volatile boolean turnObserved;
+        private final AtomicBoolean ended = new AtomicBoolean();
+
+        UnaryTurnScope(PerTurnProjection projection, String sessionId) {
+            this.projection = projection;
+            this.sessionId = sessionId;
+        }
+
+        CompletableFuture<String> resultFuture() {
+            return future;
+        }
+
+        void attach(SessionEventHub hub) {
+            subscription = hub.subscribe(new SessionSink() {
+                @Override public void onTurnStart(UserInput input) {
+                    turnObserved = true;
+                }
+                @Override public void onMessage(SDKMessage msg) {
+                    if (turnObserved) {
+                        projection.messageFrames(msg);
+                    }
+                }
+                @Override public void onError(Throwable error, boolean userCancel) {
+                    if (!turnObserved) return;
+                    complete(userCancel);
+                }
+                @Override public void onTurnComplete(TurnOutcome outcome) {
+                    if (!turnObserved) return;
+                    complete(outcome.userCancel());
+                }
+                @Override public void onIdle() { }
+            }, false);
+        }
+
+        private void complete(boolean userCancel) {
+            if (!ended.compareAndSet(false, true)) return;
+            inFlight.release(sessionId);
+            close();
+            try {
+                future.complete(projection.unaryResponse(userCancel));
+            } catch (RuntimeException e) {
+                future.completeExceptionally(e);
+            }
+        }
+
+        void fail(String message) {
+            if (!ended.compareAndSet(false, true)) return;
+            close();
+            future.completeExceptionally(new IllegalStateException(message));
+        }
+
+        private void close() {
+            AutoCloseable current = subscription;
+            subscription = null;
+            if (current != null) {
+                try { current.close(); } catch (Exception _) { }
+            }
+        }
+    }
+
     private final class TurnScopeSink {
 
         private final PerTurnProjection projection;
@@ -311,8 +366,6 @@ final class ProtocolTurnRunner {
         }
 
         void attach(SessionEventHub hub) {
-            // replay=false: the hub's recorded prefix belongs to previous
-            // turns and must not seed this request's stream.
             subscription = hub.subscribe(new SessionSink() {
                 @Override public void onTurnStart(UserInput input) {
                     turnObserved = true;
@@ -341,7 +394,7 @@ final class ProtocolTurnRunner {
                     }
                     finishTurn();
                 }
-                @Override public void onIdle() { /* not a turn boundary */ }
+                @Override public void onIdle() { }
             }, false);
         }
 
@@ -352,11 +405,6 @@ final class ProtocolTurnRunner {
             connection.finish();
         }
 
-        /**
-         * Ends the stream with the protocol-neutral error frame when the turn
-         * never started. The caller owns the in-flight slot release; a turn
-         * that already ended through the hub keeps its own closing frames.
-         */
         void fail(String message) {
             if (!ended.compareAndSet(false, true)) return;
             close();
@@ -369,7 +417,7 @@ final class ProtocolTurnRunner {
             AutoCloseable current = subscription;
             subscription = null;
             if (current != null) {
-                try { current.close(); } catch (Exception _) {}
+                try { current.close(); } catch (Exception _) { }
             }
         }
     }

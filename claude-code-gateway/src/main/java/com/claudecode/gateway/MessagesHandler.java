@@ -1,10 +1,17 @@
 package com.claudecode.gateway;
 
+import com.claudecode.api.ApiMessage;
+import com.claudecode.api.ProtocolWireCodec;
 import com.claudecode.api.StreamEvent;
 import com.claudecode.api.StreamEventSseCodec;
+import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.Usage;
+import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,18 +19,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import com.sun.net.httpserver.HttpExchange;
 
 /**
  * {@code POST /v1/messages}: the Anthropic Messages protocol face for
- * submitting one turn to the active session and streaming that turn back.
- *
- * <p>The turn lifecycle (idempotency, in-flight rejection, turn-scoped
- * subscription, disconnect-never-cancels) lives in {@link ProtocolTurnRunner};
- * this class is only the Anthropic wire projection on top of the shared
- * {@link SdkMessageToStreamEvent} block-level translation.
+ * submitting one turn to the active session and streaming or returning that turn.
  */
 final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
 
@@ -33,7 +35,6 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 
-    /** Handles one request exchange; owns the SSE lane it opens. */
     public void handle(HttpExchange exchange) throws IOException {
         runner.handle(exchange.getRequestBody(), new HttpProtocolResponder(exchange), this);
     }
@@ -83,11 +84,6 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         return new SubmissionAttachments(images, files);
     }
 
-    /**
-     * Decodes one base64 source block into an attachment. Only
-     * {@code type:"base64"} sources carry inline data; anything else is a
-     * protocol-shape error rather than something to silently drop.
-     */
     private static SessionHostSubmission.Attachment base64Attachment(
             JsonNode source, String fileName) {
         if (!Strings.CS.equals("base64", source.path("type").asText())) {
@@ -99,15 +95,34 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         if (StringUtils.isEmpty(data)) {
             throw new IllegalArgumentException("attachment source has no data");
         }
-        byte[] decoded;
-        try {
-            decoded = Base64.getDecoder().decode(data);
-        } catch (IllegalArgumentException failure) {
-            throw new IllegalArgumentException(
-                "attachment data is not valid base64", failure);
-        }
+        byte[] decoded = decodeBase64Strict(data);
         String mediaType = source.path("media_type").asText(null);
         return new SessionHostSubmission.Attachment(mediaType, fileName, decoded);
+    }
+
+    static SessionHostSubmission.Attachment parseDataUrlAttachment(String dataUrl, String fileName) {
+        if (StringUtils.isBlank(dataUrl) || !Strings.CS.startsWith(dataUrl, "data:")) {
+            throw new IllegalArgumentException(
+                "attachment URL must be a base64 data: URL");
+        }
+        int semi = dataUrl.indexOf(";base64,");
+        if (semi < 0) {
+            throw new IllegalArgumentException("attachment data URL must be base64-encoded");
+        }
+        String mediaType = dataUrl.substring("data:".length(), semi);
+        String data = dataUrl.substring(semi + ";base64,".length());
+        if (StringUtils.isEmpty(data)) {
+            throw new IllegalArgumentException("attachment data URL has no data");
+        }
+        return new SessionHostSubmission.Attachment(mediaType, fileName, decodeBase64Strict(data));
+    }
+
+    static byte[] decodeBase64Strict(String data) {
+        try {
+            return Base64.getDecoder().decode(data);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException("attachment data is not valid base64", failure);
+        }
     }
 
     @Override
@@ -115,12 +130,13 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         return AnthropicErrors.body(status, reason);
     }
 
-    /** The Anthropic per-turn projection over the shared block translation. */
     private static final class AnthropicProjection
             implements ProtocolTurnRunner.PerTurnProjection {
 
         private final SdkMessageToStreamEvent translator;
         private final String model;
+        private final List<ContentBlock> accumulatedBlocks = new ArrayList<>();
+        private boolean sawToolUse;
 
         private AnthropicProjection(String model) {
             this.model = model;
@@ -134,6 +150,15 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
 
         @Override
         public List<ProtocolTurnRunner.SseFrame> messageFrames(SDKMessage message) {
+            if (message instanceof SDKMessage.Assistant assistant
+                    && assistant.message() != null
+                    && assistant.message().message() != null
+                    && assistant.message().message().content() != null) {
+                for (ContentBlock b : assistant.message().message().content()) {
+                    accumulatedBlocks.add(b);
+                    if (b instanceof ToolUseBlock) sawToolUse = true;
+                }
+            }
             List<ProtocolTurnRunner.SseFrame> frames = new ArrayList<>();
             for (StreamEvent event : translator.translate(message)) {
                 frames.addAll(encoded(event));
@@ -151,6 +176,21 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
             return frames;
         }
 
+        @Override
+        public String unaryResponse(boolean userCancel) {
+            String stop = userCancel ? "cancelled" : (sawToolUse ? "tool_use" : "end_turn");
+            ApiMessage msg = new ApiMessage(
+                "msg-gw-" + UUID.randomUUID().toString().replace("-", "").substring(0, 24),
+                "message",
+                "assistant",
+                List.copyOf(accumulatedBlocks),
+                model,
+                stop,
+                null,
+                Usage.EMPTY);
+            return ProtocolWireCodec.encodeResponse(ModelApiProtocol.ANTHROPIC, msg);
+        }
+
         private static List<ProtocolTurnRunner.SseFrame> encoded(StreamEvent event) {
             StreamEventSseCodec.EncodedEvent encoded = StreamEventSseCodec.encode(event);
             return encoded == null ? List.of()
@@ -158,7 +198,6 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         }
     }
 
-    /** Extracts the last user message's concatenated text content. */
     static String extractLastUserText(JsonNode request) {
         JsonNode messages = request.path("messages");
         if (!messages.isArray()) return null;
@@ -183,7 +222,6 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         return text.isEmpty() ? null : text.toString();
     }
 
-    /** Anthropic-shaped JSON error body. */
     static final class AnthropicErrors {
         private AnthropicErrors() {}
 
@@ -200,7 +238,6 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         }
     }
 
-    /** Bridges the runner onto one HTTP exchange with Anthropic error bodies. */
     private record HttpProtocolResponder(HttpExchange exchange)
             implements ProtocolTurnRunner.ProtocolResponder {
 
@@ -208,11 +245,19 @@ final class MessagesHandler implements ProtocolTurnRunner.TurnProjection {
         public SseConnection beginSse() throws IOException {
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
             exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-            // Length 0 asks for a chunked response — the stream flushes per frame.
             exchange.sendResponseHeaders(200, 0);
             OutputStream output = exchange.getResponseBody();
-            // Closing the lane closes the stream; the turn is unaffected.
             return SseConnection.start(output, 4_096, Duration.ofSeconds(20), () -> {});
+        }
+
+        @Override
+        public void respondUnaryJson(String jsonBody) throws IOException {
+            byte[] bytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
         }
 
         @Override

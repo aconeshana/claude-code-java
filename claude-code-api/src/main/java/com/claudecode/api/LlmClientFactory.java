@@ -20,6 +20,7 @@ public final class LlmClientFactory {
             case OPENAI_COMPAT -> switch (config.openai().protocol()) {
                 case OPENAI_CHAT -> new OpenAiCompatClient(config.openai());
                 case OPENAI_RESPONSES -> new OpenAiResponsesClient(config.openai());
+                case GEMINI -> new GeminiClient(config.openai());
                 case ANTHROPIC -> throw new IllegalArgumentException(
                     "Anthropic protocol requires ApiProvider.ANTHROPIC");
             };
@@ -41,6 +42,7 @@ public final class LlmClientFactory {
         return switch (config.openai().protocol()) {
             case OPENAI_CHAT -> new OpenAiCompatClient(config.openai(), httpClient);
             case OPENAI_RESPONSES -> new OpenAiResponsesClient(config.openai(), httpClient);
+            case GEMINI -> new GeminiClient(config.openai(), httpClient);
             case ANTHROPIC -> throw new IllegalArgumentException(
                 "Anthropic protocol requires ApiProvider.ANTHROPIC");
         };

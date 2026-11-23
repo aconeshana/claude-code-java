@@ -1,37 +1,39 @@
 package com.claudecode.api;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.DocumentBlock;
 import com.claudecode.core.message.ImageBlock;
+import com.claudecode.core.message.RedactedThinkingBlock;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.prompt.SystemPromptConstants;
-import com.claudecode.http.HttpCalls;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.http.HttpCalls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Consumer;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Consumer;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * OpenAI-compatible API client.
+ * OpenAI-compatible Chat Completions API client.
  */
 @Explanation("OpenAI-compatible Chat Completions wire adapter")
 public class OpenAiCompatClient implements LlmClient {
@@ -52,8 +54,10 @@ public class OpenAiCompatClient implements LlmClient {
         this(config, httpClient, httpClient);
     }
 
-    OpenAiCompatClient(ApiConfig.OpenAiConfig config, OkHttpClient streamingHttpClient,
-                       OkHttpClient nonStreamingHttpClient) {
+    OpenAiCompatClient(
+            ApiConfig.OpenAiConfig config,
+            OkHttpClient streamingHttpClient,
+            OkHttpClient nonStreamingHttpClient) {
         this.config = config;
         this.streamingHttpClient = streamingHttpClient;
         this.nonStreamingHttpClient = nonStreamingHttpClient;
@@ -72,9 +76,8 @@ public class OpenAiCompatClient implements LlmClient {
         log.info("OpenAI-compat streaming request to {} model {}", apiUrl, config.model());
         try {
             Request httpRequest = buildRequest(request, true);
-            ChunkStreamTranslator translator = new ChunkStreamTranslator();
-            // An OpenAI-compatible endpoint is never the Anthropic first party, so
-            // the byte-level tier resolves disabled for this provider.
+            ChunkStreamTranslator translator = new ChunkStreamTranslator(
+                TextCallRescue.offeredToolNames(request.tools()));
             return EventSourceStreamBridge.connect(
                 streamingHttpClient, httpRequest, translator,
                 ApiTimeouts.streamConnectTimeout(request), ApiTimeouts.watchdog(),
@@ -105,9 +108,12 @@ public class OpenAiCompatClient implements LlmClient {
                             promptTooLongMessage,
                             response.code(), null, null);
                     }
-                    throw new ApiException("OpenAI API error: " + response.code() + " - " + responseBody, response.code());
+                    throw new ApiException(
+                        "OpenAI API error: " + response.code() + " - " + responseBody,
+                        response.code());
                 }
-                ApiMessage message = parseNonStreamingResponse(responseBody);
+                ApiMessage message = parseChatResponseStatic(
+                    responseBody, config.model(), TextCallRescue.offeredToolNames(request.tools()));
                 ApiRequestTiming timing = response.request().tag(ApiRequestTiming.class);
                 return ApiMessageTiming.attach(message,
                     timing != null ? timing.lastAttemptStartMs() : 0L);
@@ -124,18 +130,19 @@ public class OpenAiCompatClient implements LlmClient {
     }
 
     private Request buildRequest(CreateMessageRequest request, boolean streaming) throws Exception {
-        String requestBody = buildChatRequest(request, streaming);
+        ObjectNode body = buildChatRequestNode(request, config.model(), streaming, config.baseUrl());
+        String requestBody = JsonUtils.getMapper().writeValueAsString(body);
         Request.Builder b = new Request.Builder()
-                .url(apiUrl)
-                .header("Accept", "application/json")
-                .tag(RetryRequestPolicy.class,
-                    RetryRequestPolicy.forQuerySource(request.querySource()));
+            .url(apiUrl)
+            .header("Accept", "application/json")
+            .tag(RetryRequestPolicy.class,
+                RetryRequestPolicy.forQuerySource(request.querySource()));
         boolean azure = config.baseUrl() != null && Strings.CS.contains(config.baseUrl(), "azure");
-        if (!azure && config.apiKey() != null && !StringUtils.isBlank(config.apiKey())) {
+        if (!azure && StringUtils.isNotBlank(config.apiKey())) {
             b.header("Authorization", "Bearer " + config.apiKey());
         }
-        if (azure) {
-            if (StringUtils.isNotBlank(config.apiKey())) b.header("api-key", config.apiKey());
+        if (azure && StringUtils.isNotBlank(config.apiKey())) {
+            b.header("api-key", config.apiKey());
         }
         config.headers().forEach(b::header);
         return b.post(RequestBody.create(requestBody, JSON)).build();
@@ -150,9 +157,14 @@ public class OpenAiCompatClient implements LlmClient {
         return config.baseUrl();
     }
 
-    private String buildChatRequest(CreateMessageRequest request, boolean streaming) throws Exception {
+    static ObjectNode buildChatRequestNode(
+            CreateMessageRequest request,
+            String defaultModel,
+            boolean streaming,
+            String baseUrl) {
         ObjectNode root = JsonUtils.getMapper().createObjectNode();
-        root.put("model", request.model() != null ? request.model() : config.model());
+        String effectiveModel = request.model() != null ? request.model() : defaultModel;
+        root.put("model", effectiveModel);
         root.put("max_tokens", request.maxTokens());
         root.put("stream", streaming);
         if (streaming) root.putObject("stream_options").put("include_usage", true);
@@ -166,45 +178,44 @@ public class OpenAiCompatClient implements LlmClient {
         if (request.stopSequences() != null && !request.stopSequences().isEmpty()) {
             root.set("stop", JsonUtils.getMapper().valueToTree(request.stopSequences()));
         }
-        String effort = request.outputConfig() != null && request.outputConfig().effort() != null
-            ? request.outputConfig().effort() : request.effort();
-        if (StringUtils.isNotBlank(effort)) root.put("reasoning_effort", effort);
+
+        String effort = ReasoningNormalizer.resolveExplicitOrBudgetEffort(request);
+        if (StringUtils.isNotBlank(effort)) {
+            root.put("reasoning_effort", effort);
+        }
         if (request.outputConfig() != null && request.outputConfig().format() != null) {
             root.set("response_format", chatResponseFormat(request.outputConfig().format()));
         }
 
-        ArrayNode messages = JsonUtils.getMapper().createArrayNode();
+        boolean geminiCompat = GeminiThoughtSignature.isGeminiCompatEndpoint(baseUrl, effectiveModel);
+        boolean deepSeekBackfill = ReasoningNormalizer.requiresDeepSeekToolReasoningBackfill(
+            baseUrl, effectiveModel, StringUtils.isNotBlank(effort));
 
+        ArrayNode messages = JsonUtils.getMapper().createArrayNode();
         if (StringUtils.isNotEmpty(request.systemPrompt())) {
             ObjectNode systemMsg = JsonUtils.getMapper().createObjectNode();
             systemMsg.put("role", "system");
-            // Strip the internal cache-boundary sentinel — wire bodies must
-            // never carry it (same treatment as AnthropicSdkClient).
             systemMsg.put("content", request.systemPrompt()
                 .replace("\n\n" + SystemPromptConstants.SYSTEM_PROMPT_DYNAMIC_BOUNDARY + "\n\n", "\n\n")
                 .replace(SystemPromptConstants.SYSTEM_PROMPT_DYNAMIC_BOUNDARY, ""));
             messages.add(systemMsg);
         }
 
-        if (request.messages() != null) {
-            for (int i = 0; i < request.messages().size(); i++) {
-                CreateMessageRequest.RequestMessage msg = request.messages().get(i);
-                if (msg.content() instanceof List<?> blocks && containsToolResult(blocks)) {
-                    List<Object> consecutiveResults = new ArrayList<>(blocks);
-                    while (i + 1 < request.messages().size()) {
-                        CreateMessageRequest.RequestMessage next = request.messages().get(i + 1);
-                        if (!(next.content() instanceof List<?> nextBlocks)
-                                || !containsToolResult(nextBlocks)) break;
-                        consecutiveResults.addAll(nextBlocks);
-                        i++;
-                    }
-                    appendToolResultMessages(messages, consecutiveResults);
-                } else {
-                    appendRequestMessages(messages, msg);
-                }
+        List<ToolPairingHealer.HealedTurn> healedTurns =
+            ToolPairingHealer.healRequestMessages(request.messages());
+        boolean afterTool = false;
+        for (ToolPairingHealer.HealedTurn turn : healedTurns) {
+            if (Strings.CS.equals("assistant", turn.role())) {
+                appendAssistantTurn(messages, turn.blocks(), geminiCompat, deepSeekBackfill, afterTool);
+                afterTool = false;
+            } else if (Strings.CS.equals("tool_results", turn.role())) {
+                appendHealedToolResults(messages, turn.blocks());
+                afterTool = true;
+            } else {
+                appendUserTurn(messages, turn.blocks());
+                afterTool = false;
             }
         }
-
         root.set("messages", messages);
 
         if (request.tools() != null && !request.tools().isEmpty()) {
@@ -219,7 +230,9 @@ public class OpenAiCompatClient implements LlmClient {
                     function.put("description", tool.description());
                 }
                 if (tool.inputSchema() != null) {
-                    function.set("parameters", OpenAiToolSchemaProjection.project(tool.inputSchema()));
+                    ObjectNode projected = OpenAiToolSchemaProjection.project(tool.inputSchema());
+                    function.set("parameters",
+                        VendorSchemaSanitizer.sanitizeToolSchema(projected, baseUrl, effectiveModel));
                 }
                 if (tool.strict() != null) function.put("strict", tool.strict());
                 toolNode.set("function", function);
@@ -240,8 +253,7 @@ public class OpenAiCompatClient implements LlmClient {
             }
         }
 
-        return JsonUtils.getMapper().writeValueAsString(
-            LlmWireBodyFinalizer.finalizeForApi(root));
+        return LlmWireBodyFinalizer.finalizeForApi(root);
     }
 
     private static JsonNode chatResponseFormat(JsonNode format) {
@@ -254,102 +266,88 @@ public class OpenAiCompatClient implements LlmClient {
         return responseFormat;
     }
 
-    private void appendRequestMessages(ArrayNode messages, CreateMessageRequest.RequestMessage msg) {
-        if (msg.content() instanceof String strContent) {
-            ObjectNode node = messages.addObject();
-            node.put("role", msg.role());
-            node.put("content", strContent);
-            return;
-        }
-        if (!(msg.content() instanceof List<?> listContent)) {
-            ObjectNode node = messages.addObject();
-            node.put("role", msg.role());
-            node.put("content", String.valueOf(msg.content()));
-            return;
-        }
-
-        if (Strings.CS.equals("assistant", msg.role())) {
-            appendAssistantMessage(messages, listContent);
-            return;
-        }
-
-        if (containsToolResult(listContent)) {
-            appendToolResultMessages(messages, listContent);
-            return;
-        }
-
-        ObjectNode node = messages.addObject();
-        node.put("role", msg.role());
-        ArrayNode content = node.putArray("content");
-        for (Object item : listContent) appendChatUserContent(content, item);
-        if (content.isEmpty()) node.put("content", "");
-    }
-
-    private static void appendAssistantMessage(ArrayNode messages, List<?> contentBlocks) {
+    private static void appendAssistantTurn(
+            ArrayNode messages,
+            List<ContentBlock> blocks,
+            boolean geminiCompat,
+            boolean deepSeekBackfill,
+            boolean afterTool) {
         ObjectNode node = messages.addObject();
         node.put("role", "assistant");
         StringBuilder text = new StringBuilder();
         StringBuilder reasoning = new StringBuilder();
         ArrayNode toolCalls = JsonUtils.getMapper().createArrayNode();
-        for (Object item : contentBlocks) {
-            JsonNode block = JsonUtils.getMapper().valueToTree(item);
-            switch (block.path("type").asText("")) {
-                case "text" -> appendJoined(text, block.path("text").asText(""));
-                case "thinking" -> appendJoined(reasoning, block.path("thinking").asText(""));
-                case "tool_use" -> toolCalls.add(chatToolCall(block));
-                default -> throw new ApiException("OpenAI Chat assistant messages do not support "
-                    + block.path("type").asText("unknown") + " content", 0);
+
+        boolean stepSigned = false;
+        for (ContentBlock b : blocks) {
+            if (b instanceof ToolUseBlock tu) {
+                GeminiThoughtSignature.UnsignedToolId u = GeminiThoughtSignature.unsignToolId(tu.id());
+                if (StringUtils.isNotEmpty(u.signature())) {
+                    stepSigned = true;
+                    break;
+                }
+            }
+        }
+
+        for (ContentBlock block : blocks) {
+            switch (block) {
+                case TextBlock(String s) -> appendJoined(text, s);
+                case ThinkingBlock t -> {
+                    if (StringUtils.isNotEmpty(t.thinking())) {
+                        appendJoined(reasoning, t.thinking());
+                    }
+                }
+                case RedactedThinkingBlock _ -> {
+                    // Safely omit Claude-sealed redacted thinking blocks on Chat Completions.
+                }
+                case ToolUseBlock tu -> {
+                    GeminiThoughtSignature.UnsignedToolId unsigned =
+                        GeminiThoughtSignature.unsignToolId(tu.id());
+                    ObjectNode call = JsonUtils.getMapper().createObjectNode();
+                    call.put("id", unsigned.id());
+                    call.put("type", "function");
+                    ObjectNode fn = call.putObject("function");
+                    fn.put("name", tu.name());
+                    fn.put("arguments", tu.input() == null || tu.input().isNull()
+                        ? "{}" : tu.input().toString());
+                    if (geminiCompat) {
+                        if (StringUtils.isNotEmpty(unsigned.signature())) {
+                            call.set("extra_content",
+                                GeminiThoughtSignature.buildExtraSignature(unsigned.signature()));
+                        } else if (!stepSigned) {
+                            call.set("extra_content",
+                                GeminiThoughtSignature.buildExtraSignature(
+                                    GeminiThoughtSignature.SKIP_SIGNATURE));
+                        }
+                    }
+                    toolCalls.add(call);
+                }
+                default -> { }
             }
         }
         if (text.isEmpty()) node.putNull("content");
         else node.put("content", text.toString());
-        if (!reasoning.isEmpty()) node.put("reasoning_content", reasoning.toString());
+        if (!reasoning.isEmpty()) {
+            node.put("reasoning_content", reasoning.toString());
+        } else if (deepSeekBackfill && (!toolCalls.isEmpty() || afterTool)) {
+            node.put("reasoning_content", "");
+        }
         if (!toolCalls.isEmpty()) node.set("tool_calls", toolCalls);
     }
 
-    private static ObjectNode chatToolCall(JsonNode block) {
-        ObjectNode call = JsonUtils.getMapper().createObjectNode();
-        call.put("id", block.path("id").asText());
-        call.put("type", "function");
-        ObjectNode function = call.putObject("function");
-        function.put("name", block.path("name").asText());
-        JsonNode input = block.get("input");
-        function.put("arguments", input == null || input.isNull() ? "{}" : input.toString());
-        return call;
-    }
-
-    private static boolean containsToolResult(List<?> blocks) {
-        for (Object item : blocks) {
-            if (item instanceof ToolResultBlock) return true;
-            JsonNode node = JsonUtils.getMapper().valueToTree(item);
-            if (Strings.CS.equals("tool_result", node.path("type").asText())) return true;
-        }
-        return false;
-    }
-
-    private static void appendToolResultMessages(ArrayNode messages, List<?> blocks) {
+    private static void appendHealedToolResults(ArrayNode messages, List<ContentBlock> blocks) {
         List<ImageBlock> pendingImages = new ArrayList<>();
-        for (Object item : blocks) {
-            if (item instanceof ToolResultBlock result) {
-                ObjectNode tool = messages.addObject();
-                tool.put("role", "tool");
-                tool.put("tool_call_id", result.toolUseId());
-                tool.put("content", OpenAiWireSupport.textContent(result.content()));
-                if (result.content() != null) {
-                    result.content().stream().filter(ImageBlock.class::isInstance)
-                        .map(ImageBlock.class::cast).forEach(pendingImages::add);
-                }
-                continue;
-            }
-            JsonNode block = JsonUtils.getMapper().valueToTree(item);
-            if (!Strings.CS.equals("tool_result", block.path("type").asText())) continue;
+        for (ContentBlock block : blocks) {
+            if (!(block instanceof ToolResultBlock result)) continue;
+            GeminiThoughtSignature.UnsignedToolId unsigned =
+                GeminiThoughtSignature.unsignToolId(result.toolUseId());
             ObjectNode tool = messages.addObject();
             tool.put("role", "tool");
-            tool.put("tool_call_id", block.path("tool_use_id").asText());
-            tool.put("content", textContent(block.get("content")));
-            for (JsonNode child : block.path("content")) {
-                if (Strings.CS.equals("image", child.path("type").asText())) {
-                    pendingImages.add(new ImageBlock(child.get("source")));
+            tool.put("tool_call_id", unsigned.id());
+            tool.put("content", OpenAiWireSupport.textContent(result.content()));
+            if (result.content() != null) {
+                for (ContentBlock child : result.content()) {
+                    if (child instanceof ImageBlock img) pendingImages.add(img);
                 }
             }
         }
@@ -361,47 +359,28 @@ public class OpenAiCompatClient implements LlmClient {
         }
     }
 
-    private static void appendChatUserContent(ArrayNode content, Object item) {
-        if (item instanceof String text) {
-            content.add(OpenAiWireSupport.chatText(text));
+    private static void appendUserTurn(ArrayNode messages, List<ContentBlock> blocks) {
+        ObjectNode node = messages.addObject();
+        node.put("role", "user");
+        if (blocks.size() == 1 && blocks.getFirst() instanceof TextBlock(String s)) {
+            node.put("content", s);
             return;
         }
-        if (item instanceof TextBlock(String text1)) {
-            content.add(OpenAiWireSupport.chatText(text1));
-            return;
+        ArrayNode content = node.putArray("content");
+        for (ContentBlock block : blocks) {
+            switch (block) {
+                case TextBlock(String s) -> content.add(OpenAiWireSupport.chatText(s));
+                case ImageBlock(JsonNode source) -> content.add(OpenAiWireSupport.chatImage(source));
+                case DocumentBlock(JsonNode source) -> content.add(OpenAiWireSupport.chatDocumentNote(source));
+                default -> { }
+            }
         }
-        if (item instanceof ImageBlock(JsonNode source)) {
-            content.add(OpenAiWireSupport.chatImage(source));
-            return;
-        }
-        JsonNode block = JsonUtils.getMapper().valueToTree(item);
-        if (Strings.CS.equals("text", block.path("type").asText())) {
-            content.add(OpenAiWireSupport.chatText(block.path("text").asText("")));
-            return;
-        }
-        if (Strings.CS.equals("image", block.path("type").asText())) {
-            content.add(OpenAiWireSupport.chatImage(block.get("source")));
-            return;
-        }
-        throw new ApiException("OpenAI Chat user messages do not support "
-            + block.path("type").asText("unknown") + " content", 0);
+        if (content.isEmpty()) node.put("content", "");
     }
 
     private static void appendJoined(StringBuilder target, String value) {
         if (!target.isEmpty()) target.append('\n');
         target.append(value);
-    }
-
-    private static String textContent(JsonNode content) {
-        if (content == null || content.isNull()) return "";
-        if (content.isTextual()) return content.asText();
-        if (!content.isArray()) return content.toString();
-        StringBuilder text = new StringBuilder();
-        for (JsonNode part : content) {
-            if (!Strings.CS.equals("text", part.path("type").asText())) continue;
-            appendJoined(text, part.path("text").asText(""));
-        }
-        return text.toString();
     }
 
     private static String endpoint(String baseUrl, String path) {
@@ -410,27 +389,19 @@ public class OpenAiCompatClient implements LlmClient {
         return Strings.CS.endsWith(base, "/" + path) ? base : base + "/" + path;
     }
 
-
     /**
-     * Stateful per-stream chunk accumulator — a single OpenAI-compat chunk
-     * can produce zero, one, or several {@link StreamEvent}s (a tool call's
-     * arguments stream across many chunks before becoming one complete
-     * {@code ContentBlockStart}), unlike Anthropic's 1:1 named-event
-     * mapping. One instance per {@link #createMessageStream} call.
-     *
-     * <p>{@link #onClosed} flushes the same trailing synthetic events
-     * ({@code ContentBlockStart}/{@code Stop} for accumulated tool calls, a
-     * generic {@code MessageDelta("stop")}, then {@code MessageStop}) that
-     * used to run unconditionally after the read loop — whether the stream
-     * ended via an explicit {@code [DONE]} chunk or the connection just
-     * closed. {@link #finish} guards against running twice (both paths can
-     * fire: {@code [DONE]} then the connection closing right after).
+     * Stateful per-stream chunk accumulator supporting reasoning dialects, {@code <think>} tags,
+     * Gemini {@code extra_content} thought signatures, and pseudo-text tool-call rescue.
      */
-    private static final class ChunkStreamTranslator implements EventSourceStreamBridge.EventTranslator {
+    static final class ChunkStreamTranslator implements EventSourceStreamBridge.EventTranslator {
         private final List<ToolUseBlock> toolCalls = new ArrayList<>();
         private final List<String> toolCallArgs = new ArrayList<>();
         private final List<String> toolCallNames = new ArrayList<>();
         private final List<String> toolCallIds = new ArrayList<>();
+        private final List<String> toolCallSigs = new ArrayList<>();
+        private final ReasoningNormalizer.ThinkStreamFilter thinkFilter =
+            new ReasoningNormalizer.ThinkStreamFilter();
+        private final TextCallRescue.StreamBuffer textRescue;
         private Integer textIndex;
         private Integer reasoningIndex;
         private int nextBlockIndex;
@@ -438,7 +409,11 @@ public class OpenAiCompatClient implements LlmClient {
         private String model;
         private String finalStopReason;
         private Usage latestUsage = Usage.EMPTY;
-        private boolean finished = false;
+        private boolean finished;
+
+        ChunkStreamTranslator(Set<String> offeredTools) {
+            this.textRescue = new TextCallRescue.StreamBuffer(offeredTools);
+        }
 
         @Override
         public void translate(String type, String data, Consumer<StreamEvent> sink) {
@@ -464,85 +439,70 @@ public class OpenAiCompatClient implements LlmClient {
             ensureMessageStarted(chunk, sink);
             JsonNode usage = chunk.get("usage");
             if (usage != null && !usage.isNull()) {
-                latestUsage = parseUsage(usage);
+                latestUsage = ReasoningNormalizer.parseChatUsage(usage);
             }
             JsonNode choices = chunk.get("choices");
             if (choices == null || choices.isNull()) return;
 
             for (JsonNode choice : choices) {
                 JsonNode delta = choice.get("delta");
-                if (delta == null) continue;
-
-                if (delta.hasNonNull("reasoning_content")) {
-                    if (reasoningIndex == null) {
-                        reasoningIndex = nextBlockIndex++;
-                        sink.accept(new StreamEvent.ContentBlockStart(reasoningIndex, new ThinkingBlock("", null), chunk));
+                if (delta != null) {
+                    String explicitReasoning = ReasoningNormalizer.extractReasoningField(delta);
+                    if (StringUtils.isNotEmpty(explicitReasoning)) {
+                        emitReasoningDelta(explicitReasoning, chunk, sink);
                     }
-                    sink.accept(new StreamEvent.ContentBlockDelta(reasoningIndex,
-                        new Delta.ThinkingDelta(delta.get("reasoning_content").asText()), chunk));
-                }
 
-                // hasNonNull, not has: chunks that carry only tool_calls usually still spell out
-                // "content": null, and NullNode.asText() is the string "null", which would stream a
-                // literal null into the transcript once per chunk.
-                if (delta.hasNonNull("content")) {
-                    String content = delta.get("content").asText();
-                    if (StringUtils.isNotEmpty(content)) {
-                        closeReasoning(chunk, sink);
-                        if (textIndex == null) {
-                            textIndex = nextBlockIndex++;
-                            sink.accept(new StreamEvent.ContentBlockStart(textIndex, new TextBlock(""), chunk));
+                    if (delta.hasNonNull("content")) {
+                        String content = delta.get("content").asText();
+                        if (StringUtils.isNotEmpty(content)) {
+                            thinkFilter.feed(
+                                content,
+                                thinkChunk -> emitReasoningDelta(thinkChunk, chunk, sink),
+                                visibleChunk -> handleVisibleContent(visibleChunk, chunk, sink));
                         }
-                        sink.accept(new StreamEvent.ContentBlockDelta(textIndex, new Delta.TextDelta(content), chunk));
                     }
-                }
 
-                if (delta.hasNonNull("tool_calls")) {
-                    JsonNode toolCallsDelta = delta.get("tool_calls");
-                    for (JsonNode tc : toolCallsDelta) {
-                        // hasNonNull, not has: NullNode.asInt() is 0, so an explicit
-                        // {"index":null} on a second parallel call would resolve to slot 0 and
-                        // overwrite the first call's id/name while concatenating its arguments
-                        // onto the first call's accumulator. A null index means "append".
-                        int index = tc.hasNonNull("index") ? tc.get("index").asInt() : toolCalls.size();
-
-                        while (toolCalls.size() <= index) {
-                            toolCalls.add(null);
-                            toolCallArgs.add("");
-                            toolCallNames.add(null);
-                            toolCallIds.add(null);
-                        }
-
-                        if (tc.hasNonNull("id")) toolCallIds.set(index, tc.get("id").asText());
-
-                        if (tc.hasNonNull("function")) {
-                            // Explicit JSON nulls, not absent keys: every continuation chunk from
-                            // some vLLM-style servers repeats {"name":null,"id":null} alongside the
-                            // arguments fragment, and NullNode.asText() is the string "null", which
-                            // would overwrite the name captured by the opening chunk and surface as
-                            // "No such tool available: null".
-                            if (tc.get("function").hasNonNull("name")) {
-                                String name = tc.get("function").get("name").asText();
-                                toolCallNames.set(index, name);
-                                String id = toolCallIds.get(index) != null ? toolCallIds.get(index)
-                                    : "toolu_" + UUID.randomUUID().toString().substring(0, 8);
-                                toolCalls.set(index, new ToolUseBlock(id, name, JsonUtils.getMapper().createObjectNode()));
+                    if (delta.hasNonNull("tool_calls")) {
+                        textRescue.markNativeToolCall();
+                        JsonNode toolCallsDelta = delta.get("tool_calls");
+                        for (JsonNode tc : toolCallsDelta) {
+                            int index = tc.hasNonNull("index") ? tc.get("index").asInt() : toolCalls.size();
+                            while (toolCalls.size() <= index) {
+                                toolCalls.add(null);
+                                toolCallArgs.add("");
+                                toolCallNames.add(null);
+                                toolCallIds.add(null);
+                                toolCallSigs.add("");
                             }
 
-                            if (tc.get("function").hasNonNull("arguments")) {
-                                String args = tc.get("function").get("arguments").asText();
-                                String currentArgs = toolCallArgs.get(index);
-                                toolCallArgs.set(index, currentArgs + args);
+                            if (tc.hasNonNull("id")) toolCallIds.set(index, tc.get("id").asText());
+                            String extraSig = GeminiThoughtSignature.extractExtraSignature(tc.get("extra_content"));
+                            if (StringUtils.isNotEmpty(extraSig)) {
+                                toolCallSigs.set(index, extraSig);
+                            }
 
-                                String name = toolCallNames.get(index);
-                                if (name != null) {
-                                    try {
-                                        JsonNode argsNode = JsonUtils.getMapper().readTree(toolCallArgs.get(index));
-                                        String id = toolCallIds.get(index) != null ? toolCallIds.get(index)
-                                            : toolCalls.get(index) != null ? toolCalls.get(index).id()
-                                            : "toolu_" + UUID.randomUUID().toString().substring(0, 8);
-                                        toolCalls.set(index, new ToolUseBlock(id, name, argsNode));
-                                    } catch (Exception _) {
+                            if (tc.hasNonNull("function")) {
+                                JsonNode fn = tc.get("function");
+                                if (fn.hasNonNull("name")) {
+                                    String name = fn.get("name").asText();
+                                    toolCallNames.set(index, name);
+                                    String id = resolveSlotId(index);
+                                    toolCalls.set(index,
+                                        new ToolUseBlock(id, name, JsonUtils.getMapper().createObjectNode()));
+                                }
+                                if (fn.hasNonNull("arguments")) {
+                                    String args = fn.get("arguments").asText();
+                                    toolCallArgs.set(index, toolCallArgs.get(index) + args);
+                                    String name = toolCallNames.get(index);
+                                    if (name != null) {
+                                        String id = resolveSlotId(index);
+                                        try {
+                                            JsonNode argsNode = JsonUtils.getMapper().readTree(toolCallArgs.get(index));
+                                            toolCalls.set(index, new ToolUseBlock(id, name, argsNode));
+                                        } catch (Exception _) {
+                                            toolCalls.set(index, new ToolUseBlock(
+                                                id, name, JsonUtils.getMapper().createObjectNode()));
+                                        }
                                     }
                                 }
                             }
@@ -563,10 +523,50 @@ public class OpenAiCompatClient implements LlmClient {
             }
         }
 
+        private String resolveSlotId(int index) {
+            String rawId = toolCallIds.get(index);
+            if (rawId == null) {
+                rawId = toolCalls.get(index) != null
+                    ? GeminiThoughtSignature.unsignToolId(toolCalls.get(index).id()).id()
+                    : "toolu_" + UUID.randomUUID().toString().substring(0, 8);
+            }
+            return GeminiThoughtSignature.signToolId(rawId, toolCallSigs.get(index));
+        }
+
+        private void emitReasoningDelta(String text, JsonNode chunk, Consumer<StreamEvent> sink) {
+            if (StringUtils.isEmpty(text)) return;
+            closeText(chunk, sink);
+            if (reasoningIndex == null) {
+                reasoningIndex = nextBlockIndex++;
+                sink.accept(new StreamEvent.ContentBlockStart(
+                    reasoningIndex, new ThinkingBlock("", null), chunk));
+            }
+            sink.accept(new StreamEvent.ContentBlockDelta(
+                reasoningIndex, new Delta.ThinkingDelta(text), chunk));
+        }
+
+        private void handleVisibleContent(String visible, JsonNode chunk, Consumer<StreamEvent> sink) {
+            if (StringUtils.isEmpty(visible)) return;
+            closeReasoning(chunk, sink);
+            String immediate = textRescue.onTextDelta(visible);
+            emitTextDelta(immediate, chunk, sink);
+        }
+
+        private void emitTextDelta(String text, JsonNode chunk, Consumer<StreamEvent> sink) {
+            if (StringUtils.isEmpty(text)) return;
+            if (textIndex == null) {
+                textIndex = nextBlockIndex++;
+                sink.accept(new StreamEvent.ContentBlockStart(textIndex, new TextBlock(""), chunk));
+            }
+            sink.accept(new StreamEvent.ContentBlockDelta(
+                textIndex, new Delta.TextDelta(text), chunk));
+        }
+
         private void ensureMessageStarted(JsonNode chunk, Consumer<StreamEvent> sink) {
             if (messageId != null) return;
-            messageId = chunk.path("id").asText("chatcmpl_" + UUID.randomUUID());
-            model = chunk.path("model").asText("");
+            messageId = chunk != null ? chunk.path("id").asText("chatcmpl_" + UUID.randomUUID())
+                : "chatcmpl_" + UUID.randomUUID();
+            model = chunk != null ? chunk.path("model").asText("") : "";
             sink.accept(new StreamEvent.MessageStart(new ApiMessage(
                 messageId, "message", "assistant", List.of(), model,
                 null, null, Usage.EMPTY), chunk));
@@ -588,7 +588,15 @@ public class OpenAiCompatClient implements LlmClient {
             if (finished) return;
             finished = true;
 
+            thinkFilter.finish(
+                thinkTail -> emitReasoningDelta(thinkTail, null, sink),
+                visibleTail -> handleVisibleContent(visibleTail, null, sink));
             closeReasoning(null, sink);
+
+            TextCallRescue.StreamFlushResult rescued = textRescue.finish();
+            if (StringUtils.isNotEmpty(rescued.trailingText())) {
+                emitTextDelta(rescued.trailingText(), null, sink);
+            }
             closeText(null, sink);
 
             if (!toolCalls.isEmpty() && finalStopReason != null) {
@@ -596,84 +604,92 @@ public class OpenAiCompatClient implements LlmClient {
                     ToolUseBlock tool = toolCalls.get(i);
                     if (tool == null) continue;
                     int blockIndex = nextBlockIndex++;
+                    String finalId = resolveSlotId(i);
                     sink.accept(new StreamEvent.ContentBlockStart(blockIndex,
-                        new ToolUseBlock(tool.id(), tool.name(), JsonUtils.getMapper().createObjectNode())));
+                        new ToolUseBlock(finalId, tool.name(), JsonUtils.getMapper().createObjectNode())));
                     String arguments = StringUtils.isBlank(toolCallArgs.get(i)) ? "{}" : toolCallArgs.get(i);
                     requireJsonArguments(arguments, tool.name());
                     sink.accept(new StreamEvent.ContentBlockDelta(blockIndex,
                         new Delta.InputJsonDelta(arguments)));
                     sink.accept(new StreamEvent.ContentBlockStop(blockIndex));
                 }
+            } else if (!rescued.calls().isEmpty()) {
+                for (TextCallRescue.WrittenCall wc : rescued.calls()) {
+                    int blockIndex = nextBlockIndex++;
+                    sink.accept(new StreamEvent.ContentBlockStart(blockIndex,
+                        new ToolUseBlock(TextCallRescue.nextCallId(), wc.name(),
+                            JsonUtils.getMapper().createObjectNode())));
+                    sink.accept(new StreamEvent.ContentBlockDelta(blockIndex,
+                        new Delta.InputJsonDelta(wc.args().toString())));
+                    sink.accept(new StreamEvent.ContentBlockStop(blockIndex));
+                }
+                finalStopReason = "tool_use";
             }
 
             sink.accept(new StreamEvent.MessageDelta(
-                new MessageDeltaData(finalStopReason != null ? finalStopReason : "end_turn", null), latestUsage));
+                new MessageDeltaData(finalStopReason != null ? finalStopReason : "end_turn", null),
+                latestUsage));
             sink.accept(new StreamEvent.MessageStop());
         }
     }
 
-    private ApiMessage parseNonStreamingResponse(String responseBody) throws Exception {
+    static ApiMessage parseChatResponseStatic(
+            String responseBody, String fallbackModel, Set<String> offeredTools) throws Exception {
         JsonNode root = JsonUtils.getMapper().readTree(responseBody);
 
         String id = root.hasNonNull("id") ? root.get("id").asText() : "chatcmpl_" + UUID.randomUUID();
-        String model = root.hasNonNull("model") ? root.get("model").asText() : config.model();
+        String model = root.hasNonNull("model") ? root.get("model").asText() : fallbackModel;
         JsonNode choices = root.get("choices");
         String stopReason = "stop";
         List<ContentBlock> contentBlocks = new ArrayList<>();
+        boolean sawStructuredToolCall = false;
 
         if (choices != null && choices.isArray() && !choices.isEmpty()) {
             JsonNode choice = choices.get(0);
             JsonNode message = choice.get("message");
             if (message != null) {
-                if (message.hasNonNull("reasoning_content")) {
-                    contentBlocks.add(new ThinkingBlock(message.get("reasoning_content").asText(), null));
+                String explicitReasoning = ReasoningNormalizer.extractReasoningField(message);
+                if (StringUtils.isNotEmpty(explicitReasoning)) {
+                    contentBlocks.add(new ThinkingBlock(explicitReasoning, null));
                 }
 
                 if (message.hasNonNull("content")) {
                     String content = message.get("content").asText();
                     if (StringUtils.isNotEmpty(content)) {
-                        contentBlocks.add(new TextBlock(content));
+                        ReasoningNormalizer.SplitThinkResult split = ReasoningNormalizer.splitThinkTags(content);
+                        if (StringUtils.isNotEmpty(split.thinking()) && StringUtils.isEmpty(explicitReasoning)) {
+                            contentBlocks.add(new ThinkingBlock(split.thinking(), null));
+                        }
+                        if (StringUtils.isNotEmpty(split.content())) {
+                            contentBlocks.add(new TextBlock(split.content()));
+                        }
                     }
                 }
 
                 if (message.hasNonNull("tool_calls")) {
                     for (JsonNode tc : message.get("tool_calls")) {
-                        // A tool call the model asked for must never be silently dropped: the
-                        // turn would then wait for a tool_result that can never arrive. Reject
-                        // it the way requireJsonArguments rejects unparseable arguments, and
-                        // name the field so the failure is not an opaque "Request failed: null"
-                        // from the NPE that tc.get("function").get(...) used to raise.
                         if (!tc.hasNonNull("function")) {
                             throw new ApiException(
                                 "OpenAI Chat tool call is missing its function object", 0);
                         }
                         JsonNode function = tc.get("function");
-                        // hasNonNull, not has: NullNode.asText() is the string "null", which
-                        // would reach the tool router as "No such tool available: null" —
-                        // the same hazard the streaming arm guards against.
                         if (!function.hasNonNull("name")) {
                             throw new ApiException(
                                 "OpenAI Chat tool call is missing its function name", 0);
                         }
                         String name = function.get("name").asText();
-                        // An absent or null arguments field is the server omitting a no-argument
-                        // call, not a malformed one; requireJsonArguments turns blank into {}.
-                        // Reading it through path(...).asText(default) keeps an explicit null
-                        // from becoming the string "null", which parses as a JSON null node
-                        // and would silently reach the tool as a null input instead of {}.
                         String args = function.path("arguments").asText("");
-                        String toolId = tc.hasNonNull("id") ? tc.get("id").asText() :
-                                "toolu_" + UUID.randomUUID().toString().substring(0, 8);
+                        String rawId = tc.hasNonNull("id") ? tc.get("id").asText()
+                            : "toolu_" + UUID.randomUUID().toString().substring(0, 8);
+                        String extraSig = GeminiThoughtSignature.extractExtraSignature(tc.get("extra_content"));
+                        String toolId = GeminiThoughtSignature.signToolId(rawId, extraSig);
 
                         JsonNode argsNode = requireJsonArguments(args, name);
                         contentBlocks.add(new ToolUseBlock(toolId, name, argsNode));
+                        sawStructuredToolCall = true;
                     }
                 }
 
-                // isNull, not just a Java null check: the switch below passes an unrecognized
-                // reason straight through, so an explicit "finish_reason": null would make the
-                // stop reason the string "null" instead of leaving the "stop" default. The
-                // streaming arm already guards this the same way.
                 JsonNode finish = choice.get("finish_reason");
                 if (finish != null && !finish.isNull()) {
                     stopReason = finish.asText();
@@ -687,25 +703,18 @@ public class OpenAiCompatClient implements LlmClient {
             }
         }
 
-        JsonNode usage = root.get("usage");
-        Usage tokenUsage = Usage.EMPTY;
-        if (usage != null) {
-            tokenUsage = parseUsage(usage);
+        if (!sawStructuredToolCall) {
+            TextCallRescue.RescueOutcome rescued =
+                TextCallRescue.rescueBlocks(contentBlocks, offeredTools);
+            if (rescued.rescuedTools()) {
+                contentBlocks = rescued.blocks();
+                stopReason = "tool_use";
+            }
         }
 
+        Usage tokenUsage = ReasoningNormalizer.parseChatUsage(root.get("usage"));
         return new ApiMessage(id, "message", "assistant", contentBlocks, model,
-                stopReason, null, tokenUsage);
-    }
-
-    @Explanation("normalizes overlapping OpenAI cache detail into disjoint token buckets")
-    private static Usage parseUsage(JsonNode usage) {
-        long inputTokens = usage.path("prompt_tokens").asLong();
-        long cachedTokens = usage.path("prompt_tokens_details").path("cached_tokens").asLong();
-        // hasNonNull, not has: an explicit "total_tokens": null would otherwise report a
-        // boxed 0 total rather than leaving the total absent.
-        return new Usage(Math.max(0, inputTokens - cachedTokens),
-            usage.path("completion_tokens").asLong(), 0, cachedTokens,
-            usage.hasNonNull("total_tokens") ? usage.path("total_tokens").asLong() : null);
+            stopReason, null, tokenUsage);
     }
 
     private static JsonNode requireJsonArguments(String arguments, String toolName) {

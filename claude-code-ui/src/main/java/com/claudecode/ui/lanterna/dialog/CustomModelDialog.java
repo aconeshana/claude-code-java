@@ -39,7 +39,8 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
     private static final ModelApiProtocol[] PROTOCOLS = {
         ModelApiProtocol.OPENAI_RESPONSES,
         ModelApiProtocol.OPENAI_CHAT,
-        ModelApiProtocol.ANTHROPIC
+        ModelApiProtocol.ANTHROPIC,
+        ModelApiProtocol.GEMINI
     };
 
     private boolean active;

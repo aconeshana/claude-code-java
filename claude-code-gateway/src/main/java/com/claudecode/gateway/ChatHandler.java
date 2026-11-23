@@ -1,5 +1,7 @@
 package com.claudecode.gateway;
 
+import com.claudecode.api.ApiMessage;
+import com.claudecode.api.ProtocolWireCodec;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.SDKMessage;
@@ -7,11 +9,15 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,17 +25,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import com.sun.net.httpserver.HttpExchange;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * {@code POST /v1/chat/completions}: the OpenAI Chat Completions protocol
- * face for submitting one turn to the active session and streaming that turn
- * back as {@code chat.completion.chunk} frames.
- *
- * <p>The turn lifecycle is the shared {@link ProtocolTurnRunner} flow; this
- * class is the OpenAI wire projection. The chunk shapes mirror what
- * {@code OpenAiCompatClient} parses inbound: {@code delta.content},
- * {@code delta.reasoning_content}, and {@code delta.tool_calls[].function}.
+ * face for submitting one turn to the active session and streaming or returning
+ * that turn in strict OpenAI wire format.
  */
 final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
 
@@ -39,7 +41,6 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 
-    /** Handles one request exchange; owns the SSE lane it opens. */
     public void handle(HttpExchange exchange) throws IOException {
         runner.handle(exchange.getRequestBody(), new HttpProtocolResponder(exchange), this);
     }
@@ -47,6 +48,43 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
     @Override
     public String extractPrompt(JsonNode request) {
         return MessagesHandler.extractLastUserText(request);
+    }
+
+    @Override
+    public SubmissionAttachments extractAttachments(JsonNode request) {
+        JsonNode messages = request.path("messages");
+        if (!messages.isArray()) return SubmissionAttachments.NONE;
+        JsonNode lastUser = null;
+        for (JsonNode message : messages) {
+            if (Strings.CS.equals("user", message.path("role").asText())) lastUser = message;
+        }
+        JsonNode content = lastUser == null ? null : lastUser.path("content");
+        if (content == null || !content.isArray()) return SubmissionAttachments.NONE;
+
+        List<SessionHostSubmission.Attachment> images = new ArrayList<>();
+        List<SessionHostSubmission.Attachment> files = new ArrayList<>();
+        for (JsonNode part : content) {
+            String type = part.path("type").asText("");
+            if (Strings.CS.equals("image_url", type)) {
+                String url = part.path("image_url").isTextual()
+                    ? part.path("image_url").asText()
+                    : part.path("image_url").path("url").asText("");
+                images.add(MessagesHandler.parseDataUrlAttachment(url, null));
+            } else if (Strings.CS.equals("file", type)) {
+                JsonNode file = part.path("file");
+                String fileName = file.path("filename").isTextual()
+                    ? file.path("filename").asText() : null;
+                String fileData = file.path("file_data").asText("");
+                if (Strings.CS.startsWith(fileData, "data:")) {
+                    files.add(MessagesHandler.parseDataUrlAttachment(fileData, fileName));
+                } else if (StringUtils.isNotEmpty(fileData)) {
+                    files.add(new SessionHostSubmission.Attachment(
+                        "application/pdf", fileName, MessagesHandler.decodeBase64Strict(fileData)));
+                }
+            }
+        }
+        if (images.isEmpty() && files.isEmpty()) return SubmissionAttachments.NONE;
+        return new SubmissionAttachments(images, files);
     }
 
     @Override
@@ -64,34 +102,27 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
         return body.toString();
     }
 
-    /**
-     * The Chat Completions per-turn projection.
-     *
-     * <p>OpenAI chunks carry no block lifecycle — only deltas — so this
-     * projection maps each translated content block to its delta frame and
-     * finishes with the terminal chunk carrying {@code finish_reason}.
-     */
     private static final class ChatProjection implements ProtocolTurnRunner.PerTurnProjection {
 
         private final String model;
         private final String responseId;
-        private final String created;
+        private final long created;
+        private final List<ContentBlock> accumulatedBlocks = new ArrayList<>();
         private boolean anyToolCall;
+        private int anyToolCallIndex;
 
         private ChatProjection(String model) {
             this.model = model;
             this.responseId = "chatcmpl-gw-" + UUID.randomUUID().toString()
                 .replace("-", "").substring(0, 24);
-            this.created = Long.toString(System.currentTimeMillis() / 1_000);
+            this.created = System.currentTimeMillis() / 1_000;
         }
 
         @Override
         public List<ProtocolTurnRunner.SseFrame> openingFrames() {
-            // The first chunk establishes the role, matching OpenAI's opening
-            // chunk shape before content deltas arrive.
             ObjectNode delta = JsonUtils.getMapper().createObjectNode();
-            delta.putObject("role").put("", "assistant");
-            delta.set("content", JsonUtils.getMapper().createObjectNode().textNode(""));
+            delta.put("role", "assistant");
+            delta.put("content", "");
             return List.of(chunk(delta, null));
         }
 
@@ -101,18 +132,19 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
             switch (message) {
                 case SDKMessage.Assistant assistant -> assistantFrames(assistant, frames);
                 case SDKMessage.User user -> toolResultFrames(user, frames);
-                default -> { /* Only assistant output and tool results project. */ }
+                default -> { }
             }
             return frames;
         }
 
-        private void assistantFrames(SDKMessage.Assistant assistant,
-                List<ProtocolTurnRunner.SseFrame> frames) {
+        private void assistantFrames(
+                SDKMessage.Assistant assistant, List<ProtocolTurnRunner.SseFrame> frames) {
             AssistantMessage body = assistant.message();
             if (body == null || body.message() == null) return;
             List<ContentBlock> blocks = body.message().content();
             if (blocks == null) return;
             for (ContentBlock block : blocks) {
+                accumulatedBlocks.add(block);
                 switch (block) {
                     case ThinkingBlock thinking -> {
                         ObjectNode delta = deltaObject();
@@ -129,30 +161,33 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
                         ObjectNode delta = deltaObject();
                         ArrayNode toolCalls = delta.putArray("tool_calls");
                         ObjectNode call = toolCalls.addObject();
-                        call.put("index", toolCallsIndex());
+                        call.put("index", anyToolCallIndex++);
                         call.put("id", tool.id());
+                        call.put("type", "function");
                         ObjectNode function = call.putObject("function");
                         function.put("name", tool.name());
                         function.put("arguments",
                             tool.input() == null ? "{}" : tool.input().toString());
                         frames.add(chunk(delta, null));
                     }
-                    default -> { /* Rich blocks have no Chat face here. */ }
+                    default -> { }
                 }
             }
         }
 
-        private void toolResultFrames(SDKMessage.User user,
-                List<ProtocolTurnRunner.SseFrame> frames) {
+        private void toolResultFrames(
+                SDKMessage.User user, List<ProtocolTurnRunner.SseFrame> frames) {
             UserMessage body = user.message();
             if (body == null || body.message() == null) return;
             List<ContentBlock> blocks = body.message().blocks();
             if (blocks == null) return;
             for (ContentBlock block : blocks) {
                 if (!(block instanceof ToolResultBlock result)) continue;
-                if (!result.isError()) continue; // Successful tool results are silent in chat.
+                if (!result.isError()) continue;
+                String errText = "Tool " + result.toolUseId() + " failed";
+                accumulatedBlocks.add(new TextBlock(errText));
                 ObjectNode delta = deltaObject();
-                delta.put("content", "Tool " + result.toolUseId() + " failed");
+                delta.put("content", errText);
                 frames.add(chunk(delta, null));
             }
         }
@@ -163,14 +198,19 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
             delta.putNull("content");
             String finishReason = userCancel ? "cancelled"
                 : anyToolCall ? "tool_calls" : "stop";
-            return List.of(chunk(delta, finishReason));
+            return List.of(
+                chunk(delta, finishReason),
+                new ProtocolTurnRunner.SseFrame(null, "[DONE]"));
         }
 
-        private int toolCallsIndex() {
-            return anyToolCallIndex++;
+        @Override
+        public String unaryResponse(boolean userCancel) {
+            String stop = userCancel ? "cancelled" : (anyToolCall ? "tool_use" : "end_turn");
+            ApiMessage msg = new ApiMessage(
+                responseId, "message", "assistant", List.copyOf(accumulatedBlocks),
+                model, stop, null, Usage.EMPTY);
+            return ProtocolWireCodec.encodeResponse(ModelApiProtocol.OPENAI_CHAT, msg);
         }
-
-        private int anyToolCallIndex;
 
         private ObjectNode deltaObject() {
             return JsonUtils.getMapper().createObjectNode();
@@ -192,7 +232,6 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
         }
     }
 
-    /** Bridges the runner onto one HTTP exchange with OpenAI error bodies. */
     private record HttpProtocolResponder(HttpExchange exchange)
             implements ProtocolTurnRunner.ProtocolResponder {
 
@@ -203,6 +242,16 @@ final class ChatHandler implements ProtocolTurnRunner.TurnProjection {
             exchange.sendResponseHeaders(200, 0);
             OutputStream output = exchange.getResponseBody();
             return SseConnection.start(output, 4_096, Duration.ofSeconds(20), () -> {});
+        }
+
+        @Override
+        public void respondUnaryJson(String jsonBody) throws IOException {
+            byte[] bytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
         }
 
         @Override

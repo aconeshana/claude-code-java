@@ -133,6 +133,17 @@ public final class OpenAiResponsesItemProjector {
                     }
                     messageBlocks.add(responsesImage(node.get("source"), imageUrlResolver));
                 }
+                case "document" -> {
+                    if (Strings.CS.equals("assistant", role)) {
+                        throw new IllegalArgumentException(
+                            "OpenAI Responses assistant messages do not support document content");
+                    }
+                    ObjectNode filePart = responsesFile(node.get("source"));
+                    if (filePart != null) messageBlocks.add(filePart);
+                }
+                case "redacted_thinking" -> {
+                    // Omit Anthropic redacted_thinking unless sealed upstream by caller.
+                }
                 case "tool_use" -> {
                     flushMessage(input, role, messageBlocks);
                     ObjectNode call = input.addObject();
@@ -162,6 +173,9 @@ public final class OpenAiResponsesItemProjector {
             messageBlocks.add(responsesText(textType(role), text));
         } else if (item instanceof ImageBlock(JsonNode source)) {
             messageBlocks.add(responsesImage(source, imageUrlResolver));
+        } else if (item instanceof DocumentBlock(JsonNode source)) {
+            ObjectNode filePart = responsesFile(source);
+            if (filePart != null) messageBlocks.add(filePart);
         } else if (item instanceof ToolUseBlock toolUse) {
             flushMessage(input, role, messageBlocks);
             ObjectNode call = input.addObject();
@@ -219,6 +233,31 @@ public final class OpenAiResponsesItemProjector {
         return JsonUtils.getMapper().createObjectNode()
             .put("type", "input_image")
             .put("image_url", imageUrlResolver.apply(source));
+    }
+
+    private static ObjectNode responsesFile(JsonNode source) {
+        if (source == null || source.isNull()) return null;
+        String type = source.path("type").asText("");
+        if (Strings.CS.equals("base64", type)) {
+            String mediaType = source.path("media_type").asText("application/pdf");
+            String data = source.path("data").asText("");
+            String dataUrl = Strings.CS.startsWith(data, "data:")
+                ? data : "data:" + mediaType + ";base64," + data;
+            ObjectNode out = JsonUtils.getMapper().createObjectNode();
+            out.put("type", "input_file");
+            out.put("filename", Strings.CS.contains(mediaType, "pdf") ? "document.pdf" : "attachment.bin");
+            out.put("file_data", dataUrl);
+            return out;
+        }
+        if (Strings.CS.equals("url", type)) {
+            String url = source.path("url").asText("");
+            if (StringUtils.isNotBlank(url)) {
+                return JsonUtils.getMapper().createObjectNode()
+                    .put("type", "input_file")
+                    .put("file_url", url);
+            }
+        }
+        return null;
     }
 
     private static ArrayNode responsesToolContent(

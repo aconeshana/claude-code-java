@@ -105,6 +105,14 @@ final class OpenAiWireSupport {
         return part;
     }
 
+    static ObjectNode chatDocumentNote(JsonNode source) {
+        String mediaType = source != null
+            ? source.path("media_type").asText("application/octet-stream")
+            : "application/octet-stream";
+        return chatText("[Attached file (" + mediaType
+            + ") — binary file content omitted on Chat Completions]");
+    }
+
     static String textContent(List<ContentBlock> content) {
         if (content == null) return "";
         return content.stream()

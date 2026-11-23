@@ -1,41 +1,41 @@
 package com.claudecode.api;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.model.ModelNames;
-
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.Locale;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Routes each request to the protocol client configured for its model name.
  * <p>
- * Supports user-defined Anthropic, Chat Completions, and Responses endpoints.
- * An effort-specific 400/422 retries once without effort and caches that
- * endpoint decision. Tagged model IDs retain their client-side context
- * semantics while resolving the base custom endpoint.
+ * Supports user-defined Anthropic, Chat Completions, Responses, and Google Gemini
+ * endpoints. Learns and caches adaptive fallbacks per endpoint when an upstream
+ * rejects {@code effort}, {@code thinking: disabled}, structured output {@code format},
+ * or the configured entry protocol ({@code WrongEndpoint}).
  */
-@Explanation("Routes requests to user-defined Anthropic, Chat, or Responses clients")
+@Explanation("Routes requests to user-defined Anthropic, Chat, Responses, or Gemini clients with adaptive fallback")
 public final class CustomModelRoutingClient implements LlmClient {
     private final LlmClient fallback;
     private final Function<String, Optional<CustomModelConfig>> resolver;
     private final Function<CustomModelConfig, LlmClient> clientFactory;
     private final Supplier<String> imageModelName;
     private final ConcurrentHashMap<CustomModelConfig, LlmClient> clients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CustomModelConfig, ModelApiProtocol> learnedProtocol =
+        new ConcurrentHashMap<>();
     private final Set<CustomModelConfig> effortUnsupported = ConcurrentHashMap.newKeySet();
-    /**
-     * Captions survive for the life of the routing client: the rewrite applies to
-     * the wire copy only, so without reuse every turn re-describes the whole
-     * history's images. Shared by all requests, hence the cache's own locking.
-     */
+    private final Set<CustomModelConfig> thinkingOffUnsupported = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<CustomModelConfig, ProtocolFallbackPolicy.FormatMode> learnedFormatMode =
+        new ConcurrentHashMap<>();
     private final ImageCaptionCache captionCache = new ImageCaptionCache();
 
     public CustomModelRoutingClient(
@@ -45,10 +45,6 @@ public final class CustomModelRoutingClient implements LlmClient {
         this(fallback, resolver, clientFactory, () -> null);
     }
 
-    /**
-     * @param imageModelName live supplier of the configured image-processing model
-     *        name; text-only endpoints route their image content there first
-     */
     public CustomModelRoutingClient(
             LlmClient fallback,
             Function<String, Optional<CustomModelConfig>> resolver,
@@ -67,11 +63,6 @@ public final class CustomModelRoutingClient implements LlmClient {
             fallback, resolver, CustomModelRoutingClient::createClient, () -> null);
     }
 
-    /**
-     * {@link #standard} with a live image-model supplier — the composition root
-     * reads the {@code imageModel} user setting so a /model picker change takes
-     * effect on the next request without rebuilding the client.
-     */
     public static CustomModelRoutingClient standard(
             LlmClient fallback,
             Function<String, Optional<CustomModelConfig>> resolver,
@@ -84,7 +75,7 @@ public final class CustomModelRoutingClient implements LlmClient {
         return switch (model.protocol()) {
             case ANTHROPIC -> new AnthropicSdkClient(new ApiConfig.AnthropicConfig(
                 model.apiKey(), null, model.modelName(), model.baseUrl(), model.headers()));
-            case OPENAI_CHAT, OPENAI_RESPONSES -> LlmClientFactory.create(new ApiConfig(
+            case OPENAI_CHAT, OPENAI_RESPONSES, GEMINI -> LlmClientFactory.create(new ApiConfig(
                 ApiConfig.ApiProvider.OPENAI_COMPAT, null,
                 new ApiConfig.OpenAiConfig(model.apiKey(), model.modelName(), model.baseUrl(),
                     model.protocol(), model.headers()), null, null));
@@ -94,9 +85,24 @@ public final class CustomModelRoutingClient implements LlmClient {
     private Route route(CreateMessageRequest request) {
         String model = request.model() != null ? request.model() : fallback.getModel();
         Optional<CustomModelConfig> custom = resolveCustomModel(model);
-        if (custom.isEmpty()) return new Route(null, fallback);
-        CustomModelConfig config = custom.get();
-        return new Route(config, clients.computeIfAbsent(config, clientFactory));
+        if (custom.isEmpty()) return new Route(null, null, fallback);
+        CustomModelConfig baseConfig = custom.get();
+        ModelApiProtocol effectiveProtocol = learnedProtocol.getOrDefault(baseConfig, baseConfig.protocol());
+        CustomModelConfig effectiveConfig = effectiveProtocol == baseConfig.protocol()
+            ? baseConfig
+            : withProtocol(baseConfig, effectiveProtocol);
+        return new Route(baseConfig, effectiveConfig, clients.computeIfAbsent(effectiveConfig, clientFactory));
+    }
+
+    private static CustomModelConfig withProtocol(CustomModelConfig base, ModelApiProtocol protocol) {
+        return new CustomModelConfig(
+            base.modelName(),
+            protocol,
+            base.baseUrl(),
+            base.apiKey(),
+            base.headers(),
+            base.contextWindow(),
+            base.multimodal());
     }
 
     @Override
@@ -105,57 +111,129 @@ public final class CustomModelRoutingClient implements LlmClient {
     }
 
     @Override
-    public Iterator<StreamEvent> createMessageStream(CreateMessageRequest request, Runnable onRequestSubmitted) {
-        Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route, request);
-        try {
-            return route.client().createMessageStream(effective, onRequestSubmitted);
-        } catch (ApiException failure) {
-            if (!learnUnsupportedEffort(route.config(), effective, failure)) throw failure;
-            return route.client().createMessageStream(withoutEffort(effective), null);
-        }
+    public Iterator<StreamEvent> createMessageStream(
+            CreateMessageRequest request, Runnable onRequestSubmitted) {
+        return executeWithAdaptiveFallback(
+            request,
+            (client, effective, firstTry) ->
+                client.createMessageStream(effective, firstTry ? onRequestSubmitted : null));
     }
 
     @Override
     public ApiMessage createMessage(CreateMessageRequest request) {
-        Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route, request);
-        try {
-            return route.client().createMessage(effective);
-        } catch (ApiException failure) {
-            if (!learnUnsupportedEffort(route.config(), effective, failure)) throw failure;
-            return route.client().createMessage(withoutEffort(effective));
-        }
+        return executeWithAdaptiveFallback(request, (client, effective, _) -> client.createMessage(effective));
     }
 
     @Override
     public ApiMessage createMessage(CreateMessageRequest request, long timeoutMillis) {
-        Route route = route(request);
-        CreateMessageRequest effective = effectiveRequest(route, request);
-        try {
-            return route.client().createMessage(effective, timeoutMillis);
-        } catch (ApiException failure) {
-            if (!learnUnsupportedEffort(route.config(), effective, failure)) throw failure;
-            return route.client().createMessage(withoutEffort(effective), timeoutMillis);
-        }
+        return executeWithAdaptiveFallback(
+            request, (client, effective, _) -> client.createMessage(effective, timeoutMillis));
     }
 
-    /** Image routing first, then the learned effort stripping. */
+    @FunctionalInterface
+    private interface ClientCall<T> {
+        T invoke(LlmClient client, CreateMessageRequest request, boolean firstAttempt);
+    }
+
+    private <T> T executeWithAdaptiveFallback(CreateMessageRequest original, ClientCall<T> call) {
+        Route route = route(original);
+        CreateMessageRequest current = effectiveRequest(route, original);
+        boolean firstAttempt = true;
+
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                return call.invoke(route.client(), current, firstAttempt);
+            } catch (ApiException failure) {
+                firstAttempt = false;
+                CustomModelConfig key = route.baseConfig();
+                if (key == null) throw failure;
+
+                // 1. Wrong-endpoint protocol fallback (e.g. /v1/messages or /v1/chat/completions -> /v1/responses)
+                if (ProtocolFallbackPolicy.isWrongEndpoint(failure)) {
+                    T recovered = retryAcrossProtocols(key, route.effectiveConfig().protocol(),
+                        failure, original, call);
+                    if (recovered != null) return recovered;
+                }
+
+                // 2. Effort / thinkingConfig rejection retry
+                if (learnUnsupportedEffort(key, current, failure)) {
+                    current = withoutEffort(current);
+                    continue;
+                }
+
+                // 3. thinking: {type: "disabled"} rejection retry
+                if (ProtocolFallbackPolicy.isThinkingOffRefusal(failure, current)) {
+                    thinkingOffUnsupported.add(key);
+                    current = ProtocolFallbackPolicy.withoutDisabledThinking(current);
+                    continue;
+                }
+
+                // 4. Structured output format degradation (json_schema -> json_object -> system prompt)
+                if (ProtocolFallbackPolicy.isFormatRefusal(failure)
+                        && ProtocolFallbackPolicy.hasStructuredFormat(original)) {
+                    ProtocolFallbackPolicy.FormatMode prevMode = learnedFormatMode.getOrDefault(
+                        key, ProtocolFallbackPolicy.FormatMode.NATIVE);
+                    ProtocolFallbackPolicy.FormatMode nextMode = ProtocolFallbackPolicy.nextFormatFallback(
+                        route.effectiveConfig().protocol(), original, prevMode);
+                    if (nextMode != null) {
+                        learnedFormatMode.put(key, nextMode);
+                        current = effectiveRequest(route, original);
+                        continue;
+                    }
+                }
+                throw failure;
+            }
+        }
+        return call.invoke(route.client(), current, false);
+    }
+
+    private <T> T retryAcrossProtocols(
+            CustomModelConfig baseConfig,
+            ModelApiProtocol failedProtocol,
+            ApiException initialFailure,
+            CreateMessageRequest original,
+            ClientCall<T> call) {
+        ApiException lastFailure = initialFailure;
+        for (ModelApiProtocol candidate :
+                ProtocolFallbackPolicy.candidateFallbackProtocols(failedProtocol, lastFailure.getMessage())) {
+            CustomModelConfig altConfig = withProtocol(baseConfig, candidate);
+            LlmClient altClient = clients.computeIfAbsent(altConfig, clientFactory);
+            Route altRoute = new Route(baseConfig, altConfig, altClient);
+            try {
+                T result = call.invoke(altClient, effectiveRequest(altRoute, original), false);
+                learnedProtocol.put(baseConfig, candidate);
+                return result;
+            } catch (ApiException nextFailure) {
+                lastFailure = nextFailure;
+                if (!ProtocolFallbackPolicy.isWrongEndpoint(nextFailure)) {
+                    throw nextFailure;
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
     private CreateMessageRequest effectiveRequest(Route route, CreateMessageRequest request) {
-        CreateMessageRequest imaged = routeImagesFor(route, request);
-        if (route.config() != null && effortUnsupported.contains(route.config())) {
-            return withoutEffort(imaged);
+        CreateMessageRequest current = routeImagesFor(route, request);
+        CustomModelConfig key = route.baseConfig();
+        if (key == null) return current;
+        if (effortUnsupported.contains(key)) {
+            current = withoutEffort(current);
         }
-        return imaged;
+        if (thinkingOffUnsupported.contains(key)
+                && current.thinking() != null
+                && Strings.CS.equals("disabled", current.thinking().type())) {
+            current = ProtocolFallbackPolicy.withoutDisabledThinking(current);
+        }
+        ProtocolFallbackPolicy.FormatMode fmtMode = learnedFormatMode.get(key);
+        if (fmtMode != null && fmtMode != ProtocolFallbackPolicy.FormatMode.NATIVE) {
+            current = ProtocolFallbackPolicy.applyFormatMode(current, fmtMode);
+        }
+        return current;
     }
 
-    /**
-     * Rewrites image blocks to caption text when the routed endpoint is
-     * text-only and an image model is configured; otherwise returns the
-     * request unchanged.
-     */
     private CreateMessageRequest routeImagesFor(Route route, CreateMessageRequest request) {
-        if (route.config() == null || !route.config().isTextOnly()) return request;
+        if (route.baseConfig() == null || !route.baseConfig().isTextOnly()) return request;
         String imageModel;
         try {
             imageModel = imageModelName.get();
@@ -194,12 +272,6 @@ public final class CustomModelRoutingClient implements LlmClient {
             .build();
     }
 
-    /**
-     * Resolves the image endpoint for the configured image-model name. A custom
-     * catalog entry wins; a built-in first-party model name (the picker's
-     * sonnet/opus/... rows) has no custom entry, so it falls back to the
-     * first-party client — the official endpoint is image-capable.
-     */
     private ImageContentRouter.ImageEndpoint resolveImageEndpoint(String imageModel) {
         Optional<CustomModelConfig> custom = resolveCustomModel(imageModel);
         if (custom.isEmpty()) {
@@ -211,21 +283,28 @@ public final class CustomModelRoutingClient implements LlmClient {
     }
 
     @Override
-    public long countTokens(String model, List<CreateMessageRequest.RequestMessage> messages,
-                            List<CreateMessageRequest.ToolDefinition> tools) {
+    public long countTokens(
+            String model,
+            List<CreateMessageRequest.RequestMessage> messages,
+            List<CreateMessageRequest.ToolDefinition> tools) {
         LlmClient client = resolveCustomModel(model)
-            .map(config -> clients.computeIfAbsent(config, clientFactory))
+            .map(config -> clients.computeIfAbsent(
+                withProtocol(config, learnedProtocol.getOrDefault(config, config.protocol())),
+                clientFactory))
             .orElse(fallback);
         return client.countTokens(model, messages, tools);
     }
 
     @Override
-    public long countTokensFallback(String model,
-                                    List<CreateMessageRequest.RequestMessage> messages,
-                                    List<CreateMessageRequest.ToolDefinition> tools,
-                                    String sessionId) {
+    public long countTokensFallback(
+            String model,
+            List<CreateMessageRequest.RequestMessage> messages,
+            List<CreateMessageRequest.ToolDefinition> tools,
+            String sessionId) {
         LlmClient client = resolveCustomModel(model)
-            .map(config -> clients.computeIfAbsent(config, clientFactory))
+            .map(config -> clients.computeIfAbsent(
+                withProtocol(config, learnedProtocol.getOrDefault(config, config.protocol())),
+                clientFactory))
             .orElse(fallback);
         return client.countTokensFallback(model, messages, tools, sessionId);
     }
@@ -260,7 +339,13 @@ public final class CustomModelRoutingClient implements LlmClient {
             || Strings.CS.contains(message, "reasoning.effort")
             || Strings.CS.contains(message, "output_config.effort")
             || Strings.CS.contains(message, "effort parameter")
-            || Strings.CS.contains(message, "effort level");
+            || Strings.CS.contains(message, "effort level")
+            || Strings.CS.contains(message, "thinkingconfig")
+            || Strings.CS.contains(message, "thinking_config")
+            || Strings.CS.contains(message, "thinkinglevel")
+            || Strings.CS.contains(message, "thinking_level")
+            || Strings.CS.contains(message, "thinkingbudget")
+            || Strings.CS.contains(message, "thinking_budget");
         boolean rejectsParameter = Strings.CS.contains(message, "invalid")
             || Strings.CS.contains(message, "unsupported")
             || Strings.CS.contains(message, "not support")
@@ -271,7 +356,7 @@ public final class CustomModelRoutingClient implements LlmClient {
     }
 
     private static boolean hasEffort(CreateMessageRequest request) {
-        return request != null && ((StringUtils.isNotBlank(request.effort()))
+        return request != null && (StringUtils.isNotBlank(request.effort())
             || (request.outputConfig() != null
                 && request.outputConfig().effort() != null
                 && !StringUtils.isBlank(request.outputConfig().effort())));
@@ -308,5 +393,5 @@ public final class CustomModelRoutingClient implements LlmClient {
             .build();
     }
 
-    private record Route(CustomModelConfig config, LlmClient client) {}
+    private record Route(CustomModelConfig baseConfig, CustomModelConfig effectiveConfig, LlmClient client) {}
 }

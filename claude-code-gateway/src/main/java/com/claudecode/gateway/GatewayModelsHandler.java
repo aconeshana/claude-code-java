@@ -30,7 +30,8 @@ import com.sun.net.httpserver.HttpExchange;
  */
 final class GatewayModelsHandler {
 
-    private static final Set<String> VALID_PROTOCOLS = Set.of("anthropic", "chat", "responses");
+    private static final Set<String> VALID_PROTOCOLS =
+        Set.of("anthropic", "chat", "responses", "gemini");
 
     private final GatewayModelsPort models;
 

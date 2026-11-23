@@ -1,5 +1,7 @@
 package com.claudecode.gateway;
 
+import com.claudecode.api.ApiMessage;
+import com.claudecode.api.ProtocolWireCodec;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.SDKMessage;
@@ -7,10 +9,15 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
+import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,18 +27,11 @@ import java.util.List;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import com.sun.net.httpserver.HttpExchange;
 
 /**
  * {@code POST /v1/responses}: the OpenAI Responses protocol face for
- * submitting one turn to the active session and streaming that turn back as
- * {@code response.*} events.
- *
- * <p>The turn lifecycle is the shared {@link ProtocolTurnRunner} flow; this
- * class is the Responses wire projection. The event shapes mirror what
- * {@code OpenAiResponsesClient} parses inbound: {@code response.created},
- * {@code response.output_text.delta}, {@code response.output_item.*}, and
- * {@code response.completed}.
+ * submitting one turn to the active session and streaming or returning that
+ * turn as strict client-shaped {@code response.*} events.
  */
 final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
 
@@ -41,7 +41,6 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         this.runner = new ProtocolTurnRunner(sessions, inFlight);
     }
 
-    /** Handles one request exchange; owns the SSE lane it opens. */
     public void handle(HttpExchange exchange) throws IOException {
         runner.handle(exchange.getRequestBody(), new HttpProtocolResponder(exchange), this);
     }
@@ -49,6 +48,51 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
     @Override
     public String extractPrompt(JsonNode request) {
         return extractResponsesPrompt(request);
+    }
+
+    @Override
+    public SubmissionAttachments extractAttachments(JsonNode request) {
+        JsonNode input = request.path("input");
+        if (!input.isArray()) return SubmissionAttachments.NONE;
+
+        List<SessionHostSubmission.Attachment> images = new ArrayList<>();
+        List<SessionHostSubmission.Attachment> files = new ArrayList<>();
+
+        JsonNode lastUser = null;
+        for (JsonNode item : input) {
+            if (Strings.CS.equals("input_file", item.path("type").asText(""))) {
+                extractResponsesFileAttachment(item, files);
+            } else if (Strings.CS.equals("user", item.path("role").asText())) {
+                lastUser = item;
+            }
+        }
+        if (lastUser != null && lastUser.path("content").isArray()) {
+            for (JsonNode block : lastUser.path("content")) {
+                String type = block.path("type").asText("");
+                if (Strings.CS.equals("input_image", type)) {
+                    String url = block.path("image_url").isTextual()
+                        ? block.path("image_url").asText()
+                        : block.path("image_url").path("url").asText("");
+                    images.add(MessagesHandler.parseDataUrlAttachment(url, null));
+                } else if (Strings.CS.equals("input_file", type)) {
+                    extractResponsesFileAttachment(block, files);
+                }
+            }
+        }
+        if (images.isEmpty() && files.isEmpty()) return SubmissionAttachments.NONE;
+        return new SubmissionAttachments(images, files);
+    }
+
+    private static void extractResponsesFileAttachment(
+            JsonNode node, List<SessionHostSubmission.Attachment> files) {
+        String fileName = node.path("filename").isTextual() ? node.path("filename").asText() : null;
+        String fileData = node.path("file_data").asText("");
+        if (Strings.CS.startsWith(fileData, "data:")) {
+            files.add(MessagesHandler.parseDataUrlAttachment(fileData, fileName));
+        } else if (StringUtils.isNotEmpty(fileData)) {
+            files.add(new SessionHostSubmission.Attachment(
+                "application/pdf", fileName, MessagesHandler.decodeBase64Strict(fileData)));
+        }
     }
 
     @Override
@@ -66,11 +110,6 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         return body.toString();
     }
 
-    /**
-     * The Responses prompt: a plain string {@code input}, or the last user
-     * message of an {@code input[]} array ({@code role:"user"} with
-     * {@code content[].text} or plain string content).
-     */
     static String extractResponsesPrompt(JsonNode request) {
         JsonNode input = request.path("input");
         if (input.isTextual() && !StringUtils.isBlank(input.asText())) return input.asText();
@@ -94,32 +133,32 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         return text.isEmpty() ? null : text.toString();
     }
 
-    /**
-     * The Responses per-turn projection.
-     *
-     * <p>Responses events carry output items: this projection opens a
-     * reasoning item for thinking, a message item for text, and function_call
-     * items for tool use, with delta events inside each item — the same
-     * item/delta split {@code OpenAiResponsesClient} reassembles inbound.
-     */
     private static final class ResponsesProjection
             implements ProtocolTurnRunner.PerTurnProjection {
 
         private final String model;
         private final String responseId;
+        private final long createdAt;
+        private final List<ContentBlock> accumulatedBlocks = new ArrayList<>();
+        private final ArrayNode completedOutputItems = JsonUtils.getMapper().createArrayNode();
+        private final StringBuilder openText = new StringBuilder();
+        private final StringBuilder openReasoning = new StringBuilder();
+        private int sequenceNumber;
         private int outputIndex;
-        private Integer reasoningItemIndex = null;
-        private Integer messageItemIndex = null;
+        private Integer reasoningItemIndex;
+        private Integer messageItemIndex;
+        private boolean sawToolUse;
 
         private ResponsesProjection(String model) {
             this.model = model;
             this.responseId = "resp-gw-" + UUID.randomUUID().toString()
                 .replace("-", "").substring(0, 24);
+            this.createdAt = System.currentTimeMillis() / 1_000;
         }
 
         @Override
         public List<ProtocolTurnRunner.SseFrame> openingFrames() {
-            ObjectNode response = responseShell("in_progress");
+            ObjectNode response = responseShell("in_progress", false);
             ObjectNode body = eventShell("response.created");
             body.set("response", response);
             return List.of(frame("response.created", body));
@@ -131,62 +170,93 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
             switch (message) {
                 case SDKMessage.Assistant assistant -> assistantFrames(assistant, frames);
                 case SDKMessage.User user -> toolResultFrames(user, frames);
-                default -> { /* Only assistant output and tool results project. */ }
+                default -> { }
             }
             return frames;
         }
 
-        private void assistantFrames(SDKMessage.Assistant assistant,
-                List<ProtocolTurnRunner.SseFrame> frames) {
+        private void assistantFrames(
+                SDKMessage.Assistant assistant, List<ProtocolTurnRunner.SseFrame> frames) {
             AssistantMessage body = assistant.message();
             if (body == null || body.message() == null) return;
             List<ContentBlock> blocks = body.message().content();
             if (blocks == null) return;
             for (ContentBlock block : blocks) {
+                accumulatedBlocks.add(block);
                 switch (block) {
                     case ThinkingBlock thinking -> {
                         if (reasoningItemIndex == null) {
                             reasoningItemIndex = outputIndex++;
+                            openReasoning.setLength(0);
                             frames.add(itemAdded(reasoningItemIndex, "reasoning"));
                         }
+                        openReasoning.append(thinking.thinking());
                         frames.add(deltaEvent("response.reasoning_text.delta",
                             reasoningItemIndex, thinking.thinking()));
                     }
                     case TextBlock text -> {
-                        if (reasoningItemIndex != null) {
-                            frames.add(itemDone(reasoningItemIndex, "reasoning"));
-                            reasoningItemIndex = null;
-                        }
+                        closeReasoningIfOpen(frames);
                         if (messageItemIndex == null) {
                             messageItemIndex = outputIndex++;
+                            openText.setLength(0);
                             frames.add(itemAdded(messageItemIndex, "message"));
                         }
+                        openText.append(text.text());
                         frames.add(deltaEvent("response.output_text.delta",
                             messageItemIndex, text.text()));
                     }
                     case ToolUseBlock tool -> {
-                        if (messageItemIndex != null) {
-                            frames.add(itemDone(messageItemIndex, "message"));
-                            messageItemIndex = null;
-                        }
+                        sawToolUse = true;
+                        closeReasoningIfOpen(frames);
+                        closeMessageIfOpen(frames);
                         int itemIndex = outputIndex++;
                         frames.add(functionCallAdded(itemIndex, tool));
-                        frames.add(functionCallDone(itemIndex, tool));
+                        ObjectNode doneItem = completedFunctionCallItem(itemIndex, tool);
+                        completedOutputItems.add(doneItem.deepCopy());
+                        frames.add(itemDoneFrame(itemIndex, doneItem));
                     }
-                    default -> { /* Rich blocks have no Responses face here. */ }
+                    default -> { }
                 }
             }
         }
 
-        private void toolResultFrames(SDKMessage.User user,
-                List<ProtocolTurnRunner.SseFrame> frames) {
+        private void closeReasoningIfOpen(List<ProtocolTurnRunner.SseFrame> frames) {
+            if (reasoningItemIndex == null) return;
+            ObjectNode doneItem = itemShell(reasoningItemIndex, "reasoning");
+            ArrayNode summary = doneItem.putArray("summary");
+            if (!openReasoning.isEmpty()) {
+                summary.addObject().put("type", "summary_text").put("text", openReasoning.toString());
+            }
+            completedOutputItems.add(doneItem.deepCopy());
+            frames.add(itemDoneFrame(reasoningItemIndex, doneItem));
+            reasoningItemIndex = null;
+            openReasoning.setLength(0);
+        }
+
+        private void closeMessageIfOpen(List<ProtocolTurnRunner.SseFrame> frames) {
+            if (messageItemIndex == null) return;
+            ObjectNode doneItem = itemShell(messageItemIndex, "message");
+            doneItem.put("status", "completed");
+            doneItem.put("role", "assistant");
+            doneItem.putArray("content").addObject()
+                .put("type", "output_text")
+                .put("text", openText.toString())
+                .putArray("annotations");
+            completedOutputItems.add(doneItem.deepCopy());
+            frames.add(itemDoneFrame(messageItemIndex, doneItem));
+            messageItemIndex = null;
+            openText.setLength(0);
+        }
+
+        private void toolResultFrames(
+                SDKMessage.User user, List<ProtocolTurnRunner.SseFrame> frames) {
             UserMessage body = user.message();
             if (body == null || body.message() == null) return;
             List<ContentBlock> blocks = body.message().blocks();
             if (blocks == null) return;
             for (ContentBlock block : blocks) {
                 if (!(block instanceof ToolResultBlock result)) continue;
-                if (!result.isError()) continue; // Successful tool results are silent.
+                if (!result.isError()) continue;
                 int itemIndex = outputIndex++;
                 ObjectNode item = itemShell(itemIndex, "function_call_output");
                 item.put("call_id", result.toolUseId());
@@ -199,6 +269,7 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
                     }
                 }
                 item.put("output", text.toString());
+                completedOutputItems.add(item.deepCopy());
                 frames.add(itemDoneFrame(itemIndex, item));
             }
         }
@@ -206,37 +277,44 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         @Override
         public List<ProtocolTurnRunner.SseFrame> closingFrames(boolean userCancel) {
             List<ProtocolTurnRunner.SseFrame> frames = new ArrayList<>();
-            if (reasoningItemIndex != null) {
-                frames.add(itemDone(reasoningItemIndex, "reasoning"));
-                reasoningItemIndex = null;
-            }
-            if (messageItemIndex != null) {
-                frames.add(itemDone(messageItemIndex, "message"));
-                messageItemIndex = null;
-            }
+            closeReasoningIfOpen(frames);
+            closeMessageIfOpen(frames);
             String status = userCancel ? "incomplete" : "completed";
-            ObjectNode response = responseShell(status);
+            ObjectNode response = responseShell(status, true);
             ObjectNode body = eventShell("response." + status);
             body.set("response", response);
             frames.add(frame("response." + status, body));
             return frames;
         }
 
-        // ── frame builders ────────────────────────────────────────────────
+        @Override
+        public String unaryResponse(boolean userCancel) {
+            String stop = userCancel ? "max_tokens" : (sawToolUse ? "tool_use" : "end_turn");
+            ApiMessage msg = new ApiMessage(
+                responseId, "message", "assistant", List.copyOf(accumulatedBlocks),
+                model, stop, null, Usage.EMPTY);
+            return ProtocolWireCodec.encodeResponse(ModelApiProtocol.OPENAI_RESPONSES, msg);
+        }
 
-        private ObjectNode responseShell(String status) {
+        private ObjectNode responseShell(String status, boolean includeOutput) {
             ObjectNode response = JsonUtils.getMapper().createObjectNode();
             response.put("id", responseId);
             response.put("object", "response");
+            response.put("created_at", createdAt);
             response.put("status", status);
-            if (!model.isEmpty()) response.put("model", model);
-            response.putArray("output");
+            response.put("model", model);
+            if (includeOutput) {
+                response.set("output", completedOutputItems.deepCopy());
+            } else {
+                response.putArray("output");
+            }
             return response;
         }
 
         private ObjectNode eventShell(String type) {
             ObjectNode body = JsonUtils.getMapper().createObjectNode();
             body.put("type", type);
+            body.put("sequence_number", sequenceNumber++);
             return body;
         }
 
@@ -249,11 +327,19 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
 
         private ProtocolTurnRunner.SseFrame itemAdded(int index, String type) {
             ObjectNode item = itemShell(index, type);
+            if (Strings.CS.equals("message", type)) {
+                item.put("status", "in_progress");
+                item.put("role", "assistant");
+                item.putArray("content");
+            } else if (Strings.CS.equals("reasoning", type)) {
+                item.putArray("summary");
+            }
             return itemAddedFrame(index, item);
         }
 
         private ProtocolTurnRunner.SseFrame functionCallAdded(int index, ToolUseBlock tool) {
             ObjectNode item = itemShell(index, "function_call");
+            item.put("status", "in_progress");
             item.put("call_id", tool.id());
             item.put("name", tool.name());
             item.put("arguments",
@@ -261,11 +347,14 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
             return itemAddedFrame(index, item);
         }
 
-        private ProtocolTurnRunner.SseFrame functionCallDone(int index, ToolUseBlock tool) {
+        private ObjectNode completedFunctionCallItem(int index, ToolUseBlock tool) {
             ObjectNode item = itemShell(index, "function_call");
+            item.put("status", "completed");
             item.put("call_id", tool.id());
             item.put("name", tool.name());
-            return itemDoneFrame(index, item);
+            item.put("arguments",
+                tool.input() == null ? "{}" : tool.input().toString());
+            return item;
         }
 
         private ProtocolTurnRunner.SseFrame itemAddedFrame(int index, ObjectNode item) {
@@ -273,10 +362,6 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
             body.put("output_index", index);
             body.set("item", item);
             return frame("response.output_item.added", body);
-        }
-
-        private ProtocolTurnRunner.SseFrame itemDone(int index, String type) {
-            return itemDoneFrame(index, itemShell(index, type));
         }
 
         private ProtocolTurnRunner.SseFrame itemDoneFrame(int index, ObjectNode item) {
@@ -289,6 +374,7 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         private ProtocolTurnRunner.SseFrame deltaEvent(String type, int index, String delta) {
             ObjectNode body = eventShell(type);
             body.put("output_index", index);
+            body.put("item_id", "item_" + index);
             body.put("delta", delta);
             return frame(type, body);
         }
@@ -298,7 +384,6 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
         }
     }
 
-    /** Bridges the runner onto one HTTP exchange with Responses error bodies. */
     private record HttpProtocolResponder(HttpExchange exchange)
             implements ProtocolTurnRunner.ProtocolResponder {
 
@@ -309,6 +394,16 @@ final class ResponsesHandler implements ProtocolTurnRunner.TurnProjection {
             exchange.sendResponseHeaders(200, 0);
             OutputStream output = exchange.getResponseBody();
             return SseConnection.start(output, 4_096, Duration.ofSeconds(20), () -> {});
+        }
+
+        @Override
+        public void respondUnaryJson(String jsonBody) throws IOException {
+            byte[] bytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
         }
 
         @Override

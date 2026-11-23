@@ -10,7 +10,7 @@ import java.util.Map;
  * <p>The gateway must not depend on {@code claude-code-api} (where
  * {@code CustomModelJsonStore} lives) or bind to {@code claude-code-core}'s
  * {@code ModelApiProtocol} enum directly, so this port speaks only strings
- * and JSON: {@code protocol} is one of {@code "anthropic"|"chat"|"responses"}.
+ * and JSON: {@code protocol} is one of {@code "anthropic"|"chat"|"responses"|"gemini"}.
  * The CLI composition root implements this port against the same
  * {@code CustomModelCatalog} instance backing the {@code /model} command, so
  * writes from either surface are visible to the other.

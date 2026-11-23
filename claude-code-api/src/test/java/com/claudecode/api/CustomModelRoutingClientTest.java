@@ -220,6 +220,10 @@ class CustomModelRoutingClientTest {
                         assertEquals("high", first.path("reasoning").path("effort").asText());
                         assertFalse(second.path("reasoning").has("effort"));
                     }
+                    case GEMINI -> {
+                        assertTrue(first.path("generationConfig").has("thinkingConfig"));
+                        assertFalse(second.path("generationConfig").has("thinkingConfig"));
+                    }
                 }
             }
         }
@@ -255,6 +259,7 @@ class CustomModelRoutingClientTest {
                     case ANTHROPIC -> assertFalse(second.path("output_config").has("effort"));
                     case OPENAI_CHAT -> assertFalse(second.has("reasoning_effort"));
                     case OPENAI_RESPONSES -> assertFalse(second.path("reasoning").has("effort"));
+                    case GEMINI -> assertFalse(second.path("generationConfig").has("thinkingConfig"));
                 }
                 assertFalse(first.isEmpty());
             }
@@ -266,6 +271,7 @@ class CustomModelRoutingClientTest {
             case ANTHROPIC -> "output_config.effort";
             case OPENAI_CHAT -> "reasoning_effort";
             case OPENAI_RESPONSES -> "reasoning.effort";
+            case GEMINI -> "thinkingConfig";
         };
         return "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Invalid "
             + parameter + " value\"}}";
@@ -663,6 +669,10 @@ class CustomModelRoutingClientTest {
                 + "\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\","
                 + "\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],"
                 + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+            case GEMINI -> "{\"responseId\":\"gem_1\",\"modelVersion\":\"custom\","
+                + "\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"ok\"}]},"
+                + "\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,"
+                + "\"candidatesTokenCount\":1,\"totalTokenCount\":2}}";
         };
     }
 

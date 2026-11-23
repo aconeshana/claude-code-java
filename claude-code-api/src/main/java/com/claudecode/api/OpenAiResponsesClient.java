@@ -3,10 +3,11 @@ package com.claudecode.api;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.OpenAiResponsesItemProjector;
-import com.claudecode.core.message.TextBlock;
-import com.claudecode.core.message.ThinkingBlock;
+import com.claudecode.core.message.RedactedThinkingBlock;
 import com.claudecode.core.message.ServerToolResultBlock;
 import com.claudecode.core.message.ServerToolUseBlock;
+import com.claudecode.core.message.TextBlock;
+import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.prompt.SystemPromptConstants;
@@ -15,24 +16,24 @@ import com.claudecode.http.HttpCalls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.commons.lang3.Strings;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * OpenAI Responses API adapter translating {@code /v1/responses} wire data to the shared
@@ -56,8 +57,10 @@ public final class OpenAiResponsesClient implements LlmClient {
         this(config, httpClient, httpClient);
     }
 
-    OpenAiResponsesClient(ApiConfig.OpenAiConfig config, OkHttpClient streamingHttpClient,
-                          OkHttpClient nonStreamingHttpClient) {
+    OpenAiResponsesClient(
+            ApiConfig.OpenAiConfig config,
+            OkHttpClient streamingHttpClient,
+            OkHttpClient nonStreamingHttpClient) {
         this.config = config;
         this.streamingHttpClient = streamingHttpClient;
         this.nonStreamingHttpClient = nonStreamingHttpClient;
@@ -75,10 +78,9 @@ public final class OpenAiResponsesClient implements LlmClient {
         log.info("OpenAI Responses streaming request to {} model {}", apiUrl, config.model());
         try {
             Request httpRequest = buildRequest(request, true);
-            // An OpenAI-compatible endpoint is never the Anthropic first party, so
-            // the byte-level tier resolves disabled for this provider.
+            Set<String> offeredTools = TextCallRescue.offeredToolNames(request.tools());
             return EventSourceStreamBridge.connect(
-                streamingHttpClient, httpRequest, new ResponsesEventTranslator(),
+                streamingHttpClient, httpRequest, new ResponsesEventTranslator(offeredTools),
                 ApiTimeouts.streamConnectTimeout(request), ApiTimeouts.watchdog(),
                 request.cancellationRegistrar(), onRequestSubmitted,
                 ApiTimeouts.byteWatchdog(ApiConfig.ApiProvider.OPENAI_COMPAT, config.baseUrl()));
@@ -99,13 +101,14 @@ public final class OpenAiResponsesClient implements LlmClient {
         log.info("OpenAI Responses request to {} model {}", apiUrl, config.model());
         try {
             Request httpRequest = buildRequest(request, false);
-            var timeout = timeoutMillis > 0
+            Duration timeout = timeoutMillis > 0
                 ? Duration.ofMillis(timeoutMillis) : ApiTimeouts.apiTimeout();
             try (Response response = HttpCalls.execute(
                     nonStreamingHttpClient, httpRequest, timeout, request.cancellationRegistrar())) {
                 String responseBody = response.body().string();
                 if (!response.isSuccessful()) throw apiError(response.code(), responseBody);
-                ApiMessage message = parseResponse(responseBody);
+                ApiMessage message = parseResponsesBodyStatic(
+                    responseBody, config.model(), TextCallRescue.offeredToolNames(request.tools()));
                 ApiRequestTiming timing = response.request().tag(ApiRequestTiming.class);
                 return ApiMessageTiming.attach(message,
                     timing != null ? timing.lastAttemptStartMs() : 0L);
@@ -121,7 +124,8 @@ public final class OpenAiResponsesClient implements LlmClient {
     }
 
     private Request buildRequest(CreateMessageRequest request, boolean streaming) throws Exception {
-        ObjectNode body = buildResponseRequest(request, streaming);
+        ObjectNode body = buildResponsesRequestNode(
+            request, config.model(), streaming, config.baseUrl(), false);
         Request.Builder builder = new Request.Builder()
             .url(apiUrl)
             .header("Accept", streaming ? "text/event-stream" : "application/json")
@@ -134,9 +138,15 @@ public final class OpenAiResponsesClient implements LlmClient {
         return builder.post(RequestBody.create(JsonUtils.getMapper().writeValueAsBytes(body), JSON)).build();
     }
 
-    private ObjectNode buildResponseRequest(CreateMessageRequest request, boolean streaming) {
+    static ObjectNode buildResponsesRequestNode(
+            CreateMessageRequest request,
+            String defaultModel,
+            boolean streaming,
+            String baseUrl,
+            boolean forClientRelay) {
         ObjectNode root = JsonUtils.getMapper().createObjectNode();
-        root.put("model", request.model() != null ? request.model() : config.model());
+        String effectiveModel = request.model() != null ? request.model() : defaultModel;
+        root.put("model", effectiveModel);
         root.put("max_output_tokens", request.maxTokens());
         root.put("stream", streaming);
         root.put("store", false);
@@ -146,8 +156,7 @@ public final class OpenAiResponsesClient implements LlmClient {
         if (request.temperature() != null) root.put("temperature", request.temperature());
         if (request.topP() != null) root.put("top_p", request.topP());
 
-        String effort = request.outputConfig() != null && request.outputConfig().effort() != null
-            ? request.outputConfig().effort() : request.effort();
+        String effort = ReasoningNormalizer.resolveExplicitOrBudgetEffort(request);
         boolean thinkingDisabled = request.thinking() != null
             && Strings.CS.equals("disabled", request.thinking().type());
         boolean reasoningEnabled = !thinkingDisabled
@@ -165,11 +174,18 @@ public final class OpenAiResponsesClient implements LlmClient {
         ArrayNode input = root.putArray("input");
         if (request.messages() != null) {
             for (CreateMessageRequest.RequestMessage message : request.messages()) {
+                if (forClientRelay && Strings.CS.equals("assistant", message.role())
+                        && message.content() instanceof List<?> items
+                        && containsRedactedThinking(items)) {
+                    appendRelayedAssistantItems(input, items);
+                    continue;
+                }
                 try {
-                    OpenAiResponsesItemProjector.project(
-                        message.role(), message.content(), OpenAiWireSupport::imageUrl,
-                        OpenAiWireSupport::responsesToolContent)
-                        .forEach(input::add);
+                    for (ObjectNode item : OpenAiResponsesItemProjector.project(
+                            message.role(), message.content(), OpenAiWireSupport::imageUrl,
+                            OpenAiWireSupport::responsesToolContent)) {
+                        sanitizeProjectedItemForResponses(item, forClientRelay, input);
+                    }
                 } catch (IllegalArgumentException e) {
                     throw new ApiException(e.getMessage(), 0, e);
                 }
@@ -184,7 +200,9 @@ public final class OpenAiResponsesClient implements LlmClient {
                 item.put("type", "function");
                 item.put("name", tool.name());
                 if (tool.description() != null) item.put("description", tool.description());
-                item.set("parameters", OpenAiToolSchemaProjection.project(tool.inputSchema()));
+                ObjectNode projected = OpenAiToolSchemaProjection.project(tool.inputSchema());
+                item.set("parameters",
+                    VendorSchemaSanitizer.sanitizeToolSchema(projected, baseUrl, effectiveModel));
                 if (tool.strict() != null) item.put("strict", tool.strict());
             }
         }
@@ -199,6 +217,53 @@ public final class OpenAiResponsesClient implements LlmClient {
             }
         }
         return LlmWireBodyFinalizer.finalizeForApi(root);
+    }
+
+    private static boolean containsRedactedThinking(List<?> items) {
+        for (Object item : items) {
+            if (item instanceof RedactedThinkingBlock) return true;
+        }
+        return false;
+    }
+
+    private static void appendRelayedAssistantItems(ArrayNode input, List<?> items) {
+        for (Object raw : items) {
+            if (raw instanceof RedactedThinkingBlock(String data)) {
+                ObjectNode r = input.addObject();
+                r.put("type", "reasoning");
+                r.putArray("summary");
+                r.put("encrypted_content", ClaudeSeal.sealRedacted(data));
+            } else {
+                for (ObjectNode item : OpenAiResponsesItemProjector.project(
+                        "assistant", List.of(raw), OpenAiWireSupport::imageUrl,
+                        OpenAiWireSupport::responsesToolContent)) {
+                    sanitizeProjectedItemForResponses(item, true, input);
+                }
+            }
+        }
+    }
+
+    private static void sanitizeProjectedItemForResponses(
+            ObjectNode item, boolean forClientRelay, ArrayNode target) {
+        String type = item.path("type").asText("");
+        if (Strings.CS.equals("reasoning", type)) {
+            String enc = item.path("encrypted_content").asText("");
+            if (!forClientRelay && ClaudeSeal.isSealed(enc)) {
+                // Never forward magpie-claude1: sealed payloads to OpenAI Responses upstreams.
+                item.remove("encrypted_content");
+                if (item.path("summary").isEmpty()) {
+                    return;
+                }
+            }
+        } else if (Strings.CS.equals("function_call", type)
+                || Strings.CS.equals("function_call_output", type)) {
+            String callId = item.path("call_id").asText("");
+            GeminiThoughtSignature.UnsignedToolId unsigned = GeminiThoughtSignature.unsignToolId(callId);
+            if (StringUtils.isNotEmpty(unsigned.signature())) {
+                item.put("call_id", unsigned.id());
+            }
+        }
+        target.add(item);
     }
 
     private static String openAiToolChoice(String type) {
@@ -219,17 +284,32 @@ public final class OpenAiResponsesClient implements LlmClient {
         return text;
     }
 
-    private ApiMessage parseResponse(String responseBody) throws Exception {
+    static ApiMessage parseResponsesBodyStatic(
+            String responseBody, String fallbackModel, Set<String> offeredTools) throws Exception {
         JsonNode root = JsonUtils.getMapper().readTree(responseBody);
         List<ContentBlock> content = new ArrayList<>();
         JsonNode output = root.get("output");
+        boolean sawFunctionCall = false;
         if (output != null && output.isArray()) {
-            for (JsonNode item : output) appendOutputItem(content, item);
+            for (JsonNode item : output) {
+                if (Strings.CS.equals("function_call", item.path("type").asText())) {
+                    sawFunctionCall = true;
+                }
+                appendOutputItem(content, item);
+            }
+        }
+        String stop = stopReason(root);
+        if (!sawFunctionCall) {
+            TextCallRescue.RescueOutcome rescued = TextCallRescue.rescueBlocks(content, offeredTools);
+            if (rescued.rescuedTools()) {
+                content = rescued.blocks();
+                stop = "tool_use";
+            }
         }
         return new ApiMessage(
             root.path("id").asText("resp_" + UUID.randomUUID()),
             "message", "assistant", List.copyOf(content),
-            root.path("model").asText(config.model()), stopReason(root), null,
+            root.path("model").asText(fallbackModel), stop, null,
             parseUsage(root.get("usage")));
     }
 
@@ -249,14 +329,21 @@ public final class OpenAiResponsesClient implements LlmClient {
                 item.path("call_id").asText(item.path("id").asText("call_" + UUID.randomUUID())),
                 item.path("name").asText(), parseArguments(item.path("arguments").asText("{}"))));
             case "reasoning" -> {
+                String encrypted = item.path("encrypted_content").isTextual()
+                    ? item.path("encrypted_content").asText() : null;
+                if (encrypted != null && ClaudeSeal.isSealed(encrypted)) {
+                    ContentBlock unsealed = ClaudeSeal.openToContentBlock(encrypted);
+                    if (unsealed != null) {
+                        content.add(unsealed);
+                        return;
+                    }
+                }
                 StringBuilder summary = new StringBuilder();
                 for (JsonNode part : item.path("summary")) {
                     if (!summary.isEmpty()) summary.append('\n');
                     summary.append(part.path("text").asText(""));
                 }
-                content.add(new ThinkingBlock(summary.toString(),
-                    item.path("encrypted_content").isTextual()
-                        ? item.path("encrypted_content").asText() : null));
+                content.add(new ThinkingBlock(summary.toString(), encrypted));
             }
             default -> appendHostedTool(content, item);
         }
@@ -285,7 +372,8 @@ public final class OpenAiResponsesClient implements LlmClient {
         long cached = usage.path("input_tokens_details").path("cached_tokens").asLong();
         return new Usage(Math.max(0, input - cached), usage.path("output_tokens").asLong(), 0,
             cached,
-            usage.has("total_tokens") ? usage.path("total_tokens").asLong() : null);
+            usage.has("total_tokens") && !usage.get("total_tokens").isNull()
+                ? usage.path("total_tokens").asLong() : null);
     }
 
     private static String stopReason(JsonNode response) {
@@ -325,16 +413,23 @@ public final class OpenAiResponsesClient implements LlmClient {
         return config.model();
     }
 
-    private static final class ResponsesEventTranslator implements EventSourceStreamBridge.EventTranslator {
+    static final class ResponsesEventTranslator implements EventSourceStreamBridge.EventTranslator {
         private final Map<Integer, FunctionCallState> calls = new LinkedHashMap<>();
         private final Map<Integer, Boolean> textBlocks = new LinkedHashMap<>();
         private final Map<Integer, Boolean> reasoningBlocks = new LinkedHashMap<>();
         private final Map<String, Integer> reasoningParts = new LinkedHashMap<>();
         private final Map<String, Integer> activeReasoningByItem = new LinkedHashMap<>();
+        private final TextCallRescue.StreamBuffer textRescue;
         private int nextReasoningIndex = -1;
+        private int maxOutputIndex;
+        private Integer lastTextIndex;
         private String responseId;
         private String model;
         private boolean finished;
+
+        ResponsesEventTranslator(Set<String> offeredTools) {
+            this.textRescue = new TextCallRescue.StreamBuffer(offeredTools);
+        }
 
         @Override
         public void translate(String eventType, String data, Consumer<StreamEvent> sink) {
@@ -349,9 +444,13 @@ public final class OpenAiResponsesClient implements LlmClient {
                 case "response.created", "response.in_progress" -> startMessage(event, sink);
                 case "response.output_text.delta" -> {
                     int index = event.path("output_index").asInt(0);
-                    ensureTextStarted(index, sink);
-                    sink.accept(new StreamEvent.ContentBlockDelta(index,
-                        new Delta.TextDelta(event.path("delta").asText("")), event));
+                    maxOutputIndex = Math.max(maxOutputIndex, index);
+                    String immediate = textRescue.onTextDelta(event.path("delta").asText(""));
+                    if (StringUtils.isNotEmpty(immediate)) {
+                        ensureTextStarted(index, sink);
+                        sink.accept(new StreamEvent.ContentBlockDelta(index,
+                            new Delta.TextDelta(immediate), event));
+                    }
                 }
                 case "response.output_text.done" -> stopText(event.path("output_index").asInt(0), event, sink);
                 case "response.reasoning_text.delta", "response.reasoning_summary.delta",
@@ -361,11 +460,12 @@ public final class OpenAiResponsesClient implements LlmClient {
                         new Delta.ThinkingDelta(event.path("delta").asText("")), event));
                 }
                 case "response.reasoning_summary_part.added" -> reasoningIndex(event, sink);
-                case "response.reasoning_summary_part.done" -> { /* closed when the next part or item arrives */ }
+                case "response.reasoning_summary_part.done" -> { }
                 case "response.reasoning_summary_text.done" -> stopReasoningPart(event, sink);
                 case "response.output_item.added" -> addOutputItem(event);
                 case "response.function_call_arguments.delta" -> {
                     int index = event.path("output_index").asInt();
+                    maxOutputIndex = Math.max(maxOutputIndex, index);
                     FunctionCallState state = calls.computeIfAbsent(index, _ -> new FunctionCallState());
                     state.arguments.append(event.path("delta").asText(""));
                 }
@@ -401,6 +501,7 @@ public final class OpenAiResponsesClient implements LlmClient {
         }
 
         private void ensureTextStarted(int index, Consumer<StreamEvent> sink) {
+            lastTextIndex = index;
             if (textBlocks.putIfAbsent(index, Boolean.TRUE) == null) {
                 sink.accept(new StreamEvent.ContentBlockStart(index, new TextBlock("")));
             }
@@ -413,10 +514,12 @@ public final class OpenAiResponsesClient implements LlmClient {
         private void addOutputItem(JsonNode event) {
             JsonNode item = event.path("item");
             int index = event.path("output_index").asInt();
+            maxOutputIndex = Math.max(maxOutputIndex, index);
             if (Strings.CS.equals("reasoning", item.path("type").asText())) {
                 return;
             }
             if (!Strings.CS.equals("function_call", item.path("type").asText())) return;
+            textRescue.markNativeToolCall();
             FunctionCallState state = calls.computeIfAbsent(index, _ -> new FunctionCallState());
             state.id = item.path("call_id").asText(item.path("id").asText("call_" + UUID.randomUUID()));
             state.name = item.path("name").asText();
@@ -426,15 +529,51 @@ public final class OpenAiResponsesClient implements LlmClient {
         private void finishOutputItem(JsonNode event, Consumer<StreamEvent> sink) {
             JsonNode item = event.path("item");
             int index = event.path("output_index").asInt();
+            maxOutputIndex = Math.max(maxOutputIndex, index);
             if (Strings.CS.equals("reasoning", item.path("type").asText())) {
+                String enc = item.path("encrypted_content").isTextual()
+                    ? item.path("encrypted_content").asText() : null;
+                if (enc != null && ClaudeSeal.isSealed(enc)) {
+                    ContentBlock unsealed = ClaudeSeal.openToContentBlock(enc);
+                    if (unsealed instanceof RedactedThinkingBlock redacted) {
+                        int rIdx = nextReasoningIndex--;
+                        sink.accept(new StreamEvent.ContentBlockStart(rIdx, redacted, event));
+                        sink.accept(new StreamEvent.ContentBlockStop(rIdx, event));
+                        return;
+                    }
+                    if (unsealed instanceof ThinkingBlock tb) {
+                        String itemId = item.path("id").asText(event.path("item_id").asText("reasoning"));
+                        Integer existingIdx = activeReasoningByItem.remove(itemId);
+                        if (existingIdx != null) {
+                            if (StringUtils.isNotEmpty(tb.signature())) {
+                                sink.accept(new StreamEvent.ContentBlockDelta(
+                                    existingIdx, new Delta.SignatureDelta(tb.signature()), event));
+                            }
+                            stopReasoning(existingIdx, event, sink);
+                        } else {
+                            int rIdx = nextReasoningIndex--;
+                            sink.accept(new StreamEvent.ContentBlockStart(rIdx, new ThinkingBlock("", null), event));
+                            if (StringUtils.isNotEmpty(tb.thinking())) {
+                                sink.accept(new StreamEvent.ContentBlockDelta(
+                                    rIdx, new Delta.ThinkingDelta(tb.thinking()), event));
+                            }
+                            if (StringUtils.isNotEmpty(tb.signature())) {
+                                sink.accept(new StreamEvent.ContentBlockDelta(
+                                    rIdx, new Delta.SignatureDelta(tb.signature()), event));
+                            }
+                            sink.accept(new StreamEvent.ContentBlockStop(rIdx, event));
+                        }
+                        return;
+                    }
+                }
                 String itemId = item.path("id").asText(event.path("item_id").asText("reasoning"));
                 Integer reasoningIndex = activeReasoningByItem.get(itemId);
                 if (reasoningIndex == null) {
                     reasoningIndex = startReasoningPart(itemId, 0, event, sink);
                 }
-                if (item.path("encrypted_content").isTextual()) {
+                if (enc != null) {
                     sink.accept(new StreamEvent.ContentBlockDelta(reasoningIndex,
-                        new Delta.SignatureDelta(item.path("encrypted_content").asText()), event));
+                        new Delta.SignatureDelta(enc), event));
                 }
                 stopReasoning(reasoningIndex, event, sink);
                 activeReasoningByItem.remove(itemId);
@@ -452,6 +591,7 @@ public final class OpenAiResponsesClient implements LlmClient {
                 return;
             }
             if (!Strings.CS.equals("function_call", item.path("type").asText())) return;
+            textRescue.markNativeToolCall();
             FunctionCallState state = calls.computeIfAbsent(index, _ -> new FunctionCallState());
             if (state.id == null) state.id = item.path("call_id").asText(item.path("id").asText());
             if (state.name == null) state.name = item.path("name").asText();
@@ -486,8 +626,8 @@ public final class OpenAiResponsesClient implements LlmClient {
             return existing != null ? existing : startReasoningPart(itemId, summaryIndex, event, sink);
         }
 
-        private int startReasoningPart(String itemId, int summaryIndex, JsonNode event,
-                                       Consumer<StreamEvent> sink) {
+        private int startReasoningPart(
+                String itemId, int summaryIndex, JsonNode event, Consumer<StreamEvent> sink) {
             Integer previous = activeReasoningByItem.get(itemId);
             if (previous != null) stopReasoning(previous, event, sink);
             int index = nextReasoningIndex--;
@@ -512,6 +652,15 @@ public final class OpenAiResponsesClient implements LlmClient {
         private void finish(JsonNode response, JsonNode raw, Consumer<StreamEvent> sink) {
             if (finished) return;
             finished = true;
+
+            TextCallRescue.StreamFlushResult rescued = textRescue.finish();
+            if (StringUtils.isNotEmpty(rescued.trailingText())) {
+                int idx = lastTextIndex != null ? lastTextIndex : 0;
+                ensureTextStarted(idx, sink);
+                sink.accept(new StreamEvent.ContentBlockDelta(
+                    idx, new Delta.TextDelta(rescued.trailingText()), raw));
+            }
+
             List<Integer> texts = new ArrayList<>(textBlocks.keySet());
             for (int index : texts) stopText(index, raw, sink);
             List<Integer> reasoning = new ArrayList<>(reasoningBlocks.keySet());
@@ -520,8 +669,23 @@ public final class OpenAiResponsesClient implements LlmClient {
             for (Map.Entry<Integer, FunctionCallState> call : calls.entrySet()) {
                 emitCall(call.getKey(), call.getValue(), raw, sink);
             }
+
+            String stop = stopReason(response);
+            if (!rescued.calls().isEmpty()) {
+                for (TextCallRescue.WrittenCall wc : rescued.calls()) {
+                    int idx = ++maxOutputIndex;
+                    sink.accept(new StreamEvent.ContentBlockStart(idx,
+                        new ToolUseBlock(TextCallRescue.nextCallId(), wc.name(),
+                            JsonUtils.getMapper().createObjectNode()), raw));
+                    sink.accept(new StreamEvent.ContentBlockDelta(idx,
+                        new Delta.InputJsonDelta(wc.args().toString()), raw));
+                    sink.accept(new StreamEvent.ContentBlockStop(idx, raw));
+                }
+                stop = "tool_use";
+            }
+
             sink.accept(new StreamEvent.MessageDelta(
-                new MessageDeltaData(stopReason(response), null), parseUsage(response.get("usage")), raw));
+                new MessageDeltaData(stop, null), parseUsage(response.get("usage")), raw));
             sink.accept(new StreamEvent.MessageStop(raw));
         }
 
