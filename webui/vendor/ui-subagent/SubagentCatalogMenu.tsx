@@ -36,7 +36,7 @@
  * check. The menu surface itself is the shared `Menu` primitive, which owns
  * placement; the vendored stylesheet keeps the surface's own look.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
@@ -487,6 +487,47 @@ export function SubagentCatalogMenu({
     cancelHoverOpen()
     cancelHoverClose()
   }, [cancelHoverOpen, cancelHoverClose])
+
+  // Position the portaled menu directly beneath (or above if near the bottom)
+  // the header trigger, right-aligned and clamped inside the viewport — matching
+  // ShellCatalogMenu's placement contract.
+  useLayoutEffect(() => {
+    if (!open) return
+    const VIEWPORT_MARGIN = 12
+    const MENU_GAP = 6
+    const place = (): void => {
+      const trigger = triggerRef.current
+      const menu = menuRef.current
+      if (trigger === null || menu === null) return
+      const rect = trigger.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const mw = menu.offsetWidth || 360
+      const mh = menu.offsetHeight || 240
+      const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.right - mw, vw - mw - VIEWPORT_MARGIN))
+      const top = rect.bottom + MENU_GAP + mh <= vh - VIEWPORT_MARGIN
+        ? rect.bottom + MENU_GAP
+        : Math.max(VIEWPORT_MARGIN, rect.top - MENU_GAP - mh)
+      menu.style.position = 'fixed'
+      menu.style.left = `${left}px`
+      menu.style.top = `${top}px`
+      menu.style.zIndex = '1200'
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    const menu = menuRef.current
+    let observer: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined' && menu !== null) {
+      observer = new ResizeObserver(place)
+      observer.observe(menu)
+    }
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, entries.length, failed])
 
   // Upstream hides the trigger on an empty, ready catalog; a failed read keeps
   // it so the retry stays reachable. A still-loading read shows the trigger,

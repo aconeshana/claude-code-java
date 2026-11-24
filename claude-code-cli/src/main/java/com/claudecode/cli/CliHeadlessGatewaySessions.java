@@ -360,8 +360,9 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                     if (!live.isEmpty()) return Optional.of(live);
                 }
                 Path transcript = new SessionManager(mainCwd)
-                    .getAgentTranscriptPath(sessionId, agentId);
-                if (!Files.isRegularFile(transcript)) return Optional.empty();
+                    .findAgentTranscriptPath(sessionId, agentId)
+                    .orElse(null);
+                if (transcript == null) return Optional.empty();
                 try {
                     return new SessionStorage().getAgentTranscript(transcript, agentId)
                         .map(TranscriptLoader.AgentTranscript::messages);

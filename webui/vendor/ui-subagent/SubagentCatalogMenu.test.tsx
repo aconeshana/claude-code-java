@@ -338,4 +338,27 @@ describe('SubagentCatalogMenu', () => {
     expect(panel()).toBeNull()
     expect(document.activeElement).toBe(trigger())
   })
+
+  it('positions the portaled menu fixed and anchored beneath the trigger', async () => {
+    await render({ agents: [agent({ agentId: 'a1' })], onOpen: () => {} })
+    const btn = trigger()!
+    vi.spyOn(btn, 'getBoundingClientRect').mockReturnValue({
+      left: 1200,
+      right: 1320,
+      top: 12,
+      bottom: 40,
+      width: 120,
+      height: 28,
+      x: 1200,
+      y: 12,
+      toJSON: () => ({}),
+    })
+    click(btn)
+    const menu = panel()!
+    expect(menu).not.toBeNull()
+    expect(menu.style.position).toBe('fixed')
+    expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(40)
+    expect(Number.parseFloat(menu.style.left)).toBeGreaterThan(0)
+    expect(Number.parseInt(menu.style.zIndex, 10)).toBeGreaterThanOrEqual(1000)
+  })
 })

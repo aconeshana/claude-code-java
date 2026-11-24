@@ -132,6 +132,8 @@
   min-height: 0;
   margin: 0;
   padding: 6px;
+  border-radius: var(--dsw-radius-lg, 12px);
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-button-elevated-fill, #ffffff));
   overflow: hidden;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);

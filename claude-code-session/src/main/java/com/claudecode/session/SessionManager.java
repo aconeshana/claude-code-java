@@ -272,6 +272,36 @@ public class SessionManager {
             .resolve("agent-" + agentId + ".jsonl");
     }
 
+    /**
+     * Locates an existing sub-agent transcript file, checking this manager's
+     * project directory first and falling back to sibling project directories
+     * under {@code ~/.claude/projects} for cross-project sessions.
+     */
+    public Optional<Path> findAgentTranscriptPath(String parentSessionId, String agentId) {
+        if (StringUtils.isBlank(parentSessionId) || StringUtils.isBlank(agentId)) {
+            return Optional.empty();
+        }
+        Path local = getAgentTranscriptPath(parentSessionId, agentId);
+        if (Files.isRegularFile(local)) {
+            return Optional.of(local);
+        }
+        if (!Files.isDirectory(projectsRoot)) {
+            return Optional.empty();
+        }
+        String fileName = "agent-" + agentId + ".jsonl";
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(projectsRoot, Files::isDirectory)) {
+            for (Path dir : dirs) {
+                Path candidate = dir.resolve(parentSessionId).resolve("subagents").resolve(fileName);
+                if (Files.isRegularFile(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+        } catch (IOException _) {
+            // Unreadable projects root: treat as missing.
+        }
+        return Optional.empty();
+    }
+
 
     public Path getWorkflowTranscriptDir(String sessionId, String runId) {
         return projectDir.resolve(sessionId).resolve("subagents")
