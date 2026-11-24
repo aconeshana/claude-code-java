@@ -35,6 +35,7 @@ public final class SessionForkService {
 
         List<ObjectNode> messages = new ArrayList<>();
         List<ObjectNode> metricEntries = new ArrayList<>();
+        List<ObjectNode> llmTraceEntries = new ArrayList<>();
         ArrayNode replacements = JsonUtils.getMapper().createArrayNode();
         for (String rawLine : Files.readAllLines(source, StandardCharsets.UTF_8)) {
             String line = rawLine.trim();
@@ -60,6 +61,9 @@ public final class SessionForkService {
             if (Strings.CS.equals("java-session-metrics", type)
                     && sourceSessionId.equals(entry.path("sessionId").asText())) {
                 metricEntries.add(entry.deepCopy());
+            } else if (Strings.CS.equals("java-llm-request", type)
+                    && sourceSessionId.equals(entry.path("sessionId").asText())) {
+                llmTraceEntries.add(entry.deepCopy());
             }
         }
         Path sourceSidecar = SessionMetricsFiles.sidecar(source);
@@ -67,14 +71,18 @@ public final class SessionForkService {
             || SessionMetricsFiles.useSidecar();
         if (Files.isRegularFile(sourceSidecar)) {
             metricEntries.clear();
+            llmTraceEntries.clear();
             for (String rawLine : Files.readAllLines(sourceSidecar, StandardCharsets.UTF_8)) {
                 try {
                     JsonNode parsed = JsonUtils.getMapper().readTree(rawLine);
                     if (parsed instanceof ObjectNode entry
-                            && Strings.CS.equals("java-session-metrics",
-                                entry.path("type").asText())
                             && sourceSessionId.equals(entry.path("sessionId").asText())) {
-                        metricEntries.add(entry.deepCopy());
+                        String entryType = entry.path("type").asText();
+                        if (Strings.CS.equals("java-session-metrics", entryType)) {
+                            metricEntries.add(entry.deepCopy());
+                        } else if (Strings.CS.equals("java-llm-request", entryType)) {
+                            llmTraceEntries.add(entry.deepCopy());
+                        }
                     }
                 } catch (Exception _) {
                     // Match JSONL malformed-row tolerance.
@@ -115,6 +123,7 @@ public final class SessionForkService {
 
         long metricSeq = 0;
         List<String> metricLines = new ArrayList<>();
+        Set<Long> retainedTurns = new HashSet<>();
         boolean hasStart = metricEntries.stream().anyMatch(entry ->
             Strings.CS.equals("session/start", entry.path("event").asText()));
         if (hasStart) {
@@ -123,9 +132,17 @@ public final class SessionForkService {
                 String turnId = entry.path("turnId").asText(null);
                 if (!Strings.CS.equals("session/start", event)
                         && (turnId == null || !retainedMessageIds.contains(turnId))) continue;
+                long turnNum = entry.path("turn").asLong(0);
+                if (turnNum > 0) retainedTurns.add(turnNum);
                 entry.put("sessionId", forkSessionId);
                 entry.put("seq", metricSeq++);
                 metricLines.add(JsonUtils.getMapper().writeValueAsString(entry));
+            }
+            for (ObjectNode trace : llmTraceEntries) {
+                long turnNum = trace.path("turn").asLong(0);
+                if (turnNum > 0 && !retainedTurns.contains(turnNum)) continue;
+                trace.put("sessionId", forkSessionId);
+                metricLines.add(JsonUtils.getMapper().writeValueAsString(trace));
             }
         }
 

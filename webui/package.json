@@ -15,8 +15,10 @@
   "dependencies": {
     "@lexical/react": "^0.50.0",
     "@shikijs/langs": "^4.3.1",
+    "@tanstack/react-virtual": "^3.14.28",
     "anser": "^2.3.5",
     "clsx": "^2.0.0",
+    "diff": "^9.0.0",
     "immer": "^10.1.1",
     "katex": "^0.16.47",
     "lexical": "^0.50.0",

@@ -1,6 +1,7 @@
 package com.claudecode.api;
 
 import com.claudecode.core.engine.ApiRetryEvents;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -54,6 +55,7 @@ public class RetryInterceptor implements Interceptor {
             request = request.newBuilder().tag(ApiRequestTiming.class, timing).build();
         }
         RetryRequestPolicy policy = request.tag(RetryRequestPolicy.class);
+        LlmRequestTraceCollector trace = request.tag(LlmRequestTraceCollector.class);
         int attempt = 0;
         // Lifetime count of 529s seen in this call, NOT reset by intervening
         // non-529 errors — see class Javadoc.
@@ -73,6 +75,9 @@ public class RetryInterceptor implements Interceptor {
                 log.debug("Retrying API request (attempt {}/{}) after connection error: {}",
                         attempt + 1, maxRetries, e.getMessage());
                 Duration delay = calculateDelay(attempt, null);
+                if (trace != null) {
+                    trace.recordHttpRetry(0, attempt + 1, maxRetries, delay.toMillis());
+                }
                 ApiRetryEvents.emit(new ApiRetryEvents.Event(
                     0, attempt + 1, maxRetries, delay.toMillis()));
                 sleepOrThrow(delay);
@@ -98,6 +103,9 @@ public class RetryInterceptor implements Interceptor {
             Duration delay = calculateDelay(attempt, parseRetryAfterSeconds(response.header("Retry-After")));
             log.debug("Retrying API request (attempt {}/{}), delay: {}ms, status: {}",
                     attempt + 1, maxRetries, delay.toMillis(), response.code());
+            if (trace != null) {
+                trace.recordHttpRetry(response.code(), attempt + 1, maxRetries, delay.toMillis());
+            }
             ApiRetryEvents.emit(new ApiRetryEvents.Event(
                 response.code(), attempt + 1, maxRetries, delay.toMillis()));
             response.close();

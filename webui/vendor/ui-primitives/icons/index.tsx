@@ -975,10 +975,11 @@ export interface ProductIconProps extends IconProps {}
 
 function productIcon(
   glyph: string, weight: ProductIconWeight, drawnSize: number, artwork: (stroke: number) => ReactNode,
+  viewBox = '0 0 16 16',
 ): (props: ProductIconProps) => ReactNode {
   const stroke = PRODUCT_ICON_STROKE[weight]
   return ({ size = drawnSize, className }: ProductIconProps) => (
-    <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none"
+    <svg width={size} height={size} className={className} viewBox={viewBox} fill="none"
       xmlns="http://www.w3.org/2000/svg" data-icon={`dsw-icon-${glyph}-${weight}`} aria-hidden="true">
       {artwork(stroke)}
     </svg>
@@ -1032,4 +1033,59 @@ export const IconCompareSplitOutlineRegular = productIcon('compare-split-outline
   (stroke) => <>
     <path d="M6 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H6C6.55228 14.5 7 14.0523 7 13.5V2.5C7 1.94772 6.55228 1.5 6 1.5Z" stroke="currentColor" strokeWidth={stroke} />
     <path d="M13.5 1.5H10C9.44772 1.5 9 1.94772 9 2.5V13.5C9 14.0523 9.44772 14.5 10 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+/** Regular one-pixel product icons consumed by `vendor/ui-trajectory` (artwork verbatim from upstream `artwork.ts`). */
+export const IconSearchOutlineRegular = productIcon('search-outline', 'regular', 16,
+  (stroke) => <>
+    <path vectorEffect="non-scaling-stroke" d="M6.58727 11.8586C9.55061 11.8586 11.9529 9.45637 11.9529 6.49304C11.9529 3.5297 9.55061 1.12744 6.58727 1.12744C3.62394 1.12744 1.22168 3.5297 1.22168 6.49304C1.22168 9.45637 3.62394 11.8586 6.58727 11.8586Z" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M10.2991 10.3933L14.7783 14.8725" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+export const IconSettingsOutlineRegular = productIcon('settings-outline', 'regular', 16,
+  (stroke) => <>
+    <path vectorEffect="non-scaling-stroke" d="M8 9.75012C8.9665 9.75012 9.75 8.96662 9.75 8.00012C9.75 7.03362 8.9665 6.25012 8 6.25012C7.0335 6.25012 6.25 7.03362 6.25 8.00012C6.25 8.96662 7.0335 9.75012 8 9.75012Z" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M13.0107 7.79377C12.9505 7.89401 12.9205 7.94413 12.9205 7.99951C12.9205 8.0549 12.9505 8.10502 13.0106 8.20528L13.9849 9.83006C14.045 9.93029 14.0751 9.9804 14.0751 10.0358C14.0751 10.0911 14.045 10.1413 13.9849 10.2415L13.0037 11.8777C12.9468 11.9726 12.9184 12.0201 12.8725 12.0461C12.8267 12.072 12.7713 12.072 12.6607 12.072H10.6704C10.5598 12.072 10.5045 12.072 10.4586 12.098C10.4128 12.1239 10.3843 12.1714 10.3274 12.2662L9.33825 13.9142C9.28133 14.009 9.25287 14.0564 9.20703 14.0823C9.16118 14.1083 9.10588 14.1083 8.99529 14.1083H7.00486C6.89426 14.1083 6.83896 14.1083 6.79312 14.0823C6.74727 14.0564 6.71881 14.009 6.6619 13.9142L5.67273 12.2662C5.61581 12.1714 5.58735 12.1239 5.54151 12.098C5.49566 12.072 5.44036 12.072 5.32977 12.072H3.33945C3.2288 3.92811 3.17347 12.072 3.12761 12.0461C3.08176 12.0201 3.0533 11.9726 2.9964 11.8777L2.0152 10.2415C1.9551 10.1413 1.92505 10.0911 1.92505 10.0358C1.92505 9.9804 1.9551 9.93029 2.0152 9.83006L2.98951 8.20528C3.04963 8.10502 3.07969 8.0549 3.07969 7.99951C3.07968 7.94413 3.04961 7.89401 2.98946 7.79377L2.01529 6.17011C1.95514 6.06987 1.92507 6.01975 1.92507 5.96437C1.92506 5.90899 1.95512 5.85886 2.01524 5.7586L2.9964 4.1224C3.0533 4.0275 3.08176 3.98005 3.12761 3.95408C3.17347 3.92811 3.2288 3.92811 3.33945 3.92811H5.32977C5.44036 3.92811 5.49566 3.92811 5.54151 3.90216C5.58735 3.87621 5.61581 3.82879 5.67273 3.73397L6.6619 2.08599C6.71881 1.99116 6.74727 1.94375 6.79312 1.9178C6.83896 1.89185 6.89426 1.89185 7.00486 1.89185H8.99529C9.10588 1.89185 9.16118 1.89185 9.20703 1.9178C9.25287 1.94375 9.28133 1.99116 9.33825 2.08599L10.3274 3.73397C10.3843 3.82879 10.4128 3.87621 10.4586 3.90216C10.5045 3.92811 10.5598 3.92811 10.6704 3.92811H12.6607C12.7713 3.92811 12.8267 3.92811 12.8725 3.95408C3.17347 3.92811 12.9468 4.0275 13.0037 4.1224L13.9849 5.7586C14.045 5.85886 14.0751 5.90899 14.0751 5.96437C14.0751 6.01975 14.045 6.06987 13.9849 6.17011L13.0107 7.79377Z" stroke="currentColor" strokeWidth={stroke} strokeMiterlimit="10" />
+  </>, '.5 .5 15 15')
+
+export const IconCheckOutlineRegular = productIcon('check-outline', 'regular', 16,
+  (stroke) => <path vectorEffect="non-scaling-stroke" d="M2.25 8.5L5.49732 11.7473C5.90519 12.1552 6.57263 12.1344 6.95426 11.7018L13.75 4" stroke="currentColor" strokeWidth={stroke} />)
+
+export const IconChevronRightOutlineRegular = productIcon('chevron-right-outline', 'regular', 14,
+  (stroke) => <path vectorEffect="non-scaling-stroke" d="M6 12L9.29289 8.70711C9.68342 8.31658 9.68342 7.68342 9.29289 7.29289L6 4" stroke="currentColor" strokeWidth={stroke} />, '1 1 14 14')
+
+export const IconCopyOutlineRegular = productIcon('copy-outline', 'regular', 16,
+  (stroke) => <>
+    <rect vectorEffect="non-scaling-stroke" x="1.52075" y="4.07373" width="10.3932" height="10.3932" rx="2" stroke="currentColor" strokeWidth={stroke} />
+    <path d="M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 10.3756 13.9521 11.1987 13.1755 11.6228V10.3298C13.3652 10.0787 13.4792 9.7674 13.4792 9.42847V4.03296C13.4792 3.20453 12.8077 2.53296 11.9792 2.53296H6.58374C6.27966 2.53301 5.99684 2.6235 5.7605 2.77905H4.42358C4.85652 2.03463 5.66056 1.53304 6.58374 1.53296H11.9792Z" fill="currentColor" />
+  </>)
+
+export const IconUserOutlineRegular = productIcon('user-outline', 'regular', 16,
+  (stroke) => <>
+    <circle vectorEffect="non-scaling-stroke" cx="8" cy="4.5" r="2.75" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M1.5 14C1.5 10.75 4.75 9.5 8 9.5C11.25 9.5 14.5 10.75 14.5 14" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+export const IconCodeOutlineRegular = productIcon('code-outline', 'regular', 16,
+  (stroke) => <>
+    <path vectorEffect="non-scaling-stroke" d="M6.27612 1.5L4.52612 14.5" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M11.4739 1.5L9.72388 14.5" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M2.39868 5.5H14.0681" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M1.93188 10.5H13.6013" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+export const IconSparkleRegular = productIcon('sparkle', 'regular', 16,
+  (stroke) => <>
+    <path vectorEffect="non-scaling-stroke" d="M5.875 3C5.875 6.33333 7.54167 8 10.875 8C7.54167 8 5.875 9.66667 5.875 13C5.875 9.66667 4.20833 8 0.875 8C4.20833 8 5.875 6.33333 5.875 3Z" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M12.375 1.55823C12.375 3.39156 13.2917 4.30823 15.125 4.30823C13.2917 4.30823 12.375 5.22489 12.375 7.05823C12.375 5.22489 11.4583 4.30823 9.625 4.30823C11.4583 4.30823 12.375 3.39156 12.375 1.55823Z" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M12.375 10.4418C12.375 11.7751 13.0417 12.4418 14.375 12.4418C13.0417 12.4418 12.375 13.1084 12.375 14.4418C12.375 13.1084 11.7083 12.4418 10.375 12.4418C11.7083 12.4418 12.375 11.7751 12.375 10.4418Z" stroke="currentColor" strokeWidth={stroke} />
+  </>)
+
+export const IconWrapLinesOutlineRegular = productIcon('wrap-lines-outline', 'regular', 16,
+  (stroke) => <>
+    <path vectorEffect="non-scaling-stroke" d="M2.3457 3.19299H13.6541" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M2.3457 7.46497H9.19332" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M2.3457 11.7369H6.4849" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M9.1936 7.46497H11.5183C12.6981 7.46497 13.6544 8.42132 13.6544 9.60103C13.6544 10.7808 12.6981 11.7371 11.5183 11.7371H9.1936" stroke="currentColor" strokeWidth={stroke} />
+    <path vectorEffect="non-scaling-stroke" d="M10.9505 9.7677L9.12262 11.5956C9.04452 11.6737 9.04452 11.8003 9.12262 11.8784L10.9505 13.7063" stroke="currentColor" strokeWidth={stroke} />
   </>)

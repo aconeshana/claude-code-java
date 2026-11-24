@@ -10,6 +10,7 @@ import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.serialization.JsonUtils;
@@ -253,6 +254,7 @@ public final class GeminiClient implements LlmClient {
             .header("Accept", streaming ? "text/event-stream" : "application/json")
             .tag(RetryRequestPolicy.class,
                 RetryRequestPolicy.forQuerySource(request != null ? request.querySource() : null));
+        recordTraceIfActive(builder, url, body, request, streaming);
         if (StringUtils.isNotBlank(config.apiKey())) {
             if (Strings.CS.startsWith(config.apiKey(), "ya29.")) {
                 builder.header("Authorization", "Bearer " + config.apiKey());
@@ -262,6 +264,54 @@ public final class GeminiClient implements LlmClient {
         }
         config.headers().forEach(builder::header);
         return builder.post(RequestBody.create(JsonUtils.getMapper().writeValueAsBytes(body), JSON)).build();
+    }
+
+    private void recordTraceIfActive(
+            Request.Builder builder, String url, ObjectNode body,
+            CreateMessageRequest request, boolean streaming) {
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        if (trace == null || Strings.CS.contains(url, ":countTokens")) {
+            return;
+        }
+        builder.tag(LlmRequestTraceCollector.class, trace);
+        String effectiveModel = resolveModelId(request);
+        ObjectNode opts = JsonUtils.getMapper().createObjectNode();
+        opts.put("protocol", "gemini");
+        opts.put("endpoint", "/v1beta/models/" + effectiveModel + ":"
+            + (streaming ? "streamGenerateContent" : "generateContent"));
+        opts.put("model", effectiveModel);
+        opts.put("stream", streaming);
+        if (body.has("generationConfig")) {
+            opts.set("generationConfig", body.get("generationConfig").deepCopy());
+        }
+        if (body.has("toolConfig")) {
+            opts.set("toolConfig", body.get("toolConfig").deepCopy());
+        }
+        int signedParts = countThoughtSignatures(body.get("contents"));
+        if (signedParts > 0) {
+            opts.put("thought_signatures_attached", signedParts);
+        }
+        int declCount = body.path("tools").isArray() && !body.path("tools").isEmpty()
+            ? body.path("tools").get(0).path("functionDeclarations").size() : 0;
+        opts.put("tools_count", declCount);
+        trace.recordWireDispatch("gemini", basePrefix, effectiveModel, opts);
+    }
+
+    private static int countThoughtSignatures(JsonNode contents) {
+        if (contents == null || !contents.isArray()) {
+            return 0;
+        }
+        int count = 0;
+        for (JsonNode turn : contents) {
+            JsonNode parts = turn.get("parts");
+            if (parts == null || !parts.isArray()) continue;
+            for (JsonNode part : parts) {
+                if (part.hasNonNull("thoughtSignature") || part.hasNonNull("thought_signature")) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     static ObjectNode buildGeminiRequestBody(CreateMessageRequest request, String model) {
@@ -757,7 +807,8 @@ public final class GeminiClient implements LlmClient {
         long total = firstLong(meta, "totalTokenCount", "total_token_count");
         long input = Math.max(0L, prompt - cached);
         long output = candidates + thoughts;
-        return new Usage(input, output, 0L, cached, total > 0 ? total : null);
+        return new Usage(input, output, 0L, cached, total > 0 ? total : null,
+            thoughts > 0 ? thoughts : null);
     }
 
     static String mapFinishReason(String finishReason, boolean sawToolCall) {

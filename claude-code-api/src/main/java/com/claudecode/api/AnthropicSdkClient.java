@@ -13,6 +13,7 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 import com.claudecode.core.message.WebSearchToolResultBlock;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.http.CancellationRegistrar;
@@ -524,9 +525,46 @@ public class AnthropicSdkClient implements LlmClient {
         // are client-level) — the bounded-wall-clock side-query case is
         // handled by doCreateMessage deriving a client via
         // httpClient.newBuilder().callTimeout(...) instead.
+        recordTraceIfActive(b, request);
         return b.tag(RetryRequestPolicy.class,
                 RetryRequestPolicy.forQuerySource(request != null ? request.querySource() : null))
             .post(RequestBody.create(body, JSON)).build();
+    }
+
+    private void recordTraceIfActive(Request.Builder b, CreateMessageRequest request) {
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        if (trace == null || request == null) {
+            return;
+        }
+        b.tag(LlmRequestTraceCollector.class, trace);
+        String effectiveModel = StringUtils.defaultIfBlank(request.model(), model);
+        ObjectNode opts = mapper.createObjectNode();
+        opts.put("protocol", "anthropic");
+        opts.put("endpoint", MESSAGES_PATH);
+        if (StringUtils.isNotBlank(effectiveModel)) opts.put("model", effectiveModel);
+        opts.put("max_tokens", request.maxTokens());
+        opts.put("stream", request.stream());
+        if (request.temperature() != null) opts.put("temperature", request.temperature());
+        if (request.topP() != null) opts.put("top_p", request.topP());
+        if (request.topK() != null) opts.put("top_k", request.topK());
+        if (request.thinking() != null
+                && !(Strings.CS.equals("disabled", request.thinking().type())
+                    && effectiveModel != null
+                    && !CreateMessageRequest.acceptsDisabledThinking(effectiveModel))) {
+            opts.set("thinking", mapper.valueToTree(request.thinking()));
+        }
+        if (StringUtils.isNotBlank(request.effort())) opts.put("effort", request.effort());
+        if (request.outputConfig() != null) opts.set("output_config", mapper.valueToTree(request.outputConfig()));
+        if (request.toolChoice() != null) opts.set("tool_choice", mapper.valueToTree(request.toolChoice()));
+        if (StringUtils.isNotBlank(request.speed())) opts.put("speed", request.speed());
+        ObjectNode cache = opts.putObject("prompt_caching");
+        cache.put("enabled", request.promptCachingEnabled());
+        if (request.promptCacheTtl() != null) {
+            cache.put("ttl", request.promptCacheTtl() == CreateMessageRequest.PromptCacheTtl.ONE_HOUR ? "1h" : "5m");
+        }
+        if (request.skipCacheWrite()) cache.put("skip_write", true);
+        opts.put("tools_count", request.tools() != null ? request.tools().size() : 0);
+        trace.recordWireDispatch("anthropic", effectiveBaseUrl(), effectiveModel, opts);
     }
 
     private String effectiveBaseUrl() {

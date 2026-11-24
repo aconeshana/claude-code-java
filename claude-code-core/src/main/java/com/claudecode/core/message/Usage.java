@@ -26,7 +26,9 @@ public record Usage(
     @JsonProperty("iterations") List<JsonNode> iterations,
     @JsonProperty("speed") String speed,
     @Explanation("Retains OpenAI total_tokens for Codex-compatible context accounting")
-    @JsonProperty("total_tokens") @JsonInclude(JsonInclude.Include.NON_NULL) Long reportedTotalTokens
+    @JsonProperty("total_tokens") @JsonInclude(JsonInclude.Include.NON_NULL) Long reportedTotalTokens,
+    @Explanation("Retains disjoint provider reasoning/thought tokens across Gemini, OpenAI Chat, and Responses")
+    @JsonProperty("reasoning_tokens") @JsonInclude(JsonInclude.Include.NON_NULL) Long reasoningTokens
 ) {
 
     /**
@@ -67,7 +69,7 @@ public record Usage(
     /** Empty usage constant — zero tokens across all fields. */
     public static final Usage EMPTY = new Usage(
         0, 0, 0, 0, ServerToolUse.ZERO, "standard", CacheCreation.ZERO,
-        "", List.of(), "standard", null);
+        "", List.of(), "standard", null, null);
 
     @JsonCreator
     public Usage {
@@ -81,7 +83,7 @@ public record Usage(
                  long cacheCreationInputTokens, long cacheReadInputTokens,
                  ServerToolUse serverToolUse) {
         this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
-            serverToolUse, "standard", CacheCreation.ZERO, "", List.of(), "standard", null);
+            serverToolUse, "standard", CacheCreation.ZERO, "", List.of(), "standard", null, null);
     }
 
     /** Backward-compatible full Anthropic constructor predating OpenAI total_tokens. */
@@ -91,7 +93,18 @@ public record Usage(
                  CacheCreation cacheCreation, String inferenceGeo,
                  List<JsonNode> iterations, String speed) {
         this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
-            serverToolUse, serviceTier, cacheCreation, inferenceGeo, iterations, speed, null);
+            serverToolUse, serviceTier, cacheCreation, inferenceGeo, iterations, speed, null, null);
+    }
+
+    /** Backward-compatible 11-arg constructor predating reasoningTokens. */
+    public Usage(long inputTokens, long outputTokens,
+                 long cacheCreationInputTokens, long cacheReadInputTokens,
+                 ServerToolUse serverToolUse, String serviceTier,
+                 CacheCreation cacheCreation, String inferenceGeo,
+                 List<JsonNode> iterations, String speed, Long reportedTotalTokens) {
+        this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
+            serverToolUse, serviceTier, cacheCreation, inferenceGeo, iterations, speed,
+            reportedTotalTokens, null);
     }
 
     /**
@@ -101,7 +114,7 @@ public record Usage(
     public Usage(long inputTokens, long outputTokens,
                  long cacheCreationInputTokens, long cacheReadInputTokens) {
         this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
-            ServerToolUse.ZERO, "standard", CacheCreation.ZERO, "", List.of(), "standard", null);
+            ServerToolUse.ZERO, "standard", CacheCreation.ZERO, "", List.of(), "standard", null, null);
     }
 
     /** OpenAI response usage with an optional provider-reported total snapshot. */
@@ -110,7 +123,24 @@ public record Usage(
                  Long reportedTotalTokens) {
         this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
             ServerToolUse.ZERO, "standard", CacheCreation.ZERO, "", List.of(), "standard",
-            reportedTotalTokens);
+            reportedTotalTokens, null);
+    }
+
+    /** Multi-protocol usage with optional provider-reported total and disjoint reasoning tokens. */
+    public Usage(long inputTokens, long outputTokens,
+                 long cacheCreationInputTokens, long cacheReadInputTokens,
+                 Long reportedTotalTokens, Long reasoningTokens) {
+        this(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
+            ServerToolUse.ZERO, "standard", CacheCreation.ZERO, "", List.of(), "standard",
+            reportedTotalTokens,
+            reasoningTokens != null && reasoningTokens > 0 ? reasoningTokens : null);
+    }
+
+    public Usage withReasoningTokens(Long value) {
+        Long normalized = value != null && value > 0 ? value : null;
+        return new Usage(inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens,
+            serverToolUse, serviceTier, cacheCreation, inferenceGeo, iterations, speed,
+            reportedTotalTokens, normalized);
     }
 
     /**
@@ -120,6 +150,10 @@ public record Usage(
         if (other == null) {
             return this;
         }
+        Long summedReasoning = (this.reasoningTokens == null && other.reasoningTokens == null)
+            ? null
+            : (this.reasoningTokens != null ? this.reasoningTokens : 0L)
+                + (other.reasoningTokens != null ? other.reasoningTokens : 0L);
         return new Usage(
             this.inputTokens + other.inputTokens,
             this.outputTokens + other.outputTokens,
@@ -132,7 +166,8 @@ public record Usage(
             other.inferenceGeo != null ? other.inferenceGeo : this.inferenceGeo,
             other.iterations != null ? other.iterations : this.iterations,
             other.speed != null ? other.speed : this.speed,
-            null
+            null,
+            summedReasoning
         );
     }
 
@@ -174,7 +209,9 @@ public record Usage(
             newer.iterations != null && !newer.iterations.isEmpty()
                 ? newer.iterations : iterations,
             StringUtils.isNotBlank(newer.speed) ? newer.speed : speed,
-            newer.reportedTotalTokens != null ? newer.reportedTotalTokens : reportedTotalTokens
+            newer.reportedTotalTokens != null ? newer.reportedTotalTokens : reportedTotalTokens,
+            newer.reasoningTokens != null && newer.reasoningTokens > 0
+                ? newer.reasoningTokens : reasoningTokens
         );
     }
 

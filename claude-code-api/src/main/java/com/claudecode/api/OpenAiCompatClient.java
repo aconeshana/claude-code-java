@@ -10,6 +10,7 @@ import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolResultBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.http.HttpCalls;
@@ -131,12 +132,33 @@ public class OpenAiCompatClient implements LlmClient {
 
     private Request buildRequest(CreateMessageRequest request, boolean streaming) throws Exception {
         ObjectNode body = buildChatRequestNode(request, config.model(), streaming, config.baseUrl());
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        if (trace != null) {
+            ObjectNode opts = LlmRequestTraceCollector.copyFields(body,
+                "model", "max_tokens", "stream", "stream_options", "temperature", "top_p",
+                "stop", "reasoning_effort", "response_format", "tool_choice");
+            opts.put("protocol", "chat");
+            opts.put("endpoint", "/v1/chat/completions");
+            String effectiveModel = body.path("model").asText(config.model());
+            if (GeminiThoughtSignature.isGeminiCompatEndpoint(config.baseUrl(), effectiveModel)) {
+                opts.put("gemini_thought_signatures", true);
+            }
+            if (ReasoningNormalizer.requiresDeepSeekToolReasoningBackfill(
+                    config.baseUrl(), effectiveModel, body.hasNonNull("reasoning_effort"))) {
+                opts.put("deepseek_reasoning_backfill", true);
+            }
+            opts.put("tools_count", body.has("tools") ? body.path("tools").size() : 0);
+            trace.recordWireDispatch("chat", config.baseUrl(), effectiveModel, opts);
+        }
         String requestBody = JsonUtils.getMapper().writeValueAsString(body);
         Request.Builder b = new Request.Builder()
             .url(apiUrl)
             .header("Accept", "application/json")
             .tag(RetryRequestPolicy.class,
                 RetryRequestPolicy.forQuerySource(request.querySource()));
+        if (trace != null) {
+            b.tag(LlmRequestTraceCollector.class, trace);
+        }
         boolean azure = config.baseUrl() != null && Strings.CS.contains(config.baseUrl(), "azure");
         if (!azure && StringUtils.isNotBlank(config.apiKey())) {
             b.header("Authorization", "Bearer " + config.apiKey());

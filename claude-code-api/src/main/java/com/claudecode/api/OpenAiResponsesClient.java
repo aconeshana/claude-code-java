@@ -10,6 +10,7 @@ import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ThinkingBlock;
 import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.message.Usage;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.http.HttpCalls;
@@ -126,11 +127,25 @@ public final class OpenAiResponsesClient implements LlmClient {
     private Request buildRequest(CreateMessageRequest request, boolean streaming) throws Exception {
         ObjectNode body = buildResponsesRequestNode(
             request, config.model(), streaming, config.baseUrl(), false);
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        if (trace != null) {
+            ObjectNode opts = LlmRequestTraceCollector.copyFields(body,
+                "model", "max_output_tokens", "stream", "store", "temperature", "top_p",
+                "reasoning", "include", "text", "tool_choice");
+            opts.put("protocol", "responses");
+            opts.put("endpoint", "/v1/responses");
+            opts.put("tools_count", body.has("tools") ? body.path("tools").size() : 0);
+            trace.recordWireDispatch("responses", config.baseUrl(),
+                body.path("model").asText(config.model()), opts);
+        }
         Request.Builder builder = new Request.Builder()
             .url(apiUrl)
             .header("Accept", streaming ? "text/event-stream" : "application/json")
             .tag(RetryRequestPolicy.class,
                 RetryRequestPolicy.forQuerySource(request.querySource()));
+        if (trace != null) {
+            builder.tag(LlmRequestTraceCollector.class, trace);
+        }
         if (StringUtils.isNotBlank(config.apiKey())) {
             builder.header("Authorization", "Bearer " + config.apiKey());
         }
@@ -370,10 +385,12 @@ public final class OpenAiResponsesClient implements LlmClient {
         if (usage == null || usage.isNull()) return Usage.EMPTY;
         long input = usage.path("input_tokens").asLong();
         long cached = usage.path("input_tokens_details").path("cached_tokens").asLong();
+        long reasoning = usage.path("output_tokens_details").path("reasoning_tokens").asLong(0);
         return new Usage(Math.max(0, input - cached), usage.path("output_tokens").asLong(), 0,
             cached,
             usage.has("total_tokens") && !usage.get("total_tokens").isNull()
-                ? usage.path("total_tokens").asLong() : null);
+                ? usage.path("total_tokens").asLong() : null,
+            reasoning > 0 ? reasoning : null);
     }
 
     private static String stopReason(JsonNode response) {

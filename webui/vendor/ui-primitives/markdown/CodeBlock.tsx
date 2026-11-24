@@ -25,6 +25,10 @@ export interface CodeBlockProps {
   streaming?: boolean | undefined
   /** Extra class merged onto the wrapper (callers position; this component draws). */
   className?: string | undefined
+  /** Optional line-number gutter hint. */
+  lineNumbers?: boolean | undefined
+  /** Optional header visibility override. */
+  showHeader?: boolean | undefined
   /** Copy-button idle label; the owner passes localized copy (this package is cordis-free, so copy arrives via props). */
   copyLabel: string
   /** Copy-button label during the post-copy confirmation window. */

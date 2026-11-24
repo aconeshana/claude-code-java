@@ -8,7 +8,7 @@ import css from '@chat-styles/ConversationRoot.module.css'
  * (--dsh-chat-content-width etc.) that every vendored chat style resolves
  * against, so this component must stay the owner of that class.
  */
-export type ConversationView = 'chat' | 'context'
+export type ConversationView = 'chat' | 'trajectory' | 'context'
 
 export interface BreadcrumbChild {
   readonly title: string
@@ -16,7 +16,7 @@ export interface BreadcrumbChild {
   readonly onExit: () => void
 }
 
-export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript, composer, view, onView, context, tabLabels, headerActions }: {
+export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript, composer, view, onView, trajectory, context, tabLabels, headerActions }: {
   title: string
   subtitle?: string | undefined
   /**
@@ -35,14 +35,15 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
   headerActions?: ReactNode | undefined
   /**
    * The active face of the column (dsh's `conversation.view` tab ring:
-   * Chat beside the vendored dsh-context Context tab). Omitted = chat only,
-   * no tab strip.
+   * Chat | Trajectory | Context). Omitted = chat only, no tab strip.
    */
   view?: ConversationView | undefined
   onView?: ((view: ConversationView) => void) | undefined
+  /** The Trajectory tab's body (with optional floating composer overlay). */
+  trajectory?: ReactNode
   /** The Context tab's body (rendered in place of the transcript + composer). */
   context?: ReactNode
-  tabLabels?: { chat: string; context: string } | undefined
+  tabLabels?: { chat: string; trajectory?: string; context: string } | undefined
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLDivElement>(null)
@@ -62,7 +63,11 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
   useEffect(() => {
     const root = rootRef.current
     const seat = composerRef.current
-    if (root == null || seat == null) return
+    if (root == null) return
+    if (seat == null) {
+      root.style.setProperty('--dsh-composer-height', '0px')
+      return
+    }
     // ChatView's back-to-bottom button floats at composer-height + 16px; a
     // growing textarea (up to 200px) must keep that offset accurate.
     const observer = new ResizeObserver(([entry]) => {
@@ -71,10 +76,10 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
     observer.observe(seat)
     return () => { observer.disconnect() }
     // The composer seat remounts when the Context tab hands the column back.
-  }, [view])
+  }, [view, composer])
 
   return (
-    <div ref={rootRef} className={css.root}>
+    <div ref={rootRef} className={css.root} data-phase={view === 'trajectory' ? 'active' : undefined}>
       <div className={css.header}>
         <div className={css.titleRow}>
           <div className={css.titleCluster}>
@@ -121,6 +126,13 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
             <button
               type="button"
               role="tab"
+              aria-selected={view === 'trajectory'}
+              className={`${css.tab} ${view === 'trajectory' ? css.tabActive : ''}`}
+              onClick={() => { onView('trajectory') }}
+            >{tabLabels?.trajectory ?? 'Trajectory'}</button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={view === 'context'}
               className={`${css.tab} ${view === 'context' ? css.tabActive : ''}`}
               onClick={() => { onView('context') }}
@@ -130,12 +142,21 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
       </div>
       {view === 'context'
         ? <div className={css.viewArea}>{context}</div>
-        : (
-          <>
-            {transcript}
-            <div ref={composerRef}>{composer}</div>
-          </>
-        )}
+        : view === 'trajectory'
+          ? (
+            <div className={css.scrollBody}>
+              <div data-slot="conversation.session" style={{ display: 'contents' }}>
+                <div className={css.viewArea}>{trajectory}</div>
+              </div>
+              {composer != null && <div ref={composerRef} className={css.composerSeat}>{composer}</div>}
+            </div>
+          )
+          : (
+            <>
+              {transcript}
+              <div ref={composerRef}>{composer}</div>
+            </>
+          )}
     </div>
   )
 }

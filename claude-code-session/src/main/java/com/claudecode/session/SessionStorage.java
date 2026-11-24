@@ -1119,7 +1119,7 @@ public class SessionStorage {
         "permission-mode", "worktree-state", "attribution-snapshot",
         "speculation-accept", "file-history-snapshot",
         "marble-origami-commit", "marble-origami-snapshot", "queue-operation",
-        "parent-session", "archived");
+        "parent-session", "archived", "java-llm-request");
 
     /** Reusable metadata-row projection shared by both read paths. */
     private void collectContentReplacements(
@@ -1480,6 +1480,7 @@ public class SessionStorage {
             || Strings.CS.contains(line, "\"type\":\"marble-origami-snapshot\"")
             || Strings.CS.contains(line, "\"type\":\"queue-operation\"")
             || Strings.CS.contains(line, "\"type\":\"parent-session\"")
-            || Strings.CS.contains(line, "\"type\":\"java-session-metrics\"");
+            || Strings.CS.contains(line, "\"type\":\"java-session-metrics\"")
+            || Strings.CS.contains(line, "\"type\":\"java-llm-request\"");
     }
 }

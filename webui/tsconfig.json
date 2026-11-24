@@ -34,6 +34,7 @@
     "vendor/resources",
     "vendor/ui-layout",
     "vendor/store",
-    "vendor/workspace-path"
+    "vendor/workspace-path",
+    "vendor/ui-trajectory"
   ]
 }

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranscriptView } from '../store/transcriptView'
 import { openFileInRightDock } from '../store/rightSidebar'
 import { useSessions } from '../store/sessions'
+import { useTrajectory } from '../store/trajectory'
 import clsx from 'clsx'
 import {
-  DiffBlock, DisclosureRow, IconApiOutline14, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
+  DiffBlock, DisclosureRow, IconApiOutline14, IconInspectOutline12, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
   type SearchFileGroup, type WebSourceView,
 } from '@primitives'
 import { JsonBlock } from '@vendor/ui-primitives/markdown/JsonBlock'
@@ -142,6 +143,20 @@ export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState
             />
           )}
           {body}
+          {sessionId !== null && (
+            <button
+              type="button"
+              className={css.inspectButton}
+              data-inspect-trajectory={call.toolUseId}
+              onClick={() => {
+                useTrajectory.getState().requestInspectCall(sessionId, call.toolUseId)
+              }}
+              title="在运行轨迹中查看此工具调用"
+            >
+              <IconInspectOutline12 size={12} />
+              <span>查看轨迹</span>
+            </button>
+          )}
         </div>
       </DisclosureRow>
     </div>

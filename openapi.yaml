@@ -282,6 +282,74 @@ paths:
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/trajectory:
+    get:
+      tags: [Sessions]
+      summary: 4-protocol execution trajectory of a session
+      description: |
+        Projects turns, steps, 4-protocol (`anthropic`, `chat`, `responses`,
+        `gemini`) request metadata, separated reasoning tokens, parallel tool
+        call batches, and 7-day deduplicated System+Tools headers for the
+        WebUI Trajectory inspector.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: before_turn
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: include_call_id
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Session trajectory projection
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
+  /api/sessions/{sessionId}/agents/{agentId}/trajectory:
+    get:
+      tags: [Sessions]
+      summary: Sub-agent drill-down trajectory
+      description: |
+        Projects one sub-agent's sidechain transcript (`agent-<agentId>.jsonl`),
+        metrics, and 4-protocol request traces into its own Trajectory view
+        (bounded to `MAX_SUBAGENT_DEPTH = 2`).
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: before_turn
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: Sub-agent trajectory projection
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/UnknownSession' }
   /api/sessions/{sessionId}/rename:
     post:
       tags: [Sessions]

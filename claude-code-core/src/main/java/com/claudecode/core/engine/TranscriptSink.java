@@ -1,6 +1,7 @@
 package com.claudecode.core.engine;
 
 import com.claudecode.core.message.Message;
+import com.claudecode.core.metrics.LlmRequestTraceRecord;
 import com.claudecode.core.metrics.SessionMetricsEvent;
 import java.util.List;
 
@@ -33,6 +34,9 @@ public interface TranscriptSink {
 
     /** Append one non-chain whole-session metrics event to the active JSONL. */
     default void recordSessionMetrics(String sessionId, SessionMetricsEvent event) {}
+
+    /** Append one non-chain 4-protocol LLM request trace record to the active JSONL. */
+    default void recordLlmRequestTrace(String sessionId, LlmRequestTraceRecord record) {}
 
     /**
      * Establish the turn-scoped prompt identity before any user rows are recorded.

@@ -249,6 +249,9 @@ body {
   --dsw-alias-separator-primary: var(--dsw-alias-label-caption);
   --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-800);
   --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-850);
+  --dsw-alias-tooltip-key-bg: color-mix(in srgb, var(--dsw-alias-tooltip-bg), white 18%);
+  --dsw-alias-tooltip-label: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-trajectory-accent: var(--dsw-static-blue-500);
   --dsw-specific-bubble-highlight: var(--dsw-static-deepseek-200);
   --dsw-specific-bubble: var(--dsw-static-deepseek-50);
   --dsw-specific-input-major: var(--dsw-static-neutral-bluish-00);
@@ -355,6 +358,9 @@ body[data-ds-dark-theme] {
   --dsw-alias-separator-primary: var(--dsw-alias-label-caption);
   --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-750);
   --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-750);
+  --dsw-alias-tooltip-key-bg: color-mix(in srgb, var(--dsw-alias-tooltip-bg), white 18%);
+  --dsw-alias-tooltip-label: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-trajectory-accent: var(--dsw-static-blue-500);
   --dsw-specific-bubble-highlight: var(--dsw-static-neutral-bluish-750);
   --dsw-specific-bubble: var(--dsw-static-neutral-bluish-850);
   --dsw-specific-input-major: var(--dsw-static-neutral-bluish-850);

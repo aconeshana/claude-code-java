@@ -10,6 +10,7 @@ import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.SystemMessage;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.UserMessage;
+import com.claudecode.core.metrics.LlmRequestTraceRecord;
 import com.claudecode.core.metrics.SessionMetricsEvent;
 import com.claudecode.core.plan.PlanSlugRegistry;
 import com.claudecode.core.serialization.JsonUtils;
@@ -411,6 +412,55 @@ public class TranscriptRecorder implements TranscriptSink {
             entry.put("cacheReadTokens", event.cacheReadTokens());
         }
         if (event.synthetic()) entry.put("synthetic", true);
+        enqueueBuffered(sessionId, file, entry);
+    }
+
+    @Override
+    @Explanation("Persists 4-protocol LLM request options and header hashes as non-chain JSONL rows")
+    public void recordLlmRequestTrace(String sessionId, LlmRequestTraceRecord record) {
+        if (record == null || StringUtils.isBlank(sessionId)) return;
+        Path transcript = sessionFile(sessionId);
+        Path file = SessionMetricsFiles.useSidecar()
+            ? SessionMetricsFiles.sidecar(transcript) : transcript;
+        ObjectNode entry = JsonUtils.getMapper().createObjectNode();
+        entry.put("type", LlmRequestTraceRecord.TRANSCRIPT_TYPE);
+        entry.put("schemaVersion", record.schemaVersion());
+        entry.put("sessionId", sessionId);
+        if (record.turn() > 0) entry.put("turn", record.turn());
+        if (record.step() > 0) entry.put("step", record.step());
+        if (StringUtils.isNotBlank(record.purpose())) entry.put("purpose", record.purpose());
+        entry.put("startedAt", record.startedAt());
+        entry.put("completedAt", record.completedAt());
+        if (StringUtils.isNotBlank(record.configuredProtocol())) {
+            entry.put("configuredProtocol", record.configuredProtocol());
+        }
+        if (StringUtils.isNotBlank(record.effectiveProtocol())) {
+            entry.put("effectiveProtocol", record.effectiveProtocol());
+        }
+        if (StringUtils.isNotBlank(record.providerLabel())) {
+            entry.put("providerLabel", record.providerLabel());
+        }
+        if (StringUtils.isNotBlank(record.requestedModel())) {
+            entry.put("requestedModel", record.requestedModel());
+        }
+        if (StringUtils.isNotBlank(record.respondedModel())) {
+            entry.put("respondedModel", record.respondedModel());
+        }
+        if (StringUtils.isNotBlank(record.headerSha256())) {
+            entry.put("headerSha256", record.headerSha256());
+        }
+        if (StringUtils.isNotBlank(record.optionsJson())) {
+            entry.put("optionsJson", record.optionsJson());
+        }
+        if (StringUtils.isNotBlank(record.attemptsJson())) {
+            entry.put("attemptsJson", record.attemptsJson());
+        }
+        if (record.retry() > 0) entry.put("retry", record.retry());
+        if (record.maxRetries() > 0) entry.put("maxRetries", record.maxRetries());
+        if (record.retryDelayMs() > 0) entry.put("retryDelayMs", record.retryDelayMs());
+        if (StringUtils.isNotBlank(record.status())) entry.put("status", record.status());
+        if (StringUtils.isNotBlank(record.error())) entry.put("error", record.error());
+        if (StringUtils.isNotBlank(record.errorCode())) entry.put("errorCode", record.errorCode());
         enqueueBuffered(sessionId, file, entry);
     }
 

@@ -11,6 +11,7 @@ export const CONTEXT_NS = 'dsh-context'
 
 const shellZh: LocaleDict = {
   'shell.tab.chat': '对话',
+  'shell.tab.trajectory': '运行轨迹',
   'shell.tab.context': '上下文',
   'shell.cold': '该会话未在当前进程中打开：上下文时间线仅对活跃会话可用。',
   'shell.noSession': '先在侧栏选择一个会话。',
@@ -25,6 +26,7 @@ const shellZh: LocaleDict = {
 
 const shellEn: LocaleDict = {
   'shell.tab.chat': 'Chat',
+  'shell.tab.trajectory': 'Trajectory',
   'shell.tab.context': 'Context',
   'shell.cold': 'This session is not open in the current process: the context timeline is available for live sessions only.',
   'shell.noSession': 'Pick a session in the sidebar first.',

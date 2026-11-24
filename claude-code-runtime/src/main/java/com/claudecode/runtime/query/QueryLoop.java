@@ -57,6 +57,8 @@ import com.claudecode.core.message.ToolUseSummaryMessage;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.message.WireMessages;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
+import com.claudecode.core.metrics.TrajectoryHeaderCache;
 import com.claudecode.core.model.ApiProviderScope;
 import com.claudecode.core.model.RefusalFallbackTarget;
 import com.claudecode.core.paste.ImagePaste;
@@ -133,6 +135,10 @@ class QueryLoop implements SdkEventSequencedIterator {
     private boolean firstStreamLatencyLogged;
     /** Rows this invocation has already streamed, withdrawn on a model fallback. */
     private final TombstoneEmitter retraction = new TombstoneEmitter();
+    private final TrajectoryHeaderCache trajectoryHeaderCache = new TrajectoryHeaderCache();
+    private String lastHeaderSystem;
+    private List<StreamingClient.StreamRequest.ToolDef> lastHeaderTools;
+    private String lastHeaderSha256;
 
     public QueryLoop(DefaultQuerySession engine, QueryParams params) {
         this(engine, params, null, SubmitOptions.DEFAULT);
@@ -544,10 +550,15 @@ class QueryLoop implements SdkEventSequencedIterator {
             profiler.checkpoint("api_request_sent");
             engine.markQueryRequestStarted();
             long requestHandshakeStartNanos = System.nanoTime();
+            String headerSha256 = cacheTrajectoryHeader(systemPrompt, toolDefs);
+            LlmRequestTraceCollector traceCollector = new LlmRequestTraceCollector(apiStartMs);
+            long traceTurn = sessionMetrics.currentTurn();
+            long traceStep = sessionMetrics.currentStep();
 
             Iterator<StreamingClient.StreamingEvent> stream;
             try {
-                stream = params.deps().callModel(request);
+                stream = LlmRequestTraceCollector.observe(
+                    traceCollector, () -> params.deps().callModel(request));
                 if (!firstRequestLatencyLogged) {
                     firstRequestLatencyLogged = true;
                     long responseHeadersMs =
@@ -557,6 +568,8 @@ class QueryLoop implements SdkEventSequencedIterator {
                         requestMessages.size(), toolDefs.size());
                 }
             } catch (FallbackTriggeredError fte) {
+                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                    currentModel, headerSha256, "failed", fte);
                 String fallback = QueryHelpers.handleFallback(engine, fte, this::emit);
                 if (fallback != null) {
                     fallbackRetryMessages = List.copyOf(requestMessages);
@@ -582,12 +595,16 @@ class QueryLoop implements SdkEventSequencedIterator {
                 return;
             } catch (Exception e) {
                 if (engine.getAbortController().isAborted()) {
+                    recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                        currentModel, headerSha256, "aborted", null);
                     int resultTurns = emitVisibleInterruption(
                         engine, state.turnCount(), false);
                     emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
                         resultTurns, lastStopReason, loopStartTime);
                     return;
                 }
+                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                    currentModel, headerSha256, "failed", e);
                 if (isPromptTooLong(e) && compactService != null
                         && compactService.isReactiveCompactEnabled()) {
                     if (hasAttemptedReactiveCompact) {
@@ -645,6 +662,8 @@ class QueryLoop implements SdkEventSequencedIterator {
             lastStopReason = sr.lastStopReason();
 
             if (streamError) {
+                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                    currentModel, headerSha256, "failed", lastError);
                 if (isPromptTooLong(lastError) && compactService != null
                         && compactService.isReactiveCompactEnabled()) {
                     if (hasAttemptedReactiveCompact) {
@@ -695,6 +714,15 @@ class QueryLoop implements SdkEventSequencedIterator {
 
             AssistantMessage assistantMsg = assistantMessages.isEmpty()
                 ? null : assistantMessages.getLast();
+            String respondedModel = assistantMsg != null && assistantMsg.message() != null
+                && StringUtils.isNotBlank(assistantMsg.message().model())
+                    ? assistantMsg.message().model()
+                    : currentModel;
+            recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                respondedModel, headerSha256,
+                (abortedDuringStream || engine.getAbortController().isAborted())
+                    ? "aborted" : "completed",
+                null);
 
             if (abortedDuringStream || engine.getAbortController().isAborted()) {
                 for (AssistantMessage message : assistantMessages) {
@@ -1291,13 +1319,25 @@ class QueryLoop implements SdkEventSequencedIterator {
         long snipTokensFreed = 0;
 
 
-        QueryDeps.AutoCompactResult result = reactive
-            ? params.deps().reactiveCompact(
-                engine.getMutableMessages(), params.model(), params.querySource(), effective,
-                hookInstructions)
-            : params.deps().autocompact(
-                engine.getMutableMessages(), params.model(), params.querySource(), effective,
-                hookInstructions, snipTokensFreed);
+        final String effectiveHookInstructions = hookInstructions;
+        LlmRequestTraceCollector compactTrace = new LlmRequestTraceCollector();
+        long compactTurn = engine.sessionMetricsTracker().currentTurn();
+        long compactStep = engine.sessionMetricsTracker().currentStep();
+        QueryDeps.AutoCompactResult result = LlmRequestTraceCollector.observe(
+            compactTrace,
+            () -> reactive
+                ? params.deps().reactiveCompact(
+                    engine.getMutableMessages(), params.model(), params.querySource(), effective,
+                    effectiveHookInstructions)
+                : params.deps().autocompact(
+                    engine.getMutableMessages(), params.model(), params.querySource(), effective,
+                    effectiveHookInstructions, snipTokensFreed));
+        if (result.compactionResult() != null || result.compactError() != null) {
+            recordLlmTrace(engine, compactTrace, compactTurn, compactStep, "compaction",
+                params.model(), null,
+                result.compactionResult() != null ? "completed" : "failed",
+                result.compactError() != null ? new RuntimeException(result.compactError()) : null);
+        }
 
         if (result.compactionResult() != null) {
             MessageCompactor.CompactionResult cr = result.compactionResult();
@@ -2168,6 +2208,71 @@ class QueryLoop implements SdkEventSequencedIterator {
         return error != null
             && ApiErrorMessages.classify(error.getMessage())
                 == ApiErrorMessages.TooLargeKind.PROMPT_TOO_LONG;
+    }
+
+    private String cacheTrajectoryHeader(
+            String systemPrompt, List<StreamingClient.StreamRequest.ToolDef> toolDefs) {
+        if (Objects.equals(systemPrompt, lastHeaderSystem)
+                && Objects.equals(toolDefs, lastHeaderTools)
+                && lastHeaderSha256 != null) {
+            return lastHeaderSha256;
+        }
+        try {
+            List<TrajectoryHeaderCache.ToolSpec> specs = new ArrayList<>();
+            if (toolDefs != null) {
+                for (StreamingClient.StreamRequest.ToolDef td : toolDefs) {
+                    JsonNode schemaNode = td.inputSchema() instanceof JsonNode jn
+                        ? jn
+                        : (td.inputSchema() != null
+                            ? JsonUtils.getMapper().valueToTree(td.inputSchema())
+                            : null);
+                    specs.add(new TrajectoryHeaderCache.ToolSpec(
+                        td.name(), td.description(), schemaNode));
+                }
+            }
+            String sha = trajectoryHeaderCache.store(systemPrompt, specs);
+            lastHeaderSystem = systemPrompt;
+            lastHeaderTools = toolDefs;
+            lastHeaderSha256 = sha;
+            return sha;
+        } catch (RuntimeException _) {
+            return null;
+        }
+    }
+
+    private static void recordLlmTrace(
+            DefaultQuerySession engine,
+            LlmRequestTraceCollector collector,
+            long turn,
+            long step,
+            String purpose,
+            String respondedModel,
+            String headerSha256,
+            String status,
+            Throwable failure) {
+        TranscriptSink sink = engine.getTranscriptSink();
+        if (sink == null || collector == null) {
+            return;
+        }
+        try {
+            String errMsg = failure != null ? failure.getMessage() : null;
+            String errCode = failure != null ? failure.getClass().getSimpleName() : null;
+            sink.recordLlmRequestTrace(
+                engine.getSessionId(),
+                collector.toRecord(
+                    engine.getSessionId(),
+                    turn,
+                    step,
+                    purpose,
+                    System.currentTimeMillis(),
+                    respondedModel,
+                    headerSha256,
+                    status,
+                    errMsg,
+                    errCode));
+        } catch (RuntimeException _) {
+            // Telemetry persistence is best-effort and never fails a query turn.
+        }
     }
 
     private void emitAutomaticCompactionFailure(DefaultQuerySession engine, QueryState state,

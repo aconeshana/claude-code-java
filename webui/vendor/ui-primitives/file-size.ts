@@ -14,3 +14,10 @@ export function fileSizeText(bytes: number): string {
   const gb = mb / 1024
   return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}GB`
 }
+
+/** Lowercase extension without leading dot, or empty when absent. */
+export function fileExtension(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? ''
+  const dot = base.lastIndexOf('.')
+  return dot <= 0 || dot === base.length - 1 ? '' : base.slice(dot + 1).toLowerCase()
+}

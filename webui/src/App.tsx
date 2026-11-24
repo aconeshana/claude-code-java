@@ -45,6 +45,8 @@ import { RightPanel } from './views/RightPanel'
 import { RightPanelToggle } from './views/RightPanelToggle'
 import { ToastHost } from './views/ToastHost'
 import { ContextView } from './views/context/ContextView'
+import { TrajectoryPane } from './views/trajectory/TrajectoryPane'
+import { useTrajectory } from './store/trajectory'
 import { SubagentCatalogMenu } from '@vendor/ui-subagent/SubagentCatalogMenu.tsx'
 
 type InspectedTarget =
@@ -96,6 +98,7 @@ export function App() {
       usePermissionMode.getState().applyFrame(frame)
       useTaskBoard.getState().applyFrame(frame)
       useCcConnect.getState().applyFrame(frame)
+      useTrajectory.getState().applyFrame(frame)
       if (frame.event === 'turn.completed' || frame.event === 'tool.started' || frame.event === 'tool.completed') {
         void useShells.getState().refresh()
       }
@@ -262,6 +265,11 @@ export function App() {
   }, [selectedId, inspectedAgentId])
 
   const currentAgentId = inspectedAgentId ?? currentAgent ?? undefined
+  const trajectoryDrillStack = useTrajectory((state) =>
+    selectedId != null ? (state.drillStackBySession[selectedId] ?? []) : [])
+  const activeTrajectorySubagent = view === 'trajectory' && trajectoryDrillStack.length > 0
+    ? trajectoryDrillStack[trajectoryDrillStack.length - 1]
+    : undefined
 
   const breadcrumbChild: BreadcrumbChild | undefined = inspected?.kind === 'subagent'
     ? {
@@ -279,7 +287,15 @@ export function App() {
           badge: '后台终端',
           onExit: () => { setInspected(null) },
         }
-      : undefined
+      : activeTrajectorySubagent !== undefined && selectedId != null
+        ? {
+            title: activeTrajectorySubagent.label,
+            badge: '子代理轨迹',
+            onExit: () => {
+              useTrajectory.getState().popSubagentDrill(selectedId)
+            },
+          }
+        : undefined
 
   if (token == null) {
     return <MissingToken />
@@ -299,9 +315,16 @@ export function App() {
         view={inspected == null ? view : 'chat'}
         onView={(next) => {
           setInspected(null)
+          if (selectedId != null && next !== 'trajectory') {
+            useTrajectory.getState().clearSubagentDrill(selectedId)
+          }
           setView(selectedId, next)
         }}
-        tabLabels={{ chat: contextT('shell.tab.chat'), context: contextT('shell.tab.context') }}
+        tabLabels={{
+          chat: contextT('shell.tab.chat'),
+          trajectory: contextT('shell.tab.trajectory'),
+          context: contextT('shell.tab.context'),
+        }}
         headerActions={(
           <>
             <ShellCatalogMenu
@@ -333,6 +356,7 @@ export function App() {
             <RightPanelToggle />
           </>
         )}
+        trajectory={<TrajectoryPane sessionId={selectedId} />}
         context={<ContextView sessionId={selectedId} />}
         transcript={
           inspected?.kind === 'subagent' && selectedId != null ? (
@@ -351,7 +375,7 @@ export function App() {
           )
         }
         composer={
-          inspected?.kind === 'shell' ? null : inspected?.kind === 'subagent' ? (
+          inspected?.kind === 'shell' || activeTrajectorySubagent !== undefined ? null : inspected?.kind === 'subagent' ? (
             <InputBar
               disabled={selectedId == null || !interactive}
               busy={inspectedAgentRunning}

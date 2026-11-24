@@ -1,6 +1,7 @@
 package com.claudecode.api;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.metrics.LlmRequestTraceCollector;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.model.ModelNames;
@@ -137,6 +138,25 @@ public final class CustomModelRoutingClient implements LlmClient {
 
     private <T> T executeWithAdaptiveFallback(CreateMessageRequest original, ClientCall<T> call) {
         Route route = route(original);
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        if (trace != null) {
+            if (route.baseConfig() != null) {
+                trace.recordConfiguredRoute(
+                    route.baseConfig().protocol().configValue(),
+                    route.baseConfig().baseUrl(),
+                    StringUtils.defaultIfBlank(original.model(), route.baseConfig().modelName()));
+                if (route.effectiveConfig().protocol() != route.baseConfig().protocol()) {
+                    trace.recordAdaptiveFallback(
+                        "learned_protocol_route",
+                        route.baseConfig().protocol().configValue(),
+                        route.effectiveConfig().protocol().configValue(),
+                        0);
+                }
+            } else {
+                trace.recordConfiguredRoute("anthropic", null,
+                    StringUtils.defaultIfBlank(original.model(), fallback.getModel()));
+            }
+        }
         CreateMessageRequest current = effectiveRequest(route, original);
         boolean firstAttempt = true;
 
@@ -157,6 +177,10 @@ public final class CustomModelRoutingClient implements LlmClient {
 
                 // 2. Effort / thinkingConfig rejection retry
                 if (learnUnsupportedEffort(key, current, failure)) {
+                    if (trace != null) {
+                        trace.recordAdaptiveFallback(
+                            "effort_stripped", current.effort(), "omitted", failure.statusCode());
+                    }
                     current = withoutEffort(current);
                     continue;
                 }
@@ -164,6 +188,10 @@ public final class CustomModelRoutingClient implements LlmClient {
                 // 3. thinking: {type: "disabled"} rejection retry
                 if (ProtocolFallbackPolicy.isThinkingOffRefusal(failure, current)) {
                     thinkingOffUnsupported.add(key);
+                    if (trace != null) {
+                        trace.recordAdaptiveFallback(
+                            "disabled_thinking_stripped", "disabled", "omitted", failure.statusCode());
+                    }
                     current = ProtocolFallbackPolicy.withoutDisabledThinking(current);
                     continue;
                 }
@@ -177,6 +205,10 @@ public final class CustomModelRoutingClient implements LlmClient {
                         route.effectiveConfig().protocol(), original, prevMode);
                     if (nextMode != null) {
                         learnedFormatMode.put(key, nextMode);
+                        if (trace != null) {
+                            trace.recordAdaptiveFallback(
+                                "format_degraded", prevMode.name(), nextMode.name(), failure.statusCode());
+                        }
                         current = effectiveRequest(route, original);
                         continue;
                     }
@@ -194,8 +226,17 @@ public final class CustomModelRoutingClient implements LlmClient {
             CreateMessageRequest original,
             ClientCall<T> call) {
         ApiException lastFailure = initialFailure;
+        LlmRequestTraceCollector trace = LlmRequestTraceCollector.current();
+        ModelApiProtocol prevProtocol = failedProtocol;
         for (ModelApiProtocol candidate :
                 ProtocolFallbackPolicy.candidateFallbackProtocols(failedProtocol, lastFailure.getMessage())) {
+            if (trace != null) {
+                trace.recordAdaptiveFallback(
+                    "wrong_endpoint_protocol",
+                    prevProtocol.configValue(),
+                    candidate.configValue(),
+                    lastFailure.statusCode());
+            }
             CustomModelConfig altConfig = withProtocol(baseConfig, candidate);
             LlmClient altClient = clients.computeIfAbsent(altConfig, clientFactory);
             Route altRoute = new Route(baseConfig, altConfig, altClient);
@@ -205,6 +246,7 @@ public final class CustomModelRoutingClient implements LlmClient {
                 return result;
             } catch (ApiException nextFailure) {
                 lastFailure = nextFailure;
+                prevProtocol = candidate;
                 if (!ProtocolFallbackPolicy.isWrongEndpoint(nextFailure)) {
                     throw nextFailure;
                 }

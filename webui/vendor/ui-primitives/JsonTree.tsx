@@ -380,6 +380,14 @@ export interface JsonTreeProps {
   copyable?: boolean
   /** Whether the top-level object or array is always expanded. */
   expandTopLevel?: boolean
+  /** Optional line-wrapping toggle state passed by inspector hosts. */
+  stringWrapping?: {
+    readonly getDefault: () => boolean
+    readonly setDefault: (wrapped: boolean) => void
+    readonly label: string
+  } | undefined
+  /** Optional collapsed string line cap passed by inspector hosts. */
+  collapsedStringLines?: number | undefined
   /** Localized display copy supplied by the owning render site. */
   labels: JsonTreeLabels
 }

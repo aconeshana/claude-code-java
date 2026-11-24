@@ -273,6 +273,36 @@ public class SessionManager {
     }
 
     /**
+     * Locates an existing session transcript file, checking this manager's
+     * project directory first and falling back to sibling project directories
+     * under {@code ~/.claude/projects} for cross-workspace sessions.
+     */
+    public Optional<Path> findSessionFile(String sessionId) {
+        if (StringUtils.isBlank(sessionId) || Strings.CS.containsAny(sessionId, "/", "\\", "..")) {
+            return Optional.empty();
+        }
+        Path local = getSessionFile(sessionId);
+        if (Files.isRegularFile(local)) {
+            return Optional.of(local);
+        }
+        if (!Files.isDirectory(projectsRoot)) {
+            return Optional.empty();
+        }
+        String fileName = sessionId + ".jsonl";
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(projectsRoot, Files::isDirectory)) {
+            for (Path dir : dirs) {
+                Path candidate = dir.resolve(fileName);
+                if (Files.isRegularFile(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+        } catch (IOException _) {
+            // Unreadable projects root: treat as missing.
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Locates an existing sub-agent transcript file, checking this manager's
      * project directory first and falling back to sibling project directories
      * under {@code ~/.claude/projects} for cross-project sessions.

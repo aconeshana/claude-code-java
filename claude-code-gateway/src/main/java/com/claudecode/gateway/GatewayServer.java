@@ -38,6 +38,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.StringUtils;
@@ -100,6 +101,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewaySudoRespondHandler sudoApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
+    private final GatewayTrajectoryHandler trajectoryApi;
     private final GatewaySettingsHandler settingsApi;
     private final GatewayScheduleHandler scheduleApi;
     private final GatewayRuntimeControlHandler runtimeControlApi;
@@ -483,13 +485,25 @@ public final class GatewayServer implements AutoCloseable {
             this.permissionsApi = null;
             this.sudoApi = null;
         }
-        this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
-            withRemoteWorkDirFallback(sessionMessages,
-                sessionId -> remoteWorkers.flatMap(pool -> pool.workDirOf(sessionId))),
-            mirror::runningSince, mirror::streamingDraft,
-            sessionId -> headless.isOpen(sessionId)
+        GatewaySessionMessagesPort effectiveMessages = withRemoteWorkDirFallback(sessionMessages,
+            sessionId -> remoteWorkers.flatMap(pool -> pool.workDirOf(sessionId)));
+        Predicate<String> liveSessionCheck = sessionId ->
+            headless.isOpen(sessionId)
                 || registry.isCurrent(sessionId)
-                || remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false));
+                || remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false);
+        this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
+            effectiveMessages,
+            mirror::runningSince, mirror::streamingDraft,
+            liveSessionCheck);
+        this.trajectoryApi = new GatewayTrajectoryHandler(
+            headless,
+            effectiveMessages,
+            mirror::runningSince,
+            mirror::streamingDraft,
+            liveSessionCheck,
+            builder.webWorkers != null
+                ? TranscriptSessionActions.configurationHomeOf(builder.webWorkers)
+                : null);
         this.settingsApi = new GatewaySettingsHandler(settings);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.runtimeControlApi = new GatewayRuntimeControlHandler(builder.runtimeControl);
@@ -937,6 +951,40 @@ public final class GatewayServer implements AutoCloseable {
             serveAsync(exchange, () -> messagesSnapshotApi.handleAgent(
                 exchange, sessionId, agentId, backgroundTasksApi.isAgentRunning(agentId)));
             return;
+        }
+        if (get && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && Strings.CS.endsWith(targetPath, "/trajectory")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String tail = targetPath.substring("/api/sessions/".length(),
+                targetPath.length() - "/trajectory".length());
+            int marker = tail.indexOf("/agents/");
+            if (marker > 0 && marker + "/agents/".length() < tail.length()) {
+                String sessionId = URLDecoder.decode(tail.substring(0, marker), StandardCharsets.UTF_8);
+                String agentId = URLDecoder.decode(
+                    tail.substring(marker + "/agents/".length()), StandardCharsets.UTF_8);
+                if (sessionId.isEmpty() || agentId.isEmpty()) {
+                    try (exchange) {
+                        respondJson(exchange, 400, errorBody("invalid_request",
+                            "session id and agent id are required"));
+                    }
+                    return;
+                }
+                serveAsync(exchange, () -> trajectoryApi.handleAgent(
+                    exchange, sessionId, agentId, backgroundTasksApi.isAgentRunning(agentId)));
+                return;
+            }
+            if (!Strings.CS.contains(tail, "/")) {
+                String sessionId = URLDecoder.decode(tail, StandardCharsets.UTF_8);
+                if (sessionId.isEmpty()) {
+                    try (exchange) {
+                        respondJson(exchange, 400, errorBody("invalid_request",
+                            "session id is required"));
+                    }
+                    return;
+                }
+                serveAsync(exchange, () -> trajectoryApi.handleSession(exchange, sessionId));
+                return;
+            }
         }
         if (post && Strings.CS.startsWith(targetPath, "/api/sessions/")
                 && (Strings.CS.endsWith(targetPath, "/prompt")

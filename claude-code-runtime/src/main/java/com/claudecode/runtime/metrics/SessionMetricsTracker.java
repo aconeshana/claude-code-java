@@ -168,6 +168,14 @@ public final class SessionMetricsTracker {
         endTurn(false);
     }
 
+    public synchronized long currentTurn() {
+        return currentTurn;
+    }
+
+    public synchronized long currentStep() {
+        return currentStep;
+    }
+
     private void endTurn(boolean synthetic) {
         if (currentTurnId == null) return;
         if (openStep != null) endStep(synthetic);

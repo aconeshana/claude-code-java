@@ -177,8 +177,13 @@ final class ReasoningNormalizer {
             whole = promptTokens >= cacheRead + cacheWrite;
         }
         long input = whole ? Math.max(0L, promptTokens - cacheRead - cacheWrite) : promptTokens;
+        long reasoning = firstPositive(
+            usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0),
+            usage.path("output_tokens_details").path("reasoning_tokens").asLong(0),
+            usage.path("reasoning_tokens").asLong(0));
         Long total = usage.hasNonNull("total_tokens") ? usage.path("total_tokens").asLong() : null;
-        return new Usage(input, completionTokens, cacheWrite, cacheRead, total);
+        return new Usage(input, completionTokens, cacheWrite, cacheRead, total,
+            reasoning > 0 ? reasoning : null);
     }
 
     private static long firstPositive(long... values) {
