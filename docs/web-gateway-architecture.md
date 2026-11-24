@@ -56,14 +56,20 @@ flowchart TB
         subgraph InProcessEngines["网关进程内执行引擎 (无 TUI 时亦可独立运行)"]
             HeadlessPool["CliHeadlessGatewaySessions<br/>(按需装配 QuerySession 无头会话池)"]
             CronDaemon["CliWebCronDaemon<br/>(常驻 Cron 调度器 + macOS 通知)"]
+            CCManager["CliCcConnectManager<br/>(统一托管 cc-connect sidecar 与飞书向导)"]
         end
 
         RemotePool["RemoteWorkerPool<br/>(每秒扫描 web-workers/*.json · 维护 RemoteWorkerFeed)"]
     end
 
-    subgraph TuiProcesses["独立终端进程群 (0..N 个并行 TUI 实例，与 Web 进程生命周期解耦)"]
-        TUI1["poco TUI 进程 #1 (项目 A)<br/>Lanterna UI + SessionHostPublisher + SessionLinkServer"]
-        TUIN["poco TUI 进程 #N (项目 B)<br/>Lanterna UI + SessionHostPublisher + SessionLinkServer"]
+    subgraph CcConnectSidecars["Web 守护进程托管的 CC Connector 子进程群 (按需启停)"]
+        CC1["cc-connect (绑定 TUI #1)"]
+        CCN["cc-connect (绑定 TUI #N)"]
+    end
+
+    subgraph TuiProcesses["独立终端进程群 (0..N 个并行 TUI 实例，不再自启 cc-connect)"]
+        TUI1["poco TUI 进程 #1 (项目 A)<br/>Lanterna UI + SessionLinkServer + WebGatewayCollaborationBridge"]
+        TUIN["poco TUI 进程 #N (项目 B)<br/>Lanterna UI + SessionLinkServer + WebGatewayCollaborationBridge"]
     end
 
     subgraph StorageAndUpstreams["共享本地持久化层 ($CLAUDE_CONFIG_DIR) 与上游大模型"]
@@ -79,6 +85,11 @@ flowchart TB
 
     TurnEntry & RestHandlers -- "本地无头会话" --> HeadlessPool
     RestHandlers -- "定时任务管理/立即运行" --> CronDaemon
+    RestHandlers -- "CC Connector 启停/日志/飞书向导" --> CCManager
+    CCManager -- "spawn / supervise / stop" --> CC1 & CCN
+    CC1 -- "UDS SessionLink (直连)" --> TUI1
+    CCN -- "UDS SessionLink (直连)" --> TUIN
+    TUI1 -. "底栏开启/关闭外部协作上报" .-> AuthGate
     CronDaemon -- "触发轮次" --> HeadlessPool
     TurnEntry & RestHandlers -- "远端 TUI 拥有的会话" --> RemotePool
     RemotePool -- "UDS 或 tcp://127.0.0.1:0 双模 IPC<br/>(SessionLink NDJSON RPC + 实时事件流)" --> TUI1 & TUIN

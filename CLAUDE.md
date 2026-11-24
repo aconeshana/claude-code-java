@@ -100,12 +100,18 @@ test task.
   `apiKey`, `contextWindow`, `multimodal`, and custom `headers`. Managed via `/models` in TUI or
   the Web UI Models Settings (including single-provider `/v1/models` & `/v1beta/models` batch
   discovery).
-- Web gateway & LAN model proxy:
+- Web gateway, CC Connector & LAN model proxy:
   - Fixed single-instance port `19845` (test override: `CLAUDE_WEB_PORT`); discovery record at
-    `$CLAUDE_CONFIG_DIR/web-gateway.json`.
+    `$CLAUDE_CONFIG_DIR/web-gateway.json`; online TUI workers register at
+    `$CLAUDE_CONFIG_DIR/web-workers/<pid>.json`.
+  - CC Connector (`cc-connect` IM collaboration sidecar) is supervised inside the standalone
+    `claude web` daemon (`CliCcConnectManager`, `/api/cc-connect/**`), allowing Web UI to select
+    which online TUI(s) to listen to; TUI footer `Collaboration` reports attach/detach/setup back
+    to the Web daemon via `WebGatewayCollaborationBridge`.
   - Scheduled tasks store at `$CLAUDE_CONFIG_DIR/scheduled_tasks.json` (executed by both interactive
     TUI sessions and the resident `CliWebCronDaemon` hosted by `claude web`).
-  - LAN model proxy configuration & keys (`ccgw_*`) at `$CLAUDE_CONFIG_DIR/lan-gateway.json`.
+  - LAN model proxy configuration & keys (`sk-poco-*`) at `$CLAUDE_CONFIG_DIR/lan-gateway.json`
+    (stateless 4×4 cross-protocol proxy strictly isolated from the loopback Web UI / SessionHost plane).
 - File-backed settings sources: user-level `$CLAUDE_CONFIG_DIR/settings.json` (default:
   `~/.claude/settings.json`; `cowork_settings.json` when cowork plugins are enabled), project-level
   `<project>/.claude/settings.json`, local `<project>/.claude/settings.local.json`, the OS-specific

@@ -1,21 +1,47 @@
 # Session Host IM Integration
 
 The Java application can expose the same live Claude Code session to Lanterna
-and an IM thread through an embedded cc-connect sidecar. The integration uses
-semantic events before terminal rendering; it does not parse PTY output and it
-does not add an AskHuman prompt to model context.
+(TUI), the Web UI, and an IM thread simultaneously through a bundled
+`cc-connect` sidecar. The integration uses semantic events before terminal
+rendering; it does not parse PTY output and it does not add an AskHuman prompt
+to model context.
+
+## Architecture & Ownership (Web Daemon Supervised)
+
+Since the Web gateway was decoupled into the standalone single-instance daemon
+(`claude web` / `claude web -d` on port `19845`), **`cc-connect` supervision and
+Feishu onboarding live in the Web daemon (`CliCcConnectManager`), not inside
+individual TUI processes**:
+
+- **TUI processes** only expose their authenticated `SessionLinkServer` Unix
+  domain socket and publish `~/.claude/web-workers/<pid>.json`. They never spawn
+  `cc-connect` directly at startup.
+- **Web daemon (`claude web`)** discovers every online TUI via
+  `RemoteWorkerPool`, manages `~/.claude/cc-connect.toml` and Feishu onboarding
+  (`/api/cc-connect/setup`), and spawns/supervises one lightweight `cc-connect`
+  child process per attached TUI (dialing that TUI's `link.sock` directly).
+- **Web UI management**: Open **Settings → CC Connector (外部协作)** to view
+  all online TUI processes, toggle IM listening ON/OFF per TUI, run the Feishu
+  setup wizard, and inspect live sidecar logs; attached sessions also show a
+  clickable `feishu ×` pill and row-menu toggle directly in the sidebar.
+- **TUI footer entry preserved**: Focusing `Collaboration: Off` in the TUI
+  footer and pressing `Enter` still lets you pick a channel or run Feishu setup;
+  under the hood `WebGatewayCollaborationBridge` ensures `claude web -d` is
+  running and reports the attach/detach/setup request to `/api/cc-connect/*`,
+  keeping TUI, Web UI, and Feishu synchronized in real time.
 
 ## Enable it
 
-The normal path requires no hand-written configuration. Start the JAR, focus
-the `Collaboration: Off` footer item, press Enter, and choose
-`Set up Feishu…`. The in-terminal wizard can either create a bot through the
+You can configure and enable Feishu collaboration from either **Web UI**
+(`Settings → CC Connector`) or the **TUI footer** (`Collaboration: Off` →
+`Enter` → `Set up Feishu…`). The wizard can either create a bot through the
 cc-connect QR flow or bind an existing App ID/App Secret. When binding an
 existing app, the credentials are sent to the bundled helper over stdin, saved
 in an owner-only `~/.claude/cc-connect.credentials.env`, and never placed in
 process arguments. After authentication, send one message to the bot in the
 Feishu conversation you want to use; the wizard discovers that chat, writes the
-Session Host target, and starts collaboration without restarting the JAR.
+Session Host target, and marks collaboration ready without restarting the TUI or
+Web daemon.
 
 For managed deployments, create `~/.claude/cc-connect.toml`, or point
 `CLAUDE_CODE_IM_CONFIG` at an explicit file:

@@ -33,8 +33,9 @@ claude-code-app → claude-code-cli
 
 claude-code-sdk → { core, session, cli (runtime only) }
 
-claude-code-cli → { core, http, api, permissions, runtime, session, mcp,
+claude-code-cli → { core, http, api, permissions, runtime, gateway, session, mcp,
                     commands, ui, tools, services, lsp }
+claude-code-gateway → { core, runtime, api, session }
 claude-code-ui → { core, commands, permissions, tools, lsp, runtime }
 claude-code-commands → { core, runtime }
 claude-code-services → { core, http, api, mcp, permissions, session, tools, runtime }
@@ -70,8 +71,14 @@ The dependency direction is intentional:
   platform processes.
 - `commands` owns slash-command registration and command-facing application ports. Its production
   code depends only on `core` and `runtime`.
+- `gateway` owns the embedded HTTP+SSE server for the standalone `claude web` daemon: Web UI static
+  serving, `MirrorHub` SSE streaming, `RemoteWorkerPool` cross-process UDS multiplexing, domain REST
+  handlers (sessions, workspace files, diff, settings, models, schedule, runtime control, CC
+  Connector administration), and the isolated stateless LAN multi-protocol model proxy
+  (`LanModelProxyHandler`). It depends only on `core`, `runtime`, `api`, and `session` — never on
+  `ui`, `tools`, or `services`.
 - `ui` is a presentation adapter. It consumes runtime/application ports and does not depend on
-  `services`, `mcp`, or `session` implementations.
+  `services`, `mcp`, `gateway`, or `session` implementations.
 - `cli` is the in-process composition root. It parses command-line options and wires the concrete
   API, runtime, services, tools, commands, session, and UI implementations.
 - `sdk` is an external-consumer adapter. It owns the public Java Agent SDK facade, NDJSON transport,
@@ -91,7 +98,7 @@ dependencies, and establish independently testable lifecycle boundaries.
 | Stable inner modules | `core`, `permissions`, `runtime` | Depend only on lower-level contracts and policy; never on concrete UI or service implementations |
 | Shared infrastructure and protocol adapters | `http`, `api`, `session`, `mcp`, `lsp` | Contain transport, persistence, or external-protocol details; never depend on presentation modules |
 | Application and feature implementations | `tools`, `services`, `commands` | May compose inner policies and protocol adapters, but must not become dependencies of lower-level modules |
-| Presentation, composition, and distribution | `ui`, `cli`, `sdk`, `app` | `ui` renders and interacts, `cli` composes the in-process application, `sdk` controls the CLI out of process, and `app` packages the executable |
+| Presentation, gateway, composition, and distribution | `ui`, `gateway`, `cli`, `sdk`, `app` | `ui` renders the terminal, `gateway` serves the decoupled Web/LAN HTTP+SSE plane behind narrow ports, `cli` composes both TUI and `claude web` daemon processes, `sdk` controls the CLI out of process, and `app` packages the executable |
 
 Internal project dependencies use `implementation(project(...))` by default. An `api` project
 dependency is allowed only when the dependency's types are deliberately exposed as part of a
@@ -110,6 +117,19 @@ policy is a ceiling rather than an exact dependency snapshot, so obsolete edges 
 without weakening the test.
 
 ## Runtime Composition
+
+### Process topology and responsibility ownership
+
+At runtime the application splits cleanly into **0..N independent TUI processes** and **one single-instance resident Web daemon** (`claude web` / `claude web -d`, fixed port `19845`), with strict plane and lifecycle boundaries:
+
+| Process / Plane | Owns | Explicitly does NOT own |
+|-----------------|------|-------------------------|
+| **TUI Process** (`claude` / `poco`) | Project-scoped `QuerySession`, Lanterna terminal UI, local tools/MCP/LSP, `InteractionCoordinator`, `SessionLinkServer` UDS + `~/.claude/web-workers/<pid>.json` registration, and `WebGatewayCollaborationBridge` (reports footer collaboration actions to the Web daemon). | HTTP/Web UI serving, `cc-connect` sidecar process spawning, cron daemon, or LAN model proxy. |
+| **Web Daemon — Control & Mirror Plane** (`claude web`, loopback + Launch Token) | `GatewayServer` (`/api/**`, `/webui/**`, `/api/events`), `RemoteWorkerPool` (discovers & bridges all online TUIs over Session Link UDS), `CliHeadlessGatewaySessions` (headless sessions when no TUI is open), `CliWebCronDaemon` (resident scheduled tasks), and `CliWebRuntimeControl` (keepalive & hot reload). | Direct terminal rendering or cross-project mutation of a running TUI's cwd. |
+| **Web Daemon — CC Connector Supervision** (`CliCcConnectManager`) | `~/.claude/cc-connect.toml` & credential onboarding (`POST /api/cc-connect/setup`), per-TUI `cc-connect` sidecar spawning/supervision/log inspection (`POST /api/cc-connect/{attach,detach}`, `GET /api/cc-connect/logs`), watchdog cleanup when a TUI exits, and `cc_connect.changed` SSE notifications. Each managed sidecar dials its target TUI's `SessionLinkServer` directly. | Modifying upstream `cc-connect` binary semantics or coupling sidecar lifecycle to TUI startup. |
+| **Web Daemon — LAN Model Proxy Plane** (`LanModelProxyHandler`, `0.0.0.0:19845` when enabled, `sk-poco-*` keys) | Stateless 4×4 cross-protocol LLM forwarding (`/v1/messages`, `/v1/chat/completions`, `/v1/responses`, `/v1beta/models/*`), device key & CIDR/model allowlists, tier stand-in mapping, and call telemetry. | Any access to `/api/**`, `/webui/**`, `SessionHostRegistry`, local files, or local tools (non-loopback or `sk-poco-*` requests to control routes receive `403 Forbidden`). |
+
+See [docs/web-gateway-architecture.md](web-gateway-architecture.md) and [docs/session-host-im.md](session-host-im.md) for the full wire protocols and sequence diagrams.
 
 ### Query and turn processing
 

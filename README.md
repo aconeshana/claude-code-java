@@ -22,19 +22,17 @@
 
 ### 1. 自带模型路由
 
-自带模型路由配置，对于不喜欢太重的cc-switch方案的用户，直接内置`chat` / `response` / `message` 三种协议兼容。
+自带模型路由配置，对于不喜欢太重的 cc-switch 方案的用户，直接内置 `anthropic` / `chat` / `responses` / `gemini` 四种协议兼容，并支持在 TUI `/models` 与 Web UI 中一键探测提供商模型列表批量导入。
 
 <!-- 媒体位 1：模型路由演示截图 / 配置界面截图 -->
 ![模型路由演示](docs/acceptance-assets/add-custom-model.png)
 
-### 2. 自带飞书 connect 能力
+### 2. 自带飞书 / CC Connector 外部协作能力
 
-提供 **TUI 级别的 connect**——直接在已有 claude code java 进程里关联飞书
-Thread，会话管理清晰、所见即所得。不像传统 cc-connect 方案那样必须依赖
-agent sdk、以非交互式方式启动。
+提供 **TUI / Web UI / 飞书三端实时同步的外部协作能力**——无需依赖非交互式 Agent SDK，直接复用本地活跃的 TUI 会话语义事件层，支持三端消息双向同步与 First-Responder-Wins 权限审批。
 
-> 🎯 展望：目前仅支持TUI、IM 接入，我们相信好的Harness应该做到接入层无关，未来计划支持常见的api、webui、desktop<br>
-> 而且我们相信好的Harness应该是把能力接口提供出来白盒使用，而不像claude code sdk把逻辑都藏在二进制包里
+- **统一托管在 Web 守护进程**：`cc-connect` sidecar 的配置向导、进程启停与健康看门狗统一由独立的 Web 守护进程（`claude web`）托管，TUI 进程本身不再拉起 sidecar。
+- **双端无缝控制**：既可在 **Web UI「设置 → 外部协作」或侧边栏会话行**按需开启/关闭监听任意在线 TUI（支持多 TUI 并发监听与实时日志查看），也完整保留了 **TUI 底栏 `Collaboration`** 入口（触发时自动拉起并上报至 Web 守护进程同步生效）。
 
 ![飞书 connect 架构展望](docs/screenshots/feishu-connect-architecture.png)
 <p align="center"><sub>▲ 概念展望图（via. gpt-image-2）</sub></p>
@@ -95,14 +93,25 @@ footer 最左侧按钮、点击或 `/project` 打开，`↑/↓` 走行、`→/�
 > 已知边界（有意后置，不做假装）：项目级 MCP 连接仍保持切换前项目的连接、LSP root 不重启、
 > plugin/skill 不重新扫描。
 
-### 8. 内置 Web UI 与 Context Insights
+### 8. 独立 Web 守护进程、Web UI、Context Insights 与局域网模型网关
 
-在 TUI 里敲 `/web`，直接在**同一个进程内**拉起一个 **HTTP + SSE 的第三会话端点**
-（复用同一套 registry / hub / ledger 语义，不是另起一个后端），并回显一个带随机
-token 的本地 URL；浏览器里就是完整的 chat 界面——左侧常驻会话列表与
-`New session`、会话/项目切换、`Enter` 发送、`Shift+Enter` 换行、模型与权限模式
-就地切换，底部实时显示 turns / steps / 吞吐 / cache hit——TUI 那套能力在 Web 上
-原样可用，且和 TUI 共享同一份会话与上下文。
+Web 网关已彻底从 TUI 进程中拆离为**本机单实例常驻守护进程**（`claude web` / `claude web -d`，固定端口 `19845`）。在 TUI 中输入 `/web` 会自动复用或后台拉起该守护进程，TUI 随时启停不会断开浏览器页面，即使本机未开启任何 TUI，Web UI 也可独立工作：
+
+```bash
+claude web           # 启动独立 Web 守护进程并打印 URL（已在运行则自动复用）
+claude web -d        # 后台常驻启动：打印 URL 后立即返回，日志写入 ~/.claude/web-gateway.log
+claude web status    # 查看网关版本、运行时长及当前发现的所有在线 TUI 会话
+claude web stop      # 停止 Web 守护进程及其托管的 CC Connector sidecar，TUI 会话不受影响
+```
+
+#### 进程职责边界一览
+
+| 角色 / 平面 | 职责归属 |
+| :--- | :--- |
+| **独立 TUI 进程（0..N 个）** | 负责终端交互（Lanterna）、本地工具执行、权限裁决（`InteractionCoordinator`）与项目级会话运行；启动时注册 `~/.claude/web-workers/<pid>.json` 并提供 `SessionLink` UDS，**不直接运行 Web 服务器或 `cc-connect` 子进程**；底栏开启外部协作时自动上报至 Web 守护进程。 |
+| **Web 守护进程 — 控制面与 Web UI** | 托管 React + Vite Web UI、聚合多 TUI 实时事件流（`MirrorHub` SSE）与跨进程 RPC 转发（`RemoteWorkerPool`）、运行无头会话池（Headless）、常驻定时任务调度器（`CliWebCronDaemon`）以及防休眠保活与原地热重载。 |
+| **Web 守护进程 — CC Connector 托管** | 统一管理 `~/.claude/cc-connect.toml` 与飞书配置向导，按需为选中的在线 TUI 拉起、守护、查看日志与回收 `cc-connect` sidecar，实现 **TUI ↔ Web UI ↔ 飞书** 三端消息与权限同步。 |
+| **Web 守护进程 — 局域网模型网关（LAN Proxy）** | 同端口（开启后监听 `0.0.0.0:19845`）提供**无状态 4×4 跨协议模型转发**（Anthropic / OpenAI Chat / OpenAI Responses / Gemini）与设备密钥管理（`sk-poco-*`）；与控制面**严格双平面隔离**，非回环请求或携带 `sk-poco-*` 密钥一律禁止访问 `/api/**` 与本地会话/工具。 |
 
 右侧 **Context** 标签页是配套的 **Context Insights** 面板，把"context 里到底
 装了什么"摊开给你看，不再只有一个百分比：
@@ -118,21 +127,7 @@ token 的本地 URL；浏览器里就是完整的 chat 界面——左侧常驻�
 
 ![Context Insights 面板](docs/acceptance-assets/context-insights-panel.png)
 
-#### 独立网关：`claude web`
-
-`/web` 把网关起在**当前 TUI 进程内**，进程退出网关即消失。需要网关与 TUI 解耦时用
-独立进程的 `claude web`——它列出**所有**正在运行的 TUI 会话（本机全局单例，跨项目）：
-
-```bash
-claude web           # 启动网关并打印 URL（前台占住终端）；已在运行则复用并说明复用了谁
-claude web -d        # 后台启动：打印 URL 后立即返回，输出写入 ~/.claude/web-gateway.log
-claude web status    # 只读：在跑吗、哪个版本、服务哪几个会话、跑了多久
-claude web stop      # 关掉网关，TUI 会话不受影响
-```
-
-`status` 会标出**版本与网关不一致**的会话——网关是单例，升级后重新执行
-`claude web` 会复用旧进程，此时浏览器跑的还是旧版本的代码；先 `stop` 再启动才会
-加载新版本。`status` / 复用提示中的 token 均已脱敏。
+更多解耦架构细节与全量前后端 HTTP/SSE 协议见 [docs/web-gateway-architecture.md](docs/web-gateway-architecture.md)。
 
 ## Architecture
 
@@ -172,9 +167,10 @@ claude web stop      # 关掉网关，TUI 会话不受影响
 |------|------|
 | `claude-code-core` | 稳定模型协议、消息系统、纯策略和值对象 |
 | `claude-code-http` | 共享 OkHttp 传输层（api / mcp / lsp 共用） |
-| `claude-code-api` | 模型路由 + 三协议（Anthropic / OpenAI Chat / OpenAI Responses）+ Vertex、Bedrock 适配 |
+| `claude-code-api` | 模型路由 + 四协议（Anthropic / OpenAI Chat / OpenAI Responses / Gemini）+ 4×4 协议编解码 |
 | `claude-code-permissions` | 权限系统（allow/deny/ask） |
-| `claude-code-runtime` | 查询/会话交易编排与端口（中枢） |
+| `claude-code-runtime` | 查询/会话交易编排、Session Link 协议与端口（中枢） |
+| `claude-code-gateway` | 独立 Web 守护进程 HTTP+SSE 网关、多 TUI 聚合镜像、CC Connector 控制面、定时任务与局域网模型代理 |
 | `claude-code-tools` | 工具系统（工具实现 + 配套支持类） |
 | `claude-code-commands` | 斜杠命令系统 + 命令适配器 |
 | `claude-code-mcp` | Model Context Protocol 集成 |
