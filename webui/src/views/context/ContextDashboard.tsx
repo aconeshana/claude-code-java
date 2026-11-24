@@ -101,9 +101,11 @@ function DashboardBody({ kit, locale, cards }: {
   const setOpen = useContextOverview((state) => state.setOpen)
   const currentId = useSessions((state) => state.selectedSessionId)
   const select = useSessions((state) => state.select)
+  const projects = useSessions((state) => state.projects)
 
   const [range, setRange] = useState<OverviewRange>('30d')
   const [day, setDay] = useState<string | null>(null)
+  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<OverviewSort>('recent')
   const [page, setPage] = useState(0)
@@ -114,12 +116,52 @@ function DashboardBody({ kit, locale, cards }: {
     const timer = window.setInterval(() => { void refresh() }, REFRESH_MS)
     return () => { window.clearInterval(timer) }
   }, [refresh])
-  useEffect(() => { setPage(0) }, [range, day, query, sort])
+  useEffect(() => { setPage(0) }, [range, day, workspaceFilter, query, sort])
+
+  const sessionWorkspace = useMemo(() => {
+    const map = new Map<string, { readonly id: string; readonly label: string }>()
+    for (const proj of projects) {
+      const id = proj.project_path || proj.project_name
+      const label = proj.project_name || proj.project_path.split('/').filter(Boolean).at(-1) || proj.project_path
+      for (const s of proj.sessions) {
+        map.set(s.id, { id, label })
+      }
+    }
+    return map
+  }, [projects])
 
   const rows = useMemo(() => rowsOfOverview(payload, currentId), [payload, currentId])
   const currency: CostCurrency = locale === 'zh' ? 'cny' : 'usd'
   const now = Date.now()
-  const allRows = rows ?? []
+  const rawRows = useMemo(() => {
+    if (rows === null) return []
+    const seen = new Set<string>()
+    return rows.filter((row) => {
+      if (seen.has(row.id)) return false
+      seen.add(row.id)
+      return true
+    })
+  }, [rows])
+
+  const workspaceGroups = useMemo(() => {
+    const counts = new Map<string, { readonly id: string; readonly label: string; count: number }>()
+    for (const row of rawRows) {
+      const ws = sessionWorkspace.get(row.id)
+      const id = ws?.id ?? '__other__'
+      const label = ws?.label ?? (locale === 'zh' ? '其他工作区' : 'Other')
+      const existing = counts.get(id)
+      if (existing !== undefined) existing.count += 1
+      else counts.set(id, { id, label, count: 1 })
+    }
+    return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  }, [rawRows, sessionWorkspace, locale])
+
+  const allRows = useMemo(
+    () => workspaceFilter === null
+      ? rawRows
+      : rawRows.filter((row) => (sessionWorkspace.get(row.id)?.id ?? '__other__') === workspaceFilter),
+    [rawRows, workspaceFilter, sessionWorkspace],
+  )
   const ranged = filterRows(allRows, { range, day: null, query: '' }, now)
   const visible = sortRows(filterRows(ranged, { range: 'all', day, query }, now), sort)
   const paged = pageOf(visible, page)
@@ -229,15 +271,46 @@ function DashboardBody({ kit, locale, cards }: {
                 </div>
               </div>
 
+              {workspaceGroups.length > 0 && (
+                <div
+                  data-dashboard-workspace-filter
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    marginBottom: 10,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={'lc-gran-btn' + (workspaceFilter === null ? ' lc-gran-on' : '')}
+                    onClick={() => { setWorkspaceFilter(null) }}
+                  >
+                    {locale === 'zh' ? `全部工作区 (${rawRows.length})` : `All workspaces (${rawRows.length})`}
+                  </button>
+                  {workspaceGroups.map((ws) => (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      className={'lc-gran-btn' + (workspaceFilter === ws.id ? ' lc-gran-on' : '')}
+                      onClick={() => { setWorkspaceFilter(ws.id) }}
+                    >
+                      {`${ws.label} (${ws.count})`}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {visible.length === 0 ? (
                 <div className="lc-empty">{t(allRows.length === 0 ? 'ov.list.empty' : 'ov.list.noMatch')}</div>
               ) : (
                 <>
-                  <div className="lc-ov-grid">
+                  <div className="lc-ov-grid" key={workspaceFilter ?? '__all__'}>
                     {paged.items.map((row) => (
                       <OverviewCard
                         key={row.id}
                         row={row}
+                        group={sessionWorkspace.get(row.id)?.label}
                         costLabel={cardCostOf(row, prices, currency)}
                         now={now}
                         onOpen={openOne}

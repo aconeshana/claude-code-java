@@ -30,6 +30,8 @@ export interface AgentGraphProps {
   agents: readonly AgentRecord[]
   /** Live stats of the current session from the tab's own head. */
   self?: AgentSelfStats | undefined
+  /** Invoked when a subagent node is clicked / activated (e.g. open in right dock). */
+  onSelectAgent?: ((agentId: string, label: string) => void) | undefined
 }
 
 /** Caption box height under a node (3 wrapped label lines + the tokens line). */
@@ -92,9 +94,14 @@ export function makeAgentGraph(
     let totalTokens = 0
     for (const n of forest.nodes) totalTokens += n.head !== null ? n.head.tokens : 0
 
-    // No navigation: our subagents are not sessions. Click/Enter pins the
-    // inspector on the node instead (hover already does on pointer devices).
-    const open = (id: string): void => { setHoverId(id) }
+    // Pin inspector on click, and jump directly to the subagent's side-dock chat when supported.
+    const open = (id: string): void => {
+      setHoverId(id)
+      const target = byId.get(id)
+      if (target !== undefined && target.subagent && props.onSelectAgent !== undefined) {
+        props.onSelectAgent(target.agentId ?? target.id, target.label)
+      }
+    }
     const keyOpen = (id: string) => (ev: KeyboardEvent) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return
       ev.preventDefault()

@@ -44,7 +44,8 @@ import { FilePreview } from './FilePreview'
 import { InputBar } from './InputBar'
 import { ShellDetailView } from './ShellDetailView'
 import { SubagentChatView } from './SubagentChatView'
-import { GUIDE_ICONS, GuideTab, type GuideQuickItem } from './rightbar/GuideTab'
+import { CompassGlyph, GUIDE_ICONS, GuideTab, type GuideQuickItem } from './rightbar/GuideTab'
+import { FileTypeIcon } from './FileTypeIcon'
 import { WorkspaceFilesTab } from './rightbar/WorkspaceFilesTab'
 import css from './RightPanel.module.css'
 
@@ -392,6 +393,25 @@ export function RightPanel({ canShow }: RightbarOwnerProps): ReactNode {
               intents={intents}
               labels={DOCK_LABELS}
               renderTab={renderTab}
+              renderTabTitle={(tab) => {
+                if (tab.kind === 'guide') {
+                  return (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                      <CompassGlyph size={14} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                    </span>
+                  )
+                }
+                if (tab.kind === 'file') {
+                  return (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                      <FileTypeIcon path={tab.title} size={14} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                    </span>
+                  )
+                }
+                return tab.title
+              }}
               renderTabMenuItems={renderTabMenuItems}
               chrome={chrome}
             />

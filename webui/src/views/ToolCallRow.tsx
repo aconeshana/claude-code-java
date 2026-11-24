@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranscriptView } from '../store/transcriptView'
+import { openFileInRightDock } from '../store/rightSidebar'
+import { useSessions } from '../store/sessions'
 import clsx from 'clsx'
 import {
-  DiffBlock, DisclosureRow, IconApiOutline14, ReadBlock, StateDot, TerminalBlock,
+  DiffBlock, DisclosureRow, IconApiOutline14, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
+  type SearchFileGroup, type WebSourceView,
 } from '@primitives'
 import { JsonBlock } from '@vendor/ui-primitives/markdown/JsonBlock'
 import css from '@chat-styles/ToolRow.module.css'
 import type { ToolCallState } from '../store/conversations'
-import { diffLabels, readLabels, terminalLabels } from './labels'
+import { FileTypeIcon } from './FileTypeIcon'
+import { diffLabels, readLabels, searchLabels, terminalLabels, webLabels } from './labels'
 
 type ToolRowState = 'running' | 'error' | 'stopped' | 'ok'
+
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'MultiEdit'])
 
 function stateOf(call: ToolCallState): ToolRowState {
   if (call.status === 'pending') return 'running'
@@ -17,15 +23,21 @@ function stateOf(call: ToolCallState): ToolRowState {
   return 'ok'
 }
 
-// This project's ToolCallState carries no interrupted/stopped status today;
-// the 'stopped' branch is kept for structural parity with upstream's
-// leadingFor and is currently unreachable.
-function leadingFor(state: ToolRowState) {
-  switch (state) {
-    case 'error': return <StateDot state="error" />
-    case 'stopped': return <StateDot state="warning" />
-    default: return <IconApiOutline14 />
-  }
+function targetFilePathOf(call: ToolCallState): string | null {
+  const args = call.args
+  if (args == null) return null
+  if (typeof args.file_path === 'string' && args.file_path.trim() !== '') return args.file_path.trim()
+  if (typeof args.notebook_path === 'string' && args.notebook_path.trim() !== '') return args.notebook_path.trim()
+  if (FILE_TOOLS.has(call.name) && typeof args.path === 'string' && args.path.trim() !== '') return args.path.trim()
+  return null
+}
+
+function leadingFor(call: ToolCallState, state: ToolRowState) {
+  if (state === 'error') return <StateDot state="error" />
+  if (state === 'stopped') return <StateDot state="warning" />
+  const filePath = FILE_TOOLS.has(call.name) ? targetFilePathOf(call) : null
+  if (filePath !== null) return <FileTypeIcon path={filePath} size={15} />
+  return <IconApiOutline14 />
 }
 
 function firstLine(text: string): string {
@@ -41,16 +53,18 @@ function argsSummary(call: ToolCallState): string {
   if (typeof args.path === 'string') return args.path
   if (typeof args.pattern === 'string') return args.pattern
   if (typeof args.query === 'string') return args.query
+  if (typeof args.url === 'string') return args.url
   return ''
 }
 
 /**
  * One tool call row: the collapsible summary header (vendored dsh
- * `ToolRow` shape) and, expanded, the args and result dispatched by the
- * projected result type.
+ * `ToolRow` shape) and, expanded, the args and specialized result view
+ * (TerminalBlock, ReadBlock, DiffBlock, SearchBlock, WebBlock).
  */
 export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen)
+  const sessionId = useSessions((state) => state.selectedSessionId)
   const transcriptMode = useTranscriptView((state) => state.mode)
   const transcriptRevision = useTranscriptView((state) => state.revision)
   const lastRevision = useRef(transcriptRevision)
@@ -67,11 +81,11 @@ export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState
   const open = expanded && expandable
 
   const failureLine = state === 'error' && call.resultError != null ? firstLine(call.resultError) : null
-  // The wire name is the ToolRegistry registration name ("Bash", capitalized).
   const bashDescription = call.name === 'Bash' && typeof call.args?.description === 'string' && call.args.description.trim() !== ''
     ? call.args.description
     : null
   const summaryText = failureLine ?? bashDescription ?? argsSummary(call)
+  const filePath = FILE_TOOLS.has(call.name) ? targetFilePathOf(call) : null
 
   return (
     <div className={css.root} data-tool={call.name} data-state={state}>
@@ -80,7 +94,7 @@ export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState
         leadingClassName={css.leading}
         titleClassName={css.title}
         chevronClassName={css.chevron}
-        icon={leadingFor(state)}
+        icon={leadingFor(call, state)}
         title={call.name}
         open={open}
         expandable={expandable}
@@ -97,6 +111,29 @@ export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState
         )}
       >
         <div className={css.bodyWrap}>
+          {filePath !== null && sessionId !== null && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+              <button
+                type="button"
+                onClick={() => { openFileInRightDock(sessionId, filePath) }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '3px 8px',
+                  border: '0.5px solid var(--dsw-alias-border-l3)',
+                  borderRadius: 6,
+                  background: 'var(--dsw-alias-bg-layer-1)',
+                  color: 'var(--dsw-alias-label-secondary)',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                <FileTypeIcon path={filePath} size={13} />
+                <span>在右侧栏预览文件</span>
+              </button>
+            </div>
+          )}
           {hasArgs && (
             <JsonBlock
               label="输入"
@@ -114,6 +151,73 @@ export function ToolCallRow({ call, defaultOpen = false }: { call: ToolCallState
 function renderBody(call: ToolCallState, state: ToolRowState) {
   const data = call.resultData ?? ''
   const lines = splitLines(data)
+
+  // Specialized views by tool name when resultType is generic
+  if (call.name === 'Glob' && data.trim() !== '') {
+    const paths = data.split('\n').map((l) => l.trim()).filter(Boolean)
+    return (
+      <SearchBlock
+        kind="paths"
+        paths={paths}
+        total={paths.length}
+        truncated={false}
+        labels={searchLabels}
+      />
+    )
+  }
+
+  if (call.name === 'Grep' && data.trim() !== '') {
+    const parsed = parseGrepOutput(data)
+    if (parsed.kind === 'matches') {
+      return (
+        <SearchBlock
+          kind="matches"
+          files={parsed.groups}
+          total={parsed.total}
+          truncated={false}
+          labels={searchLabels}
+        />
+      )
+    }
+    return (
+      <SearchBlock
+        kind="paths"
+        paths={parsed.paths}
+        total={parsed.paths.length}
+        truncated={false}
+        labels={searchLabels}
+      />
+    )
+  }
+
+  if (call.name === 'WebFetch') {
+    const url = typeof call.args?.url === 'string' ? call.args.url : ''
+    if (url !== '') {
+      return (
+        <WebBlock
+          kind="fetch"
+          url={url}
+          statusCode={state === 'error' ? 500 : 200}
+          truncated={false}
+          labels={webLabels}
+        />
+      )
+    }
+  }
+
+  if (call.name === 'WebSearch' && data.trim() !== '') {
+    const sources = parseWebSources(data)
+    return (
+      <WebBlock
+        kind="search"
+        answer={data}
+        sources={sources}
+        truncated={false}
+        labels={webLabels}
+      />
+    )
+  }
+
   switch (call.resultType) {
     case 'execute_command_tool_result':
       return (
@@ -145,11 +249,6 @@ function renderBody(call: ToolCallState, state: ToolRowState) {
         />
       )
     case 'task_tool_result':
-      // A subagent call is not an ordinary tool: `SubagentRow` owns its own
-      // header (status dot, description-first label, metrics) and its live
-      // progress log. The dispatch is hoisted to `MessageItem`, so this
-      // branch is unreachable for `Task`/`Agent` calls — kept only so a
-      // `task_tool_result` from some other producer still renders its text.
       return (
         <ReadBlock
           label="任务输出"
@@ -171,6 +270,59 @@ function renderBody(call: ToolCallState, state: ToolRowState) {
           </div>
         )
   }
+}
+
+function parseGrepOutput(raw: string):
+  | { readonly kind: 'matches'; readonly groups: SearchFileGroup[]; readonly total: number }
+  | { readonly kind: 'paths'; readonly paths: string[] } {
+  const rawLines = raw.split('\n').filter((l) => l.trim() !== '')
+  const byPath = new Map<string, SearchFileGroup>()
+  let total = 0
+  const lineRe = /^([^:\n]+):(\d+):(.*)$/
+  for (const line of rawLines) {
+    const m = lineRe.exec(line)
+    if (m === null) continue
+    const path = m[1]!
+    const lineNumber = Number(m[2]!)
+    const text = m[3]!
+    let group = byPath.get(path)
+    if (group === undefined) {
+      group = { path, matches: [] }
+      byPath.set(path, group)
+    }
+    group.matches.push({ lineNumber, line: text })
+    total += 1
+  }
+  if (total > 0) {
+    return { kind: 'matches', groups: [...byPath.values()], total }
+  }
+  return { kind: 'paths', paths: rawLines.map((l) => l.trim()) }
+}
+
+function parseWebSources(raw: string): WebSourceView[] {
+  const seen = new Set<string>()
+  const sources: WebSourceView[] = []
+  const mdLinkRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  let m: RegExpExecArray | null
+  while ((m = mdLinkRe.exec(raw)) !== null) {
+    const title = m[1]!.trim()
+    const url = m[2]!.trim()
+    if (!seen.has(url)) {
+      seen.add(url)
+      sources.push({ url, title })
+    }
+  }
+  if (sources.length === 0) {
+    const urlRe = /https?:\/\/[^\s)>\]"']+/g
+    while ((m = urlRe.exec(raw)) !== null) {
+      const url = m[0]
+      if (!seen.has(url)) {
+        seen.add(url)
+        sources.push({ url })
+      }
+    }
+  }
+  return sources.slice(0, 12)
 }
 
 function readLabelOf(call: ToolCallState): string {

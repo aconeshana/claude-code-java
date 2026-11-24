@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   IconChevronDownOutline14,
   IconChevronRightOutline14,
-  IconCodeOutline16,
   IconFolderClose16,
   IconFolderOpen16,
   IconRefreshOutline14,
 } from '@primitives'
 import { fetchWorkspaceTree, type WorkspaceTreeEntry } from '../../api/client'
+import { FileTypeIcon } from '../FileTypeIcon'
 import css from './WorkspaceFilesTab.module.css'
 
 function formatSize(bytes: number): string {
@@ -98,7 +98,7 @@ export function WorkspaceFilesTab({
             <span className={css.icon}>
               {entry.directory
                 ? (isOpen ? <IconFolderOpen16 size={15} /> : <IconFolderClose16 size={15} />)
-                : <IconCodeOutline16 size={14} />}
+                : <FileTypeIcon path={entry.path} size={15} />}
             </span>
             <span className={css.name}>{entry.name}</span>
             {!entry.directory && entry.size > 0 && (

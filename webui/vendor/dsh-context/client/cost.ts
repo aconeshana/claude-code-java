@@ -30,7 +30,21 @@ const OFF_PEAK_FACTOR = 0.5
  * the input rate (a provider that publishes no cache prices bills those
  * buckets as plain input).
  */
-export interface PriceTriple { hit: number; miss: number; write: number; out: number }
+export interface PriceTier {
+  /** Input-token threshold above which the higher tier applies (e.g. 100_000 for Haiku 5.5). */
+  threshold: number
+  /** Per-1M-token rates (USD) for tokens above `threshold`. */
+  rate: Omit<PriceTriple, 'tier'>
+}
+
+export interface PriceTriple {
+  hit: number
+  miss: number
+  write: number
+  out: number
+  /** Optional prompt-length tier (e.g. Haiku 5.5 >100k, Sonnet/Opus >200k). */
+  tier?: PriceTier | undefined
+}
 
 /**
  * The client's price book: models.dev provider id → model id → USD rates,
@@ -136,8 +150,26 @@ export function estimateSessionCost(
       for (const period of ['peak', 'off'] as const) {
         const bucket = asRecord(periods[period])
         if (bucket === null) continue
-        const price = (numOf(bucket.cacheRead) * rate.hit + numOf(bucket.uncached) * rate.miss
-          + numOf(bucket.cacheWrite) * rate.write + numOf(bucket.output) * rate.out) / 1e6
+        const cacheRead = numOf(bucket.cacheRead)
+        const uncached = numOf(bucket.uncached)
+        const cacheWrite = numOf(bucket.cacheWrite)
+        const output = numOf(bucket.output)
+        const inputTotal = cacheRead + uncached + cacheWrite
+        let price: number
+        if (rate.tier !== undefined && inputTotal > rate.tier.threshold) {
+          // Piecewise tiered pricing: tokens up to threshold bill at base rate,
+          // excess tokens bill at high-tier rate (Haiku 5.5 >100k / long-context >200k).
+          const baseShare = rate.tier.threshold / inputTotal
+          const highShare = 1 - baseShare
+          const high = rate.tier.rate
+          const effHit = rate.hit * baseShare + high.hit * highShare
+          const effMiss = rate.miss * baseShare + high.miss * highShare
+          const effWrite = rate.write * baseShare + high.write * highShare
+          const effOut = rate.out * baseShare + high.out * highShare
+          price = (cacheRead * effHit + uncached * effMiss + cacheWrite * effWrite + output * effOut) / 1e6
+        } else {
+          price = (cacheRead * rate.hit + uncached * rate.miss + cacheWrite * rate.write + output * rate.out) / 1e6
+        }
         total += offPeak && period === 'off' ? price * OFF_PEAK_FACTOR : price
         any = true
       }

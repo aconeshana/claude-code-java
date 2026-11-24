@@ -1,7 +1,20 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Button,
+  IconBranchOutline16,
+  IconDislikeFill16,
+  IconDislikeOutline16,
+  IconEditOutline16,
+  IconLikeFill16,
+  IconLikeOutline16,
+  IconRefreshOutline16,
+  Tooltip,
+} from '@primitives'
 import { MarkdownText } from '@vendor/ui-primitives/markdown/MarkdownText'
 import type { MarkdownLabels } from '@vendor/ui-primitives/markdown/MarkdownText'
 import css from '@chat-styles/MessageItem.module.css'
+import actionCss from '@chat-styles/MessageIconActions.module.css'
+import { forkSession, submitTurn } from '../api/client'
 import type { MessageState } from '../store/conversations'
 import { useTranscriptView } from '../store/transcriptView'
 import { useTranslate } from '../i18n/useTranslate'
@@ -33,62 +46,25 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * row of each turn carries it — never one per step.
  */
 export function MessageItem({ message, hideReasoning = false, showTail = false,
-  changesTurn, sessionId = null, inSubagentTranscript = false }: {
+  changesTurn, sessionId = null, inSubagentTranscript = false, retryPrompt }: {
   message: MessageState
-  /**
-   * The turn-process fold's `inlineReasoning`: this row is a folded turn's
-   * answer, so its own thinking blocks belong to the process group and stay
-   * hidden while the reply stays visible.
-   */
   hideReasoning?: boolean
-  /**
-   * Whether this assistant row is its turn's tail anchor — the ONE row that
-   * renders the turn tail (copy + usage/time pills + clock).
-   *
-   * The gateway stamps `turn_usage`/`time` on every assistant row of a turn
-   * (the same fact the TUI transcript row carries), so a per-row presence
-   * test would fan the tail out N times for an N-step turn. Upstream renders
-   * it from a separate per-turn `turn-tail` node instead; the fold view's
-   * `tailAnchors` reproduces that anchor decision here.
-   */
   showTail?: boolean
-  /**
-   * The turn this row anchors, when that turn changed files — the vendored
-   * changed-files card renders on the tail anchor only, and is addressed by
-   * this turn number. Undefined for a turn that changed nothing, and for every
-   * row that is not its turn's anchor.
-   */
   changesTurn?: number | undefined
-  /** The addressed session, for the viewer the chips open. */
   sessionId?: string | null
-  /**
-   * This row belongs to a sub-agent's restored transcript, not the chat.
-   *
-   * The restored transcript is rendered with this same component (its rows
-   * come off the wire reduced by the same `toMessageState`), but a nested
-   * delegation inside it must render as a plain tool row: a sub-agents'
-   * sub-agent has its own sidechain file, and this row's id addresses the
-   * parent's session, so letting it expand would fetch the wrong transcript.
-   */
   inSubagentTranscript?: boolean
+  /** Preceding user prompt text for the assistant turn's Retry action. */
+  retryPrompt?: string | undefined
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
     return (
-      <div className={css.userRow}>
-        <div className={css.userStack}>
-          {message.images !== undefined && message.images.length > 0 && (
-            <ImageGallery images={message.images} />
-          )}
-          {message.text !== '' && <div className={css.bubble}>{message.text}</div>}
-        </div>
-        <MessageIconActions
-          text={message.text}
-          time={message.time}
-          clock="start"
-          t={statsT}
-        />
-      </div>
+      <UserItem
+        message={message}
+        t={statsT}
+        sessionId={sessionId}
+        inSubagentTranscript={inSubagentTranscript}
+      />
     )
   }
   return (
@@ -100,12 +76,170 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
       changesTurn={changesTurn}
       sessionId={sessionId}
       inSubagentTranscript={inSubagentTranscript}
+      retryPrompt={retryPrompt}
     />
   )
 }
 
+const FEEDBACK_STORAGE_KEY = 'poco.message-feedback.v1'
+type FeedbackVote = 'like' | 'dislike' | null
+
+function readFeedback(messageId: string): FeedbackVote {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
+    if (raw === null) return null
+    const map = JSON.parse(raw) as Record<string, unknown>
+    const val = map[messageId]
+    return val === 'like' || val === 'dislike' ? val : null
+  } catch {
+    return null
+  }
+}
+
+function writeFeedback(messageId: string, vote: FeedbackVote): void {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
+    const map = raw !== null ? (JSON.parse(raw) as Record<string, string>) : {}
+    if (vote === null) delete map[messageId]
+    else map[messageId] = vote
+    window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function UserItem({
+  message,
+  t,
+  sessionId,
+  inSubagentTranscript,
+}: {
+  message: Extract<MessageState, { kind: 'user' }>
+  t: ReturnType<typeof useTranslate>
+  sessionId: string | null
+  inSubagentTranscript: boolean
+}) {
+  const selectedSessionId = useSessions((state) => state.selectedSessionId)
+  const addressedSessionId = sessionId ?? selectedSessionId
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(message.text)
+  const [sending, setSending] = useState(false)
+
+  const submitEdit = useCallback(async () => {
+    const trimmed = draft.trim()
+    if (trimmed === '' || addressedSessionId == null || sending) return
+    setSending(true)
+    try {
+      await submitTurn(addressedSessionId, trimmed)
+      setEditing(false)
+    } finally {
+      setSending(false)
+    }
+  }, [draft, addressedSessionId, sending])
+
+  return (
+    <div className={css.userRow}>
+      <div className={css.userStack}>
+        {message.images !== undefined && message.images.length > 0 && (
+          <ImageGallery images={message.images} />
+        )}
+        {editing ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              minWidth: 300,
+              maxWidth: 520,
+              padding: 10,
+              borderRadius: 14,
+              background: 'var(--dsw-alias-bg-layer-1)',
+              border: '0.5px solid var(--dsw-alias-border-l2)',
+            }}
+          >
+            <textarea
+              value={draft}
+              rows={3}
+              autoFocus
+              onChange={(e) => { setDraft(e.target.value) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setEditing(false)
+                  setDraft(message.text)
+                } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  void submitEdit()
+                }
+              }}
+              style={{
+                width: '100%',
+                resize: 'vertical',
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                color: 'var(--dsw-alias-label-primary)',
+                font: 'inherit',
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false)
+                  setDraft(message.text)
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={sending || draft.trim() === ''}
+                onClick={() => { void submitEdit() }}
+              >
+                {sending ? '发送中…' : '重新发送'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          message.text !== '' && <div className={css.bubble}>{message.text}</div>
+        )}
+      </div>
+      <MessageIconActions
+        text={message.text}
+        time={message.time}
+        clock="start"
+        usageAction={
+          !inSubagentTranscript && addressedSessionId != null && message.text !== '' ? (
+            <Tooltip label="编辑并重新发送" side="bottom">
+              <button
+                type="button"
+                className={actionCss.action}
+                aria-label="编辑并重新发送"
+                data-message-action="edit-resend"
+                onClick={() => {
+                  setDraft(message.text)
+                  setEditing(true)
+                }}
+              >
+                <IconEditOutline16 />
+              </button>
+            </Tooltip>
+          ) : null
+        }
+        t={t}
+      />
+    </div>
+  )
+}
+
 function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessionId,
-  inSubagentTranscript }: {
+  inSubagentTranscript, retryPrompt }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
@@ -113,8 +247,12 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
   changesTurn: number | undefined
   sessionId: string | null
   inSubagentTranscript: boolean
+  retryPrompt?: string | undefined
 }) {
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
+  const [feedback, setFeedback] = useState<FeedbackVote>(() => readFeedback(message.id))
+  const [forking, setForking] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   // One stable labels identity: MarkdownText's streaming cache resets when
   // the object identity changes.
   const labels = useMemo<MarkdownLabels>(() => markdownLabels, [])
@@ -190,6 +328,83 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           className={turnTailCss.actions}
           usageAction={(
             <>
+              {!inSubagentTranscript && addressedSessionId != null && retryPrompt !== undefined && (
+                <Tooltip label="重新生成" side="bottom">
+                  <button
+                    type="button"
+                    className={actionCss.action}
+                    aria-label="重新生成"
+                    data-message-action="retry"
+                    disabled={retrying}
+                    onClick={() => {
+                      if (retrying) return
+                      setRetrying(true)
+                      void submitTurn(addressedSessionId, retryPrompt).finally(() => { setRetrying(false) })
+                    }}
+                  >
+                    <IconRefreshOutline16 />
+                  </button>
+                </Tooltip>
+              )}
+              {!inSubagentTranscript && addressedSessionId != null && (
+                <Tooltip label="从此创建分支会话" side="bottom">
+                  <button
+                    type="button"
+                    className={actionCss.action}
+                    aria-label="从此创建分支会话"
+                    data-message-action="fork"
+                    disabled={forking}
+                    onClick={() => {
+                      if (forking) return
+                      setForking(true)
+                      void forkSession(addressedSessionId)
+                        .then(async (res) => {
+                          await useSessions.getState().refresh()
+                          if (res.session_id) await useSessions.getState().select(res.session_id)
+                        })
+                        .finally(() => { setForking(false) })
+                    }}
+                  >
+                    <IconBranchOutline16 />
+                  </button>
+                </Tooltip>
+              )}
+              {!inSubagentTranscript && (
+                <>
+                  <Tooltip label={feedback === 'like' ? '取消点赞' : '有帮助'} side="bottom">
+                    <button
+                      type="button"
+                      className={actionCss.action}
+                      aria-label={feedback === 'like' ? '取消点赞' : '有帮助'}
+                      aria-pressed={feedback === 'like'}
+                      data-message-action="like"
+                      onClick={() => {
+                        const next: FeedbackVote = feedback === 'like' ? null : 'like'
+                        setFeedback(next)
+                        writeFeedback(message.id, next)
+                      }}
+                    >
+                      {feedback === 'like' ? <IconLikeFill16 /> : <IconLikeOutline16 />}
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={feedback === 'dislike' ? '取消点踩' : '需改进'} side="bottom">
+                    <button
+                      type="button"
+                      className={actionCss.action}
+                      aria-label={feedback === 'dislike' ? '取消点踩' : '需改进'}
+                      aria-pressed={feedback === 'dislike'}
+                      data-message-action="dislike"
+                      onClick={() => {
+                        const next: FeedbackVote = feedback === 'dislike' ? null : 'dislike'
+                        setFeedback(next)
+                        writeFeedback(message.id, next)
+                      }}
+                    >
+                      {feedback === 'dislike' ? <IconDislikeFill16 /> : <IconDislikeOutline16 />}
+                    </button>
+                  </Tooltip>
+                </>
+              )}
               <ContextJumpButton sessionId={addressedSessionId} time={message.time} turn={message.turn} />
               {message.turnUsage !== undefined && (
                 <TurnUsagePanel usage={message.turnUsage} t={t} />

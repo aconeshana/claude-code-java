@@ -44,6 +44,8 @@ export interface AgentSelfStats {
 /** One render-ready tree node. */
 export interface AgentNode extends AgentStats {
   id: string
+  /** Underlying subagent id (used for right-dock navigation), if distinct from `id`. */
+  agentId?: string | undefined
   label: string
   parentId?: string | undefined
   /** Layout column (root = 0), assigned during the DFS. */
@@ -149,27 +151,66 @@ export function agentForestOf(
   })
   const nodes: AgentNode[] = [root]
   const edges: { from: string; to: string }[] = []
-  sorted.forEach((record, index) => {
-    if (nodes.length >= AGENT_TREE_LIMIT) return
-    const label = record.description ?? record.type ?? record.agentId ?? record.id
-    nodes.push({
-      id: record.id,
-      label,
-      parentId: currentId,
-      depth: 1,
-      family: index,
-      isCurrent: false,
-      running: record.status === 'running',
-      completed: record.status !== 'running',
-      subagent: true,
-      head: agentHeadOf(record),
-      requests: record.toolUses ?? 0,
-      billed: billedOf(record.usage) ?? record.tokens ?? null,
-      durationMs: record.durationMs ?? null,
-      identity: { mode: 'one-shot', ...(record.type !== undefined ? { label: record.type } : {}) },
-    })
-    edges.push({ from: currentId, to: record.id })
-  })
+
+  // Build multi-level parent -> children index (supports optional parentId/parentAgentId
+  // on AgentRecord; records whose parent is absent or unknown attach to root).
+  const byRecordId = new Map<string, AgentRecord>()
+  const byAgentId = new Map<string, string>()
+  for (const r of sorted) {
+    byRecordId.set(r.id, r)
+    if (r.agentId !== undefined && r.agentId !== '') byAgentId.set(r.agentId, r.id)
+  }
+
+  const childrenByParent = new Map<string, AgentRecord[]>()
+  const parentOfRecord = (r: AgentRecord): string => {
+    const raw = (r as unknown as { parentId?: string; parentAgentId?: string })
+    const rawParent = raw.parentId ?? raw.parentAgentId
+    if (rawParent !== undefined && rawParent !== '' && rawParent !== r.id) {
+      if (byRecordId.has(rawParent)) return rawParent
+      const mapped = byAgentId.get(rawParent)
+      if (mapped !== undefined && mapped !== r.id) return mapped
+    }
+    return currentId
+  }
+  for (const r of sorted) {
+    const pid = parentOfRecord(r)
+    const list = childrenByParent.get(pid) ?? []
+    list.push(r)
+    childrenByParent.set(pid, list)
+  }
+
+  const visited = new Set<string>([currentId])
+  let topFamily = 0
+  const walk = (parentId: string, depth: number, family: number): void => {
+    const kids = childrenByParent.get(parentId) ?? []
+    for (const record of kids) {
+      if (nodes.length >= AGENT_TREE_LIMIT) return
+      if (visited.has(record.id)) continue
+      visited.add(record.id)
+      const assignedFamily = depth === 1 ? topFamily++ : family
+      const label = record.description ?? record.type ?? record.agentId ?? record.id
+      nodes.push({
+        id: record.id,
+        ...(record.agentId !== undefined ? { agentId: record.agentId } : {}),
+        label,
+        parentId,
+        depth,
+        family: assignedFamily,
+        isCurrent: false,
+        running: record.status === 'running',
+        completed: record.status !== 'running',
+        subagent: true,
+        head: agentHeadOf(record),
+        requests: record.toolUses ?? 0,
+        billed: billedOf(record.usage) ?? record.tokens ?? null,
+        durationMs: record.durationMs ?? null,
+        identity: { mode: 'one-shot', ...(record.type !== undefined ? { label: record.type } : {}) },
+      })
+      edges.push({ from: parentId, to: record.id })
+      walk(record.id, depth + 1, assignedFamily)
+    }
+  }
+  walk(currentId, 1, 0)
   return { nodes, edges, overflow: Math.max(0, agents.length + 1 - nodes.length), solo: nodes.length === 1 }
 }
 

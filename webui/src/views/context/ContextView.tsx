@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useSessionContext } from '../../store/sessionContext'
 import { useSessions } from '../../store/sessions'
+import { openSubagentInRightDock } from '../../store/rightSidebar'
 import { detailFetcher, makeContentFetcher, makeHeaderFetcher, useContextTimeline, type ContextJumpTarget } from '../../store/contextTimeline'
 import { resolveJumpSeq } from './jump'
 import { useContextKit } from './useContextKit'
@@ -426,6 +427,9 @@ function ContextViewBody({ sessionId, kit, locale, cards }: {
       <AgentGraph
         sessionId={sessionId}
         agents={agents}
+        onSelectAgent={(agentId, label) => {
+          if (sessionId !== null) openSubagentInRightDock(sessionId, agentId, label)
+        }}
         self={{
           head: headline,
           billed: usage !== null ? numOf(usage.uncachedInputTokens) + numOf(usage.outputTokens)

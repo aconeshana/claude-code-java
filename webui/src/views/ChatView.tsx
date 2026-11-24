@@ -161,7 +161,7 @@ export function ChatView(
       onScroll={onScroll}
     >
       <div className={css.column}>
-        {rendered.flatMap((message) => {
+        {rendered.flatMap((message, index) => {
           const role = foldView.roles[message.id]
           const controlTurn = foldView.controlTurns[message.id]
           const rows = []
@@ -180,6 +180,14 @@ export function ChatView(
           const memberTurn = foldView.memberTurns[message.id]
           const collapsed = role === 'member' && memberTurn !== undefined
             && !foldView.expandedTurns.has(memberTurn)
+          let lastUserPrompt: string | undefined
+          for (let i = index - 1; i >= 0; i -= 1) {
+            const prev = rendered[i]
+            if (prev?.kind === 'user' && prev.text.trim() !== '') {
+              lastUserPrompt = prev.text
+              break
+            }
+          }
           rows.push(
             <div
               key={message.id}
@@ -198,6 +206,7 @@ export function ChatView(
                   ? foldView.tailAnchorTurns[message.id]
                   : undefined}
                 sessionId={sessionId}
+                retryPrompt={lastUserPrompt}
               />
             </div>,
           )

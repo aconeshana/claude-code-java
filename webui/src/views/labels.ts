@@ -1,4 +1,10 @@
-import type { DiffBlockLabels, ReadBlockLabels, TerminalBlockLabels } from '@primitives'
+import type {
+  DiffBlockLabels,
+  ReadBlockLabels,
+  SearchBlockLabels,
+  TerminalBlockLabels,
+  WebBlockLabels,
+} from '@primitives'
 import type { MarkdownLabels } from '@vendor/ui-primitives/markdown/MarkdownText'
 
 /**
@@ -49,4 +55,26 @@ export const diffLabels: DiffBlockLabels = {
   collapse: '收起',
   expand: (hidden) => `展开 ${hidden} 行`,
   files: (count) => `${count} 个文件`,
+}
+
+export const searchLabels: SearchBlockLabels = {
+  pathsSummary: (shown, total, truncated) =>
+    truncated ? `显示 ${shown} / 共 ${total} 个文件` : `找到 ${total} 个文件`,
+  matchesSummary: (shown, total, files, truncated) =>
+    truncated ? `显示 ${shown} / 共 ${total} 处匹配（${files} 个文件）` : `${total} 处匹配（${files} 个文件）`,
+  copy: '复制',
+  copied: '已复制',
+  noResults: '未找到匹配结果',
+  collapseAria: '折叠',
+  expandAria: (hidden) => `展开 ${hidden} 行`,
+  collapse: '收起',
+  expand: (hidden) => `展开 ${hidden} 行`,
+}
+
+export const webLabels: WebBlockLabels = {
+  noResults: '未找到相关结果',
+  sourcesTruncated: '结果已截断',
+  http: 'HTTP',
+  contentTruncated: '内容已截断',
+  markdown: markdownLabels,
 }
