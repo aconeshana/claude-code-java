@@ -124,3 +124,29 @@
 .pinBtnActive {
   color: var(--dsw-alias-state-business-primary);
 }
+
+.ccBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent-subtle, rgba(59, 130, 246, 0.14));
+  color: var(--accent, #2563eb);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.ccBadge:hover {
+  background: rgba(239, 68, 68, 0.14);
+  color: #dc2626;
+}
+
+.ccBadge:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}

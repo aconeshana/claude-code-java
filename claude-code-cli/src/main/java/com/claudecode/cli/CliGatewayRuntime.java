@@ -97,6 +97,8 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
     private final GatewayBackgroundTasksPort backgroundTasks;
     private volatile GatewayRuntimeControlPort runtimeControl =
         new GatewayRuntimeControlPort() {};
+    private volatile GatewayCcConnectPort ccConnect =
+        new GatewayCcConnectPort() {};
     /** One fold for the gateway's life, so a replay is reused until its transcript changes. */
     private final CliTranscriptMetricsFold remoteMetrics = new CliTranscriptMetricsFold();
     /**
@@ -315,6 +317,12 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             : new GatewayRuntimeControlPort() {};
     }
 
+    void setCcConnect(GatewayCcConnectPort ccConnectPort) {
+        this.ccConnect = ccConnectPort != null
+            ? ccConnectPort
+            : new GatewayCcConnectPort() {};
+    }
+
     private Started bind() throws IOException {
         GatewayServer existing = server;
         if (existing != null) {
@@ -356,6 +364,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .backgroundTasks(backgroundTasks != null ? backgroundTasks : new GatewayBackgroundTasksPort() {})
             .runtimeControl(runtimeControl)
             .lanGateway(lanConfigStore, lanProxyPort)
+            .ccConnect(ccConnect)
             .webWorkers(new WebWorkerDirectory(webWorkersDirectory))
             // Every session a webui client addresses belongs to this process or
             // to another TUI on the machine; the gateway forwards the halves

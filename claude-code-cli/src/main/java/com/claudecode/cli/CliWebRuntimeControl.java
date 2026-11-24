@@ -36,13 +36,20 @@ final class CliWebRuntimeControl implements GatewayRuntimeControlPort, AutoClose
     private final Path stateFile;
     private final CliWebCronDaemon cronDaemon;
     private final CustomModelCatalog modelCatalog;
+    private final Runnable onReload;
     private boolean enabled;
     private Process caffeinateProcess;
 
     CliWebRuntimeControl(CliWebCronDaemon cronDaemon, CustomModelCatalog modelCatalog) {
+        this(cronDaemon, modelCatalog, null);
+    }
+
+    CliWebRuntimeControl(CliWebCronDaemon cronDaemon, CustomModelCatalog modelCatalog,
+                         Runnable onReload) {
         this.stateFile = ClaudePaths.CLAUDE_HOME.resolve("web-keepalive.json");
         this.cronDaemon = cronDaemon;
         this.modelCatalog = modelCatalog;
+        this.onReload = onReload;
         this.enabled = readPersistedEnabled();
         if (this.enabled) {
             syncCaffeinate(true);
@@ -67,6 +74,9 @@ final class CliWebRuntimeControl implements GatewayRuntimeControlPort, AutoClose
     public synchronized RestartResult restartRuntime() {
         if (cronDaemon != null) {
             cronDaemon.reloadNow();
+        }
+        if (onReload != null) {
+            onReload.run();
         }
         int tasks = CronStore.list().size();
         int models = modelCatalog == null ? 0 : modelCatalog.list().size();

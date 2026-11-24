@@ -38,6 +38,7 @@ import localCss from './SettingsPanel.module.css'
 import { ContextSettingsSection } from './context/ContextSettingsSection'
 import { ContextIcon } from '@dsh-context/client/icon'
 import { LanGatewaySection } from './LanGatewaySection'
+import { CcConnectSection } from './CcConnectSection'
 import { ModelsSection } from './ModelsSection'
 import { ScheduleSection } from './SchedulePanel'
 
@@ -69,7 +70,7 @@ import { ScheduleSection } from './SchedulePanel'
  * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'lan-gateway' | 'schedule' | 'context'
+type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
 
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
@@ -77,6 +78,7 @@ const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'directories', label: '目录', icon: <IconFolderOpenOutline16 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'lan-gateway', label: '局域网网关', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
+  { id: 'cc-connect', label: '外部协作', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
   { id: 'context', label: '上下文', icon: <ContextIcon className={css.navIcon} size={16} /> },
 ]
@@ -143,6 +145,7 @@ export function SettingsPanel({ open, onClose }: {
       case 'directories': return t('nav.directories')
       case 'models': return t('nav.models')
       case 'lan-gateway': return t('nav.lanGateway')
+      case 'cc-connect': return t('nav.ccConnect')
       case 'schedule': return t('nav.schedule')
       case 'context': return t('nav.context')
     }
@@ -332,6 +335,12 @@ export function SettingsPanel({ open, onClose }: {
             {activeSection === 'lan-gateway' && (
               <div className={sectionCss.section}>
                 <LanGatewaySection />
+              </div>
+            )}
+
+            {activeSection === 'cc-connect' && (
+              <div className={sectionCss.section}>
+                <CcConnectSection />
               </div>
             )}
 

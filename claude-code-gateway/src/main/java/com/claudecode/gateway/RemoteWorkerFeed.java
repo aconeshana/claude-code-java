@@ -34,6 +34,7 @@ final class RemoteWorkerFeed implements AutoCloseable {
     private static final String ACTIVATED = "session.activated";
     private static final String INTERACTION_REQUESTED = "interaction.requested";
     private static final String INTERACTION_RESOLVED = "interaction.resolved";
+    private static final String COLLABORATION_CHANGED = "collaboration.changed";
     private static final String SUDO_KIND = "sudo_password";
 
     private final MirrorHub hub;
@@ -131,6 +132,18 @@ final class RemoteWorkerFeed implements AutoCloseable {
         return client.request("effort.set", sessionId, payload);
     }
 
+    CompletableFuture<SessionLinkFrame> getCollaboration(String sessionId) {
+        return client.request("collaboration.get", sessionId, JsonUtils.getMapper().createObjectNode());
+    }
+
+    CompletableFuture<SessionLinkFrame> setCollaboration(
+            String sessionId, String channel, boolean enabled) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("channel", channel == null ? "" : channel);
+        payload.put("enabled", enabled);
+        return client.request("collaboration.set", sessionId, payload);
+    }
+
     CompletableFuture<SessionLinkFrame> listSessions() {
         return client.request("session.list", null, JsonUtils.getMapper().createObjectNode());
     }
@@ -176,6 +189,9 @@ final class RemoteWorkerFeed implements AutoCloseable {
                     RemoteInteractionMirror.resolved(payloadOf(frame)));
             }
             return;
+        }
+        if (COLLABORATION_CHANGED.equals(frame.name())) {
+            hub.publishCcConnectChanged();
         }
         hub.publishRemote(frame.sessionId(), frame.name(), frame.payload());
     }

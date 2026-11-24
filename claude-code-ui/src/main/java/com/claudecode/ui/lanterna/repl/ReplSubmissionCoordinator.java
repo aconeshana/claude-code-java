@@ -206,8 +206,19 @@ final class ReplSubmissionCoordinator {
 
     /** Direct semantic endpoint submit that does not mutate the terminal input widget. */
     void handleRemoteQuery(String value, Map<Integer, PastedContent> pasted) {
+        handleRemoteQuery(value, pasted, true);
+    }
+
+    /**
+     * Direct semantic endpoint submit that does not mutate the terminal input widget.
+     *
+     * @param imOrigin {@code true} when originated by an IM sidecar (so it is not echoed back
+     *                 to the same IM thread); {@code false} when originated by the Web UI (so
+     *                 attached IM threads mirror the user's message).
+     */
+    void handleRemoteQuery(String value, Map<Integer, PastedContent> pasted, boolean imOrigin) {
         if (StringUtils.isBlank(value)) return;
-        handleQuery(value, pasted == null ? Map.of() : Map.copyOf(pasted), null, true);
+        handleQuery(value, pasted == null ? Map.of() : Map.copyOf(pasted), null, imOrigin);
     }
 
     SlashHost.LongRunningCommand longRunningStarted(String input, BooleanSupplier cancel) {

@@ -360,6 +360,14 @@ public final class MirrorHub {
         publishTransient("", "sessions.changed", object());
     }
 
+    /**
+     * Tells clients CC Connector status changed (attached/detached/setup/sidecar exit).
+     * Transient: reconnecting clients fetch {@code GET /api/cc-connect}.
+     */
+    public void publishCcConnectChanged() {
+        publishTransient("", "cc_connect.changed", object());
+    }
+
     /** Publishes one pending permission ask raised by a followed session. */
     public void publishPermissionAsked(String sessionId, ObjectNode payload) {
         String requestId = payload.path("request_id").asText("");
@@ -640,9 +648,12 @@ public final class MirrorHub {
 
     /** Whether a system message is a notice the chat shows rather than engine bookkeeping. */
     private static boolean isChatNotice(SDKMessage.System system) {
-        return system.message().content() != null && !Strings.CS.equalsAny(
-            system.message().subtype(),
-            "system_init", "api_metrics", "thinking", "model_refusal_no_fallback");
+        return system.message().content() != null && !isNonChatSystemSubtype(system.message().subtype());
+    }
+
+    private static boolean isNonChatSystemSubtype(String subtype) {
+        return Strings.CS.equalsAny(
+            subtype, "system_init", "api_metrics", "thinking", "model_refusal_no_fallback");
     }
 
     /** The draft kind a stream event appends to, or null for control events. */
@@ -1071,6 +1082,14 @@ public final class MirrorHub {
      * journaled like any local frame: a reconnecting browser replays it.
      */
     public void publishRemote(String sessionId, String event, JsonNode payload) {
+        if (Strings.CS.equals("output.text", event)
+                && payload != null
+                && payload.path("synthetic").asBoolean(false)) {
+            String subtype = payload.path("metadata").path("subtype").asText("");
+            if (isNonChatSystemSubtype(subtype)) {
+                return;
+            }
+        }
         ObjectNode copy = payload != null && payload.isObject()
             ? ((ObjectNode) payload.deepCopy()) : JsonUtils.getMapper().createObjectNode();
         // A remote session's messages never reach {@link #onMessage}: the worker pushes ready-made

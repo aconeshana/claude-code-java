@@ -432,7 +432,7 @@ final class SessionHostPublisher {
                     submission, file -> persistRemoteAttachment(
                         expectedSessionId, submission.messageId(), file).toString());
                 bindings.submissions().handleRemoteQuery(
-                    assembled.prompt(), assembled.pasted());
+                    assembled.prompt(), assembled.pasted(), !submission.fromWeb());
                 result.complete(null);
             } catch (RuntimeException failure) {
                 result.completeExceptionally(failure);

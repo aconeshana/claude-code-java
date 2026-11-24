@@ -74,8 +74,20 @@ public final class SessionCollaborationController {
         select(session.info(), channel, Origin.LOCAL);
     }
 
+    public void selectLocal(SessionHostInfo info, String channel) {
+        select(info, channel, Origin.LOCAL);
+    }
+
+    public void disableLocal(SessionHostInfo info) {
+        disable(info, Origin.LOCAL);
+    }
+
     public void selectRemote(SessionHostInfo info, String channel) {
         select(info, channel, Origin.REMOTE);
+    }
+
+    public void disableRemote(SessionHostInfo info) {
+        disable(info, Origin.REMOTE);
     }
 
     public void disableCurrent() {

@@ -146,7 +146,9 @@ public class WebCliCommand implements Callable<Integer> {
             String cwd = System.getProperty("user.dir");
             CustomModelJsonStore modelCatalog = new CustomModelJsonStore();
             try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd);
-                 CliWebRuntimeControl runtimeControl = new CliWebRuntimeControl(cronDaemon, modelCatalog)) {
+                 CliCcConnectManager ccConnectManager = new CliCcConnectManager(cwd);
+                 CliWebRuntimeControl runtimeControl = new CliWebRuntimeControl(
+                     cronDaemon, modelCatalog, ccConnectManager::reloadConfig)) {
                 cronDaemon.start();
                 CommandRegistry commandRegistry = webCommands();
                 GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
@@ -200,8 +202,10 @@ public class WebCliCommand implements Callable<Integer> {
                     headless::liveEngine,
                     headless::toolRegistry));
             runtime.setRuntimeControl(runtimeControl);
+            runtime.setCcConnect(ccConnectManager);
             CountDownLatch stopped = new CountDownLatch(1);
             Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().unstarted(() -> {
+                ccConnectManager.close();
                 runtime.close();
                 stopped.countDown();
             }));

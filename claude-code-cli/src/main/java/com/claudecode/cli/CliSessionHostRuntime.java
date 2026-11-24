@@ -136,24 +136,16 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
     }
 
     /**
-     * Starts the authenticated UDS, then the cc-connect sidecar when one is
-     * configured.
+     * Starts the authenticated Session Link UDS and registers this TUI process in
+     * {@code ~/.claude/web-workers/} so the standalone {@code claude web} daemon
+     * (and any CC Connector sidecar it attaches) can connect to it.
      *
-     * <p>The link endpoint is unconditional. It is the only live channel a
-     * standalone {@code claude web} supervisor has into this process, so the
-     * supervisor can list this TUI's sessions, follow their event streams, and
-     * answer their permission asks without the user having configured the IM
-     * sidecar. Only the sidecar itself — the cc-connect child process — is
-     * gated on {@link #enabled()}; when it is off the UDS still serves, and
-     * {@link #cleanupEndpoint()} must not tear it down.
+     * <p>CC Connector sidecar processes are supervised by the Web daemon rather
+     * than spawned directly by individual TUI processes.
      */
     void start() {
         if (!started.compareAndSet(false, true)) return;
-        boolean sidecarConfigured = enabled();
         try {
-            Path dir = Files.createTempDirectory("claude-code-session-host-");
-            OwnerOnlyPermissions.restrictDirectory(dir);
-            runtimeDir = dir;
             Path privateSocketDir = createSocketDirectory();
             socketDir = privateSocketDir;
             Path socket = privateSocketDir.resolve("link.sock");
@@ -165,37 +157,11 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             server = createdServer;
             SessionLinkEndpoint bound = createdServer.boundEndpoint();
             registerWorker(bound, token);
-
-            if (!sidecarConfigured) return;
-
-            Path runtimeConfig = dir.resolve("cc-connect.toml");
-            Files.copy(sourceConfig, runtimeConfig,
-                StandardCopyOption.REPLACE_EXISTING);
-            OwnerOnlyPermissions.restrictFile(runtimeConfig);
-            Path executable = resolveExecutable(dir);
-            Path logFile = dir.resolve("cc-connect.log");
-            ProcessBuilder builder = new ProcessBuilder(
-                executable.toString(), "--config", runtimeConfig.toString());
-            builder.directory(Path.of(workDir).toFile());
-            builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-            builder.redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-            builder.environment().put("CC_SESSION_LINK_ENDPOINT", bound.toSidecarUri());
-            builder.environment().put("CC_SESSION_LINK_TOKEN", token);
-            builder.environment().put("CC_SESSION_WORK_DIR", workDir);
-            builder.environment().put("CC_CONNECT_API_SOCKET",
-                privateSocketDir.resolve("api.sock").toString());
-            sidecar = builder.start();
-            sidecar.onExit().thenAccept(process -> {
-                if (started.get()) {
-                    log.warn("cc-connect sidecar exited with code {}; log: {}",
-                        process.exitValue(), logFile);
-                }
-            });
-            log.info("Session Host IM endpoint started with config {}", sourceConfig);
+            log.info("Session Host link endpoint started at {}", bound.toSidecarUri());
         } catch (Exception failure) {
             started.set(false);
             cleanupEndpoint();
-            throw new IllegalStateException("failed to start Session Host IM endpoint", failure);
+            throw new IllegalStateException("failed to start Session Host link endpoint", failure);
         }
     }
 

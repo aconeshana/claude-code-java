@@ -809,6 +809,117 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LanGatewayCallList' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect:
+    get:
+      tags: [Runtime]
+      summary: Read CC Connector configuration status and online TUI attachment targets
+      responses:
+        '200':
+          description: Current CC Connector snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect/attach:
+    post:
+      tags: [Runtime]
+      summary: Attach a managed cc-connect sidecar to an online TUI process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pid: { type: integer }
+                session_id: { type: string }
+                channel: { type: string }
+                origin: { type: string, enum: [web, tui] }
+      responses:
+        '200':
+          description: Updated CC Connector snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect/detach:
+    post:
+      tags: [Runtime]
+      summary: Detach and stop the managed cc-connect sidecar for an online TUI process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pid: { type: integer }
+                session_id: { type: string }
+      responses:
+        '200':
+          description: Updated CC Connector snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect/logs:
+    get:
+      tags: [Runtime]
+      summary: Read recent sidecar log lines for an attached TUI process
+      parameters:
+        - name: pid
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: tail
+          in: query
+          required: false
+          schema: { type: integer, default: 200 }
+      responses:
+        '200':
+          description: Recent log lines
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect/setup:
+    post:
+      tags: [Runtime]
+      summary: Run Feishu onboarding wizard in the Web daemon (NDJSON progress stream)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [create, bind, resume] }
+                app_id: { type: string }
+                app_secret: { type: string }
+                work_dir: { type: string }
+      responses:
+        '200':
+          description: NDJSON progress and final result stream
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/cc-connect/setup/cancel:
+    post:
+      tags: [Runtime]
+      summary: Cancel an in-progress Feishu onboarding wizard run
+      responses:
+        '200':
+          description: Cancellation result
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/file-suggestions:
     get:
       tags: [Commands]

@@ -806,3 +806,109 @@ export function clearLanGatewayCalls(): Promise<import('./types').LanGatewayCall
   return requestJson('DELETE', '/api/lan-gateway/calls')
 }
 
+export function fetchCcConnectStatus(): Promise<import('./types').CcConnectSnapshot> {
+  return requestJson('GET', '/api/cc-connect')
+}
+
+export function attachCcConnect(input: {
+  readonly pid: number
+  readonly sessionId?: string
+  readonly channel?: string
+}): Promise<import('./types').CcConnectSnapshot> {
+  return requestJson('POST', '/api/cc-connect/attach', {
+    pid: input.pid,
+    ...(input.sessionId == null || input.sessionId === '' ? {} : { session_id: input.sessionId }),
+    ...(input.channel == null || input.channel === '' ? {} : { channel: input.channel }),
+    origin: 'web',
+  })
+}
+
+export function detachCcConnect(input: {
+  readonly pid: number
+  readonly sessionId?: string
+}): Promise<import('./types').CcConnectSnapshot> {
+  return requestJson('POST', '/api/cc-connect/detach', {
+    pid: input.pid,
+    ...(input.sessionId == null || input.sessionId === '' ? {} : { session_id: input.sessionId }),
+  })
+}
+
+export function fetchCcConnectLogs(
+  pid: number,
+  tail = 200,
+): Promise<import('./types').CcConnectLogsResponse> {
+  return requestJson('GET', `/api/cc-connect/logs?pid=${encodeURIComponent(String(pid))}&tail=${encodeURIComponent(String(tail))}`)
+}
+
+export async function runCcConnectSetup(
+  input: {
+    readonly mode: import('./types').CcConnectSetupMode
+    readonly appId?: string
+    readonly appSecret?: string
+    readonly workDir?: string
+  },
+  onProgress?: (line: string) => void,
+): Promise<import('./types').CcConnectSetupResult> {
+  const response = await fetch('/api/cc-connect/setup', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: input.mode,
+      ...(input.appId == null || input.appId === '' ? {} : { app_id: input.appId }),
+      ...(input.appSecret == null || input.appSecret === '' ? {} : { app_secret: input.appSecret }),
+      ...(input.workDir == null || input.workDir === '' ? {} : { work_dir: input.workDir }),
+    }),
+  })
+  if (!response.ok) {
+    let message = `POST /api/cc-connect/setup → HTTP ${response.status}`
+    try {
+      const parsed = await response.json() as { error?: { message?: string } }
+      if (typeof parsed.error?.message === 'string') message = parsed.error.message
+    } catch { /* keep default */ }
+    throw new ApiError(response.status, 'cc_connect_setup_error', message)
+  }
+  const reader = response.body?.getReader()
+  if (reader == null) {
+    throw new ApiError(500, 'cc_connect_setup_error', 'Empty setup response stream')
+  }
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResult: import('./types').CcConnectSetupResult | null = null
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl = buffer.indexOf('\n')
+    while (nl >= 0) {
+      const raw = buffer.slice(0, nl).trim()
+      buffer = buffer.slice(nl + 1)
+      if (raw !== '') {
+        try {
+          const frame = JSON.parse(raw) as {
+            type?: string
+            line?: string
+            ok?: boolean
+            channel?: string
+            message?: string
+          }
+          if (frame.type === 'progress' && typeof frame.line === 'string') {
+            onProgress?.(frame.line)
+          } else if (frame.type === 'result') {
+            finalResult = {
+              ok: Boolean(frame.ok),
+              channel: frame.channel ?? '',
+              message: frame.message ?? '',
+            }
+          }
+        } catch { /* ignore malformed line */ }
+      }
+      nl = buffer.indexOf('\n')
+    }
+  }
+  return finalResult ?? { ok: false, channel: '', message: 'Setup stream ended unexpectedly' }
+}
+
+export function cancelCcConnectSetup(): Promise<{ readonly cancelled: boolean }> {
+  return requestJson('POST', '/api/cc-connect/setup/cancel', {})
+}
+

@@ -1376,11 +1376,20 @@ public class LanternaReplScreen implements SlashHost {
         @Override public void openCollaborationPicker() {
             if (collaborationPickerDialog == null
                     || inputPanel == null) return;
-            List<String> channels = collaborationController == null
-                ? List.of() : collaborationController.availableChannels();
+            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+            if (collaborationController != null) {
+                merged.addAll(collaborationController.availableChannels());
+            }
+            if (collaborationSetup != null) {
+                merged.addAll(collaborationSetup.configuredChannels());
+            }
+            List<String> channels = merged.stream().sorted().toList();
             SessionCollaborationController.Selection current = collaborationController == null
                 ? new SessionCollaborationController.Selection("", "")
                 : collaborationController.current();
+            String activeSessionId = StringUtils.isNotBlank(current.sessionId())
+                ? current.sessionId()
+                : queryEngine.conversation().getSessionId();
             inputPanel.setSuppressed(true);
             collaborationPickerDialog.show(channels, current.channel(), collaborationSetup != null
                     && !collaborationSetup.configured() && !collaborationSetup.setupPending(),
@@ -1394,7 +1403,9 @@ public class LanternaReplScreen implements SlashHost {
                     }
                     feishuSetupDialog.show(collaborationSetup, () -> {
                         inputPanel.setSuppressed(false);
-                        if (collaborationController != null
+                        if (collaborationSetup.remoteManaged()) {
+                            requestRemoteCollaborationAttach(activeSessionId, "feishu");
+                        } else if (collaborationController != null
                                 && collaborationController.availableChannels().contains("feishu")) {
                             try { collaborationController.selectCurrent("feishu"); }
                             catch (RuntimeException failure) {
@@ -1406,6 +1417,14 @@ public class LanternaReplScreen implements SlashHost {
                 }
                 inputPanel.setSuppressed(false);
                 if (selected == null) return;
+                if (collaborationSetup != null && collaborationSetup.remoteManaged()) {
+                    if (StringUtils.isBlank(selected)) {
+                        requestRemoteCollaborationDetach(activeSessionId);
+                    } else {
+                        requestRemoteCollaborationAttach(activeSessionId, selected);
+                    }
+                    return;
+                }
                 try {
                     if (collaborationController == null) return;
                     if (StringUtils.isBlank(selected)) collaborationController.disableCurrent();
@@ -1413,6 +1432,48 @@ public class LanternaReplScreen implements SlashHost {
                 } catch (RuntimeException failure) {
                     inputPanel.showTransientHint(failure.getMessage(), 3000);
                 }
+            });
+        }
+
+        private void requestRemoteCollaborationAttach(String sessionId, String channel) {
+            if (collaborationSetup == null || inputPanel == null) return;
+            inputPanel.showTransientHint("Connecting " + channel + " via Web gateway…", 4000);
+            collaborationSetup.attachChannel(sessionId, channel).whenComplete((_, failure) -> {
+                gui.getGUIThread().invokeLater(() -> {
+                    if (inputPanel == null) return;
+                    if (failure != null) {
+                        Throwable cause = failure instanceof java.util.concurrent.CompletionException
+                            && failure.getCause() != null ? failure.getCause() : failure;
+                        String message = StringUtils.isNotBlank(cause.getMessage())
+                            ? cause.getMessage() : "Failed to start collaboration";
+                        inputPanel.showTransientHint(message, 4000);
+                    } else {
+                        inputPanel.showTransientHint("Collaboration active (" + channel + ")", 2500);
+                    }
+                });
+            });
+        }
+
+        private void requestRemoteCollaborationDetach(String sessionId) {
+            if (collaborationSetup == null || inputPanel == null) return;
+            inputPanel.showTransientHint("Stopping external collaboration…", 2500);
+            collaborationSetup.detachChannel(sessionId).whenComplete((_, failure) -> {
+                gui.getGUIThread().invokeLater(() -> {
+                    if (inputPanel == null) return;
+                    if (failure != null) {
+                        Throwable cause = failure instanceof java.util.concurrent.CompletionException
+                            && failure.getCause() != null ? failure.getCause() : failure;
+                        String message = StringUtils.isNotBlank(cause.getMessage())
+                            ? cause.getMessage() : "Failed to stop collaboration";
+                        inputPanel.showTransientHint(message, 4000);
+                    } else {
+                        if (collaborationController != null) {
+                            try { collaborationController.disableCurrent(); }
+                            catch (RuntimeException _) {}
+                        }
+                        inputPanel.showTransientHint("Collaboration stopped", 2000);
+                    }
+                });
             });
         }
         @Override public void toggleMessageActions() { messageActionsController.toggle(); }

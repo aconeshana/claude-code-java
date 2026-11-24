@@ -117,6 +117,7 @@ public final class GatewayServer implements AutoCloseable {
     private final LanGatewayConfigStore lanConfigStore;
     private final LanModelProxyHandler lanModelProxy;
     private final GatewayLanAdminHandler lanAdminApi;
+    private final GatewayCcConnectHandler ccConnectApi;
     private final MacAwakeGuard awakeGuard = new MacAwakeGuard();
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
@@ -175,6 +176,7 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayBackgroundTasksPort backgroundTasks = new GatewayBackgroundTasksPort() {};
         private LanGatewayConfigStore lanConfigStore = LanGatewayConfigStore.inMemory();
         private GatewayLanProxyPort lanProxy = new GatewayLanProxyPort() {};
+        private GatewayCcConnectPort ccConnect = new GatewayCcConnectPort() {};
         private WebWorkerDirectory webWorkers;
         private boolean remoteSessionState;
         private RemoteSessionContextPort.MetricsFold remoteMetrics =
@@ -314,6 +316,11 @@ public final class GatewayServer implements AutoCloseable {
                 LanGatewayConfigStore configStore, GatewayLanProxyPort proxyPort) {
             this.lanConfigStore = Objects.requireNonNull(configStore, "configStore");
             this.lanProxy = Objects.requireNonNull(proxyPort, "proxyPort");
+            return this;
+        }
+
+        public Builder ccConnect(GatewayCcConnectPort value) {
+            this.ccConnect = Objects.requireNonNull(value, "ccConnect");
             return this;
         }
 
@@ -492,6 +499,32 @@ public final class GatewayServer implements AutoCloseable {
             this::boundHost,
             this::rebindLanSharing,
             this::withBindLock);
+        GatewayCcConnectPort ccConnectPort = builder.ccConnect;
+        ccConnectPort.bindRemoteBridge(new GatewayCcConnectPort.RemoteBridge() {
+            @Override
+            public List<GatewayCcConnectPort.LiveWorker> liveWorkers() {
+                return remoteWorkers.map(RemoteWorkerPool::liveWorkers).orElse(List.of());
+            }
+
+            @Override
+            public Optional<GatewayCcConnectPort.CollaborationState> getCollaboration(
+                    long pid, String sessionId) {
+                return remoteWorkers.flatMap(pool -> pool.getCollaboration(pid, sessionId));
+            }
+
+            @Override
+            public Optional<GatewayCcConnectPort.CollaborationState> setCollaboration(
+                    long pid, String sessionId, String channel, boolean enabled) {
+                return remoteWorkers.flatMap(pool ->
+                    pool.setCollaboration(pid, sessionId, channel, enabled));
+            }
+
+            @Override
+            public void publishChanged() {
+                mirror.publishCcConnectChanged();
+            }
+        });
+        this.ccConnectApi = new GatewayCcConnectHandler(ccConnectPort);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -1239,6 +1272,36 @@ public final class GatewayServer implements AutoCloseable {
                     lanAdminApi.handleClearCalls(exchange);
                 }
             });
+            return;
+        }
+        if (get && Strings.CS.equals("/api/cc-connect", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleGetStatus(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/cc-connect/attach", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleAttach(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/cc-connect/detach", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleDetach(exchange));
+            return;
+        }
+        if (get && Strings.CS.equals("/api/cc-connect/logs", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleLogs(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/cc-connect/setup", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleSetup(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/cc-connect/setup/cancel", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> ccConnectApi.handleCancelSetup(exchange));
             return;
         }
         try (exchange) {

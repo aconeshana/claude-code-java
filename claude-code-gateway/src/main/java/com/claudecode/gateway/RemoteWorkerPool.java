@@ -63,6 +63,8 @@ final class RemoteWorkerPool implements AutoCloseable {
     private final MirrorHub hub;
     private final Map<String, RemoteWorkerFeed> feeds = new HashMap<>();
     private final Map<String, RemoteWorkerFeed> owners = new HashMap<>();
+    private final Map<Long, WebWorkerRegistration> workersByPid = new HashMap<>();
+    private final Map<Long, List<SessionHostInfo>> sessionsByPid = new HashMap<>();
     private Snapshot snapshot;
     private Thread watcher;
     private boolean closed;
@@ -167,12 +169,95 @@ final class RemoteWorkerPool implements AutoCloseable {
             .collect(Collectors.toSet());
         detachMissing(sockets);
         owners.clear();
+        workersByPid.clear();
+        sessionsByPid.clear();
         List<SessionHostInfo> sessions = new ArrayList<>();
         for (WebWorkerRegistration worker : workers) {
+            workersByPid.put(worker.pid(), worker);
             Optional<List<SessionHostInfo>> listed = listFrom(worker);
-            listed.ifPresent(sessions::addAll);
+            listed.ifPresent(found -> {
+                sessions.addAll(found);
+                sessionsByPid.put(worker.pid(), List.copyOf(found));
+            });
         }
         return List.copyOf(sessions);
+    }
+
+    /** Returns every live TUI worker together with its active session metadata, if any. */
+    synchronized List<GatewayCcConnectPort.LiveWorker> liveWorkers() {
+        if (closed) return List.of();
+        liveSessions();
+        List<GatewayCcConnectPort.LiveWorker> result = new ArrayList<>(workersByPid.size());
+        for (WebWorkerRegistration worker : workersByPid.values()) {
+            List<SessionHostInfo> workerSessions = sessionsByPid.getOrDefault(worker.pid(), List.of());
+            SessionHostInfo active = workerSessions.isEmpty() ? null : workerSessions.getFirst();
+            result.add(new GatewayCcConnectPort.LiveWorker(
+                worker.pid(),
+                worker.socket(),
+                worker.token(),
+                worker.workDir(),
+                worker.version(),
+                active == null ? "" : active.id(),
+                active == null ? "" : active.summary()));
+        }
+        result.sort((a, b) -> Long.compare(a.pid(), b.pid()));
+        return List.copyOf(result);
+    }
+
+    Optional<GatewayCcConnectPort.CollaborationState> getCollaboration(long pid, String sessionId) {
+        RemoteWorkerFeed feed = feedFor(pid, sessionId);
+        if (feed == null) return Optional.empty();
+        try {
+            JsonNode payload = feed.getCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId)
+                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload();
+            return Optional.of(parseCollaborationState(payload));
+        } catch (ExecutionException | TimeoutException _) {
+            return Optional.empty();
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
+    Optional<GatewayCcConnectPort.CollaborationState> setCollaboration(
+            long pid, String sessionId, String channel, boolean enabled) {
+        RemoteWorkerFeed feed = feedFor(pid, sessionId);
+        if (feed == null) return Optional.empty();
+        JsonNode payload = requestState(
+            feed.setCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId, channel, enabled),
+            "the session's host did not answer the collaboration change in time");
+        return Optional.of(parseCollaborationState(payload));
+    }
+
+    private synchronized RemoteWorkerFeed feedFor(long pid, String sessionId) {
+        if (closed) return null;
+        liveSessions();
+        if (pid > 0) {
+            WebWorkerRegistration worker = workersByPid.get(pid);
+            if (worker != null) {
+                RemoteWorkerFeed byPid = feeds.get(worker.socket());
+                if (byPid != null && byPid.isOpen()) return byPid;
+            }
+        }
+        if (StringUtils.isNotBlank(sessionId)) {
+            return owners.get(sessionId);
+        }
+        return null;
+    }
+
+    private static GatewayCcConnectPort.CollaborationState parseCollaborationState(JsonNode payload) {
+        if (payload == null || payload.isNull()) {
+            return new GatewayCcConnectPort.CollaborationState("", "", false, List.of());
+        }
+        List<String> channels = new ArrayList<>();
+        for (JsonNode item : payload.path("available_channels")) {
+            if (item.isTextual()) channels.add(item.asText());
+        }
+        return new GatewayCcConnectPort.CollaborationState(
+            payload.path("session_id").asText(""),
+            payload.path("channel").asText(""),
+            payload.path("enabled").asBoolean(false),
+            channels);
     }
 
     synchronized boolean owns(String sessionId) {
@@ -482,6 +567,8 @@ final class RemoteWorkerPool implements AutoCloseable {
         feeds.values().forEach(RemoteWorkerFeed::close);
         feeds.clear();
         owners.clear();
+        workersByPid.clear();
+        sessionsByPid.clear();
         snapshot = null;
     }
 }

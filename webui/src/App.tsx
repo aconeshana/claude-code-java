@@ -20,6 +20,7 @@ import { useShells } from './store/shells'
 import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useScheduleView } from './store/scheduleView'
 import { useTaskBoard } from './store/taskBoard'
+import { useCcConnect } from './store/ccConnect'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
 import { SudoCard } from './views/SudoCard'
@@ -83,6 +84,7 @@ export function App() {
     const sessions = useSessions.getState()
     void sessions.refresh().then(() => { void sessions.selectActiveOrFirst() })
     void useShells.getState().refresh()
+    void useCcConnect.getState().refresh()
 
     const connection: MirrorConnection = subscribeMirror((frame) => {
       useConversations.getState().applyFrame(frame)
@@ -92,6 +94,7 @@ export function App() {
       useSessions.getState().applyFrame(frame)
       usePermissionMode.getState().applyFrame(frame)
       useTaskBoard.getState().applyFrame(frame)
+      useCcConnect.getState().applyFrame(frame)
       if (frame.event === 'turn.completed' || frame.event === 'tool.started' || frame.event === 'tool.completed') {
         void useShells.getState().refresh()
       }

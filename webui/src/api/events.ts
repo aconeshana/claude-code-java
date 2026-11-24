@@ -18,7 +18,7 @@ import { currentToken } from './token'
  */
 
 const TRANSIENT_EVENTS: ReadonlySet<string> = new Set([
-  'output.text.delta', 'output.thinking.delta', 'sessions.changed',
+  'output.text.delta', 'output.thinking.delta', 'sessions.changed', 'cc_connect.changed',
 ])
 
 export interface MirrorConnection {

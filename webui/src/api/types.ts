@@ -328,6 +328,10 @@ export type MirrorFrame =
   | { readonly event: 'sessions.changed'; readonly id: number; readonly data: {
       readonly session_id: string
     } }
+  /** CC Connector status changed (attached/detached/setup/sidecar exit); re-read /api/cc-connect. */
+  | { readonly event: 'cc_connect.changed'; readonly id: number; readonly data: {
+      readonly session_id: string
+    } }
   | { readonly event: 'turn.completed'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly done: boolean
@@ -849,5 +853,46 @@ export interface LanGatewayCall {
 export interface LanGatewayCallsResponse {
   readonly calls: readonly LanGatewayCall[]
 }
+
+// ---------------------------------------------------------------------------
+// CC Connector (IM external collaboration hosted by Web daemon)
+// ---------------------------------------------------------------------------
+
+export type CcConnectTargetState = 'stopped' | 'starting' | 'connected' | 'error'
+export type CcConnectSetupMode = 'create' | 'bind' | 'resume'
+
+export interface CcConnectTarget {
+  readonly pid: number
+  readonly work_dir: string
+  readonly session_id: string
+  readonly session_title: string
+  readonly attached: boolean
+  readonly channel: string
+  readonly status: CcConnectTargetState
+  readonly started_at: string
+  readonly last_error: string
+}
+
+export interface CcConnectSnapshot {
+  readonly supported: boolean
+  readonly configured: boolean
+  readonly setup_pending: boolean
+  readonly config_path: string
+  readonly available_channels: readonly string[]
+  readonly setup_in_progress: boolean
+  readonly targets: readonly CcConnectTarget[]
+}
+
+export interface CcConnectLogsResponse {
+  readonly pid: number
+  readonly lines: readonly string[]
+}
+
+export interface CcConnectSetupResult {
+  readonly ok: boolean
+  readonly channel: string
+  readonly message: string
+}
+
 
 

@@ -433,7 +433,9 @@ public final class SessionLinkServer implements AutoCloseable {
         private final AtomicBoolean connectionClosed = new AtomicBoolean();
         private volatile AutoCloseable lifecycleSubscription;
         private volatile AutoCloseable collaborationSubscription;
-        private boolean authenticated;
+        private volatile List<String> advertisedChannels = List.of();
+        private volatile String clientName = "";
+        private volatile boolean authenticated;
 
         private Connection(SocketChannel socket) throws IOException {
             this.socket = socket;
@@ -483,6 +485,8 @@ public final class SessionLinkServer implements AutoCloseable {
                     case "permission.set" -> setPermissionMode(request);
                     case "effort.get" -> getEffort(request);
                     case "effort.set" -> setEffort(request);
+                    case "collaboration.get" -> getCollaboration(request);
+                    case "collaboration.set" -> setCollaboration(request);
                     case "compact.run" -> runCompact(request);
                     case "session.ended.ack" -> acknowledgeSessionEnded(request);
                     default -> sendError(request, "unsupported_request", "unsupported request");
@@ -510,6 +514,7 @@ public final class SessionLinkServer implements AutoCloseable {
                 return;
             }
             authenticated = true;
+            this.clientName = StringUtils.defaultString(optionalText(payload, "client"));
             JsonNode rawChannels = payload.get("collaboration_channels");
             List<String> channels = new ArrayList<>();
             if (rawChannels != null && !rawChannels.isNull()) {
@@ -524,7 +529,8 @@ public final class SessionLinkServer implements AutoCloseable {
                     channels.add(channel.asText());
                 }
             }
-            collaboration.replaceAvailableChannels(channels);
+            this.advertisedChannels = List.copyOf(channels);
+            recomputeAvailableChannels();
             lifecycleSubscription = sessions.subscribe(event -> {
                 String origin = event.origin().name().toLowerCase(Locale.ROOT);
                 switch (event.type()) {
@@ -736,9 +742,11 @@ public final class SessionLinkServer implements AutoCloseable {
             ObjectNode payload = payload(request,
                 Set.of("prompt", "message_id", "images", "attachments"));
             SessionHostSessionView session = attachment.activeView();
+            String submissionOrigin = Strings.CS.equals("claude-web", clientName) ? "web" : "remote";
             SessionHostSubmission submission = new SessionHostSubmission(
                 requiredText(payload, "prompt"), optionalText(payload, "message_id"),
-                attachments(payload.get("images")), attachments(payload.get("attachments")));
+                attachments(payload.get("images")), attachments(payload.get("attachments")),
+                submissionOrigin);
             submissionLedger.submit(attachment.sessionId(), submission.messageId(),
                 () -> session.submit(submission)).toCompletableFuture().join();
             sendResponse(request, object());
@@ -814,6 +822,58 @@ public final class SessionLinkServer implements AutoCloseable {
             ObjectNode response = object();
             response.put("message", result.message());
             sendResponse(request, response);
+        }
+
+        private void getCollaboration(SessionLinkFrame request) throws IOException {
+            payload(request, Set.of());
+            String sessionId = StringUtils.isNotBlank(request.sessionId())
+                ? request.sessionId()
+                : sessions.currentActivation()
+                    .map(activation -> activation.session().info().id()).orElse("");
+            sendResponse(request, collaborationPayload(sessionId));
+        }
+
+        private void setCollaboration(SessionLinkFrame request) throws IOException {
+            ObjectNode body = payload(request, Set.of("channel", "enabled"));
+            SessionHostSession target = resolveCollaborationSession(request.sessionId());
+            JsonNode enabledNode = body.get("enabled");
+            String channel = optionalText(body, "channel");
+            boolean enabled = enabledNode != null && !enabledNode.isNull()
+                ? enabledNode.asBoolean()
+                : StringUtils.isNotBlank(channel);
+            if (!enabled || StringUtils.isBlank(channel)) {
+                collaboration.disableLocal(target.info());
+            } else {
+                collaboration.selectLocal(target.info(), channel);
+            }
+            sendResponse(request, collaborationPayload(target.info().id()));
+        }
+
+        private SessionHostSession resolveCollaborationSession(String sessionId) {
+            SessionHostSession current = sessions.currentActivation()
+                .map(SessionHostRegistry.ActivationResult::session)
+                .orElseThrow(() -> new IllegalStateException("no active session"));
+            if (StringUtils.isNotBlank(sessionId)
+                    && !Strings.CS.equals(current.info().id(), sessionId)) {
+                throw new IllegalArgumentException("session is not active: " + sessionId);
+            }
+            return current;
+        }
+
+        private ObjectNode collaborationPayload(String sessionId) {
+            SessionCollaborationController.Selection selection =
+                StringUtils.isBlank(sessionId)
+                    ? collaboration.current()
+                    : collaboration.selection(sessionId);
+            ObjectNode response = object();
+            response.put("session_id", selection.sessionId());
+            response.put("channel", selection.channel());
+            response.put("enabled", selection.enabled());
+            ArrayNode channels = response.putArray("available_channels");
+            for (String channel : collaboration.availableChannels()) {
+                channels.add(channel);
+            }
+            return response;
         }
 
         private void respondInteraction(SessionLinkFrame request) throws IOException {
@@ -1033,8 +1093,20 @@ public final class SessionLinkServer implements AutoCloseable {
             attachedSessions.clear();
             outbound.close();
             try { socket.close(); } catch (IOException _) {}
+            this.advertisedChannels = List.of();
             connections.remove(this);
+            recomputeAvailableChannels();
         }
+    }
+
+    private void recomputeAvailableChannels() {
+        List<String> union = new ArrayList<>();
+        for (Connection connection : connections) {
+            if (connection.authenticated) {
+                union.addAll(connection.advertisedChannels);
+            }
+        }
+        collaboration.replaceAvailableChannels(union);
     }
 
     private static SessionLinkFrame interactionRequested(

@@ -35,6 +35,7 @@ import type { MenuEntry, StateDotState } from '@primitives'
 import type { CatalogSession } from '../api/types'
 import type { PendingInteraction } from '../store/approvals'
 import type { SessionActivity } from '../store/sessions'
+import { useCcConnect } from '../store/ccConnect'
 import css from '@chat-styles/WorkspaceRows.module.css'
 import localCss from './Sidebar.module.css'
 
@@ -209,8 +210,21 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
   const status = sessionStatus(activity, pending)
   const showStatus = showSessionStatus(session, activity, pending)
   const [menuOpen, setMenuOpen] = useState(false)
+  const ccTarget = useCcConnect((state) => state.snapshot?.targets.find(
+    (t) => t.session_id !== '' && t.session_id === session.id,
+  ))
+  const ccConfigured = useCcConnect((state) => state.snapshot?.configured ?? false)
+  const ccBusy = useCcConnect((state) => (ccTarget != null ? Boolean(state.busyPids[ccTarget.pid]) : false))
+  const ccChannel = ccTarget?.attached === true ? ccTarget.channel : ''
   const title = displayTitle(session)
   const menuItems: readonly MenuEntry[] = [
+    ...(ccTarget != null && (ccTarget.attached || ccConfigured)
+      ? [{
+          id: ccTarget.attached ? 'cc-detach' : 'cc-attach',
+          label: ccTarget.attached ? `断开 ${ccTarget.channel || '飞书'} 协作` : '开启飞书协作',
+          icon: <IconBranchOutline16 />,
+        }]
+      : []),
     { id: 'rename', label: t('actions.rename'), icon: <IconEditOutline16 /> },
     { id: 'fork', label: t('actions.fork'), icon: <IconBranchOutline16 /> },
     { id: 'archive', label: t('actions.archive'), icon: <IconArchiveOutline20 size={16} /> },
@@ -232,6 +246,21 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
           />
         )}
       </span>
+      {ccChannel !== '' && ccTarget != null && (
+        <button
+          type="button"
+          className={localCss.ccBadge}
+          disabled={ccBusy}
+          title={`已连接 ${ccChannel}（点击断开监听）`}
+          onClick={(e) => {
+            e.stopPropagation()
+            void useCcConnect.getState().detach(ccTarget.pid, ccTarget.session_id)
+          }}
+        >
+          <span>{ccChannel}</span>
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
       <span className={css.title}>{title}</span>
       <span className={css.time}>{timeLabel(Date.parse(session.modified_at), now, t)}</span>
       <span className={css.rowActions}>
@@ -243,7 +272,11 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
           portal
           onSelect={(id) => {
             setMenuOpen(false)
-            if (id === 'rename') onRename(session)
+            if (id === 'cc-attach' && ccTarget != null) {
+              void useCcConnect.getState().attach(ccTarget.pid, ccTarget.session_id, 'feishu')
+            } else if (id === 'cc-detach' && ccTarget != null) {
+              void useCcConnect.getState().detach(ccTarget.pid, ccTarget.session_id)
+            } else if (id === 'rename') onRename(session)
             else if (id === 'fork') onFork(session)
             else if (id === 'archive') onArchive(session)
             else if (id === 'delete') onDelete(session)

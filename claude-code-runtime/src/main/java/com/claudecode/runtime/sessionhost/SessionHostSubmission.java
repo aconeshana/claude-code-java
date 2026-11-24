@@ -2,6 +2,8 @@ package com.claudecode.runtime.sessionhost;
 
 import com.claudecode.core.annotation.Explanation;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /** Model-visible user input arriving from an attached non-terminal endpoint. */
 @Explanation("Remote endpoint submission carried outside PTY rendering")
@@ -9,13 +11,28 @@ public record SessionHostSubmission(
         String prompt,
         String messageId,
         List<Attachment> images,
-        List<Attachment> attachments) {
+        List<Attachment> attachments,
+        String origin) {
+
+    public SessionHostSubmission(
+            String prompt,
+            String messageId,
+            List<Attachment> images,
+            List<Attachment> attachments) {
+        this(prompt, messageId, images, attachments, "remote");
+    }
 
     public SessionHostSubmission {
         prompt = prompt == null ? "" : prompt;
         messageId = messageId == null ? "" : messageId;
         images = List.copyOf(images == null ? List.of() : images);
         attachments = List.copyOf(attachments == null ? List.of() : attachments);
+        origin = StringUtils.isBlank(origin) ? "remote" : origin;
+    }
+
+    /** True when submitted by the Web UI gateway rather than an IM sidecar. */
+    public boolean fromWeb() {
+        return Strings.CS.equals("web", origin);
     }
 
     /** Bounded binary attachment decoded by the Session Link server. */

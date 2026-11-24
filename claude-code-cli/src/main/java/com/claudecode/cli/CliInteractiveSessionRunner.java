@@ -623,15 +623,19 @@ final class CliInteractiveSessionRunner {
                 permissionGate, toolRegistry,
                 () -> startup.skills().toCompletableFuture().getNow(List.of()),
                 skillHookRegistrar, permissionExplainer);
+            DetachedWebGateway detachedWebGateway = new DetachedWebGateway(
+                ClaudePaths.WEB_GATEWAY_JSON,
+                ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.log"));
+            var collaborationBridge =
+                WebGatewayCollaborationBridge.standard(detachedWebGateway, interactiveCwd);
             var launchState = interactiveRuntime.launch(
                 UserKeybindingsStore.create(), dangerouslySkipPermissions, initialPrompt,
                 initialSessionName, restoredSession, sessionTitleGenerator,
                 showBuiltInModelFamilies, customModelCatalog,
                 ExternalTips::getNextTip,
                 sessionHostRuntime.registry(), sessionHostRuntime.interactions(),
-                sessionHostRuntime.collaboration(), sessionHostRuntime,
-                new DetachedWebGateway(ClaudePaths.WEB_GATEWAY_JSON,
-                    ClaudePaths.WEB_GATEWAY_JSON.resolveSibling("web-gateway.log")));
+                sessionHostRuntime.collaboration(), collaborationBridge,
+                detachedWebGateway);
             ReplWiring wiring = interactiveRuntime.assemble(
                 applicationPorts, featureRuntime, launchState,
                 new ReplStartupReadiness(startup.inputSemanticReady(),

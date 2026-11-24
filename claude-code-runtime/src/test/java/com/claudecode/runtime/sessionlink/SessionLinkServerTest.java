@@ -691,6 +691,73 @@ class SessionLinkServerTest {
                 "message", List.of(new TextBlock(text)))), Usage.EMPTY);
     }
 
+    @Test
+    void multiClientHelloPreservesChannelUnionAndSupportsCollaborationRpc() throws Exception {
+        SessionHostSession session = session("session-collab", new ArrayList<>());
+        SessionHostRegistry registry = registry(session);
+        registry.activateLocal(session);
+        InteractionCoordinator interactions = new InteractionCoordinator(() -> "session-collab");
+        SessionCollaborationController collaboration = new SessionCollaborationController(registry);
+        Path socket = tempDir.resolve("collab-union.sock");
+
+        try (SessionLinkServer server = new SessionLinkServer(
+                new SessionLinkServer.Config(socket,
+                    "0123456789abcdef0123456789abcdef"), registry, interactions, collaboration)) {
+            server.start();
+            try (TestClient sidecar = TestClient.connect(socket);
+                 TestClient web = TestClient.connect(socket)) {
+                ObjectNode sidecarHello = object()
+                    .put("client", "cc-connect")
+                    .put("auth_token", "0123456789abcdef0123456789abcdef");
+                sidecarHello.putArray("collaboration_channels").add("feishu");
+                sidecar.send(request("h1", "link.hello", null, sidecarHello));
+                assertEquals("link.hello", sidecar.read().name());
+                assertEquals("session.activated", sidecar.read().name());
+
+                ObjectNode webHello = object()
+                    .put("client", "claude-web")
+                    .put("auth_token", "0123456789abcdef0123456789abcdef");
+                webHello.putArray("collaboration_channels");
+                web.send(request("h2", "link.hello", null, webHello));
+                assertEquals("link.hello", web.read().name());
+                assertEquals("session.activated", web.read().name());
+
+                assertEquals(List.of("feishu"), collaboration.availableChannels());
+
+                web.send(request("c1", "collaboration.set", "session-collab",
+                    object().put("channel", "feishu").put("enabled", true)));
+                SessionLinkFrame webEvt = web.read();
+                SessionLinkFrame webResp = Strings.CS.equals("collaboration.set", webEvt.name())
+                    ? webEvt : web.read();
+                assertEquals("collaboration.set", webResp.name());
+                assertTrue(webResp.payload().path("enabled").asBoolean());
+                assertEquals("feishu", webResp.payload().path("channel").asText());
+                assertEquals("feishu", collaboration.selection("session-collab").channel());
+
+                SessionLinkFrame sidecarEvt = sidecar.read();
+                assertEquals("collaboration.changed", sidecarEvt.name());
+                assertTrue(sidecarEvt.payload().path("enabled").asBoolean());
+                assertEquals("feishu", sidecarEvt.payload().path("channel").asText());
+                assertEquals("local", sidecarEvt.payload().path("origin").asText());
+
+                web.send(request("c2", "collaboration.get", "session-collab", object()));
+                SessionLinkFrame getResp = web.read();
+                assertEquals("collaboration.get", getResp.name());
+                assertTrue(getResp.payload().path("enabled").asBoolean());
+                assertEquals("feishu", getResp.payload().path("channel").asText());
+
+                web.send(request("c3", "collaboration.set", "session-collab",
+                    object().put("enabled", false)));
+                SessionLinkFrame disableEvt = web.read();
+                SessionLinkFrame disableResp = Strings.CS.equals("collaboration.set", disableEvt.name())
+                    ? disableEvt : web.read();
+                assertEquals("collaboration.set", disableResp.name());
+                assertFalse(disableResp.payload().path("enabled").asBoolean());
+                assertFalse(collaboration.selection("session-collab").enabled());
+            }
+        }
+    }
+
     private static final class TestClient implements AutoCloseable {
         private final SocketChannel channel;
         private final BufferedInputStream input;
