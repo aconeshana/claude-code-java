@@ -9,11 +9,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.net.StandardProtocolFamily;
+import java.net.StandardSocketOptions;
 import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
-import java.net.StandardProtocolFamily;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +40,7 @@ public final class SessionLinkClient implements AutoCloseable {
 
     private static final SessionLinkCodec CODEC = new SessionLinkCodec();
 
-    private final Path socketPath;
+    private final SessionLinkEndpoint endpoint;
     private final String token;
     private final Consumer<SessionLinkFrame> listener;
     private final Map<String, CompletableFuture<SessionLinkFrame>> pending = new ConcurrentHashMap<>();
@@ -46,20 +48,20 @@ public final class SessionLinkClient implements AutoCloseable {
     private volatile SocketChannel channel;
 
     public SessionLinkClient(Path socketPath, String token, Consumer<SessionLinkFrame> listener) {
-        this.socketPath = Objects.requireNonNull(socketPath, "socketPath");
+        this(new SessionLinkEndpoint.UnixDomain(Objects.requireNonNull(socketPath, "socketPath")),
+            token, listener);
+    }
+
+    public SessionLinkClient(
+            SessionLinkEndpoint endpoint, String token, Consumer<SessionLinkFrame> listener) {
+        this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.token = Objects.requireNonNull(token, "token");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
     /** Opens the socket and authenticates with {@code link.hello}. */
     public void connect() throws IOException {
-        SocketChannel opened = SocketChannel.open(StandardProtocolFamily.UNIX);
-        try {
-            opened.connect(UnixDomainSocketAddress.of(socketPath));
-        } catch (IOException failure) {
-            opened.close();
-            throw failure;
-        }
+        SocketChannel opened = openConnectedChannel(endpoint);
         channel = opened;
         Thread.ofVirtual().name("session-link-client-reader").start(() -> readLoop(opened));
         ObjectNode hello = JsonUtils.getMapper().createObjectNode();
@@ -77,6 +79,32 @@ public final class SessionLinkClient implements AutoCloseable {
             throw new IOException("session-link hello rejected: " + failure.getCause().getMessage(),
                 failure.getCause());
         }
+    }
+
+    private static SocketChannel openConnectedChannel(SessionLinkEndpoint endpoint) throws IOException {
+        return switch (endpoint) {
+            case SessionLinkEndpoint.UnixDomain(Path socketPath) -> {
+                SocketChannel opened = SocketChannel.open(StandardProtocolFamily.UNIX);
+                try {
+                    opened.connect(UnixDomainSocketAddress.of(socketPath));
+                    yield opened;
+                } catch (IOException failure) {
+                    opened.close();
+                    throw failure;
+                }
+            }
+            case SessionLinkEndpoint.TcpLoopback(InetSocketAddress address) -> {
+                SocketChannel opened = SocketChannel.open(StandardProtocolFamily.INET);
+                try {
+                    try { opened.setOption(StandardSocketOptions.TCP_NODELAY, true); } catch (IOException _) {}
+                    opened.connect(address);
+                    yield opened;
+                } catch (IOException failure) {
+                    opened.close();
+                    throw failure;
+                }
+            }
+        };
     }
 
     /**

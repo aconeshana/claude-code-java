@@ -3,6 +3,7 @@ package com.claudecode.gateway;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.sessionlink.SessionLinkClient;
+import com.claudecode.runtime.sessionlink.SessionLinkEndpoint;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -40,8 +41,12 @@ final class RemoteWorkerFeed implements AutoCloseable {
     private final Set<String> subscribed = ConcurrentHashMap.newKeySet();
 
     RemoteWorkerFeed(MirrorHub hub, Path socket, String token) {
+        this(hub, new SessionLinkEndpoint.UnixDomain(socket), token);
+    }
+
+    RemoteWorkerFeed(MirrorHub hub, SessionLinkEndpoint endpoint, String token) {
         this.hub = hub;
-        this.client = new SessionLinkClient(socket, token, this::onFrame);
+        this.client = new SessionLinkClient(endpoint, token, this::onFrame);
     }
 
     void start() throws IOException {

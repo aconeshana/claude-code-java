@@ -9,11 +9,11 @@ import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
+import com.claudecode.runtime.sessionlink.SessionLinkEndpoint;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -423,7 +423,13 @@ final class RemoteWorkerPool implements AutoCloseable {
     }
 
     private RemoteWorkerFeed connect(WebWorkerRegistration worker) {
-        RemoteWorkerFeed feed = new RemoteWorkerFeed(hub, Path.of(worker.socket()), worker.token());
+        SessionLinkEndpoint endpoint;
+        try {
+            endpoint = SessionLinkEndpoint.parse(worker.socket());
+        } catch (IllegalArgumentException _) {
+            return null;
+        }
+        RemoteWorkerFeed feed = new RemoteWorkerFeed(hub, endpoint, worker.token());
         try {
             feed.start();
             return feed;

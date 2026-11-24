@@ -1,14 +1,13 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionlink.OwnerOnlyPermissions;
 import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.Optional;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,12 +89,7 @@ record WebGatewayRecord(long pid, String url, String version, long startedAtMill
     }
 
     private static void restrict(Path path) {
-        try {
-            Files.setPosixFilePermissions(path,
-                Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
-        } catch (UnsupportedOperationException | IOException _) {
-            // Non-POSIX filesystems rely on the home directory's own ACL.
-        }
+        OwnerOnlyPermissions.restrictFile(path);
     }
 
     private static void deleteQuietly(Path file) {

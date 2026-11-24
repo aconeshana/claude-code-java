@@ -7,6 +7,8 @@ import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.sessionhost.*;
+import com.claudecode.runtime.sessionlink.OwnerOnlyPermissions;
+import com.claudecode.runtime.sessionlink.SessionLinkEndpoint;
 import com.claudecode.runtime.sessionlink.SessionLinkServer;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
@@ -20,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.*;
@@ -151,27 +152,26 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
         boolean sidecarConfigured = enabled();
         try {
             Path dir = Files.createTempDirectory("claude-code-session-host-");
-            restrict(dir, Set.of(PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+            OwnerOnlyPermissions.restrictDirectory(dir);
             runtimeDir = dir;
             Path privateSocketDir = createSocketDirectory();
             socketDir = privateSocketDir;
             Path socket = privateSocketDir.resolve("link.sock");
             String token = newAuthToken();
             SessionLinkServer createdServer = new SessionLinkServer(
-                new SessionLinkServer.Config(socket, token), registry, interactions,
+                SessionLinkServer.Config.adaptive(socket, token), registry, interactions,
                 collaboration);
             createdServer.start();
             server = createdServer;
-            registerWorker(socket, token);
+            SessionLinkEndpoint bound = createdServer.boundEndpoint();
+            registerWorker(bound, token);
 
             if (!sidecarConfigured) return;
 
             Path runtimeConfig = dir.resolve("cc-connect.toml");
             Files.copy(sourceConfig, runtimeConfig,
                 StandardCopyOption.REPLACE_EXISTING);
-            restrict(runtimeConfig, Set.of(PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE));
+            OwnerOnlyPermissions.restrictFile(runtimeConfig);
             Path executable = resolveExecutable(dir);
             Path logFile = dir.resolve("cc-connect.log");
             ProcessBuilder builder = new ProcessBuilder(
@@ -179,7 +179,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             builder.directory(Path.of(workDir).toFile());
             builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
             builder.redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-            builder.environment().put("CC_SESSION_LINK_ENDPOINT", "unix://" + socket);
+            builder.environment().put("CC_SESSION_LINK_ENDPOINT", bound.toSidecarUri());
             builder.environment().put("CC_SESSION_LINK_TOKEN", token);
             builder.environment().put("CC_SESSION_WORK_DIR", workDir);
             builder.environment().put("CC_CONNECT_API_SOCKET",
@@ -207,27 +207,36 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
      * because a discovery file could not be written would trade a missing web
      * view for a dead terminal.
      */
-    private void registerWorker(Path socket, String token) {
+    private void registerWorker(SessionLinkEndpoint endpoint, String token) {
         try {
             WebWorkerDirectory directory =
                 new WebWorkerDirectory(ClaudePaths.currentClaudeHome().resolve("web-workers"));
             workerRegistration = directory.register(new WebWorkerRegistration(
-                ProcessHandle.current().pid(), socket.toString(), token, workDir,
+                ProcessHandle.current().pid(), endpoint.toRegistrationString(), token, workDir,
                 VersionInfo.version()));
         } catch (IOException | RuntimeException failure) {
             log.warn("Could not publish this session to claude web: {}", failure.toString());
         }
     }
 
-    /** Creates a private short path that remains below macOS' Unix socket limit. */
+    /** Creates a private short path that remains below macOS/Windows Unix socket path limits. */
     static Path createSocketDirectory() throws IOException {
-        Path shortTempRoot = Path.of("/tmp");
-        if (!Files.isDirectory(shortTempRoot)) {
-            shortTempRoot = Path.of(System.getProperty("java.io.tmpdir"));
+        return createSocketDirectory(ClaudePaths.currentClaudeHome());
+    }
+
+    static Path createSocketDirectory(Path claudeHome) throws IOException {
+        Path unixShortRoot = Path.of("/tmp");
+        Path baseRoot;
+        if (Files.isDirectory(unixShortRoot)) {
+            baseRoot = unixShortRoot;
+        } else {
+            Path homeShort = claudeHome.resolve("r");
+            Files.createDirectories(homeShort);
+            OwnerOnlyPermissions.restrictDirectory(homeShort);
+            baseRoot = homeShort;
         }
-        Path dir = Files.createTempDirectory(shortTempRoot, "ccsh-");
-        restrict(dir, Set.of(PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+        Path dir = Files.createTempDirectory(baseRoot, "ccsh-");
+        OwnerOnlyPermissions.restrictDirectory(dir);
         return dir;
     }
 
@@ -247,8 +256,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             Path executable = dir.resolve(
                 Strings.CS.endsWith(resource, ".exe") ? "cc-connect.exe" : "cc-connect");
             Files.copy(input, executable, StandardCopyOption.REPLACE_EXISTING);
-            restrict(executable, Set.of(PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+            OwnerOnlyPermissions.restrictExecutable(executable);
             return executable;
         }
     }
@@ -325,8 +333,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
                 toml(projectName), toml(workDir));
         Files.writeString(config, body, StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-        restrict(config, Set.of(PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE));
+        OwnerOnlyPermissions.restrictFile(config);
     }
 
     static List<String> setupCommand(Path executable, Path config, Path credentialEnv,
@@ -361,8 +368,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
                     writeStarterConfig(config, project, workDir);
                 }
                 Path setupDir = Files.createTempDirectory("claude-code-feishu-setup-");
-                restrict(setupDir, Set.of(PosixFilePermission.OWNER_READ,
-                    PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+                OwnerOnlyPermissions.restrictDirectory(setupDir);
                 Path executable = resolveExecutable(setupDir);
                 ProcessBuilder builder = new ProcessBuilder(setupCommand(executable, config,
                     credentialEnv, project, request.mode()));
@@ -523,15 +529,6 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             return path.toRealPath();
         } catch (IOException failure) {
             throw new IllegalArgumentException("Cannot resolve " + label + ": " + raw, failure);
-        }
-    }
-
-    private static void restrict(Path path, Set<PosixFilePermission> permissions) {
-        try {
-            Files.setPosixFilePermissions(path, permissions);
-        } catch (UnsupportedOperationException | IOException _) {
-            // Windows has no POSIX permission view; its per-user temp directory
-            // remains the applicable file-system boundary.
         }
     }
 

@@ -41,7 +41,10 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.StandardProtocolFamily;
+import java.net.StandardSocketOptions;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
@@ -49,7 +52,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
 import java.time.Duration;
@@ -82,22 +84,61 @@ public final class SessionLinkServer implements AutoCloseable {
     private static final Duration RESPONSE_WRITE_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration SESSION_END_ACK_TIMEOUT = Duration.ofSeconds(8);
 
+    @FunctionalInterface
+    interface UnixChannelOpener {
+        ServerSocketChannel open() throws IOException;
+    }
+
     /** Immutable server configuration; inline token never leaves the Java process. */
-    public record Config(Path socketPath, String authToken, int maxFrameBytes) {
+    public record Config(
+            SessionLinkEndpoint endpoint,
+            String authToken,
+            int maxFrameBytes,
+            boolean fallbackToTcpLoopback) {
         public Config(Path socketPath, String authToken) {
             this(socketPath, authToken, SessionLinkCodec.DEFAULT_MAX_FRAME_BYTES);
         }
 
+        public Config(Path socketPath, String authToken, int maxFrameBytes) {
+            this(new SessionLinkEndpoint.UnixDomain(socketPath), authToken, maxFrameBytes, false);
+        }
+
+        /**
+         * Prefers a local Unix domain socket and transparently falls back to an ephemeral
+         * {@code 127.0.0.1:0} loopback socket when {@code AF_UNIX} is unsupported or the
+         * socket path exceeds the 108-byte platform {@code sun_path} limit (common on Windows).
+         */
+        public static Config adaptive(Path preferredSocketPath, String authToken) {
+            return new Config(
+                new SessionLinkEndpoint.UnixDomain(preferredSocketPath),
+                authToken,
+                SessionLinkCodec.DEFAULT_MAX_FRAME_BYTES,
+                true);
+        }
+
+        /** Binds directly to an ephemeral {@code 127.0.0.1:0} loopback TCP port. */
+        public static Config tcpLoopback(String authToken) {
+            return new Config(
+                SessionLinkEndpoint.TcpLoopback.ephemeral(),
+                authToken,
+                SessionLinkCodec.DEFAULT_MAX_FRAME_BYTES,
+                false);
+        }
+
         public Config {
-            Objects.requireNonNull(socketPath, "socketPath");
+            Objects.requireNonNull(endpoint, "endpoint");
             Objects.requireNonNull(authToken, "authToken");
-            if (!socketPath.isAbsolute()) {
-                throw new IllegalArgumentException("Session Link socket path must be absolute");
-            }
             if (authToken.length() < 32 || authToken.length() > 4096) {
                 throw new IllegalArgumentException(
                     "Session Link auth token must contain 32-4096 characters");
             }
+            if (maxFrameBytes <= 0) {
+                throw new IllegalArgumentException("maxFrameBytes must be positive");
+            }
+        }
+
+        public Path socketPath() {
+            return endpoint instanceof SessionLinkEndpoint.UnixDomain(Path path) ? path : null;
         }
     }
 
@@ -107,12 +148,14 @@ public final class SessionLinkServer implements AutoCloseable {
     private final SessionCollaborationController collaboration;
     private final SessionHostSubmissionLedger submissionLedger;
     private final SessionLinkCodec codec;
+    private final UnixChannelOpener unixOpener;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final CopyOnWriteArrayList<Connection> connections = new CopyOnWriteArrayList<>();
     private final Map<String, PendingSessionEndAck> sessionEndAcks = new ConcurrentHashMap<>();
     private final List<AutoCloseable> interactionRegistrations = new ArrayList<>();
     private volatile ServerSocketChannel server;
+    private volatile SessionLinkEndpoint boundEndpoint;
 
     private record PendingSessionEndAck(String sessionId, CompletableFuture<Void> acknowledged) {}
 
@@ -226,10 +269,21 @@ public final class SessionLinkServer implements AutoCloseable {
             SessionHostRegistry sessions,
             InteractionCoordinator interactions,
             SessionCollaborationController collaboration) {
+        this(config, sessions, interactions, collaboration,
+            () -> ServerSocketChannel.open(StandardProtocolFamily.UNIX));
+    }
+
+    SessionLinkServer(
+            Config config,
+            SessionHostRegistry sessions,
+            InteractionCoordinator interactions,
+            SessionCollaborationController collaboration,
+            UnixChannelOpener unixOpener) {
         this.config = Objects.requireNonNull(config, "config");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.interactions = Objects.requireNonNull(interactions, "interactions");
         this.collaboration = Objects.requireNonNull(collaboration, "collaboration");
+        this.unixOpener = Objects.requireNonNull(unixOpener, "unixOpener");
         this.submissionLedger = new SessionHostSubmissionLedger();
         this.codec = new SessionLinkCodec(config.maxFrameBytes());
         interactionRegistrations.add(interactions.register(
@@ -242,29 +296,93 @@ public final class SessionLinkServer implements AutoCloseable {
             InteractionFeatures.SUDO_PASSWORD, new RemoteSudoPasswordPresenter()));
     }
 
+    /** Returns the live bound endpoint ({@code UnixDomain} or resolved {@code TcpLoopback}). */
+    public SessionLinkEndpoint boundEndpoint() {
+        SessionLinkEndpoint active = boundEndpoint;
+        if (active == null) {
+            throw new IllegalStateException("Session Link server has not been started");
+        }
+        return active;
+    }
+
     /** Binds the socket and starts a virtual-thread accept loop. */
     public void start() throws IOException {
         if (!started.compareAndSet(false, true)) return;
         if (closed.get()) throw new IllegalStateException("Session Link server is closed");
-        Path parent = config.socketPath().getParent();
+        switch (config.endpoint()) {
+            case SessionLinkEndpoint.UnixDomain unix -> startUnixOrFallback(unix);
+            case SessionLinkEndpoint.TcpLoopback tcp -> bindTcpLoopback(tcp);
+        }
+        Thread.ofVirtual().name("session-link-accept").start(this::acceptLoop);
+    }
+
+    private void startUnixOrFallback(SessionLinkEndpoint.UnixDomain unix) throws IOException {
+        Path socketPath = unix.path();
+        if (config.fallbackToTcpLoopback() && !unix.withinPathLimit()) {
+            log.debug("Session Link path exceeds {} UTF-8 bytes ({}); falling back to 127.0.0.1 loopback",
+                SessionLinkEndpoint.MAX_UNIX_SOCKET_PATH_BYTES, socketPath);
+            bindTcpLoopback(SessionLinkEndpoint.TcpLoopback.ephemeral());
+            return;
+        }
+        Path parent = socketPath.getParent();
         if (parent != null) Files.createDirectories(parent);
-        Files.deleteIfExists(config.socketPath());
-        ServerSocketChannel created = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
         try {
-            created.bind(UnixDomainSocketAddress.of(config.socketPath()));
-            restrictSocketPermissions(config.socketPath());
+            Files.deleteIfExists(socketPath);
+        } catch (IOException failure) {
+            if (!config.fallbackToTcpLoopback()) throw failure;
+            log.debug("Could not clear stale Session Link socket {}; falling back to 127.0.0.1 loopback",
+                socketPath, failure);
+            bindTcpLoopback(SessionLinkEndpoint.TcpLoopback.ephemeral());
+            return;
+        }
+        ServerSocketChannel created = null;
+        try {
+            created = unixOpener.open();
+            created.bind(UnixDomainSocketAddress.of(socketPath));
+            OwnerOnlyPermissions.restrictFile(socketPath);
+            server = created;
+            boundEndpoint = unix;
+        } catch (UnsupportedOperationException | IOException failure) {
+            if (created != null) {
+                try { created.close(); } catch (IOException _) {}
+            }
+            try { Files.deleteIfExists(socketPath); } catch (IOException _) {}
+            if (!config.fallbackToTcpLoopback()) {
+                if (failure instanceof IOException ioFailure) throw ioFailure;
+                throw new IOException("Unix domain sockets are not supported on this platform", failure);
+            }
+            log.debug("AF_UNIX Session Link unavailable ({}); falling back to 127.0.0.1 loopback",
+                failure.toString());
+            bindTcpLoopback(SessionLinkEndpoint.TcpLoopback.ephemeral());
+        }
+    }
+
+    private void bindTcpLoopback(SessionLinkEndpoint.TcpLoopback requested) throws IOException {
+        ServerSocketChannel created = ServerSocketChannel.open(StandardProtocolFamily.INET);
+        try {
+            try {
+                created.setOption(StandardSocketOptions.SO_REUSEADDR, false);
+            } catch (UnsupportedOperationException | IOException _) {
+                // Best effort; ephemeral loopback port 0 avoids collisions regardless.
+            }
+            created.bind(requested.address());
+            InetSocketAddress local = (InetSocketAddress) created.getLocalAddress();
+            server = created;
+            boundEndpoint = new SessionLinkEndpoint.TcpLoopback(local);
         } catch (IOException failure) {
             created.close();
             throw failure;
         }
-        server = created;
-        Thread.ofVirtual().name("session-link-accept").start(this::acceptLoop);
     }
 
     private void acceptLoop() {
         while (!closed.get()) {
             try {
                 SocketChannel socket = server.accept();
+                if (!verifyLoopbackPeerIfTcp(socket)) {
+                    try { socket.close(); } catch (IOException _) {}
+                    continue;
+                }
                 Connection connection = new Connection(socket);
                 connections.add(connection);
                 Thread.ofVirtual().name("session-link-client").start(connection::run);
@@ -273,6 +391,22 @@ public final class SessionLinkServer implements AutoCloseable {
                 return;
             }
         }
+    }
+
+    private boolean verifyLoopbackPeerIfTcp(SocketChannel socket) {
+        if (!(boundEndpoint instanceof SessionLinkEndpoint.TcpLoopback)) return true;
+        try {
+            SocketAddress remote = socket.getRemoteAddress();
+            if (remote instanceof InetSocketAddress inet
+                    && inet.getAddress() != null
+                    && inet.getAddress().isLoopbackAddress()) {
+                try { socket.setOption(StandardSocketOptions.TCP_NODELAY, true); } catch (IOException _) {}
+                return true;
+            }
+        } catch (IOException _) {
+            return false;
+        }
+        return false;
     }
 
     @Override
@@ -286,7 +420,9 @@ public final class SessionLinkServer implements AutoCloseable {
         connections.clear();
         for (AutoCloseable registration : interactionRegistrations) closeQuietly(registration);
         interactionRegistrations.clear();
-        try { Files.deleteIfExists(config.socketPath()); } catch (IOException _) {}
+        if (boundEndpoint instanceof SessionLinkEndpoint.UnixDomain(Path socketPath)) {
+            try { Files.deleteIfExists(socketPath); } catch (IOException _) {}
+        }
     }
 
     private final class Connection implements AutoCloseable {
@@ -1199,16 +1335,5 @@ public final class SessionLinkServer implements AutoCloseable {
     private static void closeQuietly(AutoCloseable closeable) {
         if (closeable == null) return;
         try { closeable.close(); } catch (Exception _) {}
-    }
-
-    private static void restrictSocketPermissions(Path socket) {
-        try {
-            Files.setPosixFilePermissions(socket, Set.of(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE));
-        } catch (UnsupportedOperationException | IOException _) {
-            // Unix-domain sockets are only used on local Unix-like platforms;
-            // POSIX mode support can still be absent on an unusual filesystem.
-        }
     }
 }

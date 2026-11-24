@@ -143,3 +143,4 @@ test task.
 - [Prompt cache tiers — @CacheTier & scenario model keys](docs/prompt-cache-tiers.md)
 - [Brand & theme assets](docs/brand-assets.md)
 - [Session Host & IM integration](docs/session-host-im.md)
+- [Web UI & TUI decoupled gateway architecture](docs/web-gateway-architecture.md)

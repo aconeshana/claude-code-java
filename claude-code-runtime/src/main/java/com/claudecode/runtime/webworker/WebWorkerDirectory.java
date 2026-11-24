@@ -2,6 +2,8 @@ package com.claudecode.runtime.webworker;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.sessionlink.OwnerOnlyPermissions;
+import com.claudecode.runtime.sessionlink.SessionLinkEndpoint;
 import java.io.IOException;
 
 import org.apache.commons.lang3.StringUtils;
@@ -10,12 +12,10 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,7 +113,9 @@ public final class WebWorkerDirectory {
             boolean usable = registration.pid() > 0
                 && registration.socket() != null && !StringUtils.isBlank(registration.socket())
                 && registration.token() != null && !StringUtils.isBlank(registration.token());
-            return usable ? Optional.of(registration) : Optional.empty();
+            if (!usable) return Optional.empty();
+            SessionLinkEndpoint.parse(registration.socket());
+            return Optional.of(registration);
         } catch (IOException | RuntimeException failure) {
             log.debug("Ignoring unreadable web worker registration {}", file, failure);
             return Optional.empty();
@@ -137,25 +139,11 @@ public final class WebWorkerDirectory {
     }
 
     private static void restrictDirectory(Path path) {
-        restrict(path, Set.of(PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+        OwnerOnlyPermissions.restrictDirectory(path);
     }
 
     private static void restrictFile(Path path) {
-        restrict(path, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
-    }
-
-    /**
-     * Applies POSIX permissions where the filesystem supports them. A non-POSIX
-     * filesystem (Windows) must not make registration fail — the directory still
-     * lives under the user's home, which is the platform's own ACL boundary.
-     */
-    private static void restrict(Path path, Set<PosixFilePermission> permissions) {
-        try {
-            Files.setPosixFilePermissions(path, permissions);
-        } catch (UnsupportedOperationException | IOException _) {
-            // Best effort; see the method contract.
-        }
+        OwnerOnlyPermissions.restrictFile(path);
     }
 
     private static void deleteQuietly(Path file) {
