@@ -36,8 +36,10 @@ import { TodoPanel } from './views/todo/TodoPanel'
 import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
 import { openShellInRightDock, openSubagentInRightDock } from './store/rightSidebar'
+import { toast } from './store/toast'
 import { RightPanel } from './views/RightPanel'
 import { RightPanelToggle } from './views/RightPanelToggle'
+import { ToastHost } from './views/ToastHost'
 import { ContextView } from './views/context/ContextView'
 import { SubagentCatalogMenu } from '@vendor/ui-subagent/SubagentCatalogMenu.tsx'
 
@@ -140,6 +142,7 @@ export function App() {
     }
     void run().catch((failure: unknown) => {
       console.error('turn submission failed', failure)
+      toast.error(failure instanceof Error ? `发送失败：${failure.message}` : '消息发送失败')
     })
   }, [selectedId])
 
@@ -413,6 +416,7 @@ export function App() {
         onClose={() => { setContextModalOpen(false) }}
       />
       <ContextDashboard />
+      <ToastHost />
     </AppFrame>
   )
 }

@@ -46,6 +46,13 @@ final class CliWorkspaceFileReader {
                 return rootOf.apply(sessionId)
                     .flatMap(root -> GatewayWorkspaceFiles.list(root, dir));
             }
+
+            @Override
+            public boolean openInHost(String sessionId, String path, boolean reveal) {
+                return rootOf.apply(sessionId)
+                    .map(root -> GatewayWorkspaceFiles.openInHost(root, path, reveal))
+                    .orElse(false);
+            }
         };
     }
 

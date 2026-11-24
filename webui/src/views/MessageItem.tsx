@@ -15,6 +15,7 @@ import type { MarkdownLabels } from '@vendor/ui-primitives/markdown/MarkdownText
 import css from '@chat-styles/MessageItem.module.css'
 import actionCss from '@chat-styles/MessageIconActions.module.css'
 import { forkSession, submitTurn } from '../api/client'
+import { toast } from '../store/toast'
 import type { MessageState } from '../store/conversations'
 import { useTranscriptView } from '../store/transcriptView'
 import { useTranslate } from '../i18n/useTranslate'
@@ -134,6 +135,9 @@ function UserItem({
     try {
       await submitTurn(addressedSessionId, trimmed)
       setEditing(false)
+      toast.success('已重新发送编辑后的消息')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? `发送失败：${err.message}` : '发送失败')
     } finally {
       setSending(false)
     }
@@ -361,6 +365,10 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
                         .then(async (res) => {
                           await useSessions.getState().refresh()
                           if (res.session_id) await useSessions.getState().select(res.session_id)
+                          toast.success('已创建分支会话并切换')
+                        })
+                        .catch((err: unknown) => {
+                          toast.error(err instanceof Error ? `分支创建失败：${err.message}` : '分支创建失败')
                         })
                         .finally(() => { setForking(false) })
                     }}

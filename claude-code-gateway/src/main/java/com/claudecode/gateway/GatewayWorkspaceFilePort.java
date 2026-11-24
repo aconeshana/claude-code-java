@@ -38,6 +38,19 @@ public interface GatewayWorkspaceFilePort {
     }
 
     /**
+     * Opens or reveals a workspace file in the local desktop host's default application
+     * or file manager, enforcing workspace containment.
+     *
+     * @param sessionId the session to resolve, or {@code null} for the active one
+     * @param path      workspace-relative or absolute path inside the workspace
+     * @param reveal    {@code true} to reveal in the OS file manager, {@code false} to open in default app
+     * @return {@code true} if the file resolved inside the workspace and the OS launcher started
+     */
+    default boolean openInHost(String sessionId, String path, boolean reveal) {
+        return false;
+    }
+
+    /**
      * One entry inside a workspace directory listing.
      *
      * @param name      base entry name

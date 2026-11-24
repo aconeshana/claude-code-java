@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Reads one file out of one workspace root, in the shape the file-preview tab
@@ -120,6 +121,44 @@ public final class GatewayWorkspaceFiles {
             return Optional.of(content(path, target));
         } catch (IOException | InvalidPathException _) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Opens or reveals {@code path} inside {@code root} using the host desktop launcher.
+     * Refuses any path that escapes {@code root} after symlink resolution.
+     */
+    public static boolean openInHost(Path root, String path, boolean reveal) {
+        if (StringUtils.isBlank(path)) {
+            return false;
+        }
+        try {
+            Path realRoot = root.toRealPath();
+            Path target = realRoot.resolve(path).normalize().toRealPath();
+            if (!target.startsWith(realRoot) || !Files.exists(target)) {
+                return false;
+            }
+            String os = System.getProperty("os.name", "");
+            ProcessBuilder pb;
+            if (Strings.CI.contains(os, "mac")) {
+                pb = reveal
+                    ? new ProcessBuilder("/usr/bin/open", "-R", target.toString())
+                    : new ProcessBuilder("/usr/bin/open", target.toString());
+            } else if (Strings.CI.contains(os, "win")) {
+                pb = reveal
+                    ? new ProcessBuilder("explorer.exe", "/select," + target)
+                    : new ProcessBuilder("cmd.exe", "/c", "start", "", target.toString());
+            } else {
+                Path toOpen = reveal && Files.isRegularFile(target) && target.getParent() != null
+                    ? target.getParent()
+                    : target;
+                pb = new ProcessBuilder("xdg-open", toOpen.toString());
+            }
+            pb.redirectErrorStream(true);
+            pb.start();
+            return true;
+        } catch (IOException | InvalidPathException _) {
+            return false;
         }
     }
 

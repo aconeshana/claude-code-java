@@ -1,7 +1,7 @@
 /**
- * Dedup/collapse logic for one assistant message's produced-file chip row —
- * the pure function `DeliverablesRow.tsx` renders. Dedup is by exact path
- * string, keeping first-occurrence order across the message's tool calls.
+ * Dedup/collapse logic for one assistant message's produced-file list.
+ * Dedup is by exact path string, keeping first-occurrence order across
+ * the message's tool calls.
  */
 
 export interface DeliverablesSummary {
@@ -11,9 +11,9 @@ export interface DeliverablesSummary {
 
 const CHIP_LIMIT = 6
 
-export function collectDeliverables(
+export function collectAllDeliverables(
   toolCalls: readonly { readonly locations: readonly string[] | null }[],
-): DeliverablesSummary {
+): readonly string[] {
   const seen = new Set<string>()
   const ordered: string[] = []
   for (const call of toolCalls) {
@@ -23,6 +23,13 @@ export function collectDeliverables(
       ordered.push(path)
     }
   }
+  return ordered
+}
+
+export function collectDeliverables(
+  toolCalls: readonly { readonly locations: readonly string[] | null }[],
+): DeliverablesSummary {
+  const ordered = collectAllDeliverables(toolCalls)
   return {
     shown: ordered.slice(0, CHIP_LIMIT),
     overflow: Math.max(0, ordered.length - CHIP_LIMIT),

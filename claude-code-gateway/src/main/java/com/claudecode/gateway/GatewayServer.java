@@ -1163,6 +1163,11 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> workspaceFileApi.handleList(exchange));
             return;
         }
+        if (post && Strings.CS.equals("/api/workspace-open", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> workspaceFileApi.handleOpen(exchange));
+            return;
+        }
         if ((get || post) && Strings.CS.equals("/api/models", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
@@ -34,7 +34,16 @@ import {
 } from './composerQueue'
 import { useEnterBehavior } from '../store/enterBehavior'
 import { AtTriggerPlugin } from './AtTriggerPlugin'
-import { formatMention, type AtToken } from './atReference'
+import {
+  buildMultiSourceAtCandidates,
+  formatAgentMention,
+  formatMention,
+  formatSessionMention,
+  type AtAgentCandidateInput,
+  type AtSessionCandidateInput,
+  type AtToken,
+} from './atReference'
+import { useSessionAgents } from '../store/contextTimeline'
 import { SlashTriggerPlugin } from './SlashTriggerPlugin'
 import {
   activeCommandHint,
@@ -395,65 +404,124 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
    * fetches its candidates; a null token closes it. Re-opening the same
    * token+query must not re-issue the fetch, so the effect keys on both.
    */
+  const { agents: sessionAgents } = useSessionAgents(sessionId ?? null)
+
+  const atSessionInputs = useMemo<readonly AtSessionCandidateInput[]>(() => {
+    const out: AtSessionCandidateInput[] = []
+    for (const proj of catalogProjects) {
+      for (const s of proj.sessions) {
+        if (s.id === sessionId) continue
+        out.push({
+          id: s.id,
+          title: s.custom_title || s.summary || s.first_prompt || s.id.slice(0, 8),
+          projectName: proj.project_name || proj.project_path.split('/').filter(Boolean).at(-1),
+        })
+      }
+    }
+    return out
+  }, [catalogProjects, sessionId])
+
+  const atAgentInputs = useMemo<readonly AtAgentCandidateInput[]>(() => {
+    if (sessionAgents == null) return []
+    return sessionAgents.map((a) => ({
+      id: a.agentId ?? a.id,
+      label: a.description || a.type || (a.agentId ?? a.id),
+      description: a.type ?? '子智能体',
+      type: a.type,
+    }))
+  }, [sessionAgents])
+
+  const multiAt = useMemo(
+    () => buildMultiSourceAtCandidates(atToken?.query ?? '', {
+      files: fileFiles,
+      sessions: atSessionInputs,
+      agents: atAgentInputs,
+    }),
+    [atToken?.query, fileFiles, atSessionInputs, atAgentInputs],
+  )
+
   useEffect(() => {
     if (atToken == null) {
       setFileMenu((current) => menuReduce(current, { type: 'close' }))
       return
     }
     closeMenu()
+    const lowerQ = atToken.query.trim().toLowerCase()
+    const skipFileFetch = lowerQ.startsWith('session:') || lowerQ.startsWith('agent:')
     setFileMenu((current) => {
       const hit = menuReduce(current, { type: 'hit' })
-      if (hit.groups.some((group) => group.source === 'file')) return hit
-      return {
-        ...hit,
-        groups: [...hit.groups, { source: 'file', status: 'pending' as const, items: [] }],
-      }
+      const ensureGroup = (groups: typeof hit.groups, source: string, status: 'pending' | 'ready') =>
+        groups.some((g) => g.source === source) ? groups : [...groups, { source, status, items: [] }]
+      let groups = ensureGroup(hit.groups, 'file', skipFileFetch ? 'ready' : 'pending')
+      groups = ensureGroup(groups, 'session', 'ready')
+      groups = ensureGroup(groups, 'agent', 'ready')
+      return { ...hit, groups }
     })
-    void searchFiles(atToken.query)
+    if (!skipFileFetch) {
+      void searchFiles(atToken.query)
+    }
   }, [atToken, searchFiles, closeMenu])
 
-  // Mirror the store's rows onto the menu's single 'file' group — but only
-  // once it has actually answered *this* token's query. Settling on the
-  // store's initial empty state would trip the reducer's all-ready-empty
-  // auto-close before the fetch returned, so the menu would vanish the
-  // instant it opened and the settled rows would then be dropped by the
-  // reducer's own `if (!state.open) return state` guard.
   useEffect(() => {
     if (atToken == null) return
-    if (filePending || fileQuery !== atToken.query) return
-    setFileMenu((current) => menuReduce(current, {
-      type: 'source-settled',
-      generation: current.generation,
-      source: 'file',
-      items: fileCandidates(fileFiles),
-    }))
-  }, [fileFiles, filePending, fileQuery, atToken])
+    const lowerQ = atToken.query.trim().toLowerCase()
+    const skipFileFetch = lowerQ.startsWith('session:') || lowerQ.startsWith('agent:')
+    setFileMenu((current) => {
+      let next = menuReduce(current, {
+        type: 'source-settled',
+        generation: current.generation,
+        source: 'session',
+        items: multiAt.sessions.map((s) => ({
+          name: s.title,
+          alias: `session:${s.id.slice(0, 8)}`,
+          description: s.projectName ?? '历史会话',
+          value: 'session',
+        })),
+      })
+      next = menuReduce(next, {
+        type: 'source-settled',
+        generation: next.generation,
+        source: 'agent',
+        items: multiAt.agents.map((a) => ({
+          name: a.label,
+          alias: `agent:${a.id}`,
+          description: a.description ?? '智能体',
+          value: 'agent',
+        })),
+      })
+      if (skipFileFetch || (!filePending && fileQuery === atToken.query)) {
+        next = menuReduce(next, {
+          type: 'source-settled',
+          generation: next.generation,
+          source: 'file',
+          items: fileCandidates(multiAt.files),
+        })
+      }
+      return next
+    })
+  }, [multiAt, filePending, fileQuery, atToken])
 
-  /**
-   * A candidate pick. Two verbs, matching upstream's file-reference source:
-   *
-   * <ul>
-   *   <li>{@code settle} (row click or Enter) replaces the live `@` token with
-   *       the mention and closes the menu. The inserted text is the exact wire
-   *       form the backend's AtMentionedFilesProvider parses, so the model
-   *       receives the file. A settling pick on a directory is the same kind
-   *       of mention — trailing slash and all — and a directory resolves to no
-   *       attachment, which is what makes it a container rather than content.
-   *   <li>{@code drill} (Tab) rewrites the token to the directory's path and
-   *       leaves the menu open, so the caret sits at the trailing slash and
-   *       the next level loads as the query. That is the only way to reach a
-   *       nested path without retyping it.
-   * </ul>
-   */
-  const pickFile = useCallback((index: number, action: 'settle' | 'drill'): void => {
-    const candidate = fileFiles[index]
-    if (candidate === undefined || atToken == null) return
-    const mention = formatMention(candidate.path)
+  const pickAtCandidate = useCallback((source: string, index: number, action: 'settle' | 'drill'): void => {
+    if (atToken == null) return
+    let mention: string | null = null
+    let drilling = false
+    if (source === 'file') {
+      const candidate = multiAt.files[index]
+      if (candidate === undefined) return
+      mention = formatMention(candidate.path)
+      drilling = action === 'drill' && candidate.directory
+    } else if (source === 'session') {
+      const candidate = multiAt.sessions[index]
+      if (candidate === undefined) return
+      mention = formatSessionMention(candidate.id)
+    } else if (source === 'agent') {
+      const candidate = multiAt.agents[index]
+      if (candidate === undefined) return
+      mention = formatAgentMention(candidate.id)
+    }
+    if (mention === null) return
     const editor = editorRef.current
     if (editor == null) return
-    const drilling = action === 'drill' && candidate.directory
-    // A drill keeps the token live (no trailing space, so `activeAtToken` still
-    // sees it and the menu re-queries); a settle closes it.
     const inserted = drilling ? mention : mention + ' '
     editor.update(() => {
       const root = $getRoot()
@@ -469,10 +537,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     setFileMenu((current) => menuReduce(current, { type: 'close' }))
     resetFiles()
     setAtToken(null)
-  }, [fileFiles, atToken, resetFiles])
+  }, [multiAt, atToken, resetFiles])
 
-  const hoverFile = useCallback((index: number): void => {
-    setFileMenu((current) => menuReduce(current, { type: 'hover', source: 'file', index }))
+  const hoverFile = useCallback((source: string, index: number): void => {
+    setFileMenu((current) => menuReduce(current, { type: 'hover', source, index }))
   }, [])
 
   /** Jump back up to a parent directory prefix from the `@` menu breadcrumb. */
@@ -512,22 +580,19 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     }
     if (event.key === 'Enter' && fileMenu.highlight !== null) {
       event.preventDefault()
-      pickFile(fileMenu.highlight.index, 'settle')
+      pickAtCandidate(fileMenu.highlight.source, fileMenu.highlight.index, 'settle')
       return true
     }
-    // Tab is the drill verb: on a directory it keeps the menu open one level
-    // deeper. On a file (or with no highlight) it passes through, so native
-    // focus traversal still works.
-    if (event.key === 'Tab' && fileMenu.highlight !== null) {
-      const candidate = fileFiles[fileMenu.highlight.index]
+    if (event.key === 'Tab' && fileMenu.highlight !== null && fileMenu.highlight.source === 'file') {
+      const candidate = multiAt.files[fileMenu.highlight.index]
       if (candidate?.directory === true) {
         event.preventDefault()
-        pickFile(fileMenu.highlight.index, 'drill')
+        pickAtCandidate('file', fileMenu.highlight.index, 'drill')
         return true
       }
     }
     return false
-  }, [fileMenu.open, fileMenu.highlight, pickFile, fileFiles])
+  }, [fileMenu.open, fileMenu.highlight, pickAtCandidate, multiAt.files])
 
   /** Inserts text at the draft head over the Lexical root, keeping focus. */
   const insertAtDraftHead = (text: string): void => {
@@ -646,19 +711,20 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
         />
         <ComposerMenu
           state={fileMenu}
-          onPick={(_source, index) => pickFile(index, 'settle')}
-          onDrill={(_source, index) => pickFile(index, 'drill')}
+          onPick={(source, index) => pickAtCandidate(source, index, 'settle')}
+          onDrill={(source, index) => pickAtCandidate(source, index, 'drill')}
           breadcrumb={fileBreadcrumbSegments.length > 0
             ? { segments: fileBreadcrumbSegments, onNavigate: navigateAtDirectory }
             : undefined}
-          onHover={(_source, index) => hoverFile(index)}
+          onHover={(source, index) => hoverFile(source, index)}
           onDismiss={() => {
             setFileMenu((current) => menuReduce(current, { type: 'close' }))
             resetFiles()
           }}
-          groupTitle={() => '文件'}
-          loadingLabel="正在查找文件…"
-          listboxLabel="文件候选建议"
+          groupTitle={(source) =>
+            source === 'session' ? '历史会话' : source === 'agent' ? '智能体专家' : '文件'}
+          loadingLabel="正在查找上下文引用…"
+          listboxLabel="上下文引用候选建议"
         />
         {attachmentError != null && (
           <div className={css.notice} role="alert">{attachmentError}</div>

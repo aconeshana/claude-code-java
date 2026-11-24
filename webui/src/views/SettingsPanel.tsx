@@ -18,6 +18,7 @@ import { useModels } from '../store/models'
 import { useSchedule } from '../store/schedule'
 import { useSessions } from '../store/sessions'
 import { useComposerCommands } from '../store/commands'
+import { toast } from '../store/toast'
 import css from '@chat-styles/SettingsRoot.module.css'
 import sectionCss from '@chat-styles/GeneralSection.module.css'
 import rowCss from '@chat-styles/PermissionRow.module.css'
@@ -427,9 +428,15 @@ function KeepaliveRow() {
         disabled={busy || !supported}
         onChange={(next) => {
           setBusy(true)
-          void setKeepaliveEnabled(next).then((res) => {
-            setState(res)
-          }).finally(() => { setBusy(false) })
+          void setKeepaliveEnabled(next)
+            .then((res) => {
+              setState(res)
+              toast.success(res.enabled ? '已开启防休眠保活模式' : '已关闭防休眠保活模式')
+            })
+            .catch((err: unknown) => {
+              toast.error(err instanceof Error ? `保活模式切换失败：${err.message}` : '保活模式切换失败')
+            })
+            .finally(() => { setBusy(false) })
         }}
         label={t('keepalive.title')}
       />
@@ -448,12 +455,14 @@ function RestartRuntimeRow({ onReloadAll }: { onReloadAll: () => void }) {
     setNotice(null)
     try {
       const res = await restartGatewayRuntime()
-      setNotice(
-        t('restart.done')
-          .replace('{tasks}', String(res.reloaded_tasks))
-          .replace('{models}', String(res.reloaded_models)),
-      )
+      const msg = t('restart.done')
+        .replace('{tasks}', String(res.reloaded_tasks))
+        .replace('{models}', String(res.reloaded_models))
+      setNotice(msg)
+      toast.success(msg)
       onReloadAll()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? `运行时重载失败：${err.message}` : '运行时重载失败')
     } finally {
       setBusy(false)
     }

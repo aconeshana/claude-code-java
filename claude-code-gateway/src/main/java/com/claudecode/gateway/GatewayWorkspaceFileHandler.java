@@ -1,11 +1,13 @@
 package com.claudecode.gateway;
 
 import static com.claudecode.gateway.GatewayRequests.queryParam;
+import static com.claudecode.gateway.GatewayRequests.readJson;
 import static com.claudecode.gateway.GatewayRequests.sessionIdOf;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
@@ -68,6 +70,30 @@ final class GatewayWorkspaceFileHandler {
             row.put("directory", entry.directory());
             row.put("size", entry.size());
         }
+        respondJson(exchange, 200, body);
+    }
+
+    void handleOpen(HttpExchange exchange) throws IOException {
+        JsonNode req = readJson(exchange);
+        if (req == null) return;
+        String path = StringUtils.trimToEmpty(req.path("path").asText(""));
+        if (path.isEmpty()) {
+            respondJson(exchange, 400, errorBody("invalid_request", "path is required"));
+            return;
+        }
+        String sessionId = StringUtils.trimToNull(req.path("session_id").asText(""));
+        if (sessionId == null) {
+            sessionId = sessionIdOf(exchange);
+        }
+        boolean reveal = req.path("reveal").asBoolean(false);
+        if (!files.openInHost(sessionId, path, reveal)) {
+            respondJson(exchange, 404, errorBody("not_found", "cannot open file at " + path));
+            return;
+        }
+        ObjectNode body = JsonUtils.getMapper().createObjectNode();
+        body.put("opened", true);
+        body.put("path", path);
+        body.put("reveal", reveal);
         respondJson(exchange, 200, body);
     }
 }

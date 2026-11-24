@@ -378,6 +378,22 @@ export function fetchWorkspaceTree(
 }
 
 /**
+ * POST /api/workspace-open: opens or reveals a workspace-contained file using
+ * the local host desktop launcher (`open` / `open -R` on macOS, `xdg-open` on Linux).
+ */
+export function openWorkspaceFileInHost(
+  sessionId: string | null | undefined,
+  path: string,
+  reveal = false,
+): Promise<{ readonly opened: boolean; readonly path: string; readonly reveal: boolean }> {
+  return requestJson('POST', '/api/workspace-open', {
+    ...(sessionId != null && sessionId !== '' ? { session_id: sessionId } : {}),
+    path,
+    reveal,
+  })
+}
+
+/**
  * DELETE /api/schedule/{id}: removes one scheduled task; 404 when absent.
  */
 export function removeScheduleTask(id: string): Promise<{ removed: boolean }> {

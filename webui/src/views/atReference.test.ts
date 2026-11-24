@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { activeAtToken, formatMention } from './atReference'
+import {
+  activeAtToken,
+  buildMultiSourceAtCandidates,
+  formatAgentMention,
+  formatMention,
+  formatSessionMention,
+  parseAtReferences,
+  type AtAgentCandidateInput,
+  type AtSessionCandidateInput,
+} from './atReference'
 
 /**
  * The backend's `AtMentionedFilesProvider.MENTION` pattern, transcribed so
@@ -100,5 +109,89 @@ describe('mention round-trip through the provider grammar', () => {
   it('resolves two mentions with spaces on one line', () => {
     const draft = `${formatMention('a b.txt')} then ${formatMention('c/d e.txt')}`
     expect(providerPaths(draft)).toEqual(['a b.txt', 'c/d e.txt'])
+  })
+})
+
+describe('multi-source @ references (files, sessions, agents, multi-token)', () => {
+  const sampleFiles = [
+    { path: 'src/App.tsx', directory: false },
+    { path: 'src/views/', directory: true },
+    { path: 'docs/architecture.md', directory: false },
+  ]
+  const sampleSessions: readonly AtSessionCandidateInput[] = [
+    { id: '4c4ae7ba-85f8-462a', title: '自动签到与多账号隔离', projectName: 'tilapia' },
+    { id: 'c3dca3b5-1111-2222', title: 'diff 视图无法查看源文件问题', projectName: 'claude-code-java' },
+  ]
+  const sampleAgents: readonly AtAgentCandidateInput[] = [
+    { id: 'a13b3868', label: 'Codebase Researcher', description: '分析 gateway 路由', type: 'explore' },
+  ]
+
+  it('formats and round-trips @session and @agent mentions', () => {
+    expect(formatSessionMention('4c4ae7ba-85f8-462a')).toBe('@session:4c4ae7ba-85f8-462a')
+    expect(formatAgentMention('explore')).toBe('@agent:explore')
+    expect(formatAgentMention('code reviewer')).toBe('@agent:code\\ reviewer')
+  })
+
+  it('parses multiple mixed @file, @session, and @agent references in one prompt', () => {
+    const prompt = [
+      '请结合',
+      formatMention('src/App.tsx'),
+      '和',
+      formatSessionMention('4c4ae7ba-85f8-462a'),
+      '让',
+      formatAgentMention('explore'),
+      '再检查',
+      formatMention('docs/my guide.md'),
+    ].join(' ')
+    expect(parseAtReferences(prompt)).toEqual([
+      { kind: 'file', target: 'src/App.tsx', raw: '@src/App.tsx' },
+      { kind: 'session', target: '4c4ae7ba-85f8-462a', raw: '@session:4c4ae7ba-85f8-462a' },
+      { kind: 'agent', target: 'explore', raw: '@agent:explore' },
+      { kind: 'file', target: 'docs/my guide.md', raw: '@docs/my\\ guide.md' },
+    ])
+  })
+
+  it('detects active @ token for 2nd and 3rd mentions in the same draft', () => {
+    const draft = '对比 @src/App.tsx 和 @session:4c4ae7ba 再叫 @agent:exp'
+    expect(activeAtToken(draft, draft.length)).toEqual({
+      start: draft.lastIndexOf('@'),
+      end: draft.length,
+      query: 'agent:exp',
+    })
+  })
+
+  it('returns candidates across files, sessions, and agents on bare @ query', () => {
+    const grouped = buildMultiSourceAtCandidates('', {
+      files: sampleFiles,
+      sessions: sampleSessions,
+      agents: sampleAgents,
+    })
+    expect(grouped.files.length).toBe(3)
+    expect(grouped.sessions.length).toBe(2)
+    // Includes both live subagent and built-in agent experts
+    expect(grouped.agents.some((a) => a.id === 'a13b3868')).toBe(true)
+    expect(grouped.agents.some((a) => a.id === 'explore')).toBe(true)
+  })
+
+  it('scopes to sessions only when query uses session: prefix', () => {
+    const grouped = buildMultiSourceAtCandidates('session:tilapia', {
+      files: sampleFiles,
+      sessions: sampleSessions,
+      agents: sampleAgents,
+    })
+    expect(grouped.files).toEqual([])
+    expect(grouped.agents).toEqual([])
+    expect(grouped.sessions.map((s) => s.id)).toEqual(['4c4ae7ba-85f8-462a'])
+  })
+
+  it('scopes to agents only when query uses agent: prefix', () => {
+    const grouped = buildMultiSourceAtCandidates('agent:research', {
+      files: sampleFiles,
+      sessions: sampleSessions,
+      agents: sampleAgents,
+    })
+    expect(grouped.files).toEqual([])
+    expect(grouped.sessions).toEqual([])
+    expect(grouped.agents.map((a) => a.id)).toEqual(['a13b3868'])
   })
 })
