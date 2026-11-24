@@ -36,15 +36,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -88,9 +91,9 @@ class ThreeWayCollaborationSyncTest {
             sessionId, tempDir.toString(), "Three-Way Sync Demo", 0, Instant.now(), "main");
         SessionHostSession tuiSession = new SessionHostSession(info, eventHub, submission -> {
             receivedPrompts.add(submission.prompt());
-            eventHub.onTurnStart(UserInput.of(submission.prompt(), submission.prompt(), java.util.Map.of(), ""));
+            eventHub.onTurnStart(UserInput.of(submission.prompt(), submission.prompt(), Map.of(), ""));
             eventHub.onMessage(assistantText("Echo[" + submission.prompt() + "]"));
-            eventHub.onTurnComplete(new TurnOutcome(true, false, 10L, "", java.util.Map.of(), ""));
+            eventHub.onTurnComplete(new TurnOutcome(true, false, 10L, "", Map.of(), ""));
             return CompletableFuture.completedFuture(null);
         });
 
@@ -264,8 +267,8 @@ class ThreeWayCollaborationSyncTest {
                 }
             }
         } finally {
-            try { java.nio.file.Files.deleteIfExists(linkSocket); } catch (Exception _) {}
-            try { java.nio.file.Files.deleteIfExists(socketDir); } catch (Exception _) {}
+            try { Files.deleteIfExists(linkSocket); } catch (Exception _) {}
+            try { Files.deleteIfExists(socketDir); } catch (Exception _) {}
         }
     }
 
@@ -285,7 +288,7 @@ class ThreeWayCollaborationSyncTest {
 
     private static void readSse(HttpClient http, String baseUrl, BlockingQueue<String> sink) {
         try {
-            HttpResponse<java.io.InputStream> resp = http.send(
+            HttpResponse<InputStream> resp = http.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "/api/events?token=" + WEB_TOKEN))
                     .GET().build(),
                 HttpResponse.BodyHandlers.ofInputStream());

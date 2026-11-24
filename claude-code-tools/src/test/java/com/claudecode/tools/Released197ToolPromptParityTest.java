@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class Released197ToolPromptParityTest {
 
     private static final Map<String, Expected> EXPECTED = Map.ofEntries(
-        Map.entry("Agent", new Expected(5454, "df27a31e487ee8d87853984a4e16c4d0288dd25f37aed06c442d45f69f72ae3d")),
+        Map.entry("Agent", new Expected(5443, "a3223be1a85ebc1b9a1ec0b642eb282c273c60a9c6bc5bf8fb9c45394ad7a3bb")),
         Map.entry("AskUserQuestion", new Expected(842, "0545e1c2b9986916808b78ad0b684e86e16f72dbb3a9556a1648fc17514c3c2d")),
-        Map.entry("Bash", new Expected(10397, "f72edbeacb251a40cdf380c9a447d2a1ef8204d6fa7e511d864a9292381097c3")),
+        Map.entry("Bash", new Expected(10169, "cb4ec7a170fcdf8e8774076f8b82b9cd29fb6392b9c2d2c8ce8d3bf6dceaf137")),
         Map.entry("Edit", new Expected(1094, "f907faa95966fdc0ad02fd6c3c69d70d7ada8e9dae2d17d45c7213fb81600e71")),
         Map.entry("EnterPlanMode", new Expected(4030, "5254ed460574cc4edda53c0b2e8cb252dc225fe30ace446a17c9f40ea67564bb")),
         Map.entry("EnterWorktree", new Expected(3031, "d76c37ab7c68f95a9301a200ed7680edf81c26af756c3e08ce628c0b09633c74")),

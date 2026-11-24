@@ -287,7 +287,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
             sourceConfig = config;
             notifyChanged();
             return new SetupResult(true, "feishu", "Feishu collaboration is ready");
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             notifyChanged();
             return new SetupResult(false, "", "Feishu setup was interrupted");

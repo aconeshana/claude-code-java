@@ -24,6 +24,7 @@ import com.claudecode.session.SessionManager;
 import com.claudecode.tools.AnnotatedTool;
 import com.claudecode.tools.BuiltInTool;
 import com.claudecode.tools.ToolTexts;
+import com.claudecode.tools.files.RipGrepUtil;
 import com.claudecode.tools.hints.ClaudeCodeHint;
 import com.claudecode.tools.hints.ClaudeCodeHintStore;
 import com.claudecode.tools.hints.ClaudeCodeHints;
@@ -517,6 +518,7 @@ public class BashTool extends AnnotatedTool<JsonNode, Object> {
         List<String> argv = resolveCommandLine(executableCommand, bareGitCwd, decision, sandboxConfig);
         ProcessBuilder pb = new ProcessBuilder(argv);
         SubprocessEnvironment.applyTo(pb.environment());
+        RipGrepUtil.ensureInPath(pb.environment());
         if (Platform.IS_WINDOWS) {
             pb.environment().put("SHELL", ExecutableFinder.bashExecutable());
         }

@@ -7,6 +7,7 @@ import com.claudecode.core.engine.ToolExecutionContext.ProgressUpdate;
 import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.core.queue.QueuePriority;
 import com.claudecode.core.queue.QueuedCommand;
+import com.claudecode.tools.files.RipGrepUtil;
 import com.claudecode.tools.sandbox.NoopSandboxBackend;
 import com.claudecode.tools.sandbox.SandboxManager;
 import com.claudecode.core.text.StringUtils;
@@ -230,6 +231,7 @@ public class LocalShellTask {
             : resolveCommandLine(command, cwd, sandboxManager, sandboxDecision, sandboxConfig);
         ProcessBuilder pb = new ProcessBuilder(argv);
         SubprocessEnvironment.applyTo(pb.environment());
+        RipGrepUtil.ensureInPath(pb.environment());
         if (Platform.IS_WINDOWS) {
             pb.environment().put("SHELL", ExecutableFinder.bashExecutable());
         }

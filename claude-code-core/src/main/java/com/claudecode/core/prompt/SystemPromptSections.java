@@ -278,7 +278,13 @@ public final class SystemPromptSections {
         List<String> lines = new ArrayList<>();
         lines.add("# Using your tools");
         if (enabledTools.contains("Bash")) {
-            lines.add(" - Prefer dedicated tools over Bash when one fits (Read, Edit, Write) — reserve Bash for shell-only operations.");
+            boolean hasDedicatedSearchTools = enabledTools.contains(GLOB_TOOL_NAME)
+                && enabledTools.contains(GREP_TOOL_NAME);
+            String dedicatedTools = hasDedicatedSearchTools
+                ? "Read, Edit, Write, Glob, Grep"
+                : "Read, Edit, Write";
+            lines.add(" - Prefer dedicated tools over Bash when one fits (" + dedicatedTools
+                + ") — reserve Bash for shell-only operations.");
         } else {
 
             // absent from --tools, even on darwin and even when PowerShell is

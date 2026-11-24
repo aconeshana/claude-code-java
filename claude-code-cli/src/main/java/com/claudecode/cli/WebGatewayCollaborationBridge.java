@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -194,7 +195,7 @@ final class WebGatewayCollaborationBridge implements CollaborationSetupPort {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
                     .build();
-                HttpResponse<java.io.InputStream> response =
+                HttpResponse<InputStream> response =
                     http.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
                     String errBody = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);

@@ -150,6 +150,15 @@ class SystemPrompt197ParityTest {
             SystemPromptSections.getReleased197UsingYourToolsSection(
                 Set.of("Bash", "TaskCreate")));
 
+        String usingToolsWithSearch = """
+            # Using your tools
+             - Prefer dedicated tools over Bash when one fits (Read, Edit, Write, Glob, Grep) — reserve Bash for shell-only operations.
+             - Use TaskCreate to plan and track work. Mark each task completed as soon as it's done; don't batch.
+             - You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.""";
+        assertEquals(usingToolsWithSearch,
+            SystemPromptSections.getReleased197UsingYourToolsSection(
+                Set.of("Bash", "Glob", "Grep", "TaskCreate")));
+
         String withoutBash = """
             # Using your tools
              - Prefer dedicated tools over PowerShell when one fits (Read, Edit, Write, Glob, Grep) — reserve PowerShell for shell-only operations.

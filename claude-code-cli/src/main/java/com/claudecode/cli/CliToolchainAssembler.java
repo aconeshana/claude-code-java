@@ -442,16 +442,6 @@ final class CliToolchainAssembler {
             SettingsEditor.writeUserValue("statusLine", statusLine);
         }));
 
-        // Released 2.1.197 omits the dedicated Glob/Grep tools from its default
-        // preset. Explicit allow/deny rules and --tools rebuild the selectable
-        // catalogue before applying their filters, so retain the search tools
-        // for all three explicit paths.
-        boolean explicitToolSelection = CliToolSelection.hasExplicitToolSelection(
-            permissionOptions.allowedTools(), permissionOptions.disallowedTools(),
-            permissionOptions.baseTools());
-        if (!explicitToolSelection) {
-            toolRegistry.unregisterMatching(Set.of("Glob", "Grep")::contains);
-        }
         applyCliToolFiltering(workspace, toolRegistry, permissionGate);
 
         // filtering. A schema makes it a protocol requirement, not a

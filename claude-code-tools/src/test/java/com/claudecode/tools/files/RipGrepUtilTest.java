@@ -10,9 +10,12 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -125,6 +128,23 @@ class RipGrepUtilTest {
         } finally {
             RipGrepUtil.clearAvailabilityCache();
         }
+    }
+
+    @Test
+    void ensureInPathAppendsBundledDirectoryWithoutDuplicating() {
+        Assumptions.assumeTrue(RipGrepUtil.isAvailable());
+        String cmd = RipGrepUtil.ripgrepCommand();
+        Assumptions.assumeFalse(Strings.CS.equals("rg", cmd));
+        String expectedDir = Path.of(cmd).getParent().toAbsolutePath().toString();
+
+        Map<String, String> env = new HashMap<>();
+        env.put("PATH", "/usr/bin:/bin");
+        RipGrepUtil.ensureInPath(env);
+        assertEquals("/usr/bin:/bin" + File.pathSeparator + expectedDir, env.get("PATH"));
+
+        // Second call must be idempotent
+        RipGrepUtil.ensureInPath(env);
+        assertEquals("/usr/bin:/bin" + File.pathSeparator + expectedDir, env.get("PATH"));
     }
 
     /** Forces {@link RipGrepUtil#isAvailable} to return false (matches GrepToolTest helper). */

@@ -6,7 +6,7 @@ When using the Agent tool, specify a subagent_type parameter to select which age
 
 ## When not to use
 
-If the target is already known, use the direct tool: Read for a known path, `grep` via the Bash tool for a specific symbol or string. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
+If the target is already known, use the direct tool: Read for a known path, the Grep tool for a specific symbol or string. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
 
 ## Usage notes
 

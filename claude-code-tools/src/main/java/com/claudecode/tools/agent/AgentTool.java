@@ -105,7 +105,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
 
     /** Default tools available to sub-agents when none specified. */
     public static final List<String> DEFAULT_SAFE_TOOLS = List.of(
-        "Bash", "FileRead", "FileWrite", "FileEdit", "GlobTool", "GrepTool"
+        "Bash", "Read", "Write", "Edit", "Glob", "Grep"
     );
 
     /**

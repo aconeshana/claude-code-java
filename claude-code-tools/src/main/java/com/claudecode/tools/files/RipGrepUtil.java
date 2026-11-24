@@ -10,6 +10,7 @@ import com.claudecode.core.engine.FileReadIgnorePattern;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.process.SubprocessEnvironment;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -22,10 +23,12 @@ import java.nio.file.PathMatcher;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -210,6 +213,39 @@ public final class RipGrepUtil {
         RipgrepMode mode = Strings.CS.equals("rg", command) ? RipgrepMode.SYSTEM : RipgrepMode.BUILTIN;
         return new RipgrepStatus(isAvailable(), mode,
             mode == RipgrepMode.SYSTEM ? command : null);
+    }
+
+    /**
+     * Appends the bundled {@code rg} directory to {@code PATH} in the given child environment
+     * if bundled ripgrep is extracted and not already present on {@code PATH}.
+     */
+    public static void ensureInPath(Map<String, String> environment) {
+        if (environment == null) return;
+        String command = ripgrepCommand();
+        if (Strings.CS.equals("rg", command) || StringUtils.isBlank(command)) return;
+        Path rgPath = Path.of(command);
+        Path dir = rgPath.getParent();
+        if (dir == null || !Files.isRegularFile(rgPath)) return;
+        String dirStr = dir.toAbsolutePath().toString();
+        String pathKey = "PATH";
+        for (String key : environment.keySet()) {
+            if (Strings.CI.equals("PATH", key)) {
+                pathKey = key;
+                break;
+            }
+        }
+        String existing = environment.get(pathKey);
+        if (StringUtils.isBlank(existing)) {
+            environment.put(pathKey, dirStr);
+            return;
+        }
+        String sep = File.pathSeparator;
+        for (String entry : existing.split(Pattern.quote(sep))) {
+            if (Strings.CS.equals(dirStr, entry)) {
+                return;
+            }
+        }
+        environment.put(pathKey, existing + sep + dirStr);
     }
 
     /** Clears the cached availability result (e.g. for tests). */
