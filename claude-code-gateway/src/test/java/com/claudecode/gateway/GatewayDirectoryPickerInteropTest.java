@@ -9,6 +9,8 @@ import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -75,7 +77,7 @@ class GatewayDirectoryPickerInteropTest {
 
         Request req = new Request.Builder()
             .url("http://127.0.0.1:" + server.port() + "/api/directories?path="
-                + java.net.URLEncoder.encode(tempRoot.toString(), java.nio.charset.StandardCharsets.UTF_8))
+                + URLEncoder.encode(tempRoot.toString(), StandardCharsets.UTF_8))
             .header("Authorization", "Bearer " + TOKEN)
             .get()
             .build();

@@ -22,6 +22,7 @@ import com.claudecode.tools.tasks.TaskStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -149,10 +150,10 @@ class HeadlessConcurrencyAndParityTest {
 
                 PermissionAskContext ctx1 = new PermissionAskContext(
                     "Bash", JsonUtils.getMapper().createObjectNode().put("command", "echo one"),
-                    "tu-1", null, null, null, null, null, null, null, null, null, java.util.List.of(), null);
+                    "tu-1", null, null, null, null, null, null, null, null, null, List.of(), null);
                 PermissionAskContext ctx2 = new PermissionAskContext(
                     "Bash", JsonUtils.getMapper().createObjectNode().put("command", "echo two"),
-                    "tu-2", null, null, null, null, null, null, null, null, null, java.util.List.of(), null);
+                    "tu-2", null, null, null, null, null, null, null, null, null, List.of(), null);
 
                 CompletableFuture<PermissionAskCallback.Result> res1 =
                     CompletableFuture.supplyAsync(() -> cb1.ask(ctx1));

@@ -586,10 +586,6 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             : new SessionManager(workingDirectory);
     }
 
-    private Path sidechainTranscriptPath(String agentId, String transcriptSubdir) {
-        return sidechainTranscriptPath(agentId, transcriptSubdir, null);
-    }
-
     private Path sidechainTranscriptPath(String agentId, String transcriptSubdir,
                                          String parentSessionId) {
         String effectiveSessionId = sidechainSessionId(parentSessionId);

@@ -2,6 +2,7 @@ package com.claudecode.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
@@ -11,6 +12,8 @@ import com.claudecode.runtime.sessionlink.SessionLinkCodec;
 import com.claudecode.runtime.sessionlink.SessionLinkFrame;
 import com.claudecode.runtime.turn.SessionEventHub;
 import com.claudecode.runtime.turn.SessionSink;
+import com.claudecode.runtime.turn.TurnOutcome;
+import com.claudecode.runtime.turn.UserInput;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -120,7 +124,7 @@ class SessionOwnershipMatrixInteropTest {
                     SocketChannel peer = workerServer.accept();
                     workerPeer = peer;
                     Thread.ofVirtual().start(() -> serveWorkerPeer(peer, sessionId, workDir));
-                } catch (IOException ignored) {
+                } catch (IOException _) {
                     break;
                 }
             }
@@ -153,7 +157,7 @@ class SessionOwnershipMatrixInteropTest {
                         req.id(), req.name(), null, JsonUtils.getMapper().createObjectNode()));
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException _) {
             // Socket closed on teardown or M6 worker exit.
         }
     }
@@ -380,7 +384,7 @@ class SessionOwnershipMatrixInteropTest {
     private static void deleteRecursively(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) return;
         try (var stream = Files.walk(dir)) {
-            for (Path p : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+            for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(p);
             }
         }
@@ -436,10 +440,10 @@ class SessionOwnershipMatrixInteropTest {
     }
 
     private static final class NoopSink implements SessionSink {
-        @Override public void onTurnStart(com.claudecode.runtime.turn.UserInput input) {}
-        @Override public void onMessage(com.claudecode.core.message.SDKMessage msg) {}
+        @Override public void onTurnStart(UserInput input) {}
+        @Override public void onMessage(SDKMessage msg) {}
         @Override public void onError(Throwable error, boolean userCancel) {}
-        @Override public void onTurnComplete(com.claudecode.runtime.turn.TurnOutcome outcome) {}
+        @Override public void onTurnComplete(TurnOutcome outcome) {}
         @Override public void onIdle() {}
     }
 }

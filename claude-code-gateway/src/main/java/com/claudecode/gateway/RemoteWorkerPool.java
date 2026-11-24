@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -224,7 +225,7 @@ final class RemoteWorkerPool implements AutoCloseable {
                 active == null ? "" : active.id(),
                 active == null ? "" : active.summary()));
         }
-        result.sort((a, b) -> Long.compare(a.pid(), b.pid()));
+        result.sort(Comparator.comparingLong(GatewayCcConnectPort.LiveWorker::pid));
         return List.copyOf(result);
     }
 

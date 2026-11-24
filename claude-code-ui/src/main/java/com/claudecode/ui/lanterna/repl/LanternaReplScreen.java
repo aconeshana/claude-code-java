@@ -88,11 +88,13 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1376,7 +1378,7 @@ public class LanternaReplScreen implements SlashHost {
         @Override public void openCollaborationPicker() {
             if (collaborationPickerDialog == null
                     || inputPanel == null) return;
-            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+            LinkedHashSet<String> merged = new LinkedHashSet<>();
             if (collaborationController != null) {
                 merged.addAll(collaborationController.availableChannels());
             }
@@ -1442,7 +1444,7 @@ public class LanternaReplScreen implements SlashHost {
                 gui.getGUIThread().invokeLater(() -> {
                     if (inputPanel == null) return;
                     if (failure != null) {
-                        Throwable cause = failure instanceof java.util.concurrent.CompletionException
+                        Throwable cause = failure instanceof CompletionException
                             && failure.getCause() != null ? failure.getCause() : failure;
                         String message = StringUtils.isNotBlank(cause.getMessage())
                             ? cause.getMessage() : "Failed to start collaboration";
@@ -1461,7 +1463,7 @@ public class LanternaReplScreen implements SlashHost {
                 gui.getGUIThread().invokeLater(() -> {
                     if (inputPanel == null) return;
                     if (failure != null) {
-                        Throwable cause = failure instanceof java.util.concurrent.CompletionException
+                        Throwable cause = failure instanceof CompletionException
                             && failure.getCause() != null ? failure.getCause() : failure;
                         String message = StringUtils.isNotBlank(cause.getMessage())
                             ? cause.getMessage() : "Failed to stop collaboration";

@@ -63,7 +63,7 @@ final class GatewayDirectoryPickerHandler {
         } else {
             try {
                 target = expandTilde(rawPath.trim(), home).toAbsolutePath().normalize();
-            } catch (InvalidPathException failure) {
+            } catch (InvalidPathException _) {
                 respondJson(exchange, 400, errorBody("invalid_path",
                     "Invalid directory path: " + rawPath));
                 return;
@@ -87,7 +87,7 @@ final class GatewayDirectoryPickerHandler {
                 if (!Files.isDirectory(entry)) continue;
                 children.add(entry);
             }
-        } catch (IOException failure) {
+        } catch (IOException _) {
             respondJson(exchange, 403, errorBody("unreadable_directory",
                 "Cannot read directory: " + target));
             return;
@@ -137,7 +137,7 @@ final class GatewayDirectoryPickerHandler {
                 return;
             }
             req = JsonUtils.getMapper().readTree(bytes);
-        } catch (IOException failure) {
+        } catch (IOException _) {
             respondJson(exchange, 400, errorBody("invalid_json", "invalid JSON request body"));
             return;
         }
@@ -168,7 +168,7 @@ final class GatewayDirectoryPickerHandler {
         try {
             parent = expandTilde(parentRaw.trim(), home).toAbsolutePath().normalize();
             created = parent.resolve(name).normalize();
-        } catch (InvalidPathException failure) {
+        } catch (InvalidPathException _) {
             respondJson(exchange, 400, errorBody("invalid_path", "Invalid path: " + parentRaw));
             return;
         }
@@ -184,7 +184,7 @@ final class GatewayDirectoryPickerHandler {
         }
         try {
             Files.createDirectory(created);
-        } catch (FileAlreadyExistsException failure) {
+        } catch (FileAlreadyExistsException _) {
             respondJson(exchange, 409, errorBody("already_exists",
                 "Folder already exists: " + name));
             return;
@@ -241,7 +241,7 @@ final class GatewayDirectoryPickerHandler {
     private static boolean isHiddenSafe(Path path) {
         try {
             return Files.isHidden(path);
-        } catch (IOException ignored) {
+        } catch (IOException _) {
             return false;
         }
     }
