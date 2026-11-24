@@ -13,6 +13,8 @@ import com.claudecode.core.state.CwdState;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
 import com.claudecode.permissions.ToolPermissionContext;
+import com.claudecode.runtime.interaction.InteractionCoordinator;
+import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.runtime.query.QuerySessionSpec;
@@ -71,6 +73,13 @@ final class CliHeadlessSessionFactory {
     private static final Logger log =
         System.getLogger(CliHeadlessSessionFactory.class.getName());
 
+    /** Binds the active headless session id while raising a permission/question ask. */
+    static final ScopedValue<String> CURRENT_SESSION_ID = ScopedValue.newInstance();
+
+    static String currentSessionIdOrEmpty() {
+        return CURRENT_SESSION_ID.isBound() ? CURRENT_SESSION_ID.get() : "";
+    }
+
     private final StreamingClient client;
     private final ToolRegistry toolRegistry;
     private final QuerySessionFactory querySessionFactory;
@@ -79,6 +88,7 @@ final class CliHeadlessSessionFactory {
     private final String mainCwd;
     private final CustomModelCatalog customModels;
     private final boolean showBuiltInModelFamilies;
+    private final InteractionCoordinator interactions;
 
     CliHeadlessSessionFactory(
             StreamingClient client,
@@ -89,6 +99,20 @@ final class CliHeadlessSessionFactory {
             String mainCwd,
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies) {
+        this(client, toolRegistry, querySessionFactory, sharedGate, resolvedModel,
+            mainCwd, customModels, showBuiltInModelFamilies, null);
+    }
+
+    CliHeadlessSessionFactory(
+            StreamingClient client,
+            ToolRegistry toolRegistry,
+            QuerySessionFactory querySessionFactory,
+            PermissionGate sharedGate,
+            String resolvedModel,
+            String mainCwd,
+            CustomModelCatalog customModels,
+            boolean showBuiltInModelFamilies,
+            InteractionCoordinator interactions) {
         this.client = client;
         this.toolRegistry = toolRegistry;
         this.querySessionFactory = querySessionFactory;
@@ -97,6 +121,7 @@ final class CliHeadlessSessionFactory {
         this.mainCwd = mainCwd;
         this.customModels = customModels;
         this.showBuiltInModelFamilies = showBuiltInModelFamilies;
+        this.interactions = interactions;
     }
 
     /** One assembled headless session: the host record plus its engine. */
@@ -167,12 +192,22 @@ final class CliHeadlessSessionFactory {
         // exactly one session/start row.
         engine.execution().setTranscriptSink(recorder);
 
+        PermissionGate gate = gateFor(projectPath);
+        if (interactions != null) {
+            engine.execution().setPermissionAskCallback(context -> {
+                var feature = Strings.CS.equals("AskUserQuestion", context.toolName())
+                    ? InteractionFeatures.USER_QUESTION
+                    : InteractionFeatures.PERMISSION;
+                return ScopedValue.where(CURRENT_SESSION_ID, sessionId)
+                    .call(() -> interactions.request(feature, context));
+            });
+        }
         SessionHostInfo info = new SessionHostInfo(
             sessionId, projectPath, "", 0, Instant.now(), "");
         HeadlessTurnDriver driver = new HeadlessTurnDriver(engine, events,
             file -> RemoteAttachmentStore.persist(projectPath, sessionId,
-                submissionMessageId(file), file).toString());
-        PermissionGate gate = gateFor(projectPath);
+                submissionMessageId(file), file).toString(),
+            () -> gate.currentMode().external());
         SessionHostSession host = new SessionHostSession(
             info, events, driver::submit,
             new SessionHostModelController() {
@@ -288,25 +323,26 @@ final class CliHeadlessSessionFactory {
             ? "remote" : file.fileName();
     }
 
-    /** The permission gate for a headless session in {@code projectPath}. */
+    /**
+     * Dedicated permission gate for one headless session in {@code projectPath}.
+     *
+     * <p>Every parallel headless session receives its own {@link PermissionGate}
+     * instance so switching permission mode in Session A (e.g. {@code plan} or
+     * {@code acceptEdits}) never mutates concurrent Session B in the same workspace.
+     */
     PermissionGate gateFor(String projectPath) {
-        // Cross-project sessions need their own gate: the shared gate's
-        // working-directory checks would fall every other-project path to ASK,
-        // and a headless session has no UI to answer with. The gate matches
-        // the main gate's construction (CliToolchainAssembler.createPermissionGate)
-        // with only the cwd/settings roots swapped to this session's project.
-        Path path = Path.of(projectPath);
-        if (path.toAbsolutePath().normalize()
-                .equals(Path.of(mainCwd).toAbsolutePath().normalize())) {
-            return sharedGate;
-        }
-        Path cwdPath = path.toAbsolutePath().normalize();
-        return new PermissionGate(
+        Path cwdPath = Path.of(projectPath).toAbsolutePath().normalize();
+        PermissionGate gate = new PermissionGate(
             ToolPermissionContext.builder()
                 .workingDirectory(cwdPath)
                 .pathContext(CliToolchainAssembler.newPermissionPathContext(
                     cwdPath, settingsRootFor(cwdPath)))
                 .build());
+        if (sharedGate != null) {
+            gate.setMode(sharedGate.currentMode());
+            gate.setBypassPermissionsModeAvailable(sharedGate.isBypassPermissionsModeAvailable());
+        }
+        return gate;
     }
 
     private static Path settingsRootFor(Path cwdPath) {

@@ -60,6 +60,8 @@ export interface SessionsStore {
   select(sessionId: string): Promise<void>
   /** `select` for a deliberate choice in this client; stops following the TUI. */
   selectByUser(sessionId: string): Promise<void>
+  /** Returns to the Hero home page with no session selected. */
+  clearSelection(): void
   selectActiveOrFirst(): Promise<void>
   applyFrame(frame: MirrorFrame): void
   openSession(sessionId: string, projectPath: string | null): Promise<void>
@@ -78,7 +80,7 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   activity: {},
   selectedSessionId: null,
   perPage: null,
-  followActive: true,
+  followActive: false,
 
   async refresh() {
     set({ loading: true })
@@ -142,6 +144,10 @@ export const useSessions = create<SessionsStore>((set, get) => ({
   async selectByUser(sessionId: string) {
     set({ followActive: false })
     await get().select(sessionId)
+  },
+
+  clearSelection() {
+    set({ selectedSessionId: null, followActive: false })
   },
 
   async selectActiveOrFirst() {

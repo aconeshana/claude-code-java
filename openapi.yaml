@@ -920,6 +920,51 @@ paths:
             application/json:
               schema: { type: object }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/directories:
+    get:
+      tags: [Workspace]
+      summary: List subdirectories of a host path for the workspace directory browser
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Target directory path (defaults to the host user home directory).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Directory listing with crumbs, home path, and child directory entries
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { description: Invalid path or not a directory }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Directory does not exist }
+    post:
+      tags: [Workspace]
+      summary: Create a new child folder under an existing host directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, name]
+              properties:
+                path: { type: string }
+                name: { type: string }
+      responses:
+        '201':
+          description: Folder created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+        '400': { description: Invalid folder name or path }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Parent directory does not exist }
+        '409': { description: Folder already exists }
   /api/file-suggestions:
     get:
       tags: [Commands]
@@ -1493,6 +1538,13 @@ components:
         remote:
           type: boolean
           description: True when a remote worker process registered this session
+        tui_attached:
+          type: boolean
+          description: True when an online TUI worker process currently owns this session
+        tui_pid:
+          type: integer
+          format: int64
+          description: Process ID of the owning online TUI worker when tui_attached is true
         headless_open:
           type: boolean
           description: True when routable right now via metadata.session_id without an open round-trip
@@ -1523,7 +1575,18 @@ components:
           description: True when the session was restored from the on-disk transcript
         headless:
           type: boolean
-          description: Always true for gateway-opened sessions
+          description: True when hosted in-process as a headless session; false when attached to an online TUI worker
+        owner:
+          type: string
+          enum: [tui, headless]
+          description: Current owner of the session (online TUI worker or Web Daemon headless engine)
+        tui_attached:
+          type: boolean
+          description: True when attached to an online TUI worker
+        tui_pid:
+          type: integer
+          format: int64
+          description: Process ID of the owning TUI worker when owner is tui
     MessageSnapshot:
       type: object
       description: The authoritative current message list of one session (snapshot-first)

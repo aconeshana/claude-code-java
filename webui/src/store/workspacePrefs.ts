@@ -8,6 +8,8 @@ export type SidebarViewMode = 'grouped' | 'flat'
 interface PersistedWorkspacePrefs {
   viewMode: SidebarViewMode
   pinnedSessionIds: string[]
+  addedWorkspaces: string[]
+  activeHeroWorkspace: string | null
 }
 
 export interface PinnedSessionEntry {
@@ -28,20 +30,32 @@ export interface SidebarFilterResult {
 }
 
 function readPersisted(): PersistedWorkspacePrefs {
+  const empty: PersistedWorkspacePrefs = {
+    viewMode: 'grouped',
+    pinnedSessionIds: [],
+    addedWorkspaces: [],
+    activeHeroWorkspace: null,
+  }
   if (typeof window === 'undefined') {
-    return { viewMode: 'grouped', pinnedSessionIds: [] }
+    return empty
   }
   try {
     const raw = window.localStorage.getItem(WORKSPACE_PREFS_STORAGE_KEY)
-    if (!raw) return { viewMode: 'grouped', pinnedSessionIds: [] }
+    if (!raw) return empty
     const parsed = JSON.parse(raw) as Partial<PersistedWorkspacePrefs>
     const viewMode: SidebarViewMode = parsed.viewMode === 'flat' ? 'flat' : 'grouped'
     const pinnedSessionIds = Array.isArray(parsed.pinnedSessionIds)
       ? parsed.pinnedSessionIds.filter((id): id is string => typeof id === 'string' && id.trim() !== '')
       : []
-    return { viewMode, pinnedSessionIds }
+    const addedWorkspaces = Array.isArray(parsed.addedWorkspaces)
+      ? parsed.addedWorkspaces.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+      : []
+    const activeHeroWorkspace = typeof parsed.activeHeroWorkspace === 'string' && parsed.activeHeroWorkspace.trim() !== ''
+      ? parsed.activeHeroWorkspace
+      : null
+    return { viewMode, pinnedSessionIds, addedWorkspaces, activeHeroWorkspace }
   } catch {
-    return { viewMode: 'grouped', pinnedSessionIds: [] }
+    return empty
   }
 }
 
@@ -58,6 +72,8 @@ interface WorkspacePrefsState extends PersistedWorkspacePrefs {
   setViewMode: (mode: SidebarViewMode) => void
   togglePin: (sessionId: string) => boolean
   isPinned: (sessionId: string) => boolean
+  addWorkspace: (path: string) => void
+  setActiveHeroWorkspace: (path: string | null) => void
   reset: () => void
 }
 
@@ -66,12 +82,16 @@ const initial = readPersisted()
 export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
   viewMode: initial.viewMode,
   pinnedSessionIds: initial.pinnedSessionIds,
+  addedWorkspaces: initial.addedWorkspaces,
+  activeHeroWorkspace: initial.activeHeroWorkspace,
 
   setViewMode: (mode) => {
     set((state) => {
       writePersisted({
         viewMode: mode,
         pinnedSessionIds: state.pinnedSessionIds,
+        addedWorkspaces: state.addedWorkspaces,
+        activeHeroWorkspace: state.activeHeroWorkspace,
       })
       return { viewMode: mode }
     })
@@ -89,6 +109,8 @@ export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
       writePersisted({
         viewMode: state.viewMode,
         pinnedSessionIds: nextPinned,
+        addedWorkspaces: state.addedWorkspaces,
+        activeHeroWorkspace: state.activeHeroWorkspace,
       })
       return { pinnedSessionIds: nextPinned }
     })
@@ -97,9 +119,49 @@ export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
 
   isPinned: (sessionId) => get().pinnedSessionIds.includes(sessionId),
 
+  addWorkspace: (path) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    set((state) => {
+      const nextAdded = state.addedWorkspaces.includes(trimmed)
+        ? state.addedWorkspaces
+        : [trimmed, ...state.addedWorkspaces]
+      writePersisted({
+        viewMode: state.viewMode,
+        pinnedSessionIds: state.pinnedSessionIds,
+        addedWorkspaces: nextAdded,
+        activeHeroWorkspace: trimmed,
+      })
+      return { addedWorkspaces: nextAdded, activeHeroWorkspace: trimmed }
+    })
+  },
+
+  setActiveHeroWorkspace: (path) => {
+    const next = path != null && path.trim() !== '' ? path.trim() : null
+    set((state) => {
+      writePersisted({
+        viewMode: state.viewMode,
+        pinnedSessionIds: state.pinnedSessionIds,
+        addedWorkspaces: state.addedWorkspaces,
+        activeHeroWorkspace: next,
+      })
+      return { activeHeroWorkspace: next }
+    })
+  },
+
   reset: () => {
-    writePersisted({ viewMode: 'grouped', pinnedSessionIds: [] })
-    set({ viewMode: 'grouped', pinnedSessionIds: [] })
+    writePersisted({
+      viewMode: 'grouped',
+      pinnedSessionIds: [],
+      addedWorkspaces: [],
+      activeHeroWorkspace: null,
+    })
+    set({
+      viewMode: 'grouped',
+      pinnedSessionIds: [],
+      addedWorkspaces: [],
+      activeHeroWorkspace: null,
+    })
   },
 }))
 

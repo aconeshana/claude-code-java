@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import com.sun.net.httpserver.HttpExchange;
@@ -72,15 +73,26 @@ final class GatewayMessagesSnapshotHandler {
     private final Function<String, OptionalLong> runningSince;
     /** The block each session is streaming right now; empty between blocks. */
     private final Function<String, Optional<MirrorHub.StreamingDraft>> streaming;
+    /** Whether a session is live right now even before its first transcript append. */
+    private final Predicate<String> isLiveSession;
 
     GatewayMessagesSnapshotHandler(
             GatewayHeadlessSessions headless, GatewaySessionMessagesPort messages,
             Function<String, OptionalLong> runningSince,
             Function<String, Optional<MirrorHub.StreamingDraft>> streaming) {
+        this(headless, messages, runningSince, streaming, headless::isOpen);
+    }
+
+    GatewayMessagesSnapshotHandler(
+            GatewayHeadlessSessions headless, GatewaySessionMessagesPort messages,
+            Function<String, OptionalLong> runningSince,
+            Function<String, Optional<MirrorHub.StreamingDraft>> streaming,
+            Predicate<String> isLiveSession) {
         this.headless = Objects.requireNonNull(headless, "headless");
         this.messages = messages == null ? new GatewaySessionMessagesPort() {} : messages;
         this.runningSince = Objects.requireNonNull(runningSince, "runningSince");
         this.streaming = Objects.requireNonNull(streaming, "streaming");
+        this.isLiveSession = isLiveSession == null ? headless::isOpen : isLiveSession;
     }
 
     /** Handles one snapshot exchange; {@code sessionId} from the URL path. */
@@ -93,9 +105,13 @@ final class GatewayMessagesSnapshotHandler {
             rows = null;
         }
         if (rows == null) {
-            respondJson(exchange, 404, errorBody("not_found",
-                "unknown session: " + sessionId));
-            return;
+            if (isLiveSession.test(sessionId)) {
+                rows = List.of();
+            } else {
+                respondJson(exchange, 404, errorBody("not_found",
+                    "unknown session: " + sessionId));
+                return;
+            }
         }
         ObjectNode body = snapshot(sessionId, rows, true);
         runningSince.apply(sessionId)

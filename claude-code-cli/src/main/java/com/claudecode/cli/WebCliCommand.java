@@ -142,7 +142,10 @@ public class WebCliCommand implements Callable<Integer> {
     private Integer hostUntilStopped() throws Exception {
         try (ManagedMcpRuntime mcpRuntime = new McpToolProvider();
              CliResourceScope resources = new CliResourceScope()) {
-            CliHeadlessGatewaySessions headless = WebHeadlessSessions.create(mcpRuntime, resources, err);
+            InteractionCoordinator interactions =
+                new InteractionCoordinator(CliHeadlessSessionFactory::currentSessionIdOrEmpty);
+            CliHeadlessGatewaySessions headless =
+                WebHeadlessSessions.create(mcpRuntime, resources, interactions, err);
             String cwd = System.getProperty("user.dir");
             CustomModelJsonStore modelCatalog = new CustomModelJsonStore();
             try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd);
@@ -154,49 +157,26 @@ public class WebCliCommand implements Callable<Integer> {
                 GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
                 CliGatewayRuntime runtime = new CliGatewayRuntime(
                     emptyRegistry(), new GatewaySessionCatalogPort() {}, headless,
-                    // This process raises no interaction of its own: every permission ask it
-                    // serves belongs to a TUI session and is forwarded over that session's
-                    // Session Link, which carries its own id. The supplier is therefore never
-                    // consulted, and a local ask would be a defect rather than a mode the
-                    // gateway should silently attribute to an empty session.
-                    new InteractionCoordinator(() -> {
-                        throw new IllegalStateException(
-                            "the web gateway raises no local interaction to attribute a session to");
-                    }),
+                    interactions,
                     sessionMessages,
                     CliInteractiveSessionRunner.gatewaySettings(cwd),
                     cronDaemon.port(),
                 CliInteractiveSessionRunner.gatewayModels(modelCatalog),
                 CliGatewayPorts.commands(commandRegistry),
-                // Sessions a TUI hosts are answered from its transcript and
-                // Session Link by the gateway's own remote decorators before
-                // these ports are consulted; these answer the sessions this
-                // process opened itself.
                 sessionContext(headless, cwd),
                 new GatewaySessionActionsPort() {},
                 permissionMode(headless),
                 new GatewaySpinnerVerbsPort() {},
                 CliGatewayPorts.fileSuggestions(cwd),
-                // sessionCancel / taskBoard stay null on purpose: both are
-                // answered for every addressable session by the gateway's own
-                // remote decorators, which the interactive runtime installs
-                // when it hosts this gateway. This process has no local
-                // sessions of its own to cancel or list.
-                null, null,
-                // The changed-files card needs no live engine: CliFileDiffAdapter
-                // derives every turn's hunks from the transcript. It does need
-                // the right transcript, and the session a client asks about is
-                // usually one a TUI in another project hosts — this process's
-                // own messages port resolves ids against its own project only,
-                // and answered "no changes" for every remote turn. The fallback
-                // resolves a remote session's transcript under the directory
-                // its owning worker reported, the same rule the gateway's own
-                // messages snapshot follows.
-                remoteFileDiff(sessionMessages),
-                // workspaceFile stays null: RemoteWorkspaceFilePort resolves
-                // every remote session's files through its owner's reported
-                // work directory, which is the only correct root here.
+                // Headless sessions opened inside claude web support interrupt/cancel;
+                // remote TUI sessions are intercepted by GatewayServer's remote decorator first.
+                CliInteractiveSessionRunner.gatewaySessionCancel(emptyRegistry(), headless),
                 null,
+                remoteFileDiff(sessionMessages),
+                // Headless sessions resolve workspace files against their own projectPath;
+                // remote TUI sessions are intercepted by RemoteWorkspaceFilePort first.
+                new CliWorkspaceFileReader(sessionId ->
+                    headless.projectPathOf(sessionId).map(Path::of)).port(),
                 new CliBackgroundTasksPort(
                     TaskRegistry.global(),
                     headless::liveEngine,

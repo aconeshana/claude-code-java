@@ -212,12 +212,16 @@ class RemoteWorkerGatewayInteropTest {
 
     @Test
     @Timeout(20)
-    void remoteMessagesWithoutATranscriptAtTheReportedWorkDirAreNotFound() throws Exception {
+    void remoteMessagesWithoutATranscriptAtTheReportedWorkDirReturnEmptySnapshot() throws Exception {
         startGatewayAgainstWorkerDirectory();
 
         try (Response response = client.newCall(new Request.Builder()
                 .url(url("/api/sessions/s-1/messages?token=" + TOKEN)).build()).execute()) {
-            assertThat(response.code()).isEqualTo(404);
+            assertThat(response.code()).isEqualTo(200);
+            var body = JsonUtils.getMapper().readTree(response.body().string());
+            assertThat(body.path("session_id").asText()).isEqualTo("s-1");
+            assertThat(body.path("messages").isArray()).isTrue();
+            assertThat(body.path("messages")).isEmpty();
         }
     }
 

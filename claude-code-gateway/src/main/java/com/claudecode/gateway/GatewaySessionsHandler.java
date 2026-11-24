@@ -10,7 +10,9 @@ import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -33,17 +35,29 @@ final class GatewaySessionsHandler {
         default void onClosed(String sessionId) {}
     }
 
+    /** Metadata of an online TUI already owning a requested session id. */
+    record RemoteOwner(long pid, String workDir) {}
+
     private final GatewayHeadlessSessions headless;
     private final Lifecycle lifecycle;
+    private final Function<String, Optional<RemoteOwner>> remoteOwnerLookup;
     private final AtomicBoolean opening = new AtomicBoolean();
 
     GatewaySessionsHandler(GatewayHeadlessSessions headless) {
-        this(headless, new Lifecycle() {});
+        this(headless, new Lifecycle() {}, _ -> Optional.empty());
     }
 
     GatewaySessionsHandler(GatewayHeadlessSessions headless, Lifecycle lifecycle) {
+        this(headless, lifecycle, _ -> Optional.empty());
+    }
+
+    GatewaySessionsHandler(
+            GatewayHeadlessSessions headless,
+            Lifecycle lifecycle,
+            Function<String, Optional<RemoteOwner>> remoteOwnerLookup) {
         this.headless = headless;
         this.lifecycle = lifecycle == null ? new Lifecycle() {} : lifecycle;
+        this.remoteOwnerLookup = remoteOwnerLookup == null ? _ -> Optional.empty() : remoteOwnerLookup;
     }
 
     /** Handles one open or close exchange. */
@@ -65,6 +79,24 @@ final class GatewaySessionsHandler {
             respondJson(exchange, 400, errorBody("invalid_request",
                 "session_id must be at most 256 characters"));
             return;
+        }
+        if (StringUtils.isNotBlank(sessionId)) {
+            Optional<RemoteOwner> tuiOwner = remoteOwnerLookup.apply(sessionId.strip());
+            if (tuiOwner.isPresent()) {
+                // Orthogonal Matrix M1: an online TUI already owns this session.
+                // Never mint a duplicate headless engine that would fork the transcript.
+                RemoteOwner owner = tuiOwner.get();
+                ObjectNode result = JsonUtils.getMapper().createObjectNode();
+                result.put("session_id", sessionId.strip());
+                result.put("project_path", StringUtils.defaultString(owner.workDir()));
+                result.put("resumed", false);
+                result.put("headless", false);
+                result.put("owner", "tui");
+                result.put("tui_attached", true);
+                if (owner.pid() > 0) result.put("tui_pid", owner.pid());
+                respondJson(exchange, 200, result);
+                return;
+            }
         }
         if (!opening.compareAndSet(false, true)) {
             respondJson(exchange, 429, errorBody("api_error",
@@ -91,6 +123,7 @@ final class GatewaySessionsHandler {
         result.put("project_path", opened.projectPath());
         result.put("resumed", opened.resumed());
         result.put("headless", true);
+        result.put("owner", "headless");
         respondJson(exchange, 200, result);
     }
 

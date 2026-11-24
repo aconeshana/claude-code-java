@@ -107,6 +107,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayCommandsHandler commandsApi;
     private final GatewaySpinnerVerbsHandler spinnerVerbsApi;
     private final GatewayFileSuggestionsHandler fileSuggestionsApi;
+    private final GatewayDirectoryPickerHandler directoryPickerApi = new GatewayDirectoryPickerHandler();
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final GatewaySessionCancelHandler sessionCancelApi;
@@ -441,7 +442,22 @@ public final class GatewayServer implements AutoCloseable {
                     mirror.detachSession(sessionId);
                     contextTimeline.forget(sessionId);
                 }
-            });
+            },
+            sessionId -> remoteWorkers
+                .filter(pool -> pool.owns(sessionId))
+                .map(pool -> new GatewaySessionsHandler.RemoteOwner(
+                    pool.pidOf(sessionId).orElse(0L),
+                    pool.workDirOf(sessionId).orElse(""))));
+        this.remoteWorkers.ifPresent(pool -> pool.setOnSessionClaimed(sessionId -> {
+            // Orthogonal Matrix M5: when a live TUI /resumes a session that was
+            // previously open as a local headless handle, hand off ownership cleanly
+            // to the TUI so two engines never race on the same transcript.
+            if (headless.isOpen(sessionId)) {
+                headless.close(sessionId);
+                mirror.detachSession(sessionId);
+                contextTimeline.forget(sessionId);
+            }
+        }));
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         // Set by the wiring above when it installs the transcript reader; the
         // listing asks it whether a live handle's transcript is still there, a
@@ -470,7 +486,10 @@ public final class GatewayServer implements AutoCloseable {
         this.messagesSnapshotApi = new GatewayMessagesSnapshotHandler(headless,
             withRemoteWorkDirFallback(sessionMessages,
                 sessionId -> remoteWorkers.flatMap(pool -> pool.workDirOf(sessionId))),
-            mirror::runningSince, mirror::streamingDraft);
+            mirror::runningSince, mirror::streamingDraft,
+            sessionId -> headless.isOpen(sessionId)
+                || registry.isCurrent(sessionId)
+                || remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false));
         this.settingsApi = new GatewaySettingsHandler(settings);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.runtimeControlApi = new GatewayRuntimeControlHandler(builder.runtimeControl);
@@ -1124,6 +1143,11 @@ public final class GatewayServer implements AutoCloseable {
             serve(exchange, () -> fileSuggestionsApi.handleGet(exchange));
             return;
         }
+        if (Strings.CS.equals("/api/directories", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> directoryPickerApi.handle(exchange));
+            return;
+        }
         if (get && Strings.CS.equals("/api/spinner-verbs", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> spinnerVerbsApi.handleGet(exchange));
@@ -1385,7 +1409,12 @@ public final class GatewayServer implements AutoCloseable {
                     if (hasText(entry.firstPrompt())) {
                         sessionNode.put("first_prompt", entry.firstPrompt());
                     }
-                    if (remoteIds.contains(entry.id())) sessionNode.put("remote", true);
+                    if (remoteIds.contains(entry.id())) {
+                        sessionNode.put("remote", true);
+                        sessionNode.put("tui_attached", true);
+                        remoteWorkers.flatMap(pool -> pool.pidOf(entry.id()))
+                            .ifPresent(pid -> sessionNode.put("tui_pid", pid));
+                    }
                     if (registry.isCurrent(entry.id())) sessionNode.put("active", true);
                     // A session row the client can route to right now via
                     // metadata.session_id without a further open round-trip.
@@ -1416,7 +1445,12 @@ public final class GatewayServer implements AutoCloseable {
                 .orElseGet(info::messageCount));
             if (info.modifiedAt() != null) node.put("modified_at", info.modifiedAt().toString());
             if (!info.gitBranch().isEmpty()) node.put("git_branch", info.gitBranch());
-            if (remoteIds.contains(info.id())) node.put("remote", true);
+            if (remoteIds.contains(info.id())) {
+                node.put("remote", true);
+                node.put("tui_attached", true);
+                remoteWorkers.flatMap(pool -> pool.pidOf(info.id()))
+                    .ifPresent(pid -> node.put("tui_pid", pid));
+            }
             if (registry.isCurrent(info.id())) node.put("active", true);
             if (headless.isOpen(info.id())) node.put("headless_open", true);
             if (mirror.runningSince(info.id()).isPresent()) node.put("running", true);

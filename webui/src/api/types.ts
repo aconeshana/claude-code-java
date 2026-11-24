@@ -36,6 +36,10 @@ export interface CatalogSession {
    * this gateway's own TUI. Omitted for local sessions.
    */
   readonly remote?: boolean
+  /** True when this session is currently owned by a live discovered TUI process. */
+  readonly tui_attached?: boolean
+  /** PID of the online TUI process owning this session, when {@code tui_attached} is true. */
+  readonly tui_pid?: number
   /**
    * A live process is hosting this session right now. The permission mode and
    * the model selection live on that process, not in the transcript, so a
@@ -419,6 +423,9 @@ export interface OpenSessionResponse {
   readonly project_path: string
   readonly resumed: boolean
   readonly headless: boolean
+  readonly owner?: 'tui' | 'headless'
+  readonly tui_attached?: boolean
+  readonly tui_pid?: number
 }
 
 export interface CloseSessionResponse {

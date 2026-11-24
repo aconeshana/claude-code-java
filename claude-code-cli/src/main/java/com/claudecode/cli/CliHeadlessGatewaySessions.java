@@ -22,7 +22,6 @@ import com.claudecode.tools.tasks.TaskStatus;
 import com.claudecode.tools.tasks.TaskType;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -150,19 +149,15 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     @Override
     public Opened open(OpenRequest request) {
         String sessionId = StringUtils.defaultString(request.sessionId()).strip();
-        // An existing session id names a session some TUI may own elsewhere on
-        // this machine; its transcript then lives under that worker's project,
-        // not under the directory this gateway was launched from. Resolve it
-        // there first so the handle reports (and resumes) the real project.
+        // An existing session id may have a transcript under another project
+        // directory (e.g. a cross-project historical session). Resolve it there
+        // first so the handle resumes the real project. TUI-owned sessions are
+        // intercepted upstream by GatewaySessionsHandler (M1) and handed off by
+        // RemoteWorkerPool.onSessionClaimed (M5), so any session reaching open()
+        // here is legitimately owned by this Web daemon's headless pool (M2/M3/M4).
         String owner = owningWorkDir(sessionId);
         String projectPath = resolveProjectPath(
             StringUtils.defaultIfBlank(request.projectPath(), owner));
-        // A transcript another process reported owning is a handle on that
-        // process's session, not a session this one may run turns in. A
-        // session id nobody holds a transcript for is this process's to mint:
-        // answering "remote" for it would leave every brand-new id unrunnable.
-        boolean remote = owner != null && !Paths.get(owner).normalize()
-            .equals(Paths.get(mainCwd).toAbsolutePath().normalize());
 
         Entry existing = sessions.get(sessionId);
         if (existing != null) {
@@ -172,20 +167,14 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         if (sessions.containsKey(id)) {
             throw new IllegalArgumentException("session is already open: " + id);
         }
-        // A known disk session resumes message-level: the prior conversation
-        // seeds the engine so the client can continue where it left off.
-        // resumeMessages() itself falls back to an empty list when no transcript
-        // exists for `id`, so a genuinely new session is unaffected.
         List<Message> priorMessages = resumeMessages(id, projectPath);
         boolean resumed = !priorMessages.isEmpty();
         CliHeadlessSessionFactory.Assembled assembled =
             factory.assemble(id, projectPath, priorMessages);
         TaskState task = TaskRegistry.global().store()
             .create(TaskType.WEB_SESSION, webSessionLabel(projectPath));
-        // PENDING → RUNNING so the pill lists it and close can reach a
-        // terminal state through the state machine.
         TaskRegistry.global().store().updateStatus(task.id(), TaskStatus.RUNNING);
-        sessions.put(id, new Entry(assembled.host(), assembled, task.id(), Instant.now(), !remote));
+        sessions.put(id, new Entry(assembled.host(), assembled, task.id(), Instant.now(), true));
         // The tasks dialog's kill stops the session through this action; the
         // entry is removed by then, so close() re-runs harmlessly as a no-op.
         TaskRegistry.global().registerWebSession(task.id(), () -> close(id));

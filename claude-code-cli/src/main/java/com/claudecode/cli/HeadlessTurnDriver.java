@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Bridges gateway submissions onto one headless {@code QuerySession}.
@@ -35,12 +37,21 @@ final class HeadlessTurnDriver {
     private final QuerySession engine;
     private final SessionEventHub events;
     private final RemoteSubmissionPrompt.FilePersister persister;
+    private final Supplier<String> permissionModeSupplier;
 
     HeadlessTurnDriver(QuerySession engine, SessionEventHub events,
             RemoteSubmissionPrompt.FilePersister persister) {
+        this(engine, events, persister, () -> "default");
+    }
+
+    HeadlessTurnDriver(QuerySession engine, SessionEventHub events,
+            RemoteSubmissionPrompt.FilePersister persister,
+            Supplier<String> permissionModeSupplier) {
         this.engine = engine;
         this.events = events;
         this.persister = persister;
+        this.permissionModeSupplier = permissionModeSupplier != null
+            ? permissionModeSupplier : () -> "default";
     }
 
     /** Runs one turn; the returned stage completes when the turn ends. */
@@ -50,10 +61,11 @@ final class HeadlessTurnDriver {
         String prompt = assembled.prompt();
         CompletableFuture<Void> done = new CompletableFuture<>();
         long startedNanos = System.nanoTime();
+        String mode = StringUtils.defaultIfBlank(permissionModeSupplier.get(), "default");
         // Synchronous on the caller thread: the gateway's turn-scoped
         // subscription must observe onTurnStart before any message.
         events.onTurnStart(UserInput.of(prompt, prompt,
-            assembled.pasted().isEmpty() ? null : assembled.pasted(), "default"));
+            assembled.pasted().isEmpty() ? null : assembled.pasted(), mode));
         Thread.ofVirtual().name("headless-turn", 0).start(() -> {
             boolean userCancel;
             try {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   Button, IconCloseFill14, IconListPenOutline16, IconNewChatOutline16,
-  IconPanelLeftOutline16, IconRefreshOutline16, IconSearchOutline16, IconSettingsOutline16,
+  IconPanelLeftOutline16, IconPlusOutline16, IconRefreshOutline16, IconSearchOutline16, IconSettingsOutline16,
   Input, Menu, Modal, Pill, RiskConfirmation, StateDot, Tooltip,
 } from '@primitives'
 import type { MenuEntry } from '@primitives'
@@ -32,6 +32,12 @@ import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
 import { CodeOrbMark } from './brand/CodeOrbMark'
 import { PocoWordmark } from './brand/PocoWordmark'
+import { DirectoryBrowser } from '@vendor/ui-directory-picker-browse/DirectoryBrowser'
+import {
+  DIRECTORY_BROWSER_NS,
+  directoryBrowserDicts,
+} from '@vendor/ui-directory-picker-browse/locales'
+import { createDirectory, listDirectory } from '../api/client'
 
 /** Session rows visible per project before the local overflow control (upstream's COLLAPSED_SESSION_LIMIT). */
 const COLLAPSED_SESSION_LIMIT = 5
@@ -107,8 +113,8 @@ export function Sidebar() {
   const projects = useSessions((state) => state.projects)
   const selectedId = useSessions((state) => state.selectedSessionId)
   const selectByUser = useSessions((state) => state.selectByUser)
+  const clearSelection = useSessions((state) => state.clearSelection)
   const openSession = useSessions((state) => state.openSession)
-  const createSession = useSessions((state) => state.createSession)
   const closeSession = useSessions((state) => state.closeSession)
   const renameSession = useSessions((state) => state.renameSession)
   const forkSession = useSessions((state) => state.forkSession)
@@ -129,6 +135,7 @@ export function Sidebar() {
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
   const uiT = useTranslate(UI_NS, uiDicts)
+  const dirT = useTranslate(DIRECTORY_BROWSER_NS, directoryBrowserDicts)
 
   const collapsed = useSidebarCollapse((state) => state.collapsed)
   const toggleCollapsed = useSidebarCollapse((state) => state.toggle)
@@ -136,6 +143,8 @@ export function Sidebar() {
   const pinnedSessionIds = useWorkspacePrefs((state) => state.pinnedSessionIds)
   const setViewMode = useWorkspacePrefs((state) => state.setViewMode)
   const togglePin = useWorkspacePrefs((state) => state.togglePin)
+  const addWorkspace = useWorkspacePrefs((state) => state.addWorkspace)
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMenuOpen, setViewMenuOpen] = useState(false)
@@ -242,7 +251,6 @@ export function Sidebar() {
     toast.info(pinnedNow ? `已置顶会话「${displayTitle(session)}」` : `已取消置顶「${displayTitle(session)}」`)
   }
 
-  const newSessionWorkspace = selectedProject?.project_path ?? null
   const searching = searchQuery.trim() !== ''
 
   const flatEntries = useMemo(() => {
@@ -324,7 +332,7 @@ export function Sidebar() {
             aria-label={t('newSession')}
             onClick={() => {
               closeScheduleView()
-              void createSession(newSessionWorkspace)
+              clearSelection()
             }}
           >
             <span className={css.brandIdentity} aria-hidden="true">
@@ -365,7 +373,7 @@ export function Sidebar() {
           aria-label={t('newSession')}
           onClick={() => {
             closeScheduleView()
-            void createSession(newSessionWorkspace)
+            clearSelection()
           }}
         >
           <IconNewChatOutline16 size={wide ? 14 : 18} />
@@ -468,6 +476,16 @@ export function Sidebar() {
                   </button>
                 )}
               />
+              <button
+                type="button"
+                className={browserCss.iconButton}
+                data-testid="sidebar-add-workspace"
+                onClick={() => { setWorkspacePickerOpen(true) }}
+                aria-label="添加工作区"
+                title="添加工作区（选择或新建项目目录）"
+              >
+                <IconPlusOutline16 size={16} />
+              </button>
               <button
                 type="button"
                 className={clsx(browserCss.iconButton, loading && localCss.refreshBusy)}
@@ -699,6 +717,21 @@ export function Sidebar() {
         {wide && <Pill>Pokemon Code</Pill>}
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
+      <DirectoryBrowser
+        open={workspacePickerOpen}
+        listDirectory={listDirectory}
+        createDirectory={createDirectory}
+        onOpen={(pickedPath) => {
+          addWorkspace(pickedPath)
+          setWorkspacePickerOpen(false)
+          closeScheduleView()
+          clearSelection()
+          toast.success(`已添加工作区「${pickedPath.split(/[\\/]/).filter(Boolean).pop() ?? pickedPath}」`)
+        }}
+        onClose={() => { setWorkspacePickerOpen(false) }}
+        busy={false}
+        t={dirT}
+      />
       <Modal
         open={renameTarget != null}
         onClose={() => { setRenameTarget(null) }}

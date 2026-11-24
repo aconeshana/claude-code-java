@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -65,6 +66,8 @@ final class RemoteWorkerPool implements AutoCloseable {
     private final Map<String, RemoteWorkerFeed> owners = new HashMap<>();
     private final Map<Long, WebWorkerRegistration> workersByPid = new HashMap<>();
     private final Map<Long, List<SessionHostInfo>> sessionsByPid = new HashMap<>();
+    private final Map<String, Long> pidBySession = new HashMap<>();
+    private volatile Consumer<String> onSessionClaimed = _ -> {};
     private Snapshot snapshot;
     private Thread watcher;
     private boolean closed;
@@ -162,6 +165,18 @@ final class RemoteWorkerPool implements AutoCloseable {
             : Optional.of(owner.respondInteraction(sessionId, payload));
     }
 
+    /** Registers a callback invoked whenever a live TUI claims ownership of a session id. */
+    void setOnSessionClaimed(Consumer<String> listener) {
+        this.onSessionClaimed = listener != null ? listener : _ -> {};
+    }
+
+    /** Returns the PID of the online TUI currently owning {@code sessionId}, if any. */
+    synchronized Optional<Long> pidOf(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) return Optional.empty();
+        liveSessions();
+        return Optional.ofNullable(pidBySession.get(sessionId));
+    }
+
     private List<SessionHostInfo> scanSessions() {
         List<WebWorkerRegistration> workers = directory.scan();
         Set<String> sockets = workers.stream()
@@ -171,6 +186,7 @@ final class RemoteWorkerPool implements AutoCloseable {
         owners.clear();
         workersByPid.clear();
         sessionsByPid.clear();
+        pidBySession.clear();
         List<SessionHostInfo> sessions = new ArrayList<>();
         for (WebWorkerRegistration worker : workers) {
             workersByPid.put(worker.pid(), worker);
@@ -178,6 +194,14 @@ final class RemoteWorkerPool implements AutoCloseable {
             listed.ifPresent(found -> {
                 sessions.addAll(found);
                 sessionsByPid.put(worker.pid(), List.copyOf(found));
+                for (SessionHostInfo info : found) {
+                    pidBySession.put(info.id(), worker.pid());
+                    try {
+                        onSessionClaimed.accept(info.id());
+                    } catch (RuntimeException failure) {
+                        log.debug("[remote-pool] onSessionClaimed failed for {}", info.id(), failure);
+                    }
+                }
             });
         }
         return List.copyOf(sessions);
@@ -569,6 +593,7 @@ final class RemoteWorkerPool implements AutoCloseable {
         owners.clear();
         workersByPid.clear();
         sessionsByPid.clear();
+        pidBySession.clear();
         snapshot = null;
     }
 }

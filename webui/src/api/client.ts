@@ -912,3 +912,35 @@ export function cancelCcConnectSetup(): Promise<{ readonly cancelled: boolean }>
   return requestJson('POST', '/api/cc-connect/setup/cancel', {})
 }
 
+// ---------------------------------------------------------------------------
+// Host directory browser (/api/directories — backs vendored DirectoryBrowser)
+// ---------------------------------------------------------------------------
+
+export async function listDirectory(
+  path?: string,
+  signal?: AbortSignal,
+): Promise<import('@vendor/ui-directory-picker-browse/types').DirectoryListing> {
+  const query = path != null && path !== '' ? `?path=${encodeURIComponent(path)}` : ''
+  const headers: Record<string, string> = {}
+  const token = currentToken()
+  if (token != null) headers['Authorization'] = `Bearer ${token}`
+  const response = await fetch(`/api/directories${query}`, {
+    method: 'GET',
+    headers,
+    signal: signal ?? null,
+  })
+  const text = await response.text()
+  const parsed = text.trim() === '' ? {} : JSON.parse(text) as Record<string, unknown>
+  if (!response.ok) {
+    const err = (parsed.error ?? {}) as { type?: string; message?: string }
+    throw new ApiError(response.status, err.type ?? 'directory_error', err.message ?? response.statusText)
+  }
+  return parsed as unknown as import('@vendor/ui-directory-picker-browse/types').DirectoryListing
+}
+
+export async function createDirectory(path: string, name: string): Promise<string> {
+  const result = await requestJson<{ readonly path: string }>('POST', '/api/directories', { path, name })
+  return result.path
+}
+
+

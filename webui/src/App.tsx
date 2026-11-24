@@ -26,6 +26,7 @@ import { ApprovalCard } from './views/ApprovalCard'
 import { SudoCard } from './views/SudoCard'
 import { ChatView } from './views/ChatView'
 import { ConversationRoot, type BreadcrumbChild } from './views/ConversationRoot'
+import { HeroHome } from './views/HeroHome'
 import { InputBar } from './views/InputBar'
 import { QuestionCard } from './views/QuestionCard'
 import { ShellCatalogMenu } from './views/ShellCatalogMenu'
@@ -82,7 +83,7 @@ export function App() {
   useEffect(() => {
     if (token == null) return
     const sessions = useSessions.getState()
-    void sessions.refresh().then(() => { void sessions.selectActiveOrFirst() })
+    void sessions.refresh()
     void useShells.getState().refresh()
     void useCcConnect.getState().refresh()
 
@@ -288,6 +289,8 @@ export function App() {
     <AppFrame sidebar={<Sidebar />} collapsed={sidebarCollapsed} right={(owner) => <RightPanel {...owner} />}>
       {scheduleViewOpen ? (
         <ScheduledTasksWorkspace />
+      ) : selectedId == null ? (
+        <HeroHome onClientCommand={onClientCommand} />
       ) : (
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}

@@ -29,6 +29,7 @@
     "vendor/ui-primitives/css-modules.d.ts",
     "vendor/dsh-context",
     "vendor/ui-deliverables",
+    "vendor/ui-directory-picker-browse",
     "vendor/ui-dockkit",
     "vendor/resources",
     "vendor/ui-layout",

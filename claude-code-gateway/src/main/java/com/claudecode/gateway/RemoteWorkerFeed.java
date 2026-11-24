@@ -165,6 +165,7 @@ final class RemoteWorkerFeed implements AutoCloseable {
         if (frame.sessionId() == null) return;
         if (ACTIVATED.equals(frame.name())) {
             subscribe(frame.sessionId());
+            hub.publishSessionsChanged();
             return;
         }
         // A sudo ask shares the interaction frame names but is a password
