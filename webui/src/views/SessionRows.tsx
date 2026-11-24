@@ -24,12 +24,12 @@
  * menu entry. Delete is this project's own extension (no upstream
  * counterpart): see webui/UPSTREAM.md.
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   IconArchiveOutline20, IconBranchOutline16, IconEditOutline16, IconEllipsisOutline16,
   IconFolderClose16, IconFolderOpen16, IconPlusOutline16, IconTrashOutline16,
-  IconTriangleRightFill14, Menu, relativeTime, StateDot,
+  IconTriangleRightFill14, MarqueeText, Menu, relativeTime, StateDot, useHoverMarquee,
 } from '@primitives'
 import type { MenuEntry, StateDotState } from '@primitives'
 import type { CatalogSession } from '../api/types'
@@ -169,19 +169,35 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle }: {
   )
 }
 
+/** Monochrome thumbtack pin glyph matching the 16px outline icon grammar. */
+export function PinGlyph({ filled = false }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9.8 2.4L13.6 6.2L12.5 7.3L11.4 6.6L8.4 9.6L9.1 11.4L8 12.5L5.6 10.1L2.6 13.1L2.9 10.4L5.9 7.4L3.5 5L4.6 3.9L6.4 4.6L9.4 1.6L9.8 2.4Z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /**
  * One top-level 32px session row, ported from upstream SessionNodeItem minus
  * drag wiring, HoverCard, and the schedule/subagent indicators. The trailing
- * cell keeps upstream's hover swap: relative time by default, row actions on
- * hover. The row menu (rename/fork/archive, mirroring upstream's
- * `sessionMenuItems`, plus this project's own delete) opens before the close
- * button — upstream's own row-action ordering. `onClose` is this gateway's
- * own action (closing a headless session) rendered with upstream's bare 16px
- * trailing-icon grammar, outside the menu.
+ * cell keeps upstream's hover swap: `.rowResting` (relative time + optional
+ * pinned indicator) by default, `.rowActions` (pin toggle, "..." menu, and
+ * optional close button) on hover — all in the same flex row so buttons never
+ * overlap the title. Long titles clip with an ellipsis at rest and marquee
+ * smoothly on hover via upstream's `MarqueeText` + `useHoverMarquee`.
  */
-export function SessionNodeItem({ session, selected, now, activity, pending, onOpen, onClose, onRename, onFork, onArchive, onDelete, t }: {
+export function SessionNodeItem({ session, selected, pinned = false, now, activity, pending, rowTestId, pinTestId, onOpen, onClose, onRename, onFork, onArchive, onDelete, onTogglePin, t }: {
   session: CatalogSession
   selected: boolean
+  /** Whether this session is pinned in the sidebar. */
+  pinned?: boolean
   /** Epoch ms for relative-time formatting. */
   now: number
   /**
@@ -195,6 +211,8 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
    * field — the mirror stream's asks do.
    */
   pending?: PendingInteraction | undefined
+  rowTestId?: string | undefined
+  pinTestId?: string | undefined
   onOpen: (session: CatalogSession) => void
   onClose: (session: CatalogSession) => void
   /** Opens the rename dialog for this session. */
@@ -205,11 +223,15 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
   onArchive: (session: CatalogSession) => void
   /** Opens the delete confirmation dialog for this session. */
   onDelete: (session: CatalogSession) => void
+  /** Toggles pinned state for this session. */
+  onTogglePin?: ((session: CatalogSession) => void) | undefined
   t: RowTranslate
 }) {
   const status = sessionStatus(activity, pending)
   const showStatus = showSessionStatus(session, activity, pending)
   const [menuOpen, setMenuOpen] = useState(false)
+  const titleRef = useRef<HTMLSpanElement>(null)
+  const marquee = useHoverMarquee(titleRef, { hold: menuOpen })
   const ccTarget = useCcConnect((state) => state.snapshot?.targets.find(
     (t) => t.session_id !== '' && t.session_id === session.id,
   ))
@@ -218,6 +240,13 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
   const ccChannel = ccTarget?.attached === true ? ccTarget.channel : ''
   const title = displayTitle(session)
   const menuItems: readonly MenuEntry[] = [
+    ...(onTogglePin !== undefined
+      ? [{
+          id: 'toggle-pin',
+          label: pinned ? '取消置顶' : '置顶会话',
+          icon: <PinGlyph filled={pinned} />,
+        }]
+      : []),
     ...(ccTarget != null && (ccTarget.attached || ccConfigured)
       ? [{
           id: ccTarget.attached ? 'cc-detach' : 'cc-attach',
@@ -234,9 +263,12 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
   return (
     <div
       className={clsx(css.sessionRow, selected && css.selected, menuOpen && css.menuOpen)}
+      data-testid={rowTestId}
       role="treeitem"
       aria-selected={selected}
       onClick={() => { onOpen(session) }}
+      onPointerEnter={marquee.onPointerEnter}
+      onPointerLeave={marquee.onPointerLeave}
     >
       <span className={css.slot}>
         {showStatus && (
@@ -246,6 +278,14 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
           />
         )}
       </span>
+      {(session.tui_attached === true || session.remote === true) && (
+        <span
+          className={localCss.tuiBadge}
+          title={session.tui_pid != null ? `在线 TUI 进程 (PID ${session.tui_pid})` : '在线 TUI 进程'}
+        >
+          TUI
+        </span>
+      )}
       {ccChannel !== '' && ccTarget != null && (
         <button
           type="button"
@@ -261,9 +301,31 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
           <span aria-hidden="true">×</span>
         </button>
       )}
-      <span className={css.title}>{title}</span>
-      <span className={css.time}>{timeLabel(Date.parse(session.modified_at), now, t)}</span>
-      <span className={css.rowActions}>
+      <MarqueeText ref={titleRef} className={css.title}>{title}</MarqueeText>
+      <span className={css.rowResting}>
+        <span className={css.time}>{timeLabel(Date.parse(session.modified_at), now, t)}</span>
+        {pinned && (
+          <span className={css.pinIndicator} aria-label="已置顶" title="已置顶">
+            <PinGlyph filled />
+          </span>
+        )}
+      </span>
+      <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
+        {onTogglePin !== undefined && (
+          <button
+            type="button"
+            className={clsx(css.iconButton, pinned && localCss.pinBtnActive)}
+            data-testid={pinTestId ?? `sidebar-pin-${session.id}`}
+            aria-label={pinned ? '取消置顶' : '置顶会话'}
+            title={pinned ? '取消置顶' : '置顶会话'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onTogglePin(session)
+            }}
+          >
+            <PinGlyph filled={pinned} />
+          </button>
+        )}
         <Menu
           open={menuOpen}
           onClose={() => { setMenuOpen(false) }}
@@ -272,7 +334,8 @@ export function SessionNodeItem({ session, selected, now, activity, pending, onO
           portal
           onSelect={(id) => {
             setMenuOpen(false)
-            if (id === 'cc-attach' && ccTarget != null) {
+            if (id === 'toggle-pin') onTogglePin?.(session)
+            else if (id === 'cc-attach' && ccTarget != null) {
               void useCcConnect.getState().attach(ccTarget.pid, ccTarget.session_id, 'feishu')
             } else if (id === 'cc-detach' && ccTarget != null) {
               void useCcConnect.getState().detach(ccTarget.pid, ccTarget.session_id)

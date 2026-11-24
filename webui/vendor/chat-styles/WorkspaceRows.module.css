@@ -208,6 +208,24 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+.rowResting {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.pinIndicator {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-caption);
+}
+
 .scheduleIndicator {
   display: inline-flex;
   flex: none;
@@ -245,7 +263,9 @@
 }
 
 .sessionRow:hover .time,
-.sessionRow.menuOpen .time {
+.sessionRow.menuOpen .time,
+.sessionRow:hover .rowResting,
+.sessionRow.menuOpen .rowResting {
   display: none;
 }
 

@@ -23,7 +23,7 @@ import { toast } from '../store/toast'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
-import { displayTitle, ProjectRowItem, SessionNodeItem, sessionStatus } from './SessionRows'
+import { displayTitle, PinGlyph, ProjectRowItem, SessionNodeItem, sessionStatus } from './SessionRows'
 import { stripScheduledSessions } from './scheduledSessions'
 import { ScheduledTasksNavButton } from './ScheduledTasksWorkspace'
 import { useScheduleView } from '../store/scheduleView'
@@ -545,101 +545,72 @@ export function Sidebar() {
                           <span>已置顶</span>
                         </div>
                         {filtered.pinned.map(({ session, projectPath }) => (
-                          <div
+                          <SessionNodeItem
                             key={`pinned-${session.id}`}
-                            className={localCss.sessionRowWrap}
-                            data-testid={`sidebar-pinned-row-${session.id}`}
-                          >
-                            <SessionNodeItem
-                              session={session}
-                              selected={session.id === selectedId}
-                              now={now}
-                              pending={pending.get(session.id)}
-                              activity={activity[session.id]}
-                              onOpen={(s) => {
-                                closeScheduleView()
-                                void (s.active || s.headless_open
-                                  ? selectByUser(s.id)
-                                  : openSession(s.id, projectPath))
-                              }}
-                              onClose={(s) => { void closeSession(s.id) }}
-                              onRename={(s) => {
-                                setRenameTarget(s)
-                                setRenameValue(displayTitle(s))
-                              }}
-                              onFork={(s) => { void forkSession(s.id) }}
-                              onArchive={(s) => { void archiveSession(s.id) }}
-                              onDelete={(s) => {
-                                setDeleteTarget(s)
-                                setDeleteAcknowledged(false)
-                              }}
-                              t={t}
-                            />
-                            <button
-                              type="button"
-                              className={clsx(localCss.pinBtn, localCss.pinBtnActive)}
-                              data-testid={`sidebar-unpin-${session.id}`}
-                              aria-label="取消置顶"
-                              title="取消置顶"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleTogglePin(session)
-                              }}
-                            >
-                              <PinGlyph filled />
-                            </button>
-                          </div>
+                            session={session}
+                            selected={session.id === selectedId}
+                            pinned
+                            now={now}
+                            pending={pending.get(session.id)}
+                            activity={activity[session.id]}
+                            rowTestId={`sidebar-pinned-row-${session.id}`}
+                            pinTestId={`sidebar-unpin-${session.id}`}
+                            onOpen={(s) => {
+                              closeScheduleView()
+                              void (s.active || s.headless_open
+                                ? selectByUser(s.id)
+                                : openSession(s.id, projectPath))
+                            }}
+                            onClose={(s) => { void closeSession(s.id) }}
+                            onRename={(s) => {
+                              setRenameTarget(s)
+                              setRenameValue(displayTitle(s))
+                            }}
+                            onFork={(s) => { void forkSession(s.id) }}
+                            onArchive={(s) => { void archiveSession(s.id) }}
+                            onDelete={(s) => {
+                              setDeleteTarget(s)
+                              setDeleteAcknowledged(false)
+                            }}
+                            onTogglePin={handleTogglePin}
+                            t={t}
+                          />
                         ))}
                       </div>
                     )}
                     {filtered.projects.length === 0 ? (
                       <div className={browserCss.empty}>{t('empty.none')}</div>
                     ) : viewMode === 'flat' ? (
-                      flatEntries.map(({ session, projectPath }) => {
-                        const pinned = pinnedIdSet.has(session.id)
-                        return (
-                          <div key={`flat-${session.id}`} className={localCss.sessionRowWrap}>
-                            <SessionNodeItem
-                              session={session}
-                              selected={session.id === selectedId}
-                              now={now}
-                              pending={pending.get(session.id)}
-                              activity={activity[session.id]}
-                              onOpen={(s) => {
-                                closeScheduleView()
-                                void (s.active || s.headless_open
-                                  ? selectByUser(s.id)
-                                  : openSession(s.id, projectPath))
-                              }}
-                              onClose={(s) => { void closeSession(s.id) }}
-                              onRename={(s) => {
-                                setRenameTarget(s)
-                                setRenameValue(displayTitle(s))
-                              }}
-                              onFork={(s) => { void forkSession(s.id) }}
-                              onArchive={(s) => { void archiveSession(s.id) }}
-                              onDelete={(s) => {
-                                setDeleteTarget(s)
-                                setDeleteAcknowledged(false)
-                              }}
-                              t={t}
-                            />
-                            <button
-                              type="button"
-                              className={clsx(localCss.pinBtn, pinned && localCss.pinBtnActive)}
-                              data-testid={`sidebar-pin-${session.id}`}
-                              aria-label={pinned ? '取消置顶' : '置顶会话'}
-                              title={pinned ? '取消置顶' : '置顶会话'}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleTogglePin(session)
-                              }}
-                            >
-                              <PinGlyph filled={pinned} />
-                            </button>
-                          </div>
-                        )
-                      })
+                      flatEntries.map(({ session, projectPath }) => (
+                        <SessionNodeItem
+                          key={`flat-${session.id}`}
+                          session={session}
+                          selected={session.id === selectedId}
+                          pinned={pinnedIdSet.has(session.id)}
+                          now={now}
+                          pending={pending.get(session.id)}
+                          activity={activity[session.id]}
+                          onOpen={(s) => {
+                            closeScheduleView()
+                            void (s.active || s.headless_open
+                              ? selectByUser(s.id)
+                              : openSession(s.id, projectPath))
+                          }}
+                          onClose={(s) => { void closeSession(s.id) }}
+                          onRename={(s) => {
+                            setRenameTarget(s)
+                            setRenameValue(displayTitle(s))
+                          }}
+                          onFork={(s) => { void forkSession(s.id) }}
+                          onArchive={(s) => { void archiveSession(s.id) }}
+                          onDelete={(s) => {
+                            setDeleteTarget(s)
+                            setDeleteAcknowledged(false)
+                          }}
+                          onTogglePin={handleTogglePin}
+                          t={t}
+                        />
+                      ))
                     ) : (
                       filtered.projects.map((project) => (
                         <GroupSection
@@ -863,40 +834,25 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedI
         containsCurrent={containsCurrent}
         onToggle={onToggle}
       />
-      {rows.map((session) => {
-        const pinned = pinnedIds.has(session.id)
-        return (
-          <div key={session.id} className={localCss.sessionRowWrap}>
-            <SessionNodeItem
-              session={session}
-              selected={session.id === selectedId}
-              now={now}
-              pending={pending.get(session.id)}
-              activity={activity[session.id]}
-              onOpen={onOpen}
-              onClose={onClose}
-              onRename={onRename}
-              onFork={onFork}
-              onArchive={onArchive}
-              onDelete={onDelete}
-              t={t}
-            />
-            <button
-              type="button"
-              className={clsx(localCss.pinBtn, pinned && localCss.pinBtnActive)}
-              data-testid={`sidebar-pin-${session.id}`}
-              aria-label={pinned ? '取消置顶' : '置顶会话'}
-              title={pinned ? '取消置顶' : '置顶会话'}
-              onClick={(e) => {
-                e.stopPropagation()
-                onTogglePin(session)
-              }}
-            >
-              <PinGlyph filled={pinned} />
-            </button>
-          </div>
-        )
-      })}
+      {rows.map((session) => (
+        <SessionNodeItem
+          key={session.id}
+          session={session}
+          selected={session.id === selectedId}
+          pinned={pinnedIds.has(session.id)}
+          now={now}
+          pending={pending.get(session.id)}
+          activity={activity[session.id]}
+          onOpen={onOpen}
+          onClose={onClose}
+          onRename={onRename}
+          onFork={onFork}
+          onArchive={onArchive}
+          onDelete={onDelete}
+          onTogglePin={onTogglePin}
+          t={t}
+        />
+      ))}
       {hiddenCount > 0 && (
         <button
           type="button"
@@ -910,20 +866,5 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedI
         </button>
       )}
     </div>
-  )
-}
-
-/** Monochrome thumbtack pin glyph matching the 16px outline icon grammar. */
-function PinGlyph({ filled = false }: { filled?: boolean }) {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M9.8 2.4L13.6 6.2L12.5 7.3L11.4 6.6L8.4 9.6L9.1 11.4L8 12.5L5.6 10.1L2.6 13.1L2.9 10.4L5.9 7.4L3.5 5L4.6 3.9L6.4 4.6L9.4 1.6L9.8 2.4Z"
-        fill={filled ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }

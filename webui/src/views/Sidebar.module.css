@@ -84,43 +84,6 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.sessionRowWrap {
-  position: relative;
-}
-
-.pinBtn {
-  position: absolute;
-  right: 30px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 4px;
-  padding: 0;
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms var(--ds-ease-in-out), color 120ms var(--ds-ease-in-out);
-}
-
-.sessionRowWrap:hover .pinBtn,
-.sessionRowWrap:focus-within .pinBtn,
-.pinBtnActive {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.pinBtn:hover {
-  color: var(--dsw-alias-label-primary);
-}
-
 .pinBtnActive {
   color: var(--dsw-alias-state-business-primary);
 }
@@ -149,4 +112,17 @@
 .ccBadge:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+
+.tuiBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+  font-weight: 500;
+  flex-shrink: 0;
 }
