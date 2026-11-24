@@ -152,9 +152,6 @@ export function PermissionModeSelect(
   const current = choices.find(choice => choice.value === state.current)
   const triggerLabel = current?.short_title ?? t('trigger.fallback')
   const currentGlyph = current === undefined ? undefined : permissionGlyph(current.value)
-  const currentIcon = currentGlyph === undefined
-    ? undefined
-    : <span style={{ color: colorFor(current?.color_key) }}>{currentGlyph}</span>
 
   const applyMode = (mode: PermissionModeValue): void => {
     setApplying(true)
@@ -192,7 +189,9 @@ export function PermissionModeSelect(
       : []),
     ...choices.map((choice): MenuEntry => {
       const glyph = permissionGlyph(choice.value)
-      const icon = glyph === undefined ? undefined : <span style={{ color: colorFor(choice.color_key) }}>{glyph}</span>
+      const icon = glyph === undefined
+        ? undefined
+        : <span className={css.glyph} style={{ color: colorFor(choice.color_key) }}>{glyph}</span>
       return {
         id: choice.value,
         label: <span title={reasonFor(choice)}>{t(`mode.${choice.value}.title`)}</span>,
@@ -227,8 +226,8 @@ export function PermissionModeSelect(
             disabled={busy}
             onClick={() => { setError(null); setOpen((was) => !was) }}
           >
-            {currentIcon !== undefined && (
-              <span className={css.triggerIcon} aria-hidden>{currentIcon}</span>
+            {currentGlyph !== undefined && (
+              <span className={css.triggerIcon} style={{ color: colorFor(current?.color_key) }} aria-hidden>{currentGlyph}</span>
             )}
             <span className={css.triggerLabel}>{triggerLabel}</span>
             <span className={open ? css.chevronOpen : css.chevron} aria-hidden>

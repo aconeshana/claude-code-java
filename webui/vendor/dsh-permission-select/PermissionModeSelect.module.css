@@ -42,7 +42,18 @@
 
 .triggerIcon {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
+}
+
+/* Color-tinting wrapper for Menu's itemIcon slot: must be inline-flex (not
+   plain inline) so the 16px SVG is centered on the flex cross-axis instead of
+   sitting on the inherited line-height text baseline. */
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* The shared 16px shield glyph renders one step smaller on the exposed
