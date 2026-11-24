@@ -1,38 +1,10 @@
 /*
  * Session sidebar local styles: only what the vendored dsh files do not own.
  * The column frame is vendor/chat-styles/SidebarRoot.module.css; the section
- * header, list seat, group sections, and row grammar are
- * vendor/chat-styles/WorkspaceBrowser.module.css + WorkspaceRows.module.css.
- * This file carries just this port's own pieces: the header-actions spacer
- * (upstream's gap comes from the dropped search slot's `margin-left: auto`;
- * this reproduces the same split without the search machinery), the refresh
- * affordance in the section header (upstream has no refresh — its list is
- * live-pushed), and the catalog error banner.
+ * header, inline expandable search, list seat, group sections, flat list,
+ * search results, and row grammar are vendor/chat-styles/WorkspaceBrowser.module.css
+ * + WorkspaceRows.module.css.
  */
-
-.headerActions {
-  margin-left: auto;
-}
-
-.refresh {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 50%;
-  corner-shape: round;
-  padding: 0;
-  background: transparent;
-  cursor: pointer;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.refresh:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
 
 .refreshBusy {
   cursor: progress;
@@ -62,30 +34,9 @@
 }
 
 /*
- * Session ownership tints. The row's dot says what the session is doing; these
- * say whose session it is, so the list stays readable without a per-row label:
- *
- *   --dsw-alias-state-business-primary (brand blue)  a session this browser drives
- *   --dsw-alias-label-secondary (muted ink)          a session the terminal owns
- *   --dsw-static-green-500 (success)                 the row the user has open
- *
- * The first two are alias tokens and follow the platform's light/dark pairs;
- * the success step has no alias at 500, so it is pinned to the static scale
- * the way the vendored StateDot pins its running blue.
- *
- * The chase matrix keeps its animation in every ownership — only its color
- * changes — so a running session still reads as running.
- *
- * Every StateDot class is hashed by its own CSS Module, so this file cannot
- * name the element's `dot` / `matrix` classes at all — `.dot` here would be
- * rewritten to a class this file never emits (verified: the element carries
- * `_dot_1tljr_3`, this module would ask for `_dot_*_*.dot`). Ownership is
- * therefore expressed purely through its own class on the same element, with
- * the selector tripled so it outranks StateDot's `.dot[data-state]` rules.
- *
- * Tripling, not just doubling, is load-bearing: the vendored stylesheet loads
- * after this one, so an equal-specificity rule would lose on source order —
- * silently, since every state paints at 0.1 opacity through currentColor.
+ * Session ownership tints. See vendor/chat-styles/WorkspaceRows.module.css
+ * for the base StateDot rules; tripled selector outranks StateDot's
+ * `.dot[data-state]` specificity.
  */
 .stateWeb:is(.stateWeb, .stateWeb)[data-state] {
   color: var(--dsw-alias-state-business-primary);
@@ -99,15 +50,77 @@
   color: var(--dsw-static-green-500);
 }
 
-/*
- * The running chase keeps its animation; only its color moves. StateDot paints
- * the matrix from a custom property declared on the same element, so the
- * ownership class alone can override it — no shared class name needed.
- */
 .stateTerminal {
   --dsh-state-ongoing: var(--dsw-alias-label-secondary);
 }
 
 .stateCurrent {
   --dsh-state-ongoing: var(--dsw-static-green-500);
+}
+
+/* Pinned sessions group & monochrome thumbtack toggle (aligned to WorkspaceRows grammar). */
+.pinnedSection {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3, rgba(0, 0, 0, 0.08));
+}
+
+.pinnedHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.pinnedHeaderIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sessionRowWrap {
+  position: relative;
+}
+
+.pinBtn {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms var(--ds-ease-in-out), color 120ms var(--ds-ease-in-out);
+}
+
+.sessionRowWrap:hover .pinBtn,
+.sessionRowWrap:focus-within .pinBtn,
+.pinBtnActive {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pinBtn:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.pinBtnActive {
+  color: var(--dsw-alias-state-business-primary);
 }

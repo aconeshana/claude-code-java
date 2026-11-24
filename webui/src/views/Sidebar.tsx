@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Button, IconNewChatOutline16, IconPanelLeftOutline16, IconRefreshOutline16, IconSettingsOutline16, Input, Modal, Pill, RiskConfirmation, Tooltip } from '@primitives'
+import {
+  Button, IconCloseFill14, IconListPenOutline16, IconNewChatOutline16,
+  IconPanelLeftOutline16, IconRefreshOutline16, IconSearchOutline16, IconSettingsOutline16,
+  Input, Menu, Modal, Pill, RiskConfirmation, StateDot, Tooltip,
+} from '@primitives'
+import type { MenuEntry } from '@primitives'
 import css from '@chat-styles/SidebarRoot.module.css'
 import browserCss from '@chat-styles/WorkspaceBrowser.module.css'
+import rowCss from '@chat-styles/WorkspaceRows.module.css'
 import triggerCss from '@chat-styles/SettingsRoot.module.css'
 import localCss from './Sidebar.module.css'
 import { useLayout } from '@vendor/ui-layout'
@@ -12,10 +18,12 @@ import type { SessionActivity } from '../store/sessions'
 import { pendingInteractions, useApprovals } from '../store/approvals'
 import type { PendingInteraction } from '../store/approvals'
 import { useSidebarCollapse } from '../store/sidebarCollapse'
+import { filterSidebarProjects, useWorkspacePrefs } from '../store/workspacePrefs'
+import { toast } from '../store/toast'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
 import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
-import { displayTitle, ProjectRowItem, SessionNodeItem } from './SessionRows'
+import { displayTitle, ProjectRowItem, SessionNodeItem, sessionStatus } from './SessionRows'
 import { stripScheduledSessions } from './scheduledSessions'
 import { ScheduledTasksNavButton } from './ScheduledTasksWorkspace'
 import { useScheduleView } from '../store/scheduleView'
@@ -124,6 +132,14 @@ export function Sidebar() {
 
   const collapsed = useSidebarCollapse((state) => state.collapsed)
   const toggleCollapsed = useSidebarCollapse((state) => state.toggle)
+  const viewMode = useWorkspacePrefs((state) => state.viewMode)
+  const pinnedSessionIds = useWorkspacePrefs((state) => state.pinnedSessionIds)
+  const setViewMode = useWorkspacePrefs((state) => state.setViewMode)
+  const togglePin = useWorkspacePrefs((state) => state.togglePin)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [viewMenuOpen, setViewMenuOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   // Wide content stays mounted while the collapse animates (fading via
   // .fading), unmounts at settle, and remounts right away on expand
   // (upstream's settled/wide pair).
@@ -211,6 +227,54 @@ export function Sidebar() {
     [regularProjects, selectedProject],
   )
 
+  const pinnedIdSet = useMemo(() => new Set(pinnedSessionIds), [pinnedSessionIds])
+
+  const filtered = useMemo(
+    () => filterSidebarProjects(sorted, {
+      query: searchQuery,
+      pinnedIds: pinnedSessionIds,
+    }),
+    [sorted, searchQuery, pinnedSessionIds],
+  )
+
+  const handleTogglePin = (session: CatalogSession): void => {
+    const pinnedNow = togglePin(session.id)
+    toast.info(pinnedNow ? `已置顶会话「${displayTitle(session)}」` : `已取消置顶「${displayTitle(session)}」`)
+  }
+
+  const newSessionWorkspace = selectedProject?.project_path ?? null
+  const searching = searchQuery.trim() !== ''
+
+  const flatEntries = useMemo(() => {
+    const entries: { session: CatalogSession; projectPath: string; projectName: string }[] = []
+    for (const project of filtered.projects) {
+      for (const session of project.sessions) {
+        entries.push({ session, projectPath: project.project_path, projectName: project.project_name })
+      }
+    }
+    return entries.sort((a, b) => {
+      const aTime = Date.parse(a.session.modified_at || '') || 0
+      const bTime = Date.parse(b.session.modified_at || '') || 0
+      return bTime - aTime
+    })
+  }, [filtered.projects])
+
+  const viewMenuItems = useMemo<readonly MenuEntry[]>(() => [
+    { type: 'label', id: 'lbl-view', text: '视图方式' },
+    { id: 'view:grouped', label: '按工作区分组' },
+    { id: 'view:flat', label: '平铺列表' },
+  ], [])
+
+  const openSearch = (): void => {
+    setSearchOpen(true)
+    window.requestAnimationFrame(() => { searchInputRef.current?.focus() })
+  }
+
+  const closeSearch = (): void => {
+    setSearchQuery('')
+    setSearchOpen(false)
+  }
+
   // The rows' pending-interaction dots. The mirror stream carries every
   // session's asks, so a session waiting on the user stays visible here even
   // though its card only renders under its own composer — that split is the
@@ -260,7 +324,7 @@ export function Sidebar() {
             aria-label={t('newSession')}
             onClick={() => {
               closeScheduleView()
-              void createSession(selectedProject?.project_path ?? null)
+              void createSession(newSessionWorkspace)
             }}
           >
             <span className={css.brandIdentity} aria-hidden="true">
@@ -301,7 +365,7 @@ export function Sidebar() {
           aria-label={t('newSession')}
           onClick={() => {
             closeScheduleView()
-            void createSession(selectedProject?.project_path ?? null)
+            void createSession(newSessionWorkspace)
           }}
         >
           <IconNewChatOutline16 size={wide ? 14 : 18} />
@@ -312,61 +376,308 @@ export function Sidebar() {
         {wide && (
         <div className={browserCss.root}>
           <div className={browserCss.sectionHeader}>
-            <span className={browserCss.sectionLabel}>{t('section.sessions')}</span>
-            <div className={clsx(browserCss.headerActions, localCss.headerActions)}>
+            <span className={clsx(browserCss.sectionLabel, searchOpen && browserCss.sectionLabelHidden)}>
+              {t('section.sessions')}
+            </span>
+            <div className={clsx(browserCss.searchSlot, searchOpen && browserCss.searchSlotExpanded)}>
+              <div
+                className={clsx(browserCss.search, searchOpen && browserCss.searchExpanded)}
+                onClick={() => { if (!searchOpen) openSearch() }}
+              >
+                <button
+                  type="button"
+                  className={browserCss.searchButton}
+                  data-testid="sidebar-search-toggle"
+                  aria-label="搜索会话"
+                  title="搜索会话"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (searchOpen) searchInputRef.current?.focus()
+                    else openSearch()
+                  }}
+                >
+                  <IconSearchOutline16 size={16} />
+                </button>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className={browserCss.searchInput}
+                  data-testid="sidebar-search-input"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.currentTarget.value) }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation()
+                      closeSearch()
+                    }
+                  }}
+                  onBlur={() => {
+                    if (searchQuery.trim() === '') setSearchOpen(false)
+                  }}
+                  placeholder="搜索会话..."
+                  aria-label="搜索会话"
+                />
+                {searchOpen && (
+                  <button
+                    type="button"
+                    className={browserCss.clearButton}
+                    data-testid="sidebar-search-clear"
+                    aria-label="关闭搜索"
+                    onMouseDown={(e) => { e.preventDefault() }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (searchQuery !== '') {
+                        setSearchQuery('')
+                        searchInputRef.current?.focus()
+                      } else {
+                        closeSearch()
+                      }
+                    }}
+                  >
+                    <IconCloseFill14 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className={clsx(browserCss.headerActions, searchOpen && browserCss.headerActionsHidden)}>
+              <Menu
+                open={viewMenuOpen}
+                onClose={() => { setViewMenuOpen(false) }}
+                portal
+                align="end"
+                dense
+                items={viewMenuItems}
+                selectedId={`view:${viewMode}`}
+                onSelect={(id) => {
+                  setViewMenuOpen(false)
+                  if (id === 'view:grouped') setViewMode('grouped')
+                  else if (id === 'view:flat') setViewMode('flat')
+                }}
+                anchor={(
+                  <button
+                    type="button"
+                    className={browserCss.iconButton}
+                    data-testid="sidebar-view-menu-btn"
+                    aria-label="视图选项"
+                    aria-haspopup="menu"
+                    aria-expanded={viewMenuOpen}
+                    title="视图选项"
+                    onClick={() => { setViewMenuOpen((open) => !open) }}
+                  >
+                    <IconListPenOutline16 size={16} />
+                  </button>
+                )}
+              />
               <button
                 type="button"
-                className={clsx(localCss.refresh, loading && localCss.refreshBusy)}
+                className={clsx(browserCss.iconButton, loading && localCss.refreshBusy)}
                 onClick={() => { void refresh() }}
                 aria-label={t('refresh')}
                 title={t('refresh')}
               >
-                <IconRefreshOutline16 />
+                <IconRefreshOutline16 size={16} />
               </button>
             </div>
           </div>
           {error != null && <div className={localCss.error}>{error}</div>}
           <div className={browserCss.listArea}>
             <div className={browserCss.treeBody}>
-              <div className={browserCss.list} role="tree" aria-label={t('section.sessions')}>
-                {sorted.length === 0 && (
-                  <div className={browserCss.empty}>{t('empty.none')}</div>
+              <div
+                className={clsx(
+                  browserCss.list,
+                  searching && browserCss.searchTree,
+                  !searching && viewMode === 'flat' && browserCss.flatList,
                 )}
-                {sorted.map((project) => (
-                  <GroupSection
-                    key={project.project_path}
-                    project={project}
-                    expanded={!collapsedGroups.includes(project.project_path)}
-                    overflowExpanded={expandedGroups.includes(project.project_path)}
-                    selectedId={selectedId}
-                    now={now}
-                    pending={pending}
-                    activity={activity}
-                    containsCurrent={project.project_path === selectedProject?.project_path}
-                    onToggle={() => {
-                      setCollapsedGroups((keys) => (
-                        keys.includes(project.project_path)
-                          ? keys.filter((key) => key !== project.project_path)
-                          : [...keys, project.project_path]
-                      ))
-                    }}
-                    onOpen={(session) => {
-                      closeScheduleView()
-                      void (session.active || session.headless_open
-                        ? selectByUser(session.id)
-                        : openSession(session.id, project.project_path))
-                    }}
-                    onClose={(session) => { void closeSession(session.id) }}
-                    onRename={(session) => {
-                      setRenameTarget(session)
-                      setRenameValue(displayTitle(session))
-                    }}
-                    onFork={(session) => { void forkSession(session.id) }}
-                    onArchive={(session) => { void archiveSession(session.id) }}
+                role="tree"
+                aria-label={t('section.sessions')}
+              >
+                {searching ? (
+                  filtered.searchResults.length === 0 ? (
+                    <div className={browserCss.searchStatus} data-testid="sidebar-empty-filtered">
+                      未找到匹配「{searchQuery.trim()}」的会话
+                    </div>
+                  ) : (
+                    filtered.searchResults.map(({ session, projectPath, projectName, snippet }) => (
+                      <button
+                        key={`search-${session.id}`}
+                        type="button"
+                        role="treeitem"
+                        className={clsx(rowCss.searchResultRow, session.id === selectedId && rowCss.selected)}
+                        data-testid={`sidebar-search-row-${session.id}`}
+                        onClick={() => {
+                          closeScheduleView()
+                          void (session.active || session.headless_open
+                            ? selectByUser(session.id)
+                            : openSession(session.id, projectPath))
+                        }}
+                      >
+                        <div className={rowCss.searchResultHeading}>
+                          <span className={rowCss.slot} aria-hidden="true">
+                            <StateDot
+                              state={sessionStatus(activity[session.id], pending.get(session.id)).state}
+                              className={clsx(
+                                rowCss.dot,
+                                session.id === selectedId
+                                  ? localCss.stateCurrent
+                                  : session.headless_open
+                                    ? localCss.stateWeb
+                                    : localCss.stateTerminal,
+                              )}
+                            />
+                          </span>
+                          <span className={rowCss.searchResultTitle}>{displayTitle(session)}</span>
+                        </div>
+                        <div className={rowCss.searchResultMeta}>
+                          <span className={rowCss.searchResultWorkspace}>{projectName}</span>
+                          {snippet && <span className={rowCss.searchResultSnippet}>{snippet}</span>}
+                        </div>
+                      </button>
+                    ))
+                  )
+                ) : (
+                  <>
+                    {filtered.pinned.length > 0 && (
+                      <div className={localCss.pinnedSection} data-testid="sidebar-pinned-section">
+                        <div className={localCss.pinnedHeader}>
+                          <span className={localCss.pinnedHeaderIcon} aria-hidden="true">
+                            <PinGlyph filled />
+                          </span>
+                          <span>已置顶</span>
+                        </div>
+                        {filtered.pinned.map(({ session, projectPath }) => (
+                          <div
+                            key={`pinned-${session.id}`}
+                            className={localCss.sessionRowWrap}
+                            data-testid={`sidebar-pinned-row-${session.id}`}
+                          >
+                            <SessionNodeItem
+                              session={session}
+                              selected={session.id === selectedId}
+                              now={now}
+                              pending={pending.get(session.id)}
+                              activity={activity[session.id]}
+                              onOpen={(s) => {
+                                closeScheduleView()
+                                void (s.active || s.headless_open
+                                  ? selectByUser(s.id)
+                                  : openSession(s.id, projectPath))
+                              }}
+                              onClose={(s) => { void closeSession(s.id) }}
+                              onRename={(s) => {
+                                setRenameTarget(s)
+                                setRenameValue(displayTitle(s))
+                              }}
+                              onFork={(s) => { void forkSession(s.id) }}
+                              onArchive={(s) => { void archiveSession(s.id) }}
+                              onDelete={(s) => {
+                                setDeleteTarget(s)
+                                setDeleteAcknowledged(false)
+                              }}
+                              t={t}
+                            />
+                            <button
+                              type="button"
+                              className={clsx(localCss.pinBtn, localCss.pinBtnActive)}
+                              data-testid={`sidebar-unpin-${session.id}`}
+                              aria-label="取消置顶"
+                              title="取消置顶"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleTogglePin(session)
+                              }}
+                            >
+                              <PinGlyph filled />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {filtered.projects.length === 0 ? (
+                      <div className={browserCss.empty}>{t('empty.none')}</div>
+                    ) : viewMode === 'flat' ? (
+                      flatEntries.map(({ session, projectPath }) => {
+                        const pinned = pinnedIdSet.has(session.id)
+                        return (
+                          <div key={`flat-${session.id}`} className={localCss.sessionRowWrap}>
+                            <SessionNodeItem
+                              session={session}
+                              selected={session.id === selectedId}
+                              now={now}
+                              pending={pending.get(session.id)}
+                              activity={activity[session.id]}
+                              onOpen={(s) => {
+                                closeScheduleView()
+                                void (s.active || s.headless_open
+                                  ? selectByUser(s.id)
+                                  : openSession(s.id, projectPath))
+                              }}
+                              onClose={(s) => { void closeSession(s.id) }}
+                              onRename={(s) => {
+                                setRenameTarget(s)
+                                setRenameValue(displayTitle(s))
+                              }}
+                              onFork={(s) => { void forkSession(s.id) }}
+                              onArchive={(s) => { void archiveSession(s.id) }}
+                              onDelete={(s) => {
+                                setDeleteTarget(s)
+                                setDeleteAcknowledged(false)
+                              }}
+                              t={t}
+                            />
+                            <button
+                              type="button"
+                              className={clsx(localCss.pinBtn, pinned && localCss.pinBtnActive)}
+                              data-testid={`sidebar-pin-${session.id}`}
+                              aria-label={pinned ? '取消置顶' : '置顶会话'}
+                              title={pinned ? '取消置顶' : '置顶会话'}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleTogglePin(session)
+                              }}
+                            >
+                              <PinGlyph filled={pinned} />
+                            </button>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      filtered.projects.map((project) => (
+                        <GroupSection
+                          key={project.project_path}
+                          project={project}
+                          expanded={!collapsedGroups.includes(project.project_path)}
+                          overflowExpanded={expandedGroups.includes(project.project_path)}
+                          selectedId={selectedId}
+                          pinnedIds={pinnedIdSet}
+                          now={now}
+                          pending={pending}
+                          activity={activity}
+                          containsCurrent={project.project_path === selectedProject?.project_path}
+                          onToggle={() => {
+                            setCollapsedGroups((keys) => (
+                              keys.includes(project.project_path)
+                                ? keys.filter((key) => key !== project.project_path)
+                                : [...keys, project.project_path]
+                            ))
+                          }}
+                          onOpen={(session) => {
+                            closeScheduleView()
+                            void (session.active || session.headless_open
+                              ? selectByUser(session.id)
+                              : openSession(session.id, project.project_path))
+                          }}
+                          onClose={(session) => { void closeSession(session.id) }}
+                          onRename={(session) => {
+                            setRenameTarget(session)
+                            setRenameValue(displayTitle(session))
+                          }}
+                          onFork={(session) => { void forkSession(session.id) }}
+                          onArchive={(session) => { void archiveSession(session.id) }}
                     onDelete={(session) => {
                       setDeleteTarget(session)
                       setDeleteAcknowledged(false)
                     }}
+                    onTogglePin={handleTogglePin}
                     onOverflowToggle={() => {
                       // Upstream's overflow control is a local fold toggle —
                       // expanded shows every row the account holds and flips
@@ -379,9 +690,12 @@ export function Sidebar() {
                         void growPerPage(currentPageSize(projects) + COLLAPSED_SESSION_LIMIT)
                       }
                     }}
-                    t={t}
-                  />
-                ))}
+                          t={t}
+                        />
+                      ))
+                    )}
+                  </>
+                )}
               </div>
               <span className={browserCss.fade} />
             </div>
@@ -494,12 +808,13 @@ function toggled(list: readonly string[], key: string): string[] {
 }
 
 /** One project group: the 34px header row plus its 32px session rows. */
-function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pending, activity, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onOverflowToggle, t }: {
+function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedIds, now, pending, activity, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onTogglePin, onOverflowToggle, t }: {
   project: CatalogProject
   expanded: boolean
   /** Rows unfolded past the 5-row limit (upstream's sessionsExpanded). */
   overflowExpanded: boolean
   selectedId: string | null
+  pinnedIds: ReadonlySet<string>
   now: number
   /** Session id → the interaction it is waiting on, for the rows' status dots. */
   pending: ReadonlyMap<string, PendingInteraction>
@@ -513,6 +828,7 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pe
   onFork: (session: CatalogSession) => void
   onArchive: (session: CatalogSession) => void
   onDelete: (session: CatalogSession) => void
+  onTogglePin: (session: CatalogSession) => void
   /** Toggles this group's overflow fold (upstream's overflow-button onClick). */
   onOverflowToggle: () => void
   t: ReturnType<typeof useTranslate>
@@ -547,23 +863,40 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pe
         containsCurrent={containsCurrent}
         onToggle={onToggle}
       />
-      {rows.map((session) => (
-        <SessionNodeItem
-          key={session.id}
-          session={session}
-          selected={session.id === selectedId}
-          now={now}
-          pending={pending.get(session.id)}
-          activity={activity[session.id]}
-          onOpen={onOpen}
-          onClose={onClose}
-          onRename={onRename}
-          onFork={onFork}
-          onArchive={onArchive}
-          onDelete={onDelete}
-          t={t}
-        />
-      ))}
+      {rows.map((session) => {
+        const pinned = pinnedIds.has(session.id)
+        return (
+          <div key={session.id} className={localCss.sessionRowWrap}>
+            <SessionNodeItem
+              session={session}
+              selected={session.id === selectedId}
+              now={now}
+              pending={pending.get(session.id)}
+              activity={activity[session.id]}
+              onOpen={onOpen}
+              onClose={onClose}
+              onRename={onRename}
+              onFork={onFork}
+              onArchive={onArchive}
+              onDelete={onDelete}
+              t={t}
+            />
+            <button
+              type="button"
+              className={clsx(localCss.pinBtn, pinned && localCss.pinBtnActive)}
+              data-testid={`sidebar-pin-${session.id}`}
+              aria-label={pinned ? '取消置顶' : '置顶会话'}
+              title={pinned ? '取消置顶' : '置顶会话'}
+              onClick={(e) => {
+                e.stopPropagation()
+                onTogglePin(session)
+              }}
+            >
+              <PinGlyph filled={pinned} />
+            </button>
+          </div>
+        )
+      })}
       {hiddenCount > 0 && (
         <button
           type="button"
@@ -577,5 +910,20 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, now, pe
         </button>
       )}
     </div>
+  )
+}
+
+/** Monochrome thumbtack pin glyph matching the 16px outline icon grammar. */
+function PinGlyph({ filled = false }: { filled?: boolean }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9.8 2.4L13.6 6.2L12.5 7.3L11.4 6.6L8.4 9.6L9.1 11.4L8 12.5L5.6 10.1L2.6 13.1L2.9 10.4L5.9 7.4L3.5 5L4.6 3.9L6.4 4.6L9.4 1.6L9.8 2.4Z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

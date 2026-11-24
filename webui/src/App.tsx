@@ -37,6 +37,8 @@ import { ContextDashboard } from './views/context/ContextDashboard'
 import { ContextModal } from './views/context/ContextModal'
 import { openShellInRightDock, openSubagentInRightDock } from './store/rightSidebar'
 import { toast } from './store/toast'
+import { parseGoalSlashInput, useGoalPlanDock } from './store/goalPlanDock'
+import { GoalDockCard, PlanDockCard } from './views/GoalPlanDock'
 import { RightPanel } from './views/RightPanel'
 import { RightPanelToggle } from './views/RightPanelToggle'
 import { ToastHost } from './views/ToastHost'
@@ -163,10 +165,24 @@ export function App() {
   const setView = useConversationView((state) => state.setView)
   const [contextModalOpen, setContextModalOpen] = useState(false)
   const onClientCommand = useCallback((command: string): boolean => {
-    if (command !== '/context') return false
-    setContextModalOpen(true)
-    return true
-  }, [])
+    if (command === '/context') {
+      setContextModalOpen(true)
+      return true
+    }
+    const goalText = parseGoalSlashInput(command)
+    if (goalText !== null && selectedId != null) {
+      useGoalPlanDock.getState().setGoal(selectedId, goalText)
+      if (goalText !== '') toast.success(`已设定目标：${goalText}`)
+      return true
+    }
+    if (command.trim() === '/plan' && selectedId != null) {
+      void usePermissionMode.getState().select('plan').then(() => {
+        toast.info('已进入规划模式')
+      })
+      return true
+    }
+    return false
+  }, [selectedId])
   const contextT = useTranslate(CONTEXT_NS, contextDicts)
   const uiT = useTranslate(UI_NS, uiDicts)
   const board = useTaskBoard((state) => state.board)
@@ -395,6 +411,12 @@ export function App() {
                 }}
               />
             )}
+            <GoalDockCard sessionId={selectedId} />
+            <PlanDockCard
+              sessionId={selectedId}
+              messages={conversation?.messages ?? []}
+              onApprovePlan={(prompt) => { onSubmit(prompt) }}
+            />
             {board != null && !board.hidden && <TodoPanel tasks={board.tasks} />}
             <InputBar
               disabled={selectedId == null}
