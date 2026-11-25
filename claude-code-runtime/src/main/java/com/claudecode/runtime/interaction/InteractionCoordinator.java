@@ -33,7 +33,6 @@ public final class InteractionCoordinator
         implements PermissionAskCallback, SudoPasswordInteraction, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(InteractionCoordinator.class);
 
-    private record RegistrationKey(InteractionKind kind, InteractionEndpoint endpoint) {}
     private record Pending<Q, R>(
         InteractionRequest<Q, R> request, CompletableFuture<R> result) {}
 

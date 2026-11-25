@@ -1,7 +1,6 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
-import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -86,10 +85,6 @@ public final class LanGatewayConfigStore {
 
     private final Path file;
     private LanGatewayConfig cached;
-
-    public LanGatewayConfigStore() {
-        this(ClaudePaths.LAN_GATEWAY_JSON);
-    }
 
     public LanGatewayConfigStore(Path file) {
         this.file = file == null ? null : file.toAbsolutePath().normalize();

@@ -16,6 +16,34 @@
   <rule ref="category/java/codestyle.xml/UnnecessaryFullyQualifiedName"/>
   <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
   <rule ref="category/java/bestpractices.xml/UnusedFormalParameter"/>
+  <rule name="UnusedPrivateNestedType"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Private nested type is never referenced in this compilation unit">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //(ClassDeclaration | RecordDeclaration | EnumDeclaration)[
+            parent::ClassBody or parent::RecordBody or parent::EnumBody
+          ][
+            pmd-java:modifiers() = 'private'
+          ][
+            let $decl := .,
+                $name := @SimpleName
+            return not(
+              ancestor::CompilationUnit[1]//*[
+                (self::ClassType[@SimpleName = $name]
+                 or self::AmbiguousName[@Name = $name]
+                 or self::VariableAccess[@Name = $name])
+                and not(ancestor::*[. is $decl])
+              ]
+            )
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
   <rule ref="category/java/errorprone.xml/UnnecessaryBooleanAssertion"/>
   <rule name="LiteralStringEquality"
         language="java"
