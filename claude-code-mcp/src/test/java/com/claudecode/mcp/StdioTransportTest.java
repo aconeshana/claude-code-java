@@ -264,9 +264,9 @@ class StdioTransportTest {
 
         StdioTransport transport = new StdioTransport(config);
         try {
-            transport.start();
             CountDownLatch notified = new CountDownLatch(1);
             transport.onNotification("notifications/prompts/list_changed", _ -> notified.countDown());
+            transport.start();
             assertTrue(notified.await(2, TimeUnit.SECONDS),
                 "unsolicited notification must be delivered without an in-flight request");
         } finally {
