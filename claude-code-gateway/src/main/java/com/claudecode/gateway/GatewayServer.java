@@ -557,35 +557,7 @@ public final class GatewayServer implements AutoCloseable {
             this::boundHost,
             this::rebindLanSharing,
             this::withBindLock);
-        GatewayCcConnectPort ccConnectPort = builder.ccConnect;
-        ccConnectPort.bindRemoteBridge(new GatewayCcConnectPort.RemoteBridge() {
-            @Override
-            public List<GatewayCcConnectPort.LiveWorker> liveWorkers() {
-                return remoteWorkers != null ? remoteWorkers.liveWorkers() : List.of();
-            }
-
-            @Override
-            public Optional<GatewayCcConnectPort.CollaborationState> getCollaboration(
-                    long pid, String sessionId) {
-                return remoteWorkers != null
-                    ? remoteWorkers.getCollaboration(pid, sessionId)
-                    : Optional.empty();
-            }
-
-            @Override
-            public Optional<GatewayCcConnectPort.CollaborationState> setCollaboration(
-                    long pid, String sessionId, String channel, boolean enabled) {
-                return remoteWorkers != null
-                    ? remoteWorkers.setCollaboration(pid, sessionId, channel, enabled)
-                    : Optional.empty();
-            }
-
-            @Override
-            public void publishChanged() {
-                mirror.publishCcConnectChanged();
-            }
-        });
-        this.ccConnectApi = new GatewayCcConnectHandler(ccConnectPort);
+        this.ccConnectApi = new GatewayCcConnectHandler(bindCcConnectPort(builder.ccConnect));
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -667,13 +639,45 @@ public final class GatewayServer implements AutoCloseable {
         }
     }
 
+    private GatewayCcConnectPort bindCcConnectPort(GatewayCcConnectPort ccConnectPort) {
+        ccConnectPort.bindRemoteBridge(new GatewayCcConnectPort.RemoteBridge() {
+            @Override
+            public List<GatewayCcConnectPort.LiveWorker> liveWorkers() {
+                return remoteWorkers != null ? remoteWorkers.liveWorkers() : List.of();
+            }
+
+            @Override
+            public Optional<GatewayCcConnectPort.CollaborationState> getCollaboration(
+                    long pid, String sessionId) {
+                return remoteWorkers != null
+                    ? remoteWorkers.getCollaboration(pid, sessionId)
+                    : Optional.empty();
+            }
+
+            @Override
+            public Optional<GatewayCcConnectPort.CollaborationState> setCollaboration(
+                    long pid, String sessionId, String channel, boolean enabled) {
+                return remoteWorkers != null
+                    ? remoteWorkers.setCollaboration(pid, sessionId, channel, enabled)
+                    : Optional.empty();
+            }
+
+            @Override
+            public void publishChanged() {
+                mirror.publishCcConnectChanged();
+            }
+        });
+        return ccConnectPort;
+    }
+
     private HttpServer bindWithRetry(String host, int targetPort) throws IOException {
-        IOException lastError = null;
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; ; attempt++) {
             try {
                 return createAndStartHttpServer(host, targetPort);
             } catch (IOException bindErr) {
-                lastError = bindErr;
+                if (attempt >= 19) {
+                    throw bindErr;
+                }
                 try {
                     Thread.sleep(15L);
                 } catch (InterruptedException _) {
@@ -682,7 +686,6 @@ public final class GatewayServer implements AutoCloseable {
                 }
             }
         }
-        throw lastError != null ? lastError : new IOException("Unable to bind " + host + ":" + targetPort);
     }
 
     private HttpServer createAndStartHttpServer(String host, int targetPort) throws IOException {
