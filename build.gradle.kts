@@ -72,6 +72,7 @@ subprojects {
         add("testImplementation", rootProject.libs.jqwik)
         add("testImplementation", rootProject.libs.assertj.core)
         add("testRuntimeOnly", rootProject.libs.junit.platform.launcher)
+        add("rewrite", enforcedPlatform(rootProject.libs.jackson.bom))
         add("rewrite", rootProject.libs.rewrite.testing.frameworks)
         add("rewrite", rootProject.libs.rewrite.migrate.java)
         add("rewrite", rootProject.libs.rewrite.static.analysis)
@@ -109,6 +110,15 @@ subprojects {
             // 二者在官方 central 解析下会出现版本冲突，靠 failOnVersionConflict 严格暴露。
             // 统一钉到较高版本 2.2.21（okio 用它编译，okhttp 的下限 2.1.21 向上兼容）。
             "org.jetbrains.kotlin:kotlin-stdlib:2.2.21",
+            // Security remediation pins for transitive dependencies across product & tooling configs
+            "org.ow2.asm:asm:${rootProject.libs.versions.asm.get()}",
+            "org.ow2.asm:asm-analysis:${rootProject.libs.versions.asm.get()}",
+            "org.ow2.asm:asm-commons:${rootProject.libs.versions.asm.get()}",
+            "org.ow2.asm:asm-tree:${rootProject.libs.versions.asm.get()}",
+            "org.ow2.asm:asm-util:${rootProject.libs.versions.asm.get()}",
+            "commons-codec:commons-codec:${rootProject.libs.versions.commons.codec.get()}",
+            "com.google.guava:guava:${rootProject.libs.versions.guava.get()}",
+            "io.micrometer:micrometer-core:${rootProject.libs.versions.micrometer.get()}",
         )
 
         // `-PlanternaLocal` swaps the published JitPack fork for whatever `mvn install`

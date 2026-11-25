@@ -14,6 +14,7 @@ java {
 }
 
 dependencies {
+    implementation(enforcedPlatform(libs.jackson.bom))
     implementation(platform(libs.rewrite.bom))
     implementation(libs.rewrite.java)
     implementation(libs.rewrite.migrate.java)
@@ -36,6 +37,19 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+configurations.configureEach {
+    resolutionStrategy.force(
+        "org.ow2.asm:asm:${libs.versions.asm.get()}",
+        "org.ow2.asm:asm-analysis:${libs.versions.asm.get()}",
+        "org.ow2.asm:asm-commons:${libs.versions.asm.get()}",
+        "org.ow2.asm:asm-tree:${libs.versions.asm.get()}",
+        "org.ow2.asm:asm-util:${libs.versions.asm.get()}",
+        "commons-codec:commons-codec:${libs.versions.commons.codec.get()}",
+        "com.google.guava:guava:${libs.versions.guava.get()}",
+        "io.micrometer:micrometer-core:${libs.versions.micrometer.get()}",
+    )
 }
 
 tasks.test {
