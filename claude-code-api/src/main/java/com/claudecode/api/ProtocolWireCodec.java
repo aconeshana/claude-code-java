@@ -74,7 +74,7 @@ public final class ProtocolWireCodec {
             case ANTHROPIC -> parseAnthropicRequest((ObjectNode) root);
             case OPENAI_CHAT -> parseChatRequest((ObjectNode) root);
             case OPENAI_RESPONSES -> parseResponsesRequest((ObjectNode) root);
-            case GEMINI -> parseGeminiRequest((ObjectNode) camelCaseGeminiBody((ObjectNode) root));
+            case GEMINI -> parseGeminiRequest((ObjectNode) camelCaseGeminiBody(root));
         };
     }
 

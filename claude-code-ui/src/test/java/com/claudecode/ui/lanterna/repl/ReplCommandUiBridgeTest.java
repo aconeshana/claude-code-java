@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.impl.terminal.CopyCommand;
 import com.claudecode.commands.session.ResumeRequest;
-import com.claudecode.core.engine.CompactProgressEvent;
 import com.claudecode.core.pokemon.PokemonProfile;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -166,7 +165,7 @@ class ReplCommandUiBridgeTest {
         bridge.openWorkflows("t-1", true);
         bridge.openPluginPanel("discover");
         bridge.openGoal();
-        bridge.compactProgress((CompactProgressEvent) null);
+        bridge.compactProgress(null);
         bridge.setWelcomePokemon(null);
         bridge.showWelcomePokemon(null);
         bridge.openPokemonHatch(null);

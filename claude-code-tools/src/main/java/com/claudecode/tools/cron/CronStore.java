@@ -64,7 +64,7 @@ public final class CronStore {
 
 
     public static synchronized String add(String cron, String prompt, boolean recurring, boolean durable) {
-        return add(cron, prompt, recurring, durable, (String) null);
+        return add(cron, prompt, recurring, durable, null);
     }
     /**
      * Teammate-aware form of {@code addCronTask}. The owner is runtime-only and

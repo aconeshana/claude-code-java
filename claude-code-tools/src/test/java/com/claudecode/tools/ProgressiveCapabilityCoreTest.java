@@ -28,6 +28,7 @@ import com.claudecode.tools.skills.Skill;
 import com.claudecode.tools.skills.SkillLoader;
 import com.claudecode.tools.skills.SkillTool;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -134,7 +135,7 @@ class ProgressiveCapabilityCoreTest {
 
     @Test
     void toolSearchReturnsTextSchemaAndToolInvokeUnwrapsOrBlocksDisabled(@TempDir Path tempDir) throws Exception {
-        java.nio.file.Files.writeString(tempDir.resolve("hello.txt"), "hi");
+        Files.writeString(tempDir.resolve("hello.txt"), "hi");
         MutableFilter filter = new MutableFilter();
         filter.disabledBuiltIns.add("Glob");
 

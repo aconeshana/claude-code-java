@@ -55,7 +55,7 @@ class MessageSerializationProperties {
             nonEmptyStrings(),
             nonEmptyStrings(),
             Arbitraries.just(MAPPER.createObjectNode().put("key", "value"))
-        ).as((id, name, input) -> new ToolUseBlock(id, name, (JsonNode) input));
+        ).as((id, name, input) -> new ToolUseBlock(id, name, input));
     }
 
     @Provide

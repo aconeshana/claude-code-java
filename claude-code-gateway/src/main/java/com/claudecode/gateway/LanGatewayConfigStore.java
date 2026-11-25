@@ -17,7 +17,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -98,7 +97,7 @@ public final class LanGatewayConfigStore {
 
     /** Ephemeral store backed purely by memory, used when persistence is not wired (e.g. unit tests). */
     public static LanGatewayConfigStore inMemory() {
-        LanGatewayConfigStore store = new LanGatewayConfigStore((Path) null);
+        LanGatewayConfigStore store = new LanGatewayConfigStore(null);
         store.cached = LanGatewayConfig.defaults();
         return store;
     }
@@ -273,7 +272,7 @@ public final class LanGatewayConfigStore {
         for (String item : raw) {
             if (StringUtils.isNotBlank(item)) cleaned.add(item.trim());
         }
-        return Collections.unmodifiableList(new ArrayList<>(cleaned));
+        return List.copyOf(cleaned);
     }
 
     private static LanGatewayConfig parseConfig(JsonNode root) {

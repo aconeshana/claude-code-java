@@ -13,7 +13,7 @@ class RequestMessageNormalizerToolReferenceTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> toolResultMap(StreamingClient.StreamRequest.RequestMessage rm) {
-        return (Map<String, Object>) ((List<Map<String, Object>>) rm.content()).getFirst();
+        return ((List<Map<String, Object>>) rm.content()).getFirst();
     }
 
     @SuppressWarnings("unchecked")

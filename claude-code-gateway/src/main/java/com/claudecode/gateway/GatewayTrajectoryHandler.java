@@ -516,7 +516,7 @@ final class GatewayTrajectoryHandler {
         // 6. Apply turn-based pagination (`before_turn`, `limit`, `include_call_id`).
         long totalTurns = currentTurn;
         long beforeTurn = parseLongParam(query.get("before_turn"), totalTurns + 1);
-        int limit = (int) Math.clamp(
+        int limit = Math.clamp(
             parseLongParam(query.get("limit"), DEFAULT_TURN_LIMIT), 1, MAX_TURN_LIMIT);
         String includeCallId = query.get("include_call_id");
 

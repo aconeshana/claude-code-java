@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -34,7 +35,7 @@ public class SkillLoader {
     private final Object cacheLock = new Object();
     private volatile List<Skill> cachedSkills;
     private volatile boolean enabled = true;
-    private volatile java.util.function.BiPredicate<String, String> sessionSkillFilter;
+    private volatile BiPredicate<String, String> sessionSkillFilter;
     private enum SourceLayout { SKILLS, LEGACY_COMMANDS }
     private record SourcePath(Skill.SkillSource source, Path directory, SourceLayout layout) {}
 
@@ -129,12 +130,12 @@ public class SkillLoader {
      * {@link #loadAll()} continues returning all discovered skills for UI catalogs, while
      * {@link #loadEnabled(String)} filters by the active session state.
      */
-    public void setSessionSkillFilter(java.util.function.BiPredicate<String, String> filter) {
+    public void setSessionSkillFilter(BiPredicate<String, String> filter) {
         this.sessionSkillFilter = filter;
     }
 
     public boolean isSkillEnabled(String sessionId, String skillName) {
-        java.util.function.BiPredicate<String, String> filter = this.sessionSkillFilter;
+        BiPredicate<String, String> filter = this.sessionSkillFilter;
         if (filter == null || skillName == null) return true;
         return filter.test(sessionId != null ? sessionId : "", skillName);
     }
@@ -144,7 +145,7 @@ public class SkillLoader {
      */
     public List<Skill> loadEnabled(String sessionId) {
         List<Skill> all = loadAll();
-        java.util.function.BiPredicate<String, String> filter = this.sessionSkillFilter;
+        BiPredicate<String, String> filter = this.sessionSkillFilter;
         if (filter == null || all.isEmpty()) return all;
         String sid = sessionId != null ? sessionId : "";
         return all.stream()

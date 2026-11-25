@@ -63,6 +63,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -71,6 +72,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -1109,7 +1112,7 @@ public class ToolRegistry implements ToolExecutor {
                 .filter(Tool::isEnabled)
                 .filter(t -> !ToolSearchTool.isDeferredTool(t))
                 .map(Tool::name)
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         }
         String key = sessionId != null ? sessionId : "";
         return filter.frozenInitialEagerTools(key, () -> computeInitialEagerToolNames(key, filter));
@@ -1117,7 +1120,7 @@ public class ToolRegistry implements ToolExecutor {
 
     private Set<String> computeInitialEagerToolNames(
             String sessionId, SessionCapabilityFilter filter) {
-        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> names = new LinkedHashSet<>();
         tools.values().stream()
             .filter(Tool::isEnabled)
             .filter(t -> !t.isMcp())

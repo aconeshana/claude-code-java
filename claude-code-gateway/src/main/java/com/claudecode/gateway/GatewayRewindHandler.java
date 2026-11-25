@@ -213,7 +213,7 @@ final class GatewayRewindHandler {
             }
             if (raw.length == 0) return JsonUtils.getMapper().createObjectNode();
             return JsonUtils.getMapper().readTree(raw);
-        } catch (IOException failure) {
+        } catch (IOException _) {
             respondJson(exchange, 400, errorBody("invalid_json", "request body is not valid JSON"));
             return null;
         }

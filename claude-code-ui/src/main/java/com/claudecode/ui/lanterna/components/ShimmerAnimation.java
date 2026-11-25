@@ -45,7 +45,7 @@ public final class ShimmerAnimation {
         int cycleLength = messageWidth + CYCLE_PADDING;
         if (cycleLength <= 0) return OFF_SCREEN;
 
-        int position = (int) Math.floorMod(cyclePosition, cycleLength);
+        int position = Math.floorMod(cyclePosition, cycleLength);
         if (mode == Mode.REQUESTING) {
             return position - LEAD_OFFSET;
         }

@@ -125,7 +125,7 @@ public final class SpinnerFrames {
 
     /** Returns the glyph at {@code frame} index using {@code frames.size()} as cycle. */
     public static String glyphAt(List<String> frames, long frame) {
-        return frames.get((int) Math.floorMod(frame, frames.size()));
+        return frames.get(Math.floorMod(frame, frames.size()));
     }
 
     // ── Stall intensity math (pure, testable) ───────────────────────────────
