@@ -7,6 +7,7 @@ import com.claudecode.core.engine.PermissionAskContext;
 import com.claudecode.core.engine.PermissionUpdate;
 import com.claudecode.core.engine.PostToolUseOutputResult;
 import com.claudecode.core.engine.RawBlocksOutput;
+import com.claudecode.core.engine.SessionCapabilityFilter;
 import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.StructuredToolOutput;
 import com.claudecode.core.engine.ToolContextModifier;
@@ -146,10 +147,43 @@ public class ToolRegistry implements ToolExecutor {
     private volatile PermissionGate permissionGate;
     private volatile Supplier<List<Message>> messagesSupplier;
     private volatile AutoModeClassifier autoModeClassifier;
+    private volatile SessionCapabilityFilter capabilityFilter;
+    private record FrozenToolDefsKey(String sessionId, String model, boolean eagerInputStreaming) {}
+    private final Map<FrozenToolDefsKey, List<StreamingClient.StreamRequest.ToolDef>> frozenToolDefsCache =
+        new ConcurrentHashMap<>();
     /**
      * Whether to surface the destructive-command warning in the permission dialog.
      */
     private volatile boolean destructiveCommandWarningEnabled = false;
+
+    public void setCapabilityFilter(SessionCapabilityFilter capabilityFilter) {
+        this.capabilityFilter = capabilityFilter;
+        this.frozenToolDefsCache.clear();
+    }
+
+    /** Clears frozen Turn-1 wire tool definitions for {@code sessionId} (e.g. on {@code /clear}). */
+    public void clearFrozenSession(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            frozenToolDefsCache.clear();
+            return;
+        }
+        frozenToolDefsCache.keySet().removeIf(k -> Strings.CS.equals(sessionId, k.sessionId()));
+    }
+
+    public SessionCapabilityFilter getCapabilityFilter() {
+        return capabilityFilter;
+    }
+
+    /**
+     * True when unified progressive capability discovery/invocation (Path B:
+     * {@code ToolSearch} + {@code ToolInvoke} + {@code <system-reminder>}) is active.
+     */
+    public boolean isProgressiveGatewayMode() {
+        SessionCapabilityFilter filter = this.capabilityFilter;
+        return filter != null
+            && filter.isProgressiveModeEnabled()
+            && tools.containsKey(ToolInvokeTool.NAME);
+    }
 
     /**
      * Installs (or removes) a permission gate. When set, every {@link #execute}
@@ -295,6 +329,15 @@ public class ToolRegistry implements ToolExecutor {
 
     @Override
     public boolean isConcurrencySafe(String toolName, JsonNode input) {
+        if (Strings.CS.equals(ToolInvokeTool.NAME, toolName) && input != null) {
+            String target = input.path("tool_name").asText(null);
+            if (StringUtils.isNotBlank(target) && !Strings.CS.equals(ToolInvokeTool.NAME, target)) {
+                JsonNode args = input.get("arguments");
+                return isConcurrencySafe(target.strip(),
+                    args != null && args.isObject() ? args : JsonUtils.getMapper().createObjectNode());
+            }
+            return false;
+        }
         Tool<?, ?> tool = resolveTool(toolName);
         if (tool == null) return false;
         try {
@@ -469,6 +512,28 @@ public class ToolRegistry implements ToolExecutor {
      */
     @Override
     public ToolResult execute(String toolName, JsonNode input, ToolExecutionContext context) {
+        if (Strings.CS.equals(ToolInvokeTool.NAME, toolName)) {
+            if (input == null || !input.isObject()) {
+                return ToolResult.error(
+                    "<tool_use_error>InputValidationError: ToolInvoke input must be a JSON object</tool_use_error>");
+            }
+            String delegatedName = ToolInvokeTool.extractTargetToolName(input);
+            if (StringUtils.isBlank(delegatedName)) {
+                return ToolResult.error(
+                    "<tool_use_error>InputValidationError: 'tool_name' is required</tool_use_error>");
+            }
+            if (Strings.CS.equals(ToolInvokeTool.NAME, delegatedName)) {
+                return ToolResult.error(
+                    "<tool_use_error>Error: Cannot recursively invoke ToolInvoke</tool_use_error>");
+            }
+            JsonNode delegatedArgs = ToolInvokeTool.extractTargetArguments(input);
+            if (!delegatedArgs.isObject()) {
+                return ToolResult.error(
+                    "<tool_use_error>InputValidationError: 'arguments' must be a JSON object</tool_use_error>");
+            }
+            toolName = delegatedName;
+            input = delegatedArgs;
+        }
         logRegistryEvent("execute.start", toolName, "-");
         if (context != null && context.toolDurationTiming() != null) {
             context.toolDurationTiming().claimBoundary();
@@ -478,6 +543,12 @@ public class ToolRegistry implements ToolExecutor {
             logRegistryEvent("execute.unknown_tool", toolName, "-");
             return ToolResult.error(
                 "<tool_use_error>Error: No such tool available: " + toolName + "</tool_use_error>");
+        }
+        if (!isToolAllowedInSession(tool, context)) {
+            logRegistryEvent("execute.disabled_in_session", tool.name(), "-");
+            return ToolResult.error(
+                "<tool_use_error>Error: Tool '" + tool.name()
+                    + "' is currently disabled in this session.</tool_use_error>");
         }
         JsonNode originalInput = input;
         input = ToolInputCoercion.coerce(tool.name(), input);
@@ -956,6 +1027,9 @@ public class ToolRegistry implements ToolExecutor {
     @Override
     public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions(
             ToolExecutionContext context) {
+        if (isProgressiveGatewayMode() && context != null) {
+            return getProgressiveFrozenToolDefinitions(context);
+        }
         Map<String, Integer> order = modelVisibleOrderIndex();
         return tools.values().stream()
             .filter(tool -> isModelVisible(tool, context))
@@ -977,6 +1051,9 @@ public class ToolRegistry implements ToolExecutor {
     @Override
     public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions(
             Set<String> discoveredToolNames, ToolExecutionContext context) {
+        if (isProgressiveGatewayMode()) {
+            return getProgressiveFrozenToolDefinitions(context);
+        }
         if (!toolSearchEnabled(context)) {
             return getToolDefinitions(context);
         }
@@ -992,6 +1069,157 @@ public class ToolRegistry implements ToolExecutor {
                 t.name(), t.prompt(context), modelVisibleSchema(t), null, null, null, null,
                 ToolSearchTool.isDeferredTool(t), t.strict(), eagerInputStreaming))
             .toList();
+    }
+
+    private List<StreamingClient.StreamRequest.ToolDef> getProgressiveFrozenToolDefinitions(
+            ToolExecutionContext context) {
+        String sessionId = context != null && context.sessionId() != null ? context.sessionId() : "";
+        String modelKey = context != null && context.currentModel() != null ? context.currentModel() : "";
+        if (!sessionId.isEmpty()) {
+            FrozenToolDefsKey cacheKey = new FrozenToolDefsKey(sessionId, modelKey, eagerInputStreaming);
+            return frozenToolDefsCache.computeIfAbsent(
+                cacheKey, _ -> buildProgressiveFrozenToolDefinitions(sessionId, context));
+        }
+        return buildProgressiveFrozenToolDefinitions(sessionId, context);
+    }
+
+    private List<StreamingClient.StreamRequest.ToolDef> buildProgressiveFrozenToolDefinitions(
+            String sessionId, ToolExecutionContext context) {
+        Set<String> frozenNames = getFrozenInitialEagerToolNames(sessionId);
+        Map<String, Integer> order = modelVisibleOrderIndex();
+        return tools.values().stream()
+            .filter(t -> frozenNames.contains(t.name()))
+            .sorted(Comparator.comparingInt((Tool<?, ?> tool) ->
+                    order.getOrDefault(tool.name(), Integer.MAX_VALUE))
+                .thenComparing(Tool::name))
+            .map(t -> new StreamingClient.StreamRequest.ToolDef(
+                t.name(), t.prompt(context), modelVisibleSchema(t), null, null, null, null,
+                false, t.strict(), eagerInputStreaming))
+            .toList();
+    }
+
+    /**
+     * Returns (and latches on first sight of {@code sessionId}) the exact Turn-1 eager built-in
+     * tool names included in wire {@code tools[]} for {@code sessionId}.
+     */
+    public Set<String> getFrozenInitialEagerToolNames(String sessionId) {
+        SessionCapabilityFilter filter = this.capabilityFilter;
+        if (filter == null || !filter.isProgressiveModeEnabled()) {
+            return tools.values().stream()
+                .filter(Tool::isEnabled)
+                .filter(t -> !ToolSearchTool.isDeferredTool(t))
+                .map(Tool::name)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        }
+        String key = sessionId != null ? sessionId : "";
+        return filter.frozenInitialEagerTools(key, () -> computeInitialEagerToolNames(key, filter));
+    }
+
+    private Set<String> computeInitialEagerToolNames(
+            String sessionId, SessionCapabilityFilter filter) {
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        tools.values().stream()
+            .filter(Tool::isEnabled)
+            .filter(t -> !t.isMcp())
+            .filter(t -> !t.shouldDefer())
+            .filter(t -> SessionCapabilityFilter.KERNEL_TOOLS.contains(t.name())
+                || filter.isBuiltInToolEnabled(sessionId, t.name()))
+            .sorted(Comparator.comparing(Tool::name))
+            .forEach(t -> names.add(t.name()));
+        return Set.copyOf(names);
+    }
+
+    /**
+     * Live sorted list of all currently enabled tool names in {@code sessionId} (both eager and
+     * deferred/MCP). Diffed across turns by {@code DeferredToolsDeltaAttachmentProvider} against
+     * the Turn-1 eager baseline so additions and removals are announced via {@code <system-reminder>}
+     * without touching wire {@code tools[]}.
+     */
+    public List<String> getLiveSessionToolNames(String sessionId) {
+        SessionCapabilityFilter filter = this.capabilityFilter;
+        if (filter == null) {
+            return tools.values().stream()
+                .filter(Tool::isEnabled)
+                .map(Tool::name)
+                .sorted()
+                .toList();
+        }
+        String sid = sessionId != null ? sessionId : "";
+        return tools.values().stream()
+            .filter(Tool::isEnabled)
+            .filter(t -> isToolAllowedByFilter(t, sid, filter))
+            .map(Tool::name)
+            .sorted()
+            .toList();
+    }
+
+    /** Returns all tools currently allowed in {@code context}'s session. */
+    public List<Tool<?, ?>> getSessionAllowedTools(ToolExecutionContext context) {
+        return tools.values().stream()
+            .filter(Tool::isEnabled)
+            .filter(t -> isToolAllowedInSession(t, context))
+            .sorted(Comparator.comparing(Tool::name))
+            .toList();
+    }
+
+    /**
+     * Returns all currently enabled deferred tools in {@code context}'s session — MCP tools plus
+     * any default-disabled built-in tools that were dynamically enabled mid-session.
+     */
+    public List<Tool<?, ?>> getActiveDeferredTools(ToolExecutionContext context) {
+        String sessionId = context != null && context.sessionId() != null ? context.sessionId() : "";
+        Set<String> frozenEager = isProgressiveGatewayMode()
+            ? getFrozenInitialEagerToolNames(sessionId)
+            : Set.of();
+        return tools.values().stream()
+            .filter(Tool::isEnabled)
+            .filter(t -> isToolAllowedInSession(t, context))
+            .filter(t -> {
+                if (SessionCapabilityFilter.KERNEL_TOOLS.contains(t.name())) return false;
+                if (isProgressiveGatewayMode()) {
+                    return !frozenEager.contains(t.name());
+                }
+                return ToolSearchTool.isDeferredTool(t);
+            })
+            .sorted(Comparator.comparing(Tool::name))
+            .toList();
+    }
+
+    public boolean isToolAllowedInSession(Tool<?, ?> tool, ToolExecutionContext context) {
+        if (tool == null) return false;
+        SessionCapabilityFilter filter = this.capabilityFilter;
+        if (filter == null) return true;
+        String sessionId = context != null && context.sessionId() != null ? context.sessionId() : "";
+        return isToolAllowedByFilter(tool, sessionId, filter);
+    }
+
+    private static boolean isToolAllowedByFilter(
+            Tool<?, ?> tool, String sessionId, SessionCapabilityFilter filter) {
+        String name = tool.name();
+        if (SessionCapabilityFilter.KERNEL_TOOLS.contains(name)) {
+            return true;
+        }
+        if (tool.isMcp() || Strings.CS.startsWith(name, "mcp__")) {
+            String server = extractMcpServerName(tool);
+            if (server != null && !filter.isMcpServerEnabled(sessionId, server)) {
+                return false;
+            }
+            return filter.isMcpToolEnabled(sessionId, name);
+        }
+        return filter.isBuiltInToolEnabled(sessionId, name);
+    }
+
+    private static String extractMcpServerName(Tool<?, ?> tool) {
+        if (tool instanceof MCPTool mcpTool && mcpTool.getToolInfo() != null) {
+            return mcpTool.getToolInfo().serverId();
+        }
+        String name = tool.name();
+        if (name != null && Strings.CS.startsWith(name, "mcp__")) {
+            String rest = name.substring("mcp__".length());
+            int sep = rest.indexOf("__");
+            if (sep > 0) return rest.substring(0, sep);
+        }
+        return null;
     }
 
     private Map<String, Integer> modelVisibleOrderIndex() {
@@ -1016,15 +1244,37 @@ public class ToolRegistry implements ToolExecutor {
      * protocol and base URL.
      */
     public List<StreamingClient.StreamRequest.ToolDef> getContextAnalysisToolDefinitions() {
-        return toolDefinitionsForContext(null);
+        return toolDefinitionsForContext(null, null);
     }
 
     /** Model-aware form of {@link #getContextAnalysisToolDefinitions()}. */
     public List<StreamingClient.StreamRequest.ToolDef> getContextAnalysisToolDefinitions(String model) {
-        return toolDefinitionsForContext(model);
+        return toolDefinitionsForContext(model, null);
     }
 
-    private List<StreamingClient.StreamRequest.ToolDef> toolDefinitionsForContext(String model) {
+    /** Model- and session-aware form of {@link #getContextAnalysisToolDefinitions()}. */
+    public List<StreamingClient.StreamRequest.ToolDef> getContextAnalysisToolDefinitions(
+            String model, String sessionId) {
+        return toolDefinitionsForContext(model, sessionId);
+    }
+
+    private List<StreamingClient.StreamRequest.ToolDef> toolDefinitionsForContext(
+            String model, String sessionId) {
+        if (isProgressiveGatewayMode()) {
+            String sid = sessionId != null ? sessionId : "";
+            Set<String> frozenEager = getFrozenInitialEagerToolNames(sid);
+            SessionCapabilityFilter filter = this.capabilityFilter;
+            return tools.values().stream()
+                .filter(Tool::isEnabled)
+                .filter(t -> frozenEager.contains(t.name())
+                    || (filter != null && isToolAllowedByFilter(t, sid, filter)))
+                .sorted(Comparator.comparing(Tool::name))
+                .map(t -> new StreamingClient.StreamRequest.ToolDef(
+                    t.name(), t.prompt(null), modelVisibleSchema(t), null, null, null, null,
+                    !frozenEager.contains(t.name()), t.strict(),
+                    eagerInputStreaming))
+                .toList();
+        }
         boolean toolSearchActive = StringUtils.isNotBlank(model)
             ? ToolSearchGate.isEnabled(model) : ToolSearchGate.isEnabled();
         return tools.values().stream()

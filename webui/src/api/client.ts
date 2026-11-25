@@ -1,4 +1,4 @@
-import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type RewindExecuteResponse, type RewindMode, type RewindPreviewResponse, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
+import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type RewindExecuteResponse, type RewindMode, type RewindPreviewResponse, type ScheduleListing, type SessionCapabilitiesResponse, type SessionCapabilityToggleRequest, type SessionCapabilityToggleResponse, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -1037,5 +1037,19 @@ export async function createDirectory(path: string, name: string): Promise<strin
   const result = await requestJson<{ readonly path: string }>('POST', '/api/directories', { path, name })
   return result.path
 }
+
+// ---------------------------------------------------------------------------
+// Progressive Session Capabilities (/api/session/capabilities)
+// ---------------------------------------------------------------------------
+
+export function fetchSessionCapabilities(sessionId?: string | null): Promise<SessionCapabilitiesResponse> {
+  const query = sessionId != null && sessionId !== '' ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return requestJson('GET', `/api/session/capabilities${query}`)
+}
+
+export function toggleSessionCapability(body: SessionCapabilityToggleRequest): Promise<SessionCapabilityToggleResponse> {
+  return requestJson('POST', '/api/session/capabilities', body)
+}
+
 
 

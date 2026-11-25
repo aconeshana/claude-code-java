@@ -35,12 +35,15 @@ final class WebHeadlessSessions {
         CliToolchainAssembler.Toolchain toolchain = CliToolchainAssembler.assemble(
             workspace, mcpRuntime, new AtomicReference<>(), new AtomicReference<>(),
             new DefaultQuerySessionFactory(), resources, errorOutput);
+        CliToolchainAssembler.startMcpConnections(workspace, mcpRuntime, toolchain.toolRegistry());
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new LlmClientAdapter(toolchain.llmClient(), HEADLESS_STREAM_CONNECT_TIMEOUT),
             toolchain.toolRegistry(), new DefaultQuerySessionFactory(),
             toolchain.permissionGate(), workspace.launch().model(), workspace.cwd(),
             toolchain.customModelCatalog(), toolchain.modelAvailability().showBuiltInModelFamilies(),
-            interactions);
+            interactions,
+            toolchain.capabilityService(),
+            toolchain.skillToolProvider().getSkillLoader());
         CliLanProxyAdapter lanProxy = new CliLanProxyAdapter(
             toolchain.customModelCatalog(),
             toolchain.llmClient(),

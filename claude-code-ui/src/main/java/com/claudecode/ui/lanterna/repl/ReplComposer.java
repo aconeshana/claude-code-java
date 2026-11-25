@@ -486,6 +486,13 @@ final class ReplComposer {
             host::currentModel, transcript);
         pokemonRef[0] = pokemon;
         MCPController mcp = new MCPController(gui, inputPanel, transcript, application.mcp(), keybindings);
+        if (ctx.commandContext() != null && ctx.commandContext().application() != null) {
+            var capabilities = ctx.commandContext().application().capabilities();
+            if (capabilities != null) {
+                diagnostics.bindCapabilities(capabilities, queryEngine.conversation()::getSessionId);
+                mcp.bindCapabilities(capabilities, queryEngine.conversation()::getSessionId);
+            }
+        }
         // Hooks browser: snapshot loading + settings hot-reload subscription. Tool names are
         // mutable; the application hook port is stable for the session.
         HooksController hooks = new HooksController(gui, inputPanel, transcript,

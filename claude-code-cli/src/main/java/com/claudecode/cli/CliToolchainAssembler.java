@@ -61,6 +61,7 @@ import com.claudecode.services.model.GoalContextWindowPolicy;
 import com.claudecode.services.model.ModelAllowlist;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolBootstrap;
+import com.claudecode.tools.ToolInvokeTool;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.ToolSearchTool;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
@@ -171,7 +172,8 @@ final class CliToolchainAssembler {
             Set<String> dynamicSkillDirTriggers,
             List<Path> inlinePluginPaths,
             List<Path> inlinePluginPathsWithoutMcp,
-            boolean workflowsEnabled) {
+            boolean workflowsEnabled,
+            CliSessionCapabilityService capabilityService) {
         Toolchain {
             // This is intentionally the live trigger set populated by Read/
             // Write/Edit during a turn; copying it would suppress the next
@@ -293,6 +295,17 @@ final class CliToolchainAssembler {
         SubAgentCompactServiceImpl subAgentCompactFactory = new SubAgentCompactServiceImpl(
             client, RuntimeSettings.loadAutoCompactEnabled());
         SkillLoader sessionSkillLoader = new SkillLoader();
+        CliSessionCapabilityService capabilityService = new CliSessionCapabilityService(
+            toolRegistry,
+            sessionSkillLoader,
+            mcpRuntime,
+            customModelCatalog,
+            resolvedApiProvider,
+            workspace.sessionIdentity()::get,
+            () -> Path.of(System.getProperty("user.dir", workspace.cwd())),
+            workspace.launch()::model);
+        toolRegistry.setCapabilityFilter(capabilityService);
+        sessionSkillLoader.setSessionSkillFilter(capabilityService::isSkillEnabled);
         Set<String> dynamicSkillDirTriggers = new DynamicSkillTriggerSet();
         DynamicSkillDiscovery dynamicSkillDiscovery = new DynamicSkillDiscovery(
             sessionSkillLoader, dynamicSkillDirTriggers,
@@ -311,7 +324,7 @@ final class CliToolchainAssembler {
         };
         boolean usingThirdPartyServices = isUsingThirdPartyServices(resolvedApiProvider);
         Supplier<List<Skill>> liveSkillSupplier = () -> {
-            try { return sessionSkillLoader.loadAll(); }
+            try { return sessionSkillLoader.loadEnabled(workspace.sessionIdentity().get()); }
             catch (Throwable _) { return List.of(); }
         };
         Supplier<List<SkillListingEntry>> liveSkillListingSupplier = () -> {
@@ -428,6 +441,7 @@ final class CliToolchainAssembler {
             toolRegistry.unregisterMatching(Set.of("AskUserQuestion", "EnterPlanMode", "ExitPlanMode")::contains);
         }
         toolRegistry.register(new ToolSearchTool(toolRegistry, mcpRuntime::pendingServerNames));
+        toolRegistry.register(new ToolInvokeTool(toolRegistry));
         if (Platform.IS_WINDOWS && isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_USE_POWERSHELL_TOOL"))) {
             toolRegistry.register(new PowerShellTool());
         }
@@ -454,7 +468,7 @@ final class CliToolchainAssembler {
             permissionGate, skillToolProvider, taskToolProvider.taskBoard(),
             taskToolProvider.taskReminders(), lspIntegration, structuredOutputSchema,
             agentSummaryService, customModelCatalog, dynamicSkillDirTriggers, inlinePluginPaths,
-            inlinePluginPathsWithoutMcp, workflowsEnabled);
+            inlinePluginPathsWithoutMcp, workflowsEnabled, capabilityService);
     }
 
     /**

@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.AttachmentPayload;
 import com.claudecode.core.message.DeferredToolsDeltaAttachment;
+import com.claudecode.core.message.Message;
 
 /**
  * Diffs the enabled tool names across turns, announcing the tools that became available /
@@ -32,7 +34,22 @@ public final class DeferredToolsDeltaAttachmentProvider implements AttachmentPro
         List<String> previous = ctx.previousTurnTools();
 
         Set<String> currentSet = new TreeSet<>(current);
-        Set<String> previousSet = (previous == null) ? Set.of() : new TreeSet<>(previous);
+        Set<String> previousSet;
+        if (previous != null) {
+            previousSet = new TreeSet<>(previous);
+        } else if (ctx.messages() != null && !ctx.messages().isEmpty()) {
+            TreeSet<String> reconstructed = new TreeSet<>();
+            for (Message message : ctx.messages()) {
+                if (message instanceof AttachmentMessage am
+                        && am.payload() instanceof DeferredToolsDeltaAttachment prev) {
+                    if (prev.addedNames() != null) reconstructed.addAll(prev.addedNames());
+                    if (prev.removedNames() != null) prev.removedNames().forEach(reconstructed::remove);
+                }
+            }
+            previousSet = reconstructed;
+        } else {
+            previousSet = Set.of();
+        }
 
         List<String> addedNames = new ArrayList<>();
         for (String t : currentSet) {
@@ -48,8 +65,13 @@ public final class DeferredToolsDeltaAttachmentProvider implements AttachmentPro
         }
 
         // Preserve insertion order from the current tool list for the rendered lines
-
-        LinkedHashSet<String> addedOrdered = new LinkedHashSet<>(addedNames);
+        LinkedHashSet<String> addedOrdered = new LinkedHashSet<>();
+        for (String candidate : current) {
+            if (addedNames.contains(candidate)) {
+                addedOrdered.add(candidate);
+            }
+        }
+        addedOrdered.addAll(addedNames);
         List<String> addedLines = new ArrayList<>(addedOrdered);
 
         return List.of(new DeferredToolsDeltaAttachment(addedNames, addedLines, removedNames));

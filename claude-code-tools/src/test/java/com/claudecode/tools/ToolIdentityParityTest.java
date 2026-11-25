@@ -46,6 +46,7 @@ class ToolIdentityParityTest {
         entry("com.claudecode.tools.messaging.SendMessageTool", "SendMessage"),
         entry("com.claudecode.tools.output.SyntheticOutputTool", "StructuredOutput"),
         entry("com.claudecode.tools.tasks.TodoWriteTool", "TodoWrite"),
+        entry("com.claudecode.tools.ToolInvokeTool", "ToolInvoke"),
         entry("com.claudecode.tools.ToolSearchTool", "ToolSearch"),
         entry("com.claudecode.tools.web.WebBrowserTool", "WebBrowser"),
         entry("com.claudecode.tools.web.WebFetchTool", "WebFetch"),
@@ -76,7 +77,7 @@ class ToolIdentityParityTest {
                 Stream.of(MCPTool.class.getName(), McpAuthTool.class.getName()))
             .collect(Collectors.toSet());
 
-        assertEquals(43, implementations.size());
+        assertEquals(44, implementations.size());
         assertEquals(expected, implementations.stream().map(Class::getName).collect(Collectors.toSet()));
 
         for (Class<? extends Tool<?, ?>> type : implementations) {

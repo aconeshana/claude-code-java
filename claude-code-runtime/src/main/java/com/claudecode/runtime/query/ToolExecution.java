@@ -34,6 +34,7 @@ import com.claudecode.core.model.PermissionModeKind;
 import com.claudecode.core.queue.InterruptBehavior;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -181,6 +182,21 @@ final class ToolExecution {
             return new ToolStep(tub, cancelMsg, null, false, null, false, null, null, null);
         }
 
+        // ---- Unwrap progressive ToolInvoke(tool_name, arguments) for hook/LSP/MCP attribution
+        // while keeping tub.id() on the wire ToolResultBlock.
+        boolean isToolInvokeWrapper = Strings.CS.equals("ToolInvoke", tub.name())
+            && input != null
+            && StringUtils.isNotBlank(input.path("tool_name").asText(null))
+            && !Strings.CS.equals("ToolInvoke", input.path("tool_name").asText(null).strip());
+        String effectiveToolName = isToolInvokeWrapper
+            ? input.path("tool_name").asText().strip()
+            : tub.name();
+        JsonNode effectiveInput = isToolInvokeWrapper
+            ? (input.has("arguments") && input.get("arguments").isObject()
+                ? input.get("arguments")
+                : JsonUtils.getMapper().createObjectNode())
+            : input;
+
         // ---- Tool Pre/Post hook dispatch.
         boolean preventContinuation = false;
         String stopReason = null;
@@ -188,7 +204,8 @@ final class ToolExecution {
         JsonNode preSpecificOutput = null;
         HookDispatcher hooks = engine.getHookDispatcher();
         if (hooks != null) {
-            HookDispatcher.HookOutcome pre = hooks.dispatchPreToolUseWithOutcome(tub.name(), input, tub.id());
+            HookDispatcher.HookOutcome pre = hooks.dispatchPreToolUseWithOutcome(
+                effectiveToolName, effectiveInput, tub.id());
             if (pre.preventContinuation()) {
                 preventContinuation = true;
                 stopReason = pre.stopReason();
@@ -211,15 +228,25 @@ final class ToolExecution {
                     false, false, "Error: " + deny, MessageOrigin.USER, null, Instant.now(), null, null, null,
                     sourceAssistantUuid);
                 engine.addPermissionDenial(new SDKMessage.PermissionDenial(
-                    Strings.CS.equals("Agent", tub.name()) ? "Task" : tub.name(),
-                    tub.id(), permissionDenialInput(input)));
+                    Strings.CS.equals("Agent", effectiveToolName) ? "Task" : effectiveToolName,
+                    tub.id(), permissionDenialInput(effectiveInput)));
                 return new ToolStep(tub, deniedMsg, null, true, null, preventContinuation, stopReason, null, null);
             }
             JsonNode updatedInput = pre.specificOutput("PreToolUse")
                 .map(output -> output.get("updatedInput"))
                 .orElse(null);
             if (updatedInput != null && updatedInput.isObject()) {
-                input = updatedInput.deepCopy();
+                effectiveInput = updatedInput.deepCopy();
+                if (isToolInvokeWrapper) {
+                    ObjectNode wrapped = input.isObject()
+                        ? ((ObjectNode) input.deepCopy())
+                        : JsonUtils.getMapper().createObjectNode();
+                    wrapped.put("tool_name", effectiveToolName);
+                    wrapped.set("arguments", effectiveInput);
+                    input = wrapped;
+                } else {
+                    input = effectiveInput;
+                }
             }
             preSpecificOutput = pre.specificOutput("PreToolUse").orElse(null);
         }
@@ -240,7 +267,7 @@ final class ToolExecution {
         }
         PermissionAskCallback permissionAskCallback = permissionHookCallback(
             engine.getPermissionAskCallback(), hooks, preSpecificOutput,
-            tub.name(), input, tub.id(), engine.getAbortController());
+            effectiveToolName, effectiveInput, tub.id(), engine.getAbortController());
         ToolExecutionContext.ToolDurationTiming toolDurationTiming =
             new ToolExecutionContext.ToolDurationTiming(
                 SessionCostState.get()::recordToolDuration);
@@ -266,7 +293,7 @@ final class ToolExecution {
             .toolDurationTiming(toolDurationTiming)
             .turnTokenBudget(engine.getTurnTokenBudget())
             .workingDirectoryController(engine.workingDirectoryController())
-            .enabledTools(engine.getConfig().tools())
+            .enabledTools(engine.getConfig().liveToolNames())
             .permissionDenialSink(engine.permissionDenialRecorder())
             .currentPermissionMode(currentPermissionMode)
             .conversationMessages(engine.getMessages())
@@ -276,7 +303,7 @@ final class ToolExecution {
             .build();
 
         ToolExecutor executor = engine.getConfig().toolExecutor();
-        ToolExecutor.McpAttribution mcpAttribution = executor.mcpAttribution(tub.name());
+        ToolExecutor.McpAttribution mcpAttribution = executor.mcpAttribution(effectiveToolName);
         if (mcpAttribution != null) {
 
             engine.activateMcpAttribution(
@@ -289,13 +316,14 @@ final class ToolExecution {
         } catch (Exception e) {
             log.warn("[TOOL] Tool execution failed [sessionId={}, tool={}, toolUseId={}, "
                     + "agentId={}, aborted={}, failureType={}]",
-                engine.getSessionId(), tub.name(), tub.id(), engine.getConfig().agentId(),
+                engine.getSessionId(), effectiveToolName, tub.id(), engine.getConfig().agentId(),
                 engine.getAbortController().isAborted(), e.getClass().getName(),
                 ErrorUtils.redactedForLogging(e));
             // Tool errors never terminate the query.
             String errorText = "Tool execution failed: " + e.getMessage();
             HookDispatcher.HookOutcome failureOutcome = dispatchPostToolUseFailure(
-                hooks, tub, input, errorText, engine.getAbortController().isAborted());
+                hooks, effectiveToolName, tub.id(), effectiveInput, errorText,
+                engine.getAbortController().isAborted());
             if (failureOutcome.preventContinuation()) {
                 preventContinuation = true;
                 stopReason = failureOutcome.stopReason();
@@ -351,11 +379,12 @@ final class ToolExecution {
             HookDispatcher.HookOutcome post;
             if (result.isError()) {
                 String errorText = MessageConstants.extractTextContent(result.content(), "\n").trim();
-                post = dispatchPostToolUseFailure(hooks, tub, input, errorText,
-                    engine.getAbortController().isAborted());
+                post = dispatchPostToolUseFailure(hooks, effectiveToolName, tub.id(), effectiveInput,
+                    errorText, engine.getAbortController().isAborted());
             } else {
                 JsonNode toolOutput = result.toolUseResult() instanceof JsonNode n ? n : null;
-                post = hooks.dispatchPostToolUseWithOutcome(tub.name(), input, toolOutput, tub.id());
+                post = hooks.dispatchPostToolUseWithOutcome(
+                    effectiveToolName, effectiveInput, toolOutput, tub.id());
             }
             if (post.preventContinuation()) {
                 preventContinuation = true;
@@ -378,26 +407,27 @@ final class ToolExecution {
 
         if (hookUpdatedOutput != null) {
             PostToolUseOutputResult replacement = executor.processPostToolUseOutput(
-                tub.name(), input, hookUpdatedOutput, result, ctx);
+                effectiveToolName, effectiveInput, hookUpdatedOutput, result, ctx);
             switch (replacement) {
                 case PostToolUseOutputResult.Applied applied -> result = applied.result();
                 case PostToolUseOutputResult.Rejected rejected -> hookContextMessages.add(
                     new AttachmentMessage(UUID.randomUUID().toString(),
                         new HookErrorDuringExecutionAttachment(
-                            rejected.reason(), "PostToolUse:" + tub.name(),
+                            rejected.reason(), "PostToolUse:" + effectiveToolName,
                             tub.id(), "PostToolUse")));
             }
         }
 
         // LSP passive-diagnostics hook: notify after a successful Write/Edit.
         if (!result.isError()
-                && (Strings.CS.equals("Write", tub.name()) || Strings.CS.equals("Edit", tub.name()))
-                && input != null) {
+                && (Strings.CS.equals("Write", effectiveToolName)
+                    || Strings.CS.equals("Edit", effectiveToolName))
+                && effectiveInput != null) {
             FileChangeListener listener = engine.getFileChangeListener();
             if (listener != null) {
-                JsonNode fp = input.get("file_path");
+                JsonNode fp = effectiveInput.get("file_path");
                 if (fp != null && fp.isTextual()) {
-                    listener.onFileChanged(Path.of(fp.asText()), tub.name());
+                    listener.onFileChanged(Path.of(fp.asText()), effectiveToolName);
                 }
             }
         }
@@ -552,11 +582,11 @@ final class ToolExecution {
     }
 
     private static HookDispatcher.HookOutcome dispatchPostToolUseFailure(
-            HookDispatcher hooks, ToolUseBlock toolUse, JsonNode input,
+            HookDispatcher hooks, String toolName, String toolUseId, JsonNode input,
             String error, boolean isInterrupt) {
         if (hooks == null) return HookDispatcher.HookOutcome.PROCEED;
         return hooks.dispatchPostToolUseFailureWithOutcome(
-            toolUse.name(), input, toolUse.id(), error, isInterrupt);
+            toolName, input, toolUseId, error, isInterrupt);
     }
 
     private static void appendHookContexts(List<Message> target,

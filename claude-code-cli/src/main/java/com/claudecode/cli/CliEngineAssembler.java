@@ -90,7 +90,6 @@ import com.claudecode.services.summary.ToolUseSummaryGenerator;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.tools.agent.SubAgentModelPolicy;
-import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.tools.bash.BashTool;
@@ -243,6 +242,7 @@ final class CliEngineAssembler {
             final Integer cliMaxTokensOverride = maxTokens;
 
             final FeatureFlagRegistry featureFlags = FeatureFlagRegistry.builder()
+                .enable(FeatureFlag.DEFERRED_TOOLS_DELTA)
                 .enableIf(FeatureFlag.AGENT_LISTING_DELTA,
                     effectiveAgentListingDeltaEnabled(
                         SubprocessEnvironment.get("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES")))
@@ -288,12 +288,15 @@ final class CliEngineAssembler {
                         Path.of(System.getProperty("user.dir")), styleName);
                 }
                 catch (Throwable _) { }
-                try { hasSkills = !promptSkillLoader.loadAll().isEmpty(); } catch (Throwable _) { }
+                // Latch hasSkills=true whenever slash-command skills are active so enabling a
+                // skill mid-session never mutates the system prompt prefix.
+                hasSkills = !workspace.launch().request().workspace().disableSlashCommands();
                 List<McpInstructionEntry> mcpInstr = new ArrayList<>();
                 try {
                     // Sorted for byte-stable prompt output — a shuffled order
                     // would bust the API prompt cache every turn.
-                    mcpRuntime.clientRuntime().getServerInstructions().entrySet().stream()
+                    toolchain.capabilityService().sessionMcpInstructions(sessionIdentity.get())
+                        .entrySet().stream()
                         .sorted(Map.Entry.comparingByKey())
                         .forEach(entry -> mcpInstr.add(new McpInstructionEntry(
                             entry.getKey(), entry.getValue())));
@@ -445,7 +448,10 @@ final class CliEngineAssembler {
                 .maxBudgetUsd(effectiveMaxBudgetUsd)
                 .taskBudgetTokens(request.model().taskBudget())
                 .toolExecutor(toolRegistry)
-                .tools(toolRegistry.getAll().stream().map(Tool::name).toList())
+                .tools(List.copyOf(toolRegistry.getFrozenInitialEagerToolNames(sessionIdentity.get())))
+                .initialToolBaselineSupplier(() -> List.copyOf(
+                    toolRegistry.getFrozenInitialEagerToolNames(sessionIdentity.get())))
+                .liveToolNamesSupplier(() -> toolRegistry.getLiveSessionToolNames(sessionIdentity.get()))
                 .claudeMdContentSupplier(claudeMdSupplier)
                 .promptRuntimeSupplier(promptRuntimeSupplier)
                 .includeGitInstructionsSupplier(GitSettings::shouldIncludeGitInstructions)
@@ -497,7 +503,8 @@ final class CliEngineAssembler {
                 })
                 .mcpServerInstructionsSupplier(() -> {
                     try {
-                        return mcpRuntime.clientRuntime().getServerInstructions();
+                        return toolchain.capabilityService()
+                            .sessionMcpInstructions(sessionIdentity.get());
                     } catch (Throwable _) {
                         return Map.of();
                     }
@@ -533,14 +540,14 @@ final class CliEngineAssembler {
                 .planModeExitSupplier(PlanModeExitSignal::consume)
                 // dynamic_skill: one-shot dirs populated by Read/Write/Edit.
                 .dynamicSkillDirTriggersSupplier(() -> dynamicSkillDirTriggers)
-                // skill_listing: all loaded skills mapped to listing entries.
+                // skill_listing: session-enabled skills mapped to listing entries.
                 .skillListingSupplier(() -> {
                     try {
                         QuerySession liveEngine = engineRef.get();
                         String currentModel = liveEngine != null
                             ? liveEngine.configuration().getConfig().model() : resolvedModel;
                         return CliPromptInventoryAssembler.skillListingEntries(
-                            promptSkillLoader.loadAll(), currentModel);
+                            promptSkillLoader.loadEnabled(sessionIdentity.get()), currentModel);
                     } catch (Throwable _) {
                         return List.of();
                     }
@@ -678,7 +685,7 @@ final class CliEngineAssembler {
             });
             compactService.setMcpInstructionsSupplier(() -> {
                 try {
-                    return mcpRuntime.clientRuntime().getServerInstructions();
+                    return toolchain.capabilityService().sessionMcpInstructions(sessionIdentity.get());
                 } catch (Throwable _) {
                     return Map.of();
                 }
@@ -743,7 +750,8 @@ final class CliEngineAssembler {
                     () -> toolRegistry.getContextAnalysisToolDefinitions(
                         engineRef.get() != null
                             ? engineRef.get().configuration().getConfig().model()
-                            : resolvedModel),
+                            : resolvedModel,
+                        sessionIdentity.get()),
                     () -> engine.configuration().assembleSystemPrompt(null),
                     () -> engine.configuration().assembleSystemPromptParts(null),
                     () -> {
@@ -762,7 +770,7 @@ final class CliEngineAssembler {
                                 file.content()))
                             .toList();
                     },
-                    () -> skillToolProvider.getSkillLoader().loadAll().stream()
+                    () -> skillToolProvider.getSkillLoader().loadEnabled(sessionIdentity.get()).stream()
                         .map(skill -> new ContextUsageAnalyzer.SkillDescriptor(
                             skill.name(), skill.description(),
                             ContextUsageAnalyzer.SkillDescriptor.Source.valueOf(

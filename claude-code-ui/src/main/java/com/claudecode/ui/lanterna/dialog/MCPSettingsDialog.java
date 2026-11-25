@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.mcp.McpManagementPort;
 import com.claudecode.runtime.mcp.McpManagementPort.Server;
 import com.claudecode.runtime.mcp.McpManagementPort.Snapshot;
@@ -27,7 +28,9 @@ import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
 import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
 import com.claudecode.ui.lanterna.components.LanternaDraw;
@@ -140,6 +143,9 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
     private Function<String, List<Tool>> toolsProvider;
     private final AtomicLong toolsLoadGeneration = new AtomicLong();
     private volatile boolean toolsLoading;
+    private volatile SessionCapabilityPort capabilitiesPort;
+    private volatile Supplier<String> sessionIdSupplier = () -> "";
+    private volatile Consumer<SessionCapabilityPort.ToggleRequest> capabilityToggleHandler;
 
     private Runnable onClose;
 
@@ -261,6 +267,15 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
      */
     public void setToolsProvider(Function<String, List<Tool>> provider) {
         this.toolsProvider = provider;
+    }
+
+    public void bindCapabilities(
+            SessionCapabilityPort port,
+            Supplier<String> sessionIdSupplier,
+            Consumer<SessionCapabilityPort.ToggleRequest> toggleHandler) {
+        this.capabilitiesPort = port;
+        this.sessionIdSupplier = sessionIdSupplier != null ? sessionIdSupplier : () -> "";
+        this.capabilityToggleHandler = toggleHandler;
     }
 
     // ── Reconnect UI driver API (called by host) ─────────────────────────────
@@ -423,6 +438,18 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
                 navState = NavState.SERVER_MENU;
                 serverMenuItems = buildServerMenuItems(selectedServer);
             }
+        } else if (t == KeyType.CHARACTER && c != null && (c == ' ' || c == 'd' || c == 'D')
+                && !servers.isEmpty() && capabilitiesPort != null && capabilityToggleHandler != null) {
+            Server s = servers.get(serverIdx);
+            if (s.manageable()) {
+                String sid = sessionIdSupplier.get();
+                SessionCapabilityPort.Scope scope = (c == ' ')
+                    ? SessionCapabilityPort.Scope.SESSION
+                    : SessionCapabilityPort.Scope.DEFAULT;
+                boolean currentOn = capabilitiesPort.isMcpServerEnabled(sid, s.name());
+                capabilityToggleHandler.accept(new SessionCapabilityPort.ToggleRequest(
+                    sid, SessionCapabilityPort.Kind.MCP_SERVER, s.name(), null, !currentOn, scope));
+            }
         } else if (t == KeyType.ESCAPE) {
             close();
         }
@@ -465,6 +492,20 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
         if (down && !currentTools.isEmpty())      toolIdx = Math.min(toolIdx + 1, last);
         else if (up && !currentTools.isEmpty())   toolIdx = Math.max(toolIdx - 1, 0);
         else if (t == KeyType.ENTER && !currentTools.isEmpty()) navState = NavState.TOOL_DETAIL;
+        else if (t == KeyType.CHARACTER && c != null && (c == ' ' || c == 'd' || c == 'D')
+                && !currentTools.isEmpty() && selectedServer != null
+                && capabilitiesPort != null && capabilityToggleHandler != null) {
+            Tool tool = currentTools.get(toolIdx);
+            String sid = sessionIdSupplier.get();
+            String fullName = "mcp__" + selectedServer.name() + "__" + tool.name();
+            SessionCapabilityPort.Scope scope = (c == ' ')
+                ? SessionCapabilityPort.Scope.SESSION
+                : SessionCapabilityPort.Scope.DEFAULT;
+            boolean currentOn = capabilitiesPort.isMcpToolEnabled(sid, fullName);
+            capabilityToggleHandler.accept(new SessionCapabilityPort.ToggleRequest(
+                sid, SessionCapabilityPort.Kind.MCP_TOOL, fullName, selectedServer.name(),
+                !currentOn, scope));
+        }
         else if (t == KeyType.ESCAPE) navState = NavState.SERVER_MENU;
     }
 
@@ -726,7 +767,9 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
             g.setForegroundColor(TextColor.ANSI.DEFAULT);
         }
 
-        drawFooter(g, "↑↓ navigate · Enter select · Esc back");
+        drawFooter(g, capabilitiesPort != null
+            ? "↑↓ navigate · Space session toggle · d default toggle · Enter menu · Esc back"
+            : "↑↓ navigate · Enter select · Esc back");
     }
 
     /**
@@ -780,10 +823,17 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
     }
 
     private String statusText(Server s) {
-        if (s.disabled())   return "disabled";
-        if (s.connected()) return "connected";
-        if (s.needsAuthentication()) return "needs authentication";
-        return "disconnected";
+        String base;
+        if (s.disabled()) base = "disabled";
+        else if (s.connected()) base = "connected";
+        else if (s.needsAuthentication()) base = "needs authentication";
+        else base = "disconnected";
+        if (capabilitiesPort != null) {
+            boolean sessionOn = capabilitiesPort.isMcpServerEnabled(sessionIdSupplier.get(), s.name());
+            if (!sessionOn && !s.disabled()) return base + " [session: off]";
+            if (sessionOn && s.disabled()) return "session: on (default: disabled)";
+        }
+        return base;
     }
 
     private TextColor statusColour(Server s) {
@@ -915,7 +965,9 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
 
         // Blank row separates header details from the action menu.
         drawMenuItems(g, cols, /* startRow */ row + 1);
-        drawFooter(g, "↑↓ navigate · Enter select · Esc back");
+        drawFooter(g, capabilitiesPort != null
+            ? "↑↓ navigate · Space session toggle · d default toggle · Enter menu · Esc back"
+            : "↑↓ navigate · Enter select · Esc back");
     }
 
     /**
@@ -957,7 +1009,9 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
         g.setForegroundColor(TextColor.ANSI.DEFAULT);
 
         drawMenuItems(g, cols, /* startRow */ 7);
-        drawFooter(g, "↑↓ navigate · Enter select · Esc back");
+        drawFooter(g, capabilitiesPort != null
+            ? "↑↓ navigate · Space session toggle · d default toggle · Enter menu · Esc back"
+            : "↑↓ navigate · Enter select · Esc back");
     }
 
     /**
@@ -1025,7 +1079,13 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
             int y = 4 + vi;
             boolean selected = ti == toolIdx;
             String pointer = selected ? "❯ " : "  ";
-            String line = pointer + tool.name();
+            String toggleBadge = "";
+            if (capabilitiesPort != null && selectedServer != null) {
+                String fullName = "mcp__" + selectedServer.name() + "__" + tool.name();
+                toggleBadge = capabilitiesPort.isMcpToolEnabled(sessionIdSupplier.get(), fullName)
+                    ? "[ON] " : "[OFF] ";
+            }
+            String line = pointer + toggleBadge + tool.name();
             g.setForegroundColor(selected ? LanternaTheme.suggestion() : TextColor.ANSI.DEFAULT);
             g.putString(LEFT_PAD, y, truncateForCols(line, maxWidth));
             int x = LEFT_PAD + line.length();
@@ -1040,7 +1100,9 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
             }
             g.setForegroundColor(TextColor.ANSI.DEFAULT);
         }
-        drawFooter(g, "↑↓ navigate · Enter select · Esc back");
+        drawFooter(g, capabilitiesPort != null
+            ? "↑↓ navigate · Space session toggle · d default toggle · Enter menu · Esc back"
+            : "↑↓ navigate · Enter select · Esc back");
     }
 
     private void drawToolDetail(TextGUIGraphics g, int cols) {

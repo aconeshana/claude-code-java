@@ -118,6 +118,11 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
         if (match == null) {
             return ToolResult.error("Skill not found: " + skillName);
         }
+        String sessionId = context != null ? context.sessionId() : null;
+        if (!skillLoader.isSkillEnabled(sessionId, match.name())) {
+            return ToolResult.error("Skill '" + match.name()
+                + "' is currently disabled in this session.");
+        }
         if (match.disableModelInvocation()) {
             return ToolResult.error("Skill " + skillName
                 + " cannot be used with Skill tool due to disable-model-invocation");

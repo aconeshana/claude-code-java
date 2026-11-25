@@ -1079,6 +1079,17 @@ pick up a utility class.
   the web layer.
 - **Dashboard has no workspace group chips** (no `useWorkspaces` seat); a card
   click selects the session through `useSessions.select`.
+- **User-approved local extension: `ContextCapabilitiesCard` (`src/views/context/ContextCapabilitiesCard.tsx`).**
+  Mounted inside `ContextView` and `ContextModal` (`/context`) using vendored
+  `@dsh-context` card/category/section classes (`lc-card`, `lc-gran`,
+  `lc-br-cats`, `lc-br-cat`, `lc-ts-card`, `lc-ts-param-row`) and `@primitives`
+  atoms (`Switch`, `Tag`, `Input`), backed by `GET/POST /api/session/capabilities`
+  (`src/store/capabilities.ts`). Recognizes all 4 wire protocols (`anthropic`,
+  `chat`, `responses`, `gemini`), aggregates `Tool`, `Skill`, and `MCP` into
+  3 collapsible groups with a right-hand Description + JSONSchema parameter
+  inspector, and manages both session-scoped progressive overrides and
+  `~/.claude.json` persisted project defaults without mutating cached `tools[]`
+  or `system[]` prefixes.
 
 ### `vendor/dsh-running-status/` — the running-turn indicator
 

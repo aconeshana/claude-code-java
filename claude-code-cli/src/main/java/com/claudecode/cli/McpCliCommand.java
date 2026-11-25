@@ -3,6 +3,7 @@ package com.claudecode.cli;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.mcp.CapabilityConfigStore;
 import com.claudecode.mcp.McpConfigLoader;
 import com.claudecode.mcp.McpConfig;
 import com.claudecode.mcp.McpConfigWriter;
@@ -33,7 +34,9 @@ import picocli.CommandLine.Parameters;
         McpCliCommand.Add.class,
         McpCliCommand.Remove.class,
         McpCliCommand.List.class,
-        McpCliCommand.Get.class
+        McpCliCommand.Get.class,
+        McpCliCommand.Enable.class,
+        McpCliCommand.Disable.class
     }
 )
 public class McpCliCommand extends McpOutputCommand implements Callable<Integer> {
@@ -48,7 +51,7 @@ public class McpCliCommand extends McpOutputCommand implements Callable<Integer>
     /** Fires when the user runs bare {@code claude mcp} — print help and exit non-zero. */
     @Override
     public Integer call() {
-        stderr().println("Usage: claude mcp <add|remove|list|get> [options]");
+        stderr().println("Usage: claude mcp <add|remove|list|get|enable|disable> [options]");
         stderr().println("Run 'claude mcp --help' for full help.");
         return 2;
     }
@@ -429,6 +432,59 @@ public class McpCliCommand extends McpOutputCommand implements Callable<Integer>
             stdout().println("To remove this server, run: claude mcp remove \"" + name
                 + "\" -s " + serverScope.name().toLowerCase(Locale.ROOT));
             return 0;
+        }
+    }
+
+    @Command(name = "enable", description = "Enable an MCP server in project defaults",
+        mixinStandardHelpOptions = true)
+    static class Enable extends McpOutputCommand implements Callable<Integer> {
+
+        @Parameters(index = "0", description = "Server name")
+        String name;
+
+        @Override
+        public Integer call() {
+            return togglePersisted(name, true, stdout(), stderr());
+        }
+    }
+
+    @Command(name = "disable", description = "Disable an MCP server in project defaults",
+        mixinStandardHelpOptions = true)
+    static class Disable extends McpOutputCommand implements Callable<Integer> {
+
+        @Parameters(index = "0", description = "Server name")
+        String name;
+
+        @Override
+        public Integer call() {
+            return togglePersisted(name, false, stdout(), stderr());
+        }
+    }
+
+    private static Integer togglePersisted(
+            String serverName, boolean enable, CliOutput out, CliOutput err) {
+        if (StringUtils.isBlank(serverName)) {
+            err.println("Server name is required.");
+            return 2;
+        }
+        Path cwd = resolveCwd();
+        McpConfig cfg = McpConfigLoader.loadConfig(cwd);
+        if (!cfg.servers().containsKey(serverName)) {
+            err.println("No MCP server found with name: " + serverName);
+            return 1;
+        }
+        try {
+            boolean changed = CapabilityConfigStore.setMcpServerDisabled(cwd, serverName, !enable);
+            if (!changed) {
+                out.println("MCP server \"" + serverName + "\" is already "
+                    + (enable ? "enabled" : "disabled") + ".");
+            } else {
+                out.println((enable ? "Enabled" : "Disabled") + " MCP server \"" + serverName + "\".");
+            }
+            return 0;
+        } catch (IOException e) {
+            err.println("Failed to update MCP server state: " + e.getMessage());
+            return 1;
         }
     }
 }

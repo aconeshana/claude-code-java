@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.dialog;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.ui.lanterna.input.ContextKeybindingDispatcher;
 import com.claudecode.core.text.FormatUtils;
@@ -45,11 +46,14 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
 
     private enum State { HIDDEN, LOADING, SHOWN }
 
-    /** One pre-rendered line: text + colour + emphasis. */
-    private record Row(String text, TextColor color, boolean bold) {
-        static Row plain(String text) { return new Row(text, LanternaTheme.inputText(), false); }
-        static Row dim(String text)   { return new Row(text, LanternaTheme.welcomeDim(), false); }
-        static Row header(String text){ return new Row(text, LanternaTheme.welcomeDim(), true); }
+    /** One pre-rendered line: text + colour + emphasis + optional interactive Skill ref. */
+    private record Row(String text, TextColor color, boolean bold, Skill skill) {
+        static Row plain(String text) { return new Row(text, LanternaTheme.inputText(), false, null); }
+        static Row dim(String text)   { return new Row(text, LanternaTheme.welcomeDim(), false, null); }
+        static Row header(String text){ return new Row(text, LanternaTheme.welcomeDim(), true, null); }
+        static Row skillRow(String text, TextColor color, Skill skill) {
+            return new Row(text, color, false, skill);
+        }
     }
 
 
@@ -71,6 +75,10 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
     private volatile State state = State.HIDDEN;
     private volatile List<Row> lines = List.of();
     private volatile int scrollOffset = 0;
+    private volatile int selectedSkillCursor = 0;
+    private volatile SessionCapabilityPort capabilitiesPort;
+    private volatile Supplier<String> sessionIdSupplier = () -> "";
+    private volatile Consumer<String> feedbackSink;
 
     private Runnable onDismiss;
     private Consumer<Runnable> guiInvoker;
@@ -93,6 +101,15 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
         this.guiInvoker = guiInvoker;
     }
 
+    public synchronized void bindCapabilities(
+            SessionCapabilityPort port,
+            Supplier<String> sessionIdSupplier,
+            Consumer<String> feedbackSink) {
+        this.capabilitiesPort = port;
+        this.sessionIdSupplier = sessionIdSupplier != null ? sessionIdSupplier : () -> "";
+        this.feedbackSink = feedbackSink;
+    }
+
     /**
      * Activate and render the skills list. A cache miss may scan several skill
      * roots, so production loads it on a virtual thread and publishes one
@@ -103,6 +120,7 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
     public synchronized void show(Runnable onDismiss) {
         this.onDismiss = onDismiss;
         this.scrollOffset = 0;
+        this.selectedSkillCursor = 0;
         Consumer<Runnable> invoker = guiInvoker;
         if (invoker != null) {
             long generation = ++loadGeneration;
@@ -176,14 +194,24 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
     }
 
 
-    private static Row renderSkill(Skill s) {
+    private Row renderSkill(Skill s) {
         String frontmatter = Stream.of(s.name(), s.description())
             .filter(org.apache.commons.lang3.StringUtils::isNotBlank)
             .reduce((a, b) -> a + " " + b).orElse("");
 
         long tokens = Math.round(frontmatter.length() / 4.0);
         String name = s.name() == null ? "" : s.name();
-        return Row.plain("  " + name + " · ~" + FormatUtils.formatTokens(tokens) + " description tokens");
+        SessionCapabilityPort port = this.capabilitiesPort;
+        if (port == null) {
+            return Row.plain("  " + name + " · ~" + FormatUtils.formatTokens(tokens) + " description tokens");
+        }
+        String sid = sessionIdSupplier.get();
+        boolean sessionOn = port.isSkillEnabled(sid, name);
+        String badge = sessionOn ? "[ON] " : "[OFF]";
+        TextColor color = sessionOn ? LanternaTheme.inputText() : LanternaTheme.welcomeDim();
+        return Row.skillRow(
+            "  " + badge + " " + name + " · ~" + FormatUtils.formatTokens(tokens) + " description tokens",
+            color, s);
     }
 
 
@@ -233,6 +261,43 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
             }
         }
         KeyType t = key.getKeyType();
+        Character ch = key.getCharacter();
+        List<Integer> skillLineIndices = selectableLineIndices();
+        if (capabilitiesPort != null && !skillLineIndices.isEmpty()) {
+            if (t == KeyType.ARROW_UP || (ch != null && ch == 'k')) {
+                selectedSkillCursor = Math.max(0, selectedSkillCursor - 1);
+                ensureCursorVisible(skillLineIndices.get(selectedSkillCursor));
+                invalidate();
+                deliver.set(false);
+                return;
+            }
+            if (t == KeyType.ARROW_DOWN || (ch != null && ch == 'j')) {
+                selectedSkillCursor = Math.min(skillLineIndices.size() - 1, selectedSkillCursor + 1);
+                ensureCursorVisible(skillLineIndices.get(selectedSkillCursor));
+                invalidate();
+                deliver.set(false);
+                return;
+            }
+            if (t == KeyType.CHARACTER && ch != null && (ch == ' ' || ch == 'd' || ch == 'D')) {
+                int rowIdx = skillLineIndices.get(
+                    Math.min(selectedSkillCursor, skillLineIndices.size() - 1));
+                Skill selected = lines.get(rowIdx).skill();
+                if (selected != null && selected.name() != null) {
+                    SessionCapabilityPort.Scope scope = (ch == ' ')
+                        ? SessionCapabilityPort.Scope.SESSION
+                        : SessionCapabilityPort.Scope.DEFAULT;
+                    String sid = sessionIdSupplier.get();
+                    boolean nextEnabled = !capabilitiesPort.isSkillEnabled(sid, selected.name());
+                    var outcome = capabilitiesPort.toggle(new SessionCapabilityPort.ToggleRequest(
+                        sid, SessionCapabilityPort.Kind.SKILL, selected.name(), null, nextEnabled, scope));
+                    lines = loadRows();
+                    if (feedbackSink != null) feedbackSink.accept(outcome.message());
+                    invalidate();
+                }
+                deliver.set(false);
+                return;
+            }
+        }
         int maxScroll = Math.max(0, lines.size() - MAX_VISIBLE_ROWS);
         switch (t) {
             case ARROW_UP   -> { scrollOffset = Math.max(0, scrollOffset - 1); invalidate(); deliver.set(false); }
@@ -242,6 +307,23 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
             case HOME       -> { scrollOffset = 0; invalidate(); deliver.set(false); }
             case END        -> { scrollOffset = maxScroll; invalidate(); deliver.set(false); }
             default -> { /* fall through to global handler */ }
+        }
+    }
+
+    private List<Integer> selectableLineIndices() {
+        List<Integer> indices = new ArrayList<>();
+        List<Row> current = this.lines;
+        for (int i = 0; i < current.size(); i++) {
+            if (current.get(i).skill() != null) indices.add(i);
+        }
+        return indices;
+    }
+
+    private void ensureCursorVisible(int lineIdx) {
+        if (lineIdx < scrollOffset) {
+            scrollOffset = lineIdx;
+        } else if (lineIdx >= scrollOffset + MAX_VISIBLE_ROWS) {
+            scrollOffset = lineIdx - MAX_VISIBLE_ROWS + 1;
         }
     }
 
@@ -259,7 +341,8 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
     @Override
     public synchronized TerminalSize calculatePreferredSize() {
         if (state == State.HIDDEN) return new TerminalSize(0, 0);
-        return new TerminalSize(WIDTH, Math.min(lines.size(), MAX_VISIBLE_ROWS) + 2);
+        int extra = capabilitiesPort != null && !selectableLineIndices().isEmpty() ? 3 : 2;
+        return new TerminalSize(WIDTH, Math.min(lines.size(), MAX_VISIBLE_ROWS) + extra);
     }
 
     @Override public Interactable nextFocus(Interactable fromThis) { return isActive() ? super.nextFocus(fromThis) : null; }
@@ -298,19 +381,39 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
 
             int visibleRows = Math.min(lines.size(), MAX_VISIBLE_ROWS);
             int end = Math.min(scrollOffset + visibleRows, lines.size());
+            List<Integer> skillIndices = selectableLineIndices();
+            int highlightedLine = (capabilitiesPort != null && !skillIndices.isEmpty())
+                ? skillIndices.get(Math.min(selectedSkillCursor, skillIndices.size() - 1))
+                : -1;
             for (int i = scrollOffset; i < end; i++) {
                 Row line = lines.get(i);
-                g.setForegroundColor(line.color());
-                if (line.bold()) g.enableModifiers(SGR.BOLD);
+                boolean isSelected = i == highlightedLine;
+                g.setForegroundColor(isSelected ? LanternaTheme.suggestion() : line.color());
+                if (line.bold() || isSelected) g.enableModifiers(SGR.BOLD);
+                String text = isSelected && Strings.CS.startsWith(line.text(), "  ")
+                    ? "▶ " + line.text().substring(2)
+                    : line.text();
 
-                g.putString(LEFT_PAD, 1 + (i - scrollOffset), InlineOverlay.clip(line.text(), cols - LEFT_PAD - 2));
-                if (line.bold()) g.disableModifiers(SGR.BOLD);
+                g.putString(LEFT_PAD, 1 + (i - scrollOffset), InlineOverlay.clip(text, cols - LEFT_PAD - 2));
+                if (line.bold() || isSelected) g.disableModifiers(SGR.BOLD);
             }
 
             drawScrollIndicators(g, cols, visibleRows);
 
-            g.setForegroundColor(LanternaTheme.welcomeDim());
-            g.putString(LEFT_PAD, visibleRows + 1, "↑/↓/PgUp/PgDn to scroll · Esc/Enter to close");
+            if (highlightedLine >= 0 && highlightedLine < lines.size()
+                    && lines.get(highlightedLine).skill() != null) {
+                String desc = lines.get(highlightedLine).skill().description();
+                String summary = org.apache.commons.lang3.StringUtils.isNotBlank(desc)
+                    ? "Desc: " + desc.replace('\n', ' ').trim()
+                    : "Desc: (no description)";
+                g.setForegroundColor(LanternaTheme.welcomeDim());
+                g.putString(LEFT_PAD, visibleRows + 1, InlineOverlay.clip(summary, cols - LEFT_PAD - 2));
+                g.putString(LEFT_PAD, visibleRows + 2,
+                    "↑/↓ select · Space toggle session · d toggle default · Esc close");
+            } else {
+                g.setForegroundColor(LanternaTheme.welcomeDim());
+                g.putString(LEFT_PAD, visibleRows + 1, "↑/↓/PgUp/PgDn to scroll · Esc/Enter to close");
+            }
         }
 
         private void drawScrollIndicators(TextGUIGraphics g, int cols, int visibleRows) {

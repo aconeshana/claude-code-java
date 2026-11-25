@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.features.settings;
 
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.mcp.McpManagementPort;
 import com.claudecode.runtime.mcp.McpManagementPort.Action;
 import com.claudecode.runtime.mcp.McpManagementPort.Server;
@@ -16,6 +17,7 @@ import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -50,6 +52,36 @@ public final class MCPController implements ReplCommandUiBridge.Mcp, ReplFeature
 
     public Component view() {
         return dialog;
+    }
+
+    public void bindCapabilities(SessionCapabilityPort port, Supplier<String> sessionIdSupplier) {
+        if (port == null || dialog == null) return;
+        dialog.bindCapabilities(port, sessionIdSupplier, request -> {
+            if (!actionInFlight.compareAndSet(false, true)) return;
+            Runnable task = () -> {
+                try {
+                    var outcome = port.toggle(request);
+                    var refreshed = management.snapshot();
+                    completeOnGui(() -> {
+                        try {
+                            if (dialog.isActive()) dialog.refresh(refreshed);
+                            if (StringUtils.isNotBlank(outcome.message())) {
+                                sink.system(outcome.message());
+                            }
+                        } finally {
+                            actionInFlight.set(false);
+                        }
+                    });
+                } catch (RuntimeException failure) {
+                    completeOnGui(() -> {
+                        sink.system("⚠ " + failure.getMessage());
+                        actionInFlight.set(false);
+                    });
+                }
+            };
+            if (gui == null) task.run();
+            else Thread.ofVirtual().name("mcp-cap-toggle").start(task);
+        });
     }
 
     @Override

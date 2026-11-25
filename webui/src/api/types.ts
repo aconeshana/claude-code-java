@@ -930,6 +930,88 @@ export interface CcConnectSetupResult {
 }
 
 // ---------------------------------------------------------------------------
+// Progressive Session Capabilities (/api/session/capabilities)
+// ---------------------------------------------------------------------------
+
+export type SessionCapabilityKind = 'tool' | 'skill' | 'mcp_server' | 'mcp_tool'
+export type SessionCapabilityScope = 'session' | 'default'
+export type ToolDeliveryMode = 'prefix_eager' | 'progressive_deferred' | 'disabled'
+
+export interface BuiltInToolCapability {
+  readonly name: string
+  readonly description: string
+  readonly input_schema: Readonly<Record<string, unknown>>
+  readonly tokens: number
+  readonly kernel: boolean
+  readonly session_enabled: boolean
+  readonly default_enabled: boolean
+  readonly delivery_mode: ToolDeliveryMode
+}
+
+export interface SkillCapability {
+  readonly name: string
+  readonly source: string
+  readonly description: string
+  readonly tokens: number
+  readonly session_enabled: boolean
+  readonly default_enabled: boolean
+  readonly protocol_visible: boolean
+}
+
+export interface McpToolCapability {
+  readonly server_name: string
+  readonly name: string
+  readonly full_name: string
+  readonly description: string
+  readonly input_schema: Readonly<Record<string, unknown>>
+  readonly tokens: number
+  readonly session_enabled: boolean
+  readonly default_enabled: boolean
+}
+
+export interface McpServerCapability {
+  readonly name: string
+  readonly scope: string
+  readonly transport: string
+  readonly status: string
+  readonly instructions: string
+  readonly tokens: number
+  readonly manageable: boolean
+  readonly session_enabled: boolean
+  readonly default_enabled: boolean
+  readonly tools: readonly McpToolCapability[]
+}
+
+export interface SessionCapabilities {
+  readonly session_id: string
+  readonly model: string
+  readonly protocol: ModelProtocol
+  readonly saved_tokens: number
+  readonly tools: readonly BuiltInToolCapability[]
+  readonly skills: readonly SkillCapability[]
+  readonly mcp_servers: readonly McpServerCapability[]
+}
+
+export interface SessionCapabilitiesResponse {
+  readonly capabilities: SessionCapabilities | null
+}
+
+export interface SessionCapabilityToggleRequest {
+  readonly session_id?: string | null
+  readonly kind: SessionCapabilityKind
+  readonly name: string
+  readonly server_name?: string | null
+  readonly enabled: boolean
+  readonly scope?: SessionCapabilityScope
+}
+
+export interface SessionCapabilityToggleResponse {
+  readonly changed: boolean
+  readonly message: string
+  readonly capabilities: SessionCapabilities
+}
+
+// ---------------------------------------------------------------------------
 // Multi-folder Projects & Per-Project Customizations (/api/projects)
 // ---------------------------------------------------------------------------
 
@@ -986,3 +1068,8 @@ export interface ProjectCustomizations {
   readonly skills: readonly ProjectSkillInfo[]
   readonly mcp_servers: readonly ProjectMcpServerInfo[]
 }
+
+
+
+
+

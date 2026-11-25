@@ -1411,6 +1411,9 @@ public final class ProtocolWireCodec {
             u.put("prompt_tokens", prompt);
             u.put("completion_tokens", usage.outputTokens());
             u.put("total_tokens", prompt + usage.outputTokens());
+            if (usage.cacheReadInputTokens() > 0) {
+                u.putObject("prompt_tokens_details").put("cached_tokens", usage.cacheReadInputTokens());
+            }
         }
         sb.append("data: ").append(chunk).append("\n\n");
     }

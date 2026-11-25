@@ -30,6 +30,7 @@ import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
 import com.claudecode.core.message.ContentBlock;
+import com.claudecode.core.message.DeferredToolsDeltaAttachment;
 import com.claudecode.core.message.GoalStatusAttachment;
 import com.claudecode.core.message.HookAdditionalContextAttachment;
 import com.claudecode.core.message.HookNonBlockingErrorAttachment;
@@ -280,9 +281,12 @@ class QueryLoop implements SdkEventSequencedIterator {
     private void collectAttachments(DefaultQuerySession engine, String input, String querySource) {
         var svc = engine.getAttachmentService();
         if (svc == null) return;
+        List<String> liveTools = engine.getConfig().liveToolNames();
+        List<Message> contextMessages = engine.getAttachmentContextMessages();
+        List<String> previousTools = resolvePreviousTurnTools(engine, contextMessages);
         AttachmentContext ctx = AttachmentContext
             .builder(engine.getConfig().workingDirectory())
-            .messages(engine.getAttachmentContextMessages())
+            .messages(contextMessages)
             .input(input)
             .fileStateCache(engine.getFileStateCache())
             .fileReadDenied(engine.getConfig().fileReadDeniedPredicate())
@@ -291,11 +295,11 @@ class QueryLoop implements SdkEventSequencedIterator {
             .hookDispatcher(engine.getHookDispatcher())
             .agentId(engine.getConfig().agentId())
             .querySource(querySource)
-            .toolNames(engine.getConfig().tools())
+            .toolNames(liveTools)
             .criticalSystemReminder(engine.getConfig().criticalSystemReminder())
             .activeAgents(engine.getConfig().activeAgentsSupplier().get())
             .mcpServerInstructions(engine.getConfig().mcpServerInstructionsSupplier().get())
-            .previousTurnTools(engine.getPreviousTurnTools())
+            .previousTurnTools(previousTools)
             .compactionOccurred(engine.hasCompactionOccurred())
             .outputStyle(engine.getConfig().outputStyleSupplier() != null
                 ? engine.getConfig().outputStyleSupplier().get() : null)
@@ -329,7 +333,32 @@ class QueryLoop implements SdkEventSequencedIterator {
         engine.clearNestedMemoryAttachmentTriggers();
         // Snapshot this turn's announced tools so next turn's deferred_tools_delta can diff against
         // them.
-        engine.setPreviousTurnTools(engine.getConfig().tools());
+        engine.setPreviousTurnTools(liveTools);
+    }
+
+    private static List<String> resolvePreviousTurnTools(
+            DefaultQuerySession engine, List<Message> contextMessages) {
+        List<String> inMemory = engine.getPreviousTurnTools();
+        if (inMemory != null) {
+            return inMemory;
+        }
+        var baselineSupplier = engine.getConfig().initialToolBaselineSupplier();
+        if (baselineSupplier == null) {
+            return null;
+        }
+        List<String> baseline = baselineSupplier.get();
+        java.util.LinkedHashSet<String> reconstructed = new java.util.LinkedHashSet<>(
+            baseline != null ? baseline : List.of());
+        if (contextMessages != null) {
+            for (Message msg : contextMessages) {
+                if (msg instanceof AttachmentMessage am
+                        && am.payload() instanceof DeferredToolsDeltaAttachment delta) {
+                    if (delta.addedNames() != null) reconstructed.addAll(delta.addedNames());
+                    if (delta.removedNames() != null) reconstructed.removeAll(delta.removedNames());
+                }
+            }
+        }
+        return List.copyOf(reconstructed);
     }
 
 

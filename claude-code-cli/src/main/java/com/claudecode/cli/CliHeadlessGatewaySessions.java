@@ -6,6 +6,7 @@ import com.claudecode.core.message.Message;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayLanProxyPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
@@ -77,6 +78,11 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
 
     GatewayLanProxyPort lanProxyPort() {
         return lanProxyPort;
+    }
+
+    @Override
+    public SessionCapabilityPort capabilities() {
+        return factory.capabilityService();
     }
 
     @Override

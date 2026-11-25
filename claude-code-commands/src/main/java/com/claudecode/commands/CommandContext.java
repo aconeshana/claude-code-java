@@ -17,6 +17,7 @@ import com.claudecode.core.engine.MessageCompactor;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.pokemon.PokemonProfile;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.doctor.DoctorPort;
 import com.claudecode.runtime.mcp.McpManagementPort;
 import com.claudecode.runtime.settings.SettingsManagementPort;
@@ -98,6 +99,7 @@ public record CommandContext(
         private PermissionCommandPort permissionCommands = PermissionCommandPort.none();
         private SessionCommandPort sessionCommands = SessionCommandPort.none();
         private ToolingCommandPorts toolingCommands = ToolingCommandPorts.none();
+        private SessionCapabilityPort capabilities;
         private Function<String, String> sideQuestionRunner;
         private Supplier<MessageCompactor> compactService;
         private Consumer<String> btwDialogLauncher;
@@ -279,6 +281,7 @@ public record CommandContext(
         public Builder settingsManagement(SettingsManagementPort v) { settingsManagement = v == null ? SettingsManagementPort.none() : v; return this; }
         public Builder recap(RecapPort v) { recap = v == null ? RecapPort.none() : v; return this; }
         public Builder mcpManagement(McpManagementPort v) { mcpManagement = v == null ? McpManagementPort.none() : v; return this; }
+        public Builder capabilities(SessionCapabilityPort v) { capabilities = v; return this; }
         public Builder tagRemovalLauncher(Consumer<TagRemovalRequest> v) { tagRemovalLauncher = v; return this; }
         public Builder gatewayLauncher(Consumer<String> v) { gatewayLauncher = v; return this; }
         public Builder nonInteractive(boolean v) { nonInteractive = v; return this; }
@@ -309,7 +312,7 @@ public record CommandContext(
             CommandApplicationPorts application = new CommandApplicationPorts(
                 doctor, dream, pluginRuntime, insightsPipeline, recap,
                 settingsManagement, mcpManagement, permissionCommands, sessionCommands,
-                toolingCommands);
+                toolingCommands, capabilities);
             CommandPresentationPorts presentation = new CommandPresentationPorts(
                 btwDialogLauncher, pokemonStatusPresenter, pokemonHatchLauncher,
                 effortDialogLauncher, exportDialogLauncher, hooksDialogLauncher,

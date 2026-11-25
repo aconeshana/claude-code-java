@@ -125,9 +125,26 @@ final class CliMcpManagementAdapter implements McpManagementPort {
                 McpClientRuntime live = runtime.get();
                 if (live != null) live.disconnect(serverName);
                 unregister(serverName);
+                return "⛔ Disabled MCP server '" + serverName + "' (" + server.scope() + ").";
             }
-            return (enabled ? "✓ Enabled" : "⛔ Disabled") + " MCP server '"
-                + serverName + "' (" + server.scope() + ").";
+            McpClientRuntime live = runtime.get();
+            String connectDetail = "";
+            if (live != null) {
+                try {
+                    live.connect(config(serverName));
+                    int toolCount = syncTools(serverName, live);
+                    int promptCount = syncPrompts(serverName, live);
+                    if (toolCount > 0 || promptCount > 0) {
+                        connectDetail = " (" + toolCount + " tool" + plural(toolCount)
+                            + (promptCount > 0 ? ", " + promptCount + " prompt" + plural(promptCount) : "")
+                            + " ready)";
+                    }
+                } catch (Exception connectErr) {
+                    connectDetail = " (reconnect pending: " + connectErr.getMessage() + ")";
+                }
+            }
+            return "✓ Enabled MCP server '" + serverName + "' (" + server.scope() + ")"
+                + connectDetail + ".";
         } catch (Exception e) {
             throw new IllegalStateException("Failed to " + (enabled ? "enable" : "disable")
                 + " '" + serverName + "': " + e.getMessage(), e);

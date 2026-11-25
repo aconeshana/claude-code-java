@@ -1,5 +1,6 @@
 package com.claudecode.runtime.query;
 
+import com.claudecode.core.attachment.FeatureFlag;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.ApiMessageFormatter;
@@ -553,7 +554,8 @@ final class QueryHelpers {
             }
         }
 
-        if (toolSearchEnabled) {
+        if (toolSearchEnabled
+                && !engine.getConfig().featureFlags().isEnabled(FeatureFlag.DEFERRED_TOOLS_DELTA)) {
             List<String> deferredNames = engine.getConfig().toolExecutor().getDeferredToolNames();
             if (!deferredNames.isEmpty()) {
                 String deferredListing = deferredNames.stream().sorted()

@@ -20,6 +20,7 @@ import { useSessionContext } from '../../store/sessionContext'
 import { useSessions } from '../../store/sessions'
 import { openSubagentInRightDock } from '../../store/rightSidebar'
 import { detailFetcher, makeContentFetcher, makeHeaderFetcher, useContextTimeline, type ContextJumpTarget } from '../../store/contextTimeline'
+import { ContextCapabilitiesCard } from './ContextCapabilitiesCard'
 import { resolveJumpSeq } from './jump'
 import { useContextKit } from './useContextKit'
 import type { ContextEventRecord, RequestRecord, SurfaceNode } from '@dsh-context/shared/types'
@@ -257,11 +258,17 @@ function ContextViewBody({ sessionId, kit, locale, cards }: {
     return <div className="lc-root" ref={rootRef}><div className="lc-empty">{t('shell.noSession')}</div></div>
   }
   if (entry?.cold === true) {
-    return <div className="lc-root" ref={rootRef}><div className="lc-empty">{t('shell.cold')}</div></div>
+    return (
+      <div className="lc-root" ref={rootRef} data-testid="context-view">
+        <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
+        <div className="lc-empty">{t('shell.cold')}</div>
+      </div>
+    )
   }
   if (!data) {
     return (
-      <div className="lc-root" ref={rootRef}>
+      <div className="lc-root" ref={rootRef} data-testid="context-view">
+        <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
         <div className="lc-empty">{entry?.failed === true ? t('detail.failed') : t('loading')}</div>
       </div>
     )
@@ -395,6 +402,8 @@ function ContextViewBody({ sessionId, kit, locale, cards }: {
         <div className="lc-col flex-1 min-w-[min(360px,100%)]">{compositionCard}{trendCard}</div>
         <div className="lc-col lc-col-browser flex-1 min-w-[min(360px,100%)]">{browserCard}</div>
       </div>
+
+      <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
 
       <div className="lc-cols">
         <div className="lc-card lc-col flex-1 min-w-[min(360px,100%)]">

@@ -17,6 +17,7 @@ import com.claudecode.commands.recap.RecapPort;
 import com.claudecode.commands.impl.config.AddDirCommand;
 import com.claudecode.commands.impl.config.ModelCommand;
 import com.claudecode.commands.impl.integration.McpCommand;
+import com.claudecode.commands.impl.integration.ToolsCommand;
 import com.claudecode.commands.impl.terminal.CopyCommand;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.effort.EffortHelpers;
@@ -201,7 +202,8 @@ final class CliInteractiveSessionRunner {
              */
             String startupResumeSearchTerm,
             /** Gates the {@code ultracode} effort level, which needs workflow orchestration. */
-            boolean workflowsEnabled) {}
+            boolean workflowsEnabled,
+            CliSessionCapabilityService capabilityService) {}
 
     private record OptionalInteractiveSettings(
             long idlePromptThresholdMs, boolean awaySummaryEnabled) {
@@ -390,7 +392,9 @@ final class CliInteractiveSessionRunner {
                 new CliHeadlessSessionFactory(
                     client, toolRegistry, input.querySessionFactory(),
                     permissionGate, resolvedModel, interactiveCwd, customModelCatalog,
-                    showBuiltInModelFamilies),
+                    showBuiltInModelFamilies, null,
+                    input.capabilityService(),
+                    skillToolProvider.getSkillLoader()),
                 interactiveCwd,
                 new CliLanProxyAdapter(
                     customModelCatalog, llmClient, resolvedModel, showBuiltInModelFamilies));
@@ -588,6 +592,7 @@ final class CliInteractiveSessionRunner {
                     .gatewayLauncher(_ -> commandUi.startWebGateway())
                     .tasksDialogLauncher(commandUi::openTasks)
                     .workflowsDialogLauncher(commandUi::openWorkflows)
+                    .capabilities(input.capabilityService())
                     .build();
             var permissionExplainer = sideQuery != null
                 ? new PermissionExplainerService(sideQuery, resolvedModel) : null;
@@ -698,10 +703,14 @@ final class CliInteractiveSessionRunner {
                     log.warn("Session Host IM endpoint could not start", failure);
                 }
             });
-            // Register /mcp now that the client manager exists (see ReplWiring).
+            // Register /mcp and /tools now that the client manager exists (see ReplWiring).
             McpCommand mcpCmd = new McpCommand(mcpManagement);
             mcpCmd.setDialogLauncher(commandUi::openMcp);
             cmdRegistry.registerBuiltIn(mcpCmd);
+            cmdRegistry.registerBuiltIn(new ToolsCommand());
+            if (input.capabilityService() != null) {
+                input.capabilityService().attachCommandRegistry(cmdRegistry);
+            }
             lanternaRepl.setToolNames(toolRegistry.getAll().stream()
                 .map(Tool::name)
                 .collect(Collectors.toList()));

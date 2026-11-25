@@ -15,6 +15,7 @@ import com.claudecode.commands.context.ContextData;
 import com.claudecode.commands.insights.InsightsPort;
 import com.claudecode.commands.impl.integration.McpPromptCommand;
 import com.claudecode.commands.impl.integration.McpCommand;
+import com.claudecode.commands.impl.integration.ToolsCommand;
 import com.claudecode.commands.workflows.WorkflowCommandSync;
 import com.claudecode.commands.workflows.WorkflowCommandDefinition;
 import com.claudecode.core.engine.CostCalculator;
@@ -119,7 +120,8 @@ final class CliHeadlessSessionRunner {
             McpRuntime mcpRuntime,
             CliPluginRuntimeView pluginRuntime,
             SkillToolProvider skillToolProvider,
-            String cwd) {}
+            String cwd,
+            CliSessionCapabilityService capabilityService) {}
 
     /**
      * Processes either a slash-command invocation or a plain prompt and
@@ -295,6 +297,10 @@ final class CliHeadlessSessionRunner {
             cwd, request.mcpRuntime()::clientRuntime,
             request.toolRegistry(), registry, pluginMarketplace);
         registry.registerBuiltIn(new McpCommand(mcpManagement));
+        registry.registerBuiltIn(new ToolsCommand());
+        if (request.capabilityService() != null) {
+            request.capabilityService().attachCommandRegistry(registry);
+        }
         syncWorkflowCommands(registry, Path.of(System.getProperty("user.dir")),
             request.pluginRuntime());
 
@@ -369,6 +375,7 @@ final class CliHeadlessSessionRunner {
                 request.config().llmClient(), request::engine))
             .settingsManagement(settingsManagement)
             .mcpManagement(mcpManagement)
+            .capabilities(request.capabilityService())
             .transcriptRecorder(message ->
                 request.transcriptRecorder().record(request.engine().conversation().getSessionId(), message))
             .postCompactCallback(postCompact)

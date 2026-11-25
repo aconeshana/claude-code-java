@@ -1493,6 +1493,58 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ContextOverview' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/session/capabilities:
+    get:
+      tags: [Sessions]
+      summary: One session's progressive capability catalog and switches (Tool, Skill, MCP)
+      description: |
+        Returns the active model's resolved wire protocol (`anthropic`, `chat`,
+        `responses`, or `gemini`) alongside the aggregated built-in Tools,
+        Skills, and MCP servers/tools for the addressed session, including both
+        session-scoped overrides (`session_enabled`) and persisted project
+        defaults (`default_enabled` from `~/.claude.json`).
+      parameters:
+        - $ref: '#/components/parameters/ContextSessionId'
+      responses:
+        '200':
+          description: The capability snapshot, or null when unconfigured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capabilities:
+                    allOf: [ { $ref: '#/components/schemas/SessionCapabilities' } ]
+                    nullable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Sessions]
+      summary: Toggle a Tool, Skill, MCP server, or MCP tool in session or default scope
+      description: |
+        Flips a capability switch either for the current session (`scope=session`,
+        preserving disk defaults) or persistently in `~/.claude.json`
+        (`scope=default`) while keeping Turn-1 wire `tools[]` and `system[]`
+        prefixes unchanged via `<system-reminder>` deltas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionCapabilityToggleRequest' }
+      responses:
+        '200':
+          description: The toggle result and refreshed capability snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changed, message, capabilities]
+                properties:
+                  changed: { type: boolean }
+                  message: { type: string }
+                  capabilities: { $ref: '#/components/schemas/SessionCapabilities' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/models/{name}:
     delete:
       tags: [Models]
@@ -2923,6 +2975,84 @@ components:
               input_tokens: { type: integer }
               output_tokens: { type: integer }
               error: { type: string, nullable: true }
+    SessionCapabilityToggleRequest:
+      type: object
+      required: [kind, name, enabled]
+      properties:
+        session_id: { type: string }
+        kind: { type: string, enum: [tool, skill, mcp_server, mcp_tool] }
+        name: { type: string }
+        server_name: { type: string }
+        enabled: { type: boolean }
+        scope: { type: string, enum: [session, default], default: session }
+    SessionCapabilities:
+      type: object
+      required: [session_id, model, protocol, saved_tokens, tools, skills, mcp_servers]
+      properties:
+        session_id: { type: string }
+        model: { type: string }
+        protocol: { type: string, enum: [anthropic, chat, responses, gemini] }
+        saved_tokens: { type: integer }
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/BuiltInToolCapability' }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/SkillCapability' }
+        mcp_servers:
+          type: array
+          items: { $ref: '#/components/schemas/McpServerCapability' }
+    BuiltInToolCapability:
+      type: object
+      required: [name, description, input_schema, tokens, kernel, session_enabled, default_enabled, delivery_mode]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        input_schema: { type: object, additionalProperties: true }
+        tokens: { type: integer }
+        kernel: { type: boolean }
+        session_enabled: { type: boolean }
+        default_enabled: { type: boolean }
+        delivery_mode: { type: string, enum: [prefix_eager, progressive_deferred, disabled] }
+    SkillCapability:
+      type: object
+      required: [name, source, description, tokens, session_enabled, default_enabled, protocol_visible]
+      properties:
+        name: { type: string }
+        source: { type: string }
+        description: { type: string }
+        tokens: { type: integer }
+        session_enabled: { type: boolean }
+        default_enabled: { type: boolean }
+        protocol_visible: { type: boolean }
+    McpToolCapability:
+      type: object
+      required: [server_name, name, full_name, description, input_schema, tokens, session_enabled, default_enabled]
+      properties:
+        server_name: { type: string }
+        name: { type: string }
+        full_name: { type: string }
+        description: { type: string }
+        input_schema: { type: object, additionalProperties: true }
+        tokens: { type: integer }
+        session_enabled: { type: boolean }
+        default_enabled: { type: boolean }
+    McpServerCapability:
+      type: object
+      required: [name, scope, transport, status, instructions, tokens, manageable, session_enabled, default_enabled, tools]
+      properties:
+        name: { type: string }
+        scope: { type: string }
+        transport: { type: string }
+        status: { type: string }
+        instructions: { type: string }
+        tokens: { type: integer }
+        manageable: { type: boolean }
+        session_enabled: { type: boolean }
+        default_enabled: { type: boolean }
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/McpToolCapability' }
   parameters:
     ContextSessionId:
       name: session_id

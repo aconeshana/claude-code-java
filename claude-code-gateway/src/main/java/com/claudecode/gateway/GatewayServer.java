@@ -6,6 +6,7 @@ import static com.claudecode.gateway.GatewayResponses.respondJson;
 
 import com.claudecode.core.message.Message;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.interaction.InteractionFeatures;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
@@ -113,6 +114,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewayDirectoryPickerHandler directoryPickerApi = new GatewayDirectoryPickerHandler();
     private final GatewayProjectsHandler projectsApi;
     private final GatewaySessionContextHandler sessionContextApi;
+    private final GatewayCapabilitiesHandler capabilitiesApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final GatewaySessionCancelHandler sessionCancelApi;
     private final GatewayTaskBoardHandler taskBoardApi;
@@ -171,6 +173,7 @@ public final class GatewayServer implements AutoCloseable {
         private GatewayModelsPort models = new GatewayModelsPort() {};
         private GatewayCommandsPort commands = new GatewayCommandsPort() {};
         private GatewaySessionContextPort sessionContext = new GatewaySessionContextPort() {};
+        private SessionCapabilityPort capabilities;
         private GatewaySessionActionsPort actions = new GatewaySessionActionsPort() {};
         private GatewayPermissionModePort permissionMode = new GatewayPermissionModePort() {};
         private GatewaySpinnerVerbsPort spinnerVerbs = new GatewaySpinnerVerbsPort() {};
@@ -275,6 +278,11 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder sessionContext(GatewaySessionContextPort value) {
             this.sessionContext = Objects.requireNonNull(value, "sessionContext");
+            return this;
+        }
+
+        public Builder capabilities(SessionCapabilityPort value) {
+            this.capabilities = value;
             return this;
         }
 
@@ -522,6 +530,10 @@ public final class GatewayServer implements AutoCloseable {
         this.spinnerVerbsApi = new GatewaySpinnerVerbsHandler(spinnerVerbs);
         this.fileSuggestionsApi = new GatewayFileSuggestionsHandler(fileSuggestions);
         this.sessionContextApi = new GatewaySessionContextHandler(sessionContext, remoteWorkers);
+        SessionCapabilityPort effectiveCapabilities = builder.capabilities != null
+            ? builder.capabilities : headless.capabilities();
+        this.capabilitiesApi = new GatewayCapabilitiesHandler(
+            effectiveCapabilities, sessionContext, headless, remoteWorkers);
         this.permissionModeApi = new GatewayPermissionModeHandler(permissionMode, remoteWorkers);
         this.sessionCancelApi = new GatewaySessionCancelHandler(cancel, remoteWorkers);
         this.taskBoardApi = new GatewayTaskBoardHandler(taskBoard);
@@ -1269,6 +1281,15 @@ public final class GatewayServer implements AutoCloseable {
                         "unknown context face: " + face));
                 }
             });
+            return;
+        }
+        if ((get || post) && Strings.CS.equals("/api/session/capabilities", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            if (get) {
+                serve(exchange, () -> capabilitiesApi.handleGet(exchange));
+            } else {
+                serveAsync(exchange, () -> capabilitiesApi.handlePost(exchange));
+            }
             return;
         }
         if ((get || post) && Strings.CS.equals("/api/session/context", targetPath)) {

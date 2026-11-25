@@ -1,5 +1,16 @@
 package com.claudecode.cli;
 
+import com.claudecode.core.attachment.AgentListingDeltaAttachmentProvider;
+import com.claudecode.core.attachment.AtMentionedFilesProvider;
+import com.claudecode.core.attachment.AttachmentService;
+import com.claudecode.core.attachment.ChangedFilesProvider;
+import com.claudecode.core.attachment.DateChangeAttachmentProvider;
+import com.claudecode.core.attachment.DeferredToolsDeltaAttachmentProvider;
+import com.claudecode.core.attachment.FeatureFlag;
+import com.claudecode.core.attachment.FeatureFlagRegistry;
+import com.claudecode.core.attachment.McpInstructionsDeltaAttachmentProvider;
+import com.claudecode.core.attachment.McpResourceAttachmentProvider;
+import com.claudecode.core.attachment.SkillListingAttachmentProvider;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.engine.AbortController;
@@ -9,6 +20,7 @@ import com.claudecode.core.message.Message;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.core.prompt.SystemPromptRuntime;
 import com.claudecode.core.state.CwdState;
 import com.claudecode.permissions.PermissionGate;
 import com.claudecode.permissions.PermissionMode;
@@ -46,6 +58,7 @@ import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.Tool;
 import com.claudecode.tools.ToolRegistry;
+import com.claudecode.tools.skills.SkillLoader;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -56,8 +69,10 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Assembles one parallel headless {@code QuerySession} for the web gateway.
@@ -91,6 +106,8 @@ final class CliHeadlessSessionFactory {
     private final CustomModelCatalog customModels;
     private final boolean showBuiltInModelFamilies;
     private final InteractionCoordinator interactions;
+    private final CliSessionCapabilityService capabilityService;
+    private final SkillLoader skillLoader;
 
     CliHeadlessSessionFactory(
             StreamingClient client,
@@ -102,7 +119,7 @@ final class CliHeadlessSessionFactory {
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies) {
         this(client, toolRegistry, querySessionFactory, sharedGate, resolvedModel,
-            mainCwd, customModels, showBuiltInModelFamilies, null);
+            mainCwd, customModels, showBuiltInModelFamilies, null, null, null);
     }
 
     CliHeadlessSessionFactory(
@@ -115,6 +132,22 @@ final class CliHeadlessSessionFactory {
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies,
             InteractionCoordinator interactions) {
+        this(client, toolRegistry, querySessionFactory, sharedGate, resolvedModel,
+            mainCwd, customModels, showBuiltInModelFamilies, interactions, null, null);
+    }
+
+    CliHeadlessSessionFactory(
+            StreamingClient client,
+            ToolRegistry toolRegistry,
+            QuerySessionFactory querySessionFactory,
+            PermissionGate sharedGate,
+            String resolvedModel,
+            String mainCwd,
+            CustomModelCatalog customModels,
+            boolean showBuiltInModelFamilies,
+            InteractionCoordinator interactions,
+            CliSessionCapabilityService capabilityService,
+            SkillLoader skillLoader) {
         this.client = client;
         this.toolRegistry = toolRegistry;
         this.querySessionFactory = querySessionFactory;
@@ -124,6 +157,8 @@ final class CliHeadlessSessionFactory {
         this.customModels = customModels;
         this.showBuiltInModelFamilies = showBuiltInModelFamilies;
         this.interactions = interactions;
+        this.capabilityService = capabilityService;
+        this.skillLoader = skillLoader;
     }
 
     /** One assembled headless session: the host record plus its engine. */
@@ -138,6 +173,10 @@ final class CliHeadlessSessionFactory {
         return toolRegistry;
     }
 
+    CliSessionCapabilityService capabilityService() {
+        return capabilityService;
+    }
+
     /**
      * Assembles one headless session bound to {@code projectPath}, optionally
      * resuming {@code priorMessages}.
@@ -148,20 +187,76 @@ final class CliHeadlessSessionFactory {
         SessionEventHub events = new SessionEventHub(new NoopSink(), failure ->
             log.log(Level.WARNING, "headless session observer failed", failure));
 
+        if (capabilityService != null) {
+            capabilityService.bindSessionProject(sessionId, projectPath);
+            capabilityService.ensureSessionMcpConnected(sessionId);
+        }
+
+        AtomicReference<QuerySession> engineRef = new AtomicReference<>();
+        List<String> initialTools = capabilityService != null
+            ? List.copyOf(toolRegistry.getFrozenInitialEagerToolNames(sessionId))
+            : toolRegistry.getAll().stream().map(Tool::name).toList();
+
         QuerySessionSpec.Builder builder = QuerySessionSpec.builder()
             .llmClient(client)
             .model(resolvedModel)
-            .tools(toolRegistry.getAll().stream().map(Tool::name).toList())
+            .customModel(name -> customModels != null && customModels.find(name).isPresent())
+            .tools(initialTools)
             .toolExecutor(toolRegistry)
             .workingDirectory(projectPath)
             .fileHistoryEnabled(true)
             .abortController(abort)
             .sessionIdentity(identity)
             .claudeMdContentSupplier(() -> loadClaudeMd(Path.of(projectPath)));
+        if (capabilityService != null) {
+            FeatureFlagRegistry flags = FeatureFlagRegistry.builder()
+                .enable(FeatureFlag.DEFERRED_TOOLS_DELTA)
+                .enable(FeatureFlag.MCP_INSTRUCTIONS_DELTA)
+                .enable(FeatureFlag.AGENT_LISTING_DELTA)
+                .build();
+            AttachmentService attachments = new AttachmentService(List.of(
+                new AtMentionedFilesProvider(),
+                new McpResourceAttachmentProvider(),
+                new DateChangeAttachmentProvider(),
+                new ChangedFilesProvider(),
+                new DeferredToolsDeltaAttachmentProvider(),
+                new AgentListingDeltaAttachmentProvider(),
+                new McpInstructionsDeltaAttachmentProvider(),
+                new SkillListingAttachmentProvider()), flags);
+            builder
+                .featureFlags(flags)
+                .attachmentService(attachments)
+                .initialToolBaselineSupplier(() -> List.copyOf(
+                    toolRegistry.getFrozenInitialEagerToolNames(sessionId)))
+                .liveToolNamesSupplier(() -> toolRegistry.getLiveSessionToolNames(sessionId))
+                .mcpServerInstructionsSupplier(() -> {
+                    try {
+                        return capabilityService.sessionMcpInstructions(sessionId);
+                    } catch (Throwable _) {
+                        return Map.of();
+                    }
+                })
+                .promptRuntimeSupplier(() -> new SystemPromptRuntime(
+                    null, true, null, true, List.of(), List.of(), false));
+            if (skillLoader != null) {
+                builder.skillListingSupplier(() -> {
+                    try {
+                        QuerySession live = engineRef.get();
+                        String currentModel = live != null
+                            ? live.configuration().getConfig().model() : resolvedModel;
+                        return CliPromptInventoryAssembler.skillListingEntries(
+                            skillLoader.loadEnabled(sessionId), currentModel);
+                    } catch (Throwable _) {
+                        return List.of();
+                    }
+                });
+            }
+        }
         if (priorMessages != null && !priorMessages.isEmpty()) {
             builder.initialMessages(priorMessages);
         }
         QuerySession engine = querySessionFactory.create(builder.build());
+        engineRef.set(engine);
         // The project path is the session's working directory, and it must be
         // stamped into every transcript row: the catalog groups sessions by the
         // cwd a row records, so the two-argument constructor would stamp this

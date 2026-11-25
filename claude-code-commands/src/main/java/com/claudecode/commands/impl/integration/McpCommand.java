@@ -6,6 +6,7 @@ import com.claudecode.commands.AnnotatedCommand;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
 import com.claudecode.commands.metadata.SlashCommand;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.mcp.McpManagementPort;
 
 import java.util.List;
@@ -53,8 +54,13 @@ public class McpCommand implements AnnotatedCommand {
             return reconnectServer(target);
         }
         if (Strings.CS.equals(action, "enable") || Strings.CS.equals(action, "disable")) {
-            return toggleServers(target.isEmpty() ? "all" : target,
-                Strings.CS.equals(action, "enable"));
+            boolean enabling = Strings.CS.equals(action, "enable");
+            SessionCapabilityPort capabilities = context != null && context.application() != null
+                ? context.application().capabilities() : null;
+            if (capabilities != null) {
+                return toggleViaCapabilities(context, capabilities, target, enabling);
+            }
+            return toggleServers(target.isEmpty() ? "all" : target, enabling);
         }
         return openSettingsOrList();
     }
@@ -137,6 +143,63 @@ public class McpCommand implements AnnotatedCommand {
         }
         return CommandResult.of("MCP server \"" + target + "\" "
             + (enabling ? "enabled" : "disabled"));
+    }
+
+    private CommandResult toggleViaCapabilities(
+            CommandContext context, SessionCapabilityPort capabilities,
+            String rawTarget, boolean enabling) {
+        SessionCapabilityPort.Scope scope = SessionCapabilityPort.Scope.SESSION;
+        String cleaned = rawTarget == null ? "" : rawTarget.trim();
+        String[] tokens = cleaned.isEmpty() ? new String[0] : cleaned.split("\\s+");
+        String target = "";
+        for (String token : tokens) {
+            if (Strings.CS.equals("--default", token) || Strings.CS.equals("--persist", token)) {
+                scope = SessionCapabilityPort.Scope.DEFAULT;
+            } else if (Strings.CS.equals("--session", token)) {
+                scope = SessionCapabilityPort.Scope.SESSION;
+            } else if (target.isEmpty()) {
+                target = token;
+            }
+        }
+        if (target.isEmpty()) target = "all";
+        String sessionId = context.session().currentSessionId() != null
+            ? context.session().currentSessionId().get() : "";
+
+        // Support per-MCP-tool toggle via canonical mcp__<server>__<tool> name.
+        if (Strings.CS.startsWith(target, "mcp__")) {
+            var outcome = capabilities.toggle(new SessionCapabilityPort.ToggleRequest(
+                sessionId, SessionCapabilityPort.Kind.MCP_TOOL, target, null, enabling, scope));
+            return CommandResult.of(outcome.message());
+        }
+
+        final SessionCapabilityPort.Scope targetScope = scope;
+        var snap = capabilities.snapshot(sessionId, context.session().model());
+        List<SessionCapabilityPort.McpServerItem> servers = snap.mcpServers();
+        if (Strings.CS.equals("all", target)) {
+            List<SessionCapabilityPort.McpServerItem> candidates = servers.stream()
+                .filter(s -> (targetScope == SessionCapabilityPort.Scope.DEFAULT
+                    ? s.defaultEnabled() : s.sessionEnabled()) != enabling)
+                .toList();
+            if (candidates.isEmpty()) {
+                return CommandResult.of("All MCP servers are already "
+                    + (enabling ? "enabled" : "disabled") + " (" + scope.wire() + ")");
+            }
+            for (var s : candidates) {
+                capabilities.toggle(new SessionCapabilityPort.ToggleRequest(
+                    sessionId, SessionCapabilityPort.Kind.MCP_SERVER, s.name(), null, enabling, scope));
+            }
+            return CommandResult.of((enabling ? "Enabled " : "Disabled ")
+                + candidates.size() + " MCP server(s) (" + scope.wire() + ")");
+        }
+
+        final String serverName = target;
+        var match = servers.stream().filter(s -> s.name().equals(serverName)).findFirst().orElse(null);
+        if (match == null) {
+            return CommandResult.of("MCP server \"" + serverName + "\" not found");
+        }
+        var outcome = capabilities.toggle(new SessionCapabilityPort.ToggleRequest(
+            sessionId, SessionCapabilityPort.Kind.MCP_SERVER, serverName, null, enabling, scope));
+        return CommandResult.of(outcome.message());
     }
 
     private McpManagementPort.Server find(String serverName) {

@@ -2,6 +2,7 @@ package com.claudecode.ui.lanterna.features.diagnostics;
 
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.keybindings.UserKeybindingsStore;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.doctor.DoctorPort;
 import com.claudecode.ui.lanterna.dialog.DoctorDialog;
 import com.claudecode.ui.lanterna.dialog.SkillsDialog;
@@ -74,6 +75,11 @@ public final class DiagnosticsFeature implements ReplCommandUiBridge.Diagnostics
     public Component doctorView() { return doctorDialog; }
     public Component skillsView() { return skillsDialog; }
     public Component statsView() { return statsDialog; }
+
+    public void bindCapabilities(SessionCapabilityPort port, Supplier<String> sessionIdSupplier) {
+        if (port == null) return;
+        skillsDialog.bindCapabilities(port, sessionIdSupplier, sink::system);
+    }
 
     /**
      * Opens the inline diagnostic report dialog for {@code /doctor} (LOADING → scrollable

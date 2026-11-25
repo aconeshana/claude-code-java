@@ -525,11 +525,13 @@ public final class AttachmentRenderer {
         List<String> parts = new ArrayList<>();
         if (a.addedLines() != null && !a.addedLines().isEmpty()) {
             parts.add("The following deferred tools are now available via ToolSearch:\n"
-                + String.join("\n", a.addedLines()));
+                + String.join("\n", a.addedLines())
+                + "\nUse ToolSearch to fetch a deferred tool's schema, then call ToolInvoke to execute it.");
         }
         if (a.removedNames() != null && !a.removedNames().isEmpty()) {
-            parts.add("The following deferred tools are no longer available (their MCP server "
-                + "disconnected). Do not search for them — ToolSearch will return no match:\n"
+            parts.add("The following deferred tools are no longer available (disabled in this "
+                + "session or their MCP server disconnected). Do not call them directly or via "
+                + "ToolInvoke, and do not search for them — ToolSearch will return no match:\n"
                 + String.join("\n", a.removedNames()));
         }
         return String.join("\n\n", parts);
@@ -618,7 +620,21 @@ public final class AttachmentRenderer {
 
 
     private static String renderSkillListing(SkillListingAttachment a) {
-        return "The following skills are available for use with the Skill tool:\n\n" + a.content();
+        List<String> parts = new ArrayList<>();
+        if (StringUtils.isNotBlank(a.content())) {
+            parts.add("The following skills are available for use with the Skill tool:\n\n"
+                + a.content());
+        }
+        if (a.removedNames() != null && !a.removedNames().isEmpty()) {
+            StringBuilder removed = new StringBuilder(
+                "The following skills are no longer available for use with the Skill tool:\n");
+            for (int i = 0; i < a.removedNames().size(); i++) {
+                if (i > 0) removed.append('\n');
+                removed.append("- ").append(a.removedNames().get(i));
+            }
+            parts.add(removed.toString());
+        }
+        return String.join("\n\n", parts);
     }
 
 

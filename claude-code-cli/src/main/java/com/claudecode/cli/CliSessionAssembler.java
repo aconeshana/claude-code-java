@@ -364,7 +364,7 @@ final class CliSessionAssembler {
             runtime.workspace().hookEngine(), runtime.lifecycle().transcriptRecorder(),
             runtime.toolchain().llmClient(), runtime.engine().config(), mcpRuntime,
             runtime.lifecycle().pluginRuntime(), runtime.toolchain().skillToolProvider(),
-            runtime.workspace().cwd()));
+            runtime.workspace().cwd(), runtime.toolchain().capabilityService()));
     }
 
     private static int runInteractive(CliSessionRuntime runtime, McpRuntime mcpRuntime) {
@@ -394,6 +394,7 @@ final class CliSessionAssembler {
             runtime.toolchain().customModelCatalog(), runtime.output(),
             runtime.errorOutput(), runtime.restoration().pickerRequested(),
             runtime.restoration().pickerSearchTerm(),
-            runtime.toolchain().workflowsEnabled()));
+            runtime.toolchain().workflowsEnabled(),
+            runtime.toolchain().capabilityService()));
     }
 }

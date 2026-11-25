@@ -42,6 +42,14 @@ public interface McpRuntime {
 
     void toggleServer(String serverName, boolean enabled);
 
+    /**
+     * Connects a configured (possibly default-disabled) MCP server in-process without mutating
+     * persisted {@code ~/.claude.json} defaults, so a single session can temporarily enable it.
+     */
+    default void ensureServerConnected(String serverName) {
+        reconnectServer(serverName);
+    }
+
     void clearServerAuth(String serverName);
 
     McpToolProvider.AuthStart authenticateServer(String serverName);

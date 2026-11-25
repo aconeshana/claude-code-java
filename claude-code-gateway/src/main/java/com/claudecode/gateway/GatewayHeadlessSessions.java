@@ -1,6 +1,7 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.runtime.capabilities.SessionCapabilityPort;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import java.time.Instant;
 import java.util.List;
@@ -58,4 +59,9 @@ public interface GatewayHeadlessSessions {
 
     /** Closes every open headless session (gateway shutdown path). */
     default void closeAll() {}
+
+    /** Optional progressive session capability controller supplied by the composition root. */
+    default SessionCapabilityPort capabilities() {
+        return null;
+    }
 }

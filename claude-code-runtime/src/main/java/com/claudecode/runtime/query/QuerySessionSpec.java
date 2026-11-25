@@ -70,6 +70,8 @@ public final class QuerySessionSpec {
     private final List<Message> initialMessages;
     private final AbortController abortController;
     private final List<String> tools;
+    private final Supplier<List<String>> liveToolNamesSupplier;
+    private final Supplier<List<String>> initialToolBaselineSupplier;
     private final Map<String, String> readFileCache;
     /**
      * Optional pre-populated read-before-write cache to seed the new {@link DefaultQuerySession} with,
@@ -248,6 +250,8 @@ public final class QuerySessionSpec {
         this.abortController = builder.abortController;
         this.tools = builder.tools != null
             ? List.copyOf(builder.tools) : List.of();
+        this.liveToolNamesSupplier = builder.liveToolNamesSupplier;
+        this.initialToolBaselineSupplier = builder.initialToolBaselineSupplier;
         this.readFileCache = builder.readFileCache != null
             ? Map.copyOf(builder.readFileCache) : Map.of();
         this.initialFileStateCache = builder.initialFileStateCache;
@@ -397,6 +401,26 @@ public final class QuerySessionSpec {
     public AbortController abortController() { return abortController; }
 
     public List<String> tools() { return tools; }
+
+    /**
+     * Live session-enabled tool names for per-turn {@code <system-reminder>} delta tracking and
+     * tool execution context; falls back to the immutable {@link #tools()} baseline when unset.
+     */
+    public List<String> liveToolNames() {
+        if (liveToolNamesSupplier != null) {
+            try {
+                List<String> supplied = liveToolNamesSupplier.get();
+                if (supplied != null) return List.copyOf(supplied);
+            } catch (RuntimeException _) {
+                // Fall back to static tools snapshot.
+            }
+        }
+        return tools;
+    }
+
+    public Supplier<List<String>> liveToolNamesSupplier() { return liveToolNamesSupplier; }
+
+    public Supplier<List<String>> initialToolBaselineSupplier() { return initialToolBaselineSupplier; }
 
     public Map<String, String> readFileCache() { return readFileCache; }
 
@@ -810,6 +834,8 @@ public final class QuerySessionSpec {
         private List<Message> initialMessages;
         private AbortController abortController;
         private List<String> tools;
+        private Supplier<List<String>> liveToolNamesSupplier;
+        private Supplier<List<String>> initialToolBaselineSupplier;
         private Map<String, String> readFileCache;
         private FileStateCache initialFileStateCache;
         private boolean fileHistoryEnabled;
@@ -968,6 +994,16 @@ public final class QuerySessionSpec {
 
         public Builder tools(List<String> tools) {
             this.tools = tools;
+            return this;
+        }
+
+        public Builder liveToolNamesSupplier(Supplier<List<String>> supplier) {
+            this.liveToolNamesSupplier = supplier;
+            return this;
+        }
+
+        public Builder initialToolBaselineSupplier(Supplier<List<String>> supplier) {
+            this.initialToolBaselineSupplier = supplier;
             return this;
         }
 

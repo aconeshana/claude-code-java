@@ -49,6 +49,17 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
 
     private static final String NO_MATCHES_TEXT = "No matching deferred tools found";
     private static final int DEFAULT_MAX_RESULTS = 5;
+    private static final String PROGRESSIVE_PROMPT = """
+        Fetches full schema definitions for deferred tools so they can be called via ToolInvoke.
+
+        Deferred tools (including MCP tools and dynamically enabled tools) appear by name in <system-reminder> messages. Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked accurately. This tool takes a query, matches it against the session's currently enabled deferred tool list, and returns the matched tools' complete JSONSchema definitions inside a <functions> block. Once a tool's schema appears in that result, invoke it using ToolInvoke with {"tool_name": "<name>", "arguments": {...}}.
+
+        Result format: each matched tool appears as one <function>{"description": "...", "name": "...", "parameters": {...}}</function> line inside the <functions> block.
+
+        Query forms:
+        - "select:Read,Edit,Grep" — fetch these exact tools by name
+        - "notebook jupyter" — keyword search, up to max_results best matches
+        - "+slack send" — require "slack" in the name, rank by remaining terms""";
 
     private final ToolRegistry toolRegistry;
     private final Supplier<List<String>> pendingMcpServers;
@@ -102,12 +113,20 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
     }
 
     @Override
+    public boolean alwaysLoad() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return prompt(null);
     }
 
     @Override
     public String prompt(ToolExecutionContext context) {
+        if (toolRegistry != null && toolRegistry.isProgressiveGatewayMode()) {
+            return PROGRESSIVE_PROMPT;
+        }
         return ToolTexts.prompt("ToolSearch", deferredToolLocationVariant());
     }
 
@@ -161,6 +180,9 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
 
     @Override
     public boolean isEnabled() {
+        if (toolRegistry != null && toolRegistry.isProgressiveGatewayMode()) {
+            return true;
+        }
         return ToolSearchGate.isEnabled();
     }
 
@@ -173,7 +195,7 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
 
     static boolean isDeferredTool(Tool<?, ?> t) {
         if (t.alwaysLoad()) return false;
-        if (NAME.equals(t.name())) return false;
+        if (NAME.equals(t.name()) || ToolInvokeTool.NAME.equals(t.name())) return false;
 
         // MCPTool/McpAuthTool provide that flag; a name that merely happens to
         // use the mcp__ prefix is not sufficient to change deferral semantics.
@@ -192,10 +214,13 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
             }
         }
 
-        List<Tool<?, ?>> allTools = new ArrayList<>(toolRegistry.getAll());
-        List<Tool<?, ?>> deferredTools = allTools.stream()
-            .filter(ToolSearchTool::isDeferredTool)
-            .toList();
+        boolean progressiveMode = toolRegistry != null && toolRegistry.isProgressiveGatewayMode();
+        List<Tool<?, ?>> allTools = progressiveMode
+            ? toolRegistry.getSessionAllowedTools(context)
+            : new ArrayList<>(toolRegistry.getAll());
+        List<Tool<?, ?>> deferredTools = progressiveMode
+            ? toolRegistry.getActiveDeferredTools(context)
+            : allTools.stream().filter(ToolSearchTool::isDeferredTool).toList();
 
 
 
@@ -210,25 +235,52 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
                     .ifPresent(t -> found.add(t.name()));
             }
             return found.isEmpty()
-                ? output(List.of(), query, deferredTools.size(), safePendingMcpServers())
-                : output(List.copyOf(found), query, deferredTools.size(), List.of());
+                ? output(List.of(), query, deferredTools.size(), safePendingMcpServers(),
+                    progressiveMode, context)
+                : output(List.copyOf(found), query, deferredTools.size(), List.of(),
+                    progressiveMode, context);
         }
 
         List<String> matches = searchToolsWithKeywords(query, deferredTools, allTools, maxResults);
         if (matches.isEmpty()) {
-            return output(List.of(), query, deferredTools.size(), safePendingMcpServers());
+            return output(List.of(), query, deferredTools.size(), safePendingMcpServers(),
+                progressiveMode, context);
         }
-        return output(matches, query, deferredTools.size(), List.of());
+        return output(matches, query, deferredTools.size(), List.of(), progressiveMode, context);
     }
 
-    private static Output output(List<String> matches, String query, int totalDeferredTools,
-                                 List<String> pendingServers) {
+    private Output output(List<String> matches, String query, int totalDeferredTools,
+                          List<String> pendingServers, boolean progressiveMode,
+                          ToolExecutionContext context) {
         List<String> safeMatches = matches == null ? List.of() : List.copyOf(matches);
         List<String> safePending = pendingServers == null ? List.of() : List.copyOf(pendingServers);
         RawBlocksOutput blocks = safeMatches.isEmpty()
             ? noMatches(safePending)
-            : toolReferences(safeMatches);
+            : progressiveMode
+                ? renderedFunctionSchemas(safeMatches, context)
+                : toolReferences(safeMatches);
         return new Output(safeMatches, query, totalDeferredTools, safePending, blocks);
+    }
+
+    private RawBlocksOutput renderedFunctionSchemas(
+            Collection<String> names, ToolExecutionContext context) {
+        StringBuilder sb = new StringBuilder("<functions>\n");
+        for (String name : names) {
+            Optional<Tool<?, ?>> resolved = toolRegistry.get(name);
+            if (resolved.isEmpty()) continue;
+            Tool<?, ?> tool = resolved.get();
+            ObjectNode fn = mapper().createObjectNode();
+            fn.put("description", tool.prompt(context));
+            fn.put("name", tool.name());
+            JsonNode schema = tool.inputSchema();
+            fn.set("parameters", schema != null ? schema : mapper().createObjectNode());
+            sb.append("<function>").append(JsonUtils.toJson(fn)).append("</function>\n");
+        }
+        sb.append("</functions>\n\n")
+            .append("Invoke any matched tool above by calling ")
+            .append(ToolInvokeTool.NAME)
+            .append(" with {\"tool_name\": \"<name>\", \"arguments\": {...}}.");
+        return new RawBlocksOutput(List.of(new TextBlock(sb.toString())));
     }
 
     @Override

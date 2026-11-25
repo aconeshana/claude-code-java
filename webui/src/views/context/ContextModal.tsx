@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from 're
 import { createPortal } from 'react-dom'
 import { useSessionContext } from '../../store/sessionContext'
 import { detailFetcher, makeContentFetcher, makeHeaderFetcher, useContextTimeline } from '../../store/contextTimeline'
+import { ContextCapabilitiesCard } from './ContextCapabilitiesCard'
 import { useContextKit } from './useContextKit'
 import { breakdownOf, pressureOf } from '@dsh-context/client/adapters'
 import { headlineOf } from '@dsh-context/client/headline'
@@ -101,12 +102,23 @@ function ContextModalBody({ sessionId, kit, cards, onClose }: {
         {sessionId === null
           ? <div className="lc-empty">{t('shell.noSession')}</div>
           : entry?.cold === true
-            ? <div className="lc-empty">{t('shell.cold')}</div>
+            ? (
+              <div>
+                <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
+                <div className="lc-empty">{t('shell.cold')}</div>
+              </div>
+            )
             : data === null || head === null
-              ? <div className="lc-empty">{t('loading')}</div>
+              ? (
+                <div>
+                  <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
+                  <div className="lc-empty">{t('loading')}</div>
+                </div>
+              )
               : (
                 <div>
                   <CurrentComposition head={head} subtitle={subtitle} hoverKey={hoverCat} onHoverKey={setHoverCat} />
+                  <ContextCapabilitiesCard sessionId={sessionId} kit={kit} />
                   <ContextBrowser
                     data={data}
                     headers={source.detail?.headers ?? null}

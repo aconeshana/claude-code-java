@@ -442,6 +442,30 @@ public class McpToolProvider implements ManagedMcpRuntime, WaitForMcpServersTool
         }
     }
 
+    @Override public synchronized void ensureServerConnected(String serverName) {
+        McpServerConfig current = serverConfigs.get(serverName);
+        if (current == null && projectDir != null) {
+            McpConfig reloaded = McpConfigLoader.loadConfig(projectDir);
+            current = reloaded.servers().get(serverName);
+            if (current != null) {
+                configuredNames.add(serverName);
+                if (!configuredOrder.contains(serverName)) configuredOrder.add(serverName);
+                serverConfigs.put(serverName, current);
+                serverScopes.put(serverName, reloaded.scopeOf(serverName));
+            }
+        }
+        if (current == null) {
+            throw new IllegalArgumentException("Server not found: " + serverName);
+        }
+        if (clientManager.getConnectedServerIds().contains(serverName)) {
+            return;
+        }
+        McpServerConfig connectable = withDisabled(current, false);
+        serverConfigs.put(serverName, connectable);
+        disabledNames.remove(serverName);
+        reconnectServer(serverName);
+    }
+
     /** Clears stored OAuth/DCR credentials and reconnects in the background. */
     @Override public synchronized void clearServerAuth(String serverName) {
         McpServerConfig config = serverConfigs.get(serverName);
