@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -31,6 +32,12 @@ class LspBootstrapTest {
         );
 
         LspBootstrap bootstrap = assertDoesNotThrow(() -> LspBootstrap.wire(workspace, configured));
+        // registerAsync registers the server briefly before initialize() fails and unregisters it.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!bootstrap.lspService().getRegisteredLanguages().isEmpty()
+                && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
         assertTrue(bootstrap.lspService().getRegisteredLanguages().isEmpty());
     }
 
