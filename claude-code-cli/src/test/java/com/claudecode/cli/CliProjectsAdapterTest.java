@@ -93,11 +93,17 @@ class CliProjectsAdapterTest {
         assertThat(Files.readString(claudeJson, StandardCharsets.UTF_8)).isEqualTo(originalClaudeJson);
         assertThat(Files.isRegularFile(configHome.resolve("web-projects.json"))).isTrue();
 
-        // 4. Verify SettingsSnapshots loads the additional directories cleanly
-        ObjectNode effective = SettingsSnapshots.withSources(primaryDir.toString());
-        assertThat(effective.path("effective").path("permissions").path("additionalDirectories").toString())
-            .contains(extraDirA.getFileName().toString())
-            .contains(extraDirB.getFileName().toString());
+        // 4. Verify SettingsSnapshots loads the additional directories cleanly when opened in primaryDir
+        Path prevOriginal = CwdState.getOriginalCwd();
+        CwdState.setOriginalCwd(primaryDir);
+        try {
+            ObjectNode effective = SettingsSnapshots.withSources(primaryDir.toString());
+            assertThat(effective.path("effective").path("permissions").path("additionalDirectories").toString())
+                .contains(extraDirA.getFileName().toString())
+                .contains(extraDirB.getFileName().toString());
+        } finally {
+            CwdState.setOriginalCwd(prevOriginal);
+        }
 
         // 5. Remove project from web registry — disk files and settings.local.json remain intact
         adapter.removeProject(primaryDir.toString());
