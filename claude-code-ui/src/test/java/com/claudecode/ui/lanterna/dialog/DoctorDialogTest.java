@@ -121,12 +121,14 @@ class DoctorDialogTest {
 
     @Test
     void reopeningDuringScan_ignoresTheAbandonedScan() throws InterruptedException {
+        CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch firstScan = new CountDownLatch(1);
         CountDownLatch secondScan = new CountDownLatch(1);
         CountDownLatch firstCollected = new CountDownLatch(1);
         AtomicInteger scans = new AtomicInteger();
         DoctorDialog d = new DoctorDialog(() -> {
             int scan = scans.incrementAndGet();
+            if (scan == 1) firstStarted.countDown();
             try {
                 (scan == 1 ? firstScan : secondScan).await(5, TimeUnit.SECONDS);
             } catch (InterruptedException _) {
@@ -138,6 +140,7 @@ class DoctorDialogTest {
         });
 
         d.show(() -> {});
+        assertTrue(firstStarted.await(5, TimeUnit.SECONDS), "first scan should start before reopen");
         d.handleKey(new KeyStroke(KeyType.ESCAPE), new AtomicBoolean(true));
         d.show(() -> {});
 

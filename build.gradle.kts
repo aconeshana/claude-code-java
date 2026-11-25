@@ -96,6 +96,7 @@ subprojects {
             "org.jruby.joni:joni:${rootProject.libs.versions.joni.get()}",
             "io.methvin:directory-watcher:${rootProject.libs.versions.directory.watcher.get()}",
             "net.java.dev.jna:jna:${rootProject.libs.versions.jna.get()}",
+            "com.squareup.okhttp3:okhttp:${rootProject.libs.versions.okhttp.get()}",
             "com.squareup.okhttp3:okhttp-jvm:${rootProject.libs.versions.okhttp.get()}",
             "com.squareup.okhttp3:okhttp-sse:${rootProject.libs.versions.okhttp.get()}",
             "com.squareup.okhttp3:mockwebserver3:${rootProject.libs.versions.okhttp.get()}",
