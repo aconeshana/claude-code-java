@@ -25,18 +25,43 @@ public interface GatewaySettingsPort {
         return JsonUtils.getMapper().createObjectNode();
     }
 
+    /** Project-scoped effective settings; falls back to {@link #effectiveSettings()} when {@code cwd} is blank. */
+    default ObjectNode effectiveSettings(String cwd) {
+        return effectiveSettings();
+    }
+
     /** Writes or removes ({@code value == null}) one top-level user-tier setting. */
     default void writeUserValue(String key, JsonNode value) {}
 
     /** Writes or removes ({@code mode == null}) {@code permissions.defaultMode} for one tier. */
     default void writeDefaultPermissionMode(String mode, String tier) {}
 
+    /** Project-scoped variant of {@link #writeDefaultPermissionMode(String, String)}. */
+    default void writeDefaultPermissionMode(String cwd, String mode, String tier) {
+        writeDefaultPermissionMode(mode, tier);
+    }
+
     /** Replaces one permission behavior's rule array for one tier. */
     default void replacePermissionRules(String behavior, List<String> rules, String tier) {}
+
+    /** Project-scoped variant of {@link #replacePermissionRules(String, List, String)}. */
+    default void replacePermissionRules(String cwd, String behavior, List<String> rules, String tier) {
+        replacePermissionRules(behavior, rules, tier);
+    }
 
     /** Appends unseen directories to {@code permissions.additionalDirectories} for one tier. */
     default void addAdditionalDirectories(List<String> directories, String tier) {}
 
+    /** Project-scoped variant of {@link #addAdditionalDirectories(List, String)}. */
+    default void addAdditionalDirectories(String cwd, List<String> directories, String tier) {
+        addAdditionalDirectories(directories, tier);
+    }
+
     /** Removes directories from {@code permissions.additionalDirectories} for one tier. */
     default void removeAdditionalDirectories(List<String> directories, String tier) {}
+
+    /** Project-scoped variant of {@link #removeAdditionalDirectories(List, String)}. */
+    default void removeAdditionalDirectories(String cwd, List<String> directories, String tier) {
+        removeAdditionalDirectories(directories, tier);
+    }
 }

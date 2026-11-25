@@ -1,5 +1,6 @@
 package com.claudecode.gateway;
 
+import static com.claudecode.gateway.GatewayRequests.queryParam;
 import static com.claudecode.gateway.GatewayRequests.readJson;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
@@ -35,7 +36,10 @@ final class GatewaySettingsHandler {
 
     /** Handles one {@code GET} exchange. */
     void handleGet(HttpExchange exchange) throws IOException {
-        respondJson(exchange, 200, settings.effectiveSettings());
+        String cwd = StringUtils.trimToNull(queryParam(exchange, "cwd"));
+        respondJson(exchange, 200, cwd == null
+            ? settings.effectiveSettings()
+            : settings.effectiveSettings(cwd));
     }
 
     /** Handles one {@code POST} exchange. */
@@ -43,15 +47,30 @@ final class GatewaySettingsHandler {
         JsonNode request = readJson(exchange);
         if (request == null) return;
         String op = text(request, "op");
+        String cwd = StringUtils.trimToNull(text(request, "cwd"));
         try {
             switch (StringUtils.defaultString(op)) {
                 case "userValue" -> applyUserValue(request);
-                case "permissionMode" -> applyPermissionMode(request);
-                case "permissionRules" -> applyPermissionRules(request);
-                case "addDirectories" -> settings.addAdditionalDirectories(
-                    stringList(request, "directories"), requireTier(request));
-                case "removeDirectories" -> settings.removeAdditionalDirectories(
-                    stringList(request, "directories"), requireTier(request));
+                case "permissionMode" -> applyPermissionMode(cwd, request);
+                case "permissionRules" -> applyPermissionRules(cwd, request);
+                case "addDirectories" -> {
+                    if (cwd == null) {
+                        settings.addAdditionalDirectories(
+                            stringList(request, "directories"), requireTier(request));
+                    } else {
+                        settings.addAdditionalDirectories(
+                            cwd, stringList(request, "directories"), requireTier(request));
+                    }
+                }
+                case "removeDirectories" -> {
+                    if (cwd == null) {
+                        settings.removeAdditionalDirectories(
+                            stringList(request, "directories"), requireTier(request));
+                    } else {
+                        settings.removeAdditionalDirectories(
+                            cwd, stringList(request, "directories"), requireTier(request));
+                    }
+                }
                 default -> {
                     respondJson(exchange, 400, errorBody("invalid_request", "unknown op: " + op));
                     return;
@@ -66,7 +85,9 @@ final class GatewaySettingsHandler {
                 "failed to save settings: " + failure.getMessage()));
             return;
         }
-        respondJson(exchange, 200, settings.effectiveSettings());
+        respondJson(exchange, 200, cwd == null
+            ? settings.effectiveSettings()
+            : settings.effectiveSettings(cwd));
     }
 
     private void applyUserValue(JsonNode request) {
@@ -78,11 +99,15 @@ final class GatewaySettingsHandler {
         settings.writeUserValue(key, value.isMissingNode() ? null : value);
     }
 
-    private void applyPermissionMode(JsonNode request) {
-        settings.writeDefaultPermissionMode(text(request, "mode"), requireTier(request));
+    private void applyPermissionMode(String cwd, JsonNode request) {
+        if (cwd == null) {
+            settings.writeDefaultPermissionMode(text(request, "mode"), requireTier(request));
+        } else {
+            settings.writeDefaultPermissionMode(cwd, text(request, "mode"), requireTier(request));
+        }
     }
 
-    private void applyPermissionRules(JsonNode request) {
+    private void applyPermissionRules(String cwd, JsonNode request) {
         String behavior = text(request, "behavior");
         if (StringUtils.isBlank(behavior)) {
             throw new IllegalArgumentException("behavior is required");
@@ -92,7 +117,11 @@ final class GatewaySettingsHandler {
             default -> throw new IllegalArgumentException(
                 "unknown permission behavior: " + behavior);
         }
-        settings.replacePermissionRules(behavior, stringList(request, "rules"), requireTier(request));
+        if (cwd == null) {
+            settings.replacePermissionRules(behavior, stringList(request, "rules"), requireTier(request));
+        } else {
+            settings.replacePermissionRules(cwd, behavior, stringList(request, "rules"), requireTier(request));
+        }
     }
 
     private static String requireTier(JsonNode request) {

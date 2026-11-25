@@ -37,12 +37,8 @@ import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
 import { CodeOrbMark } from './brand/CodeOrbMark'
 import { PocoWordmark } from './brand/PocoWordmark'
-import { DirectoryBrowser } from '@vendor/ui-directory-picker-browse/DirectoryBrowser'
-import {
-  DIRECTORY_BROWSER_NS,
-  directoryBrowserDicts,
-} from '@vendor/ui-directory-picker-browse/locales'
-import { createDirectory, listDirectory } from '../api/client'
+import { CreateProjectModal } from './CreateProjectModal'
+import { projectDisplayName, useProjects } from '../store/projects'
 
 /** Session rows visible per project before the local overflow control (upstream's COLLAPSED_SESSION_LIMIT). */
 const COLLAPSED_SESSION_LIMIT = 5
@@ -144,7 +140,13 @@ export function Sidebar() {
   const [deleteProjectAcknowledged, setDeleteProjectAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
   const uiT = useTranslate(UI_NS, uiDicts)
-  const dirT = useTranslate(DIRECTORY_BROWSER_NS, directoryBrowserDicts)
+  const webProjects = useProjects((state) => state.projects)
+  const refreshWebProjects = useProjects((state) => state.refresh)
+  const removeWebProject = useProjects((state) => state.removeProject)
+
+  useEffect(() => {
+    void refreshWebProjects()
+  }, [refreshWebProjects])
 
   const collapsed = useSidebarCollapse((state) => state.collapsed)
   const toggleCollapsed = useSidebarCollapse((state) => state.toggle)
@@ -234,13 +236,29 @@ export function Sidebar() {
     [projects],
   )
   const visibleProjects = useMemo(() => {
-    if (hiddenProjectPaths.length === 0) return regularProjects
     const hiddenSet = new Set(hiddenProjectPaths)
-    return regularProjects.filter((project) => (
-      !hiddenSet.has(project.project_path)
-      || project.sessions.some((session) => session.tui_attached === true)
-    ))
-  }, [regularProjects, hiddenProjectPaths])
+    const byPath = new Map<string, CatalogProject>()
+    for (const project of regularProjects) {
+      if (hiddenSet.has(project.project_path)
+        && !project.sessions.some((session) => session.tui_attached === true)) {
+        continue
+      }
+      byPath.set(project.project_path, {
+        ...project,
+        project_name: projectDisplayName(project.project_path, webProjects),
+      })
+    }
+    for (const entry of webProjects) {
+      if (hiddenSet.has(entry.path) || byPath.has(entry.path)) continue
+      byPath.set(entry.path, {
+        project_path: entry.path,
+        project_name: projectDisplayName(entry.path, webProjects),
+        session_count: 0,
+        sessions: [],
+      })
+    }
+    return [...byPath.values()]
+  }, [regularProjects, hiddenProjectPaths, webProjects])
 
   const selectedProject = useMemo(
     () => visibleProjects.find((project) => project.sessions.some((session) => session.id === selectedId)),
@@ -763,20 +781,18 @@ export function Sidebar() {
         {wide && <Pill>Pokemon Code</Pill>}
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false) }} />
-      <DirectoryBrowser
+      <CreateProjectModal
         open={workspacePickerOpen}
-        listDirectory={listDirectory}
-        createDirectory={createDirectory}
-        onOpen={(pickedPath) => {
-          addWorkspace(pickedPath)
-          setWorkspacePickerOpen(false)
+        onClose={() => { setWorkspacePickerOpen(false) }}
+        onCreated={(created) => {
+          addWorkspace(created.path)
           closeScheduleView()
           clearSelection()
-          toast.success(`已添加工作区「${pickedPath.split(/[\\/]/).filter(Boolean).pop() ?? pickedPath}」`)
+          const extraCount = created.additionalDirectories.length
+          toast.success(extraCount > 0
+            ? `已创建项目「${created.name}」（含 ${extraCount} 个附加目录）`
+            : `已创建项目「${created.name}」`)
         }}
-        onClose={() => { setWorkspacePickerOpen(false) }}
-        busy={false}
-        t={dirT}
       />
       <Modal
         open={renameTarget != null}
@@ -856,6 +872,7 @@ export function Sidebar() {
           if (target == null) return
           setDeleteProjectTarget(null)
           removeWorkspace(target.project_path)
+          void removeWebProject(target.project_path)
           void deleteProject(target)
         }}
       />

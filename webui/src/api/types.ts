@@ -929,5 +929,60 @@ export interface CcConnectSetupResult {
   readonly message: string
 }
 
+// ---------------------------------------------------------------------------
+// Multi-folder Projects & Per-Project Customizations (/api/projects)
+// ---------------------------------------------------------------------------
 
+export interface WebProjectEntry {
+  readonly path: string
+  readonly name: string
+  readonly additional_directories: readonly string[]
+  readonly updated_at_ms: number
+}
 
+export interface WebProjectsListing {
+  readonly projects: readonly WebProjectEntry[]
+}
+
+export interface WebProjectMutationResponse {
+  readonly project: WebProjectEntry
+  readonly projects: readonly WebProjectEntry[]
+}
+
+export interface ProjectRuleFile {
+  readonly path: string
+  readonly name: string
+  readonly scope: string
+  readonly tokens: number
+}
+
+export interface ProjectSkillInfo {
+  readonly name: string
+  readonly description: string
+  readonly source: string
+  readonly path?: string
+}
+
+export interface ProjectMcpServerInfo {
+  readonly name: string
+  readonly type: string
+  readonly scope: string
+  readonly disabled: boolean
+}
+
+export interface ProjectCustomizations {
+  readonly path: string
+  readonly folders: {
+    readonly primary: string
+    readonly additional: readonly string[]
+    readonly local_directories: readonly string[]
+    readonly project_directories: readonly string[]
+    readonly user_directories: readonly string[]
+  }
+  readonly rules: {
+    readonly total_tokens: number
+    readonly files: readonly ProjectRuleFile[]
+  }
+  readonly skills: readonly ProjectSkillInfo[]
+  readonly mcp_servers: readonly ProjectMcpServerInfo[]
+}

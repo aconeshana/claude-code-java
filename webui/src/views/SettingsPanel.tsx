@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   Button,
   IconApiOutline14, IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
   IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconFolderOpenOutline16,
-  IconFollowsystemOutline16, IconLightOutline16, IconRefreshOutline16, IconSettingsOutline16,
+  IconFollowsystemOutline16, IconLightOutline16, IconPlusOutline16, IconRefreshOutline16, IconSettingsOutline16,
   Input, Menu, Pill, Switch,
 } from '@primitives'
 import {
@@ -25,6 +25,7 @@ import rowCss from '@chat-styles/PermissionRow.module.css'
 import appearanceCss from '@chat-styles/AppearanceRow.module.css'
 import fontSizeCss from '@chat-styles/FontSizeRow.module.css'
 import { useSettings } from '../store/settings'
+import { usePermissionMode } from '../store/permissionMode'
 import { useTheme } from '../store/theme'
 import { useTranscriptView } from '../store/transcriptView'
 import { useEnterBehavior } from '../store/enterBehavior'
@@ -33,6 +34,12 @@ import { FONT_SIZE_MAX, FONT_SIZE_MIN, THEME_PREFERENCES, type ThemePreference }
 import { LOCALES, type LocaleId } from '../i18n/types'
 import { useTranslate } from '../i18n/useTranslate'
 import { SETTINGS_NS, settingsDicts } from '../i18n/dictionaries/settings'
+import { PERMISSION_MODE_NS, permissionModeDicts } from '../i18n/dictionaries/permissionMode'
+import {
+  PermissionModeSelect,
+  buildStaticPermissionModeState,
+  normalizePermissionMode,
+} from '../../vendor/dsh-permission-select/PermissionModeSelect'
 import type { PermissionBehaviorKind, SettingsTier } from '../api/types'
 import localCss from './SettingsPanel.module.css'
 import { ContextSettingsSection } from './context/ContextSettingsSection'
@@ -41,6 +48,10 @@ import { LanGatewaySection } from './LanGatewaySection'
 import { CcConnectSection } from './CcConnectSection'
 import { ModelsSection } from './ModelsSection'
 import { ScheduleSection } from './SchedulePanel'
+import { ProjectSettingsSection } from './ProjectSettingsSection'
+import { CreateProjectModal } from './CreateProjectModal'
+import { projectDisplayName, useProjects } from '../store/projects'
+import { useWorkspacePrefs } from '../store/workspacePrefs'
 
 /**
  * Settings dialog: reads the effective (merged, tier-attributed) settings
@@ -70,12 +81,11 @@ import { ScheduleSection } from './SchedulePanel'
  * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'directories' | 'models' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
+type SectionId = 'general' | 'permissions' | 'models' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
 
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
   { id: 'permissions', label: '权限', icon: <IconChecklistOutline14 className={css.navIcon} size={16} /> },
-  { id: 'directories', label: '目录', icon: <IconFolderOpenOutline16 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'lan-gateway', label: '局域网网关', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
   { id: 'cc-connect', label: '外部协作', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
@@ -84,8 +94,6 @@ const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
 ]
 
 const TIERS: readonly SettingsTier[] = ['user', 'project', 'local']
-const MODES: readonly string[] = ['default', 'plan', 'acceptEdits', 'auto', 'dontAsk']
-const UNSET_MODE = '__unset__'
 const BEHAVIORS: readonly { key: PermissionBehaviorKind; label: string }[] = [
   { key: 'allow', label: '允许' },
   { key: 'deny', label: '拒绝' },
@@ -101,7 +109,9 @@ export function SettingsPanel({ open, onClose }: {
   onClose: () => void
 }) {
   const t = useTranslate(SETTINGS_NS, settingsDicts)
+  const permT = useTranslate(PERMISSION_MODE_NS, permissionModeDicts)
   const effective = useSettings((state) => state.effective)
+  const livePermissionMode = usePermissionMode((state) => state.state)
   const sources = useSettings((state) => state.sources)
   const loading = useSettings((state) => state.loading)
   const error = useSettings((state) => state.error)
@@ -109,40 +119,61 @@ export function SettingsPanel({ open, onClose }: {
   const writeUserValue = useSettings((state) => state.writeUserValue)
   const writePermissionMode = useSettings((state) => state.writePermissionMode)
   const replacePermissionRules = useSettings((state) => state.replacePermissionRules)
-  const addDirectories = useSettings((state) => state.addDirectories)
-  const removeDirectories = useSettings((state) => state.removeDirectories)
   const transcriptViewMode = useTranscriptView((state) => state.mode)
   const setTranscriptViewMode = useTranscriptView((state) => state.setMode)
   const enterBehavior = useEnterBehavior((state) => state.behavior)
   const setEnterBehavior = useEnterBehavior((state) => state.setBehavior)
+  const sessionProjects = useSessions((state) => state.projects)
+  const webProjects = useProjects((state) => state.projects)
+  const refreshProjects = useProjects((state) => state.refresh)
+  const addedWorkspaces = useWorkspacePrefs((state) => state.addedWorkspaces)
+  const addWorkspace = useWorkspacePrefs((state) => state.addWorkspace)
 
   const [activeSection, setActiveSection] = useState<SectionId>('general')
+  const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null)
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
 
   const [modeTier, setModeTier] = useState<SettingsTier>('project')
   const [rulesTier, setRulesTier] = useState<SettingsTier>('project')
-  const [dirTier, setDirTier] = useState<SettingsTier>('project')
   const [newRule, setNewRule] = useState<Record<PermissionBehaviorKind, string>>({
     allow: '', deny: '', ask: '',
   })
-  const [newDirectory, setNewDirectory] = useState('')
 
   useEffect(() => {
     if (!open) return
     void refresh()
-  }, [open, refresh])
+    void refreshProjects()
+  }, [open, refresh, refreshProjects])
+
+  const knownProjects = useMemo(() => {
+    const seen = new Set<string>()
+    const list: { path: string; name: string }[] = []
+    const push = (rawPath: string) => {
+      const trimmed = rawPath.trim()
+      if (trimmed === '' || seen.has(trimmed)) return
+      seen.add(trimmed)
+      list.push({ path: trimmed, name: projectDisplayName(trimmed, webProjects) })
+    }
+    for (const entry of webProjects) push(entry.path)
+    for (const path of addedWorkspaces) push(path)
+    for (const proj of sessionProjects) push(proj.project_path)
+    return list
+  }, [webProjects, addedWorkspaces, sessionProjects])
 
   if (!open) return null
 
   const permissions = effectiveObject(effective?.permissions)
   const defaultMode = typeof permissions.defaultMode === 'string'
     ? permissions.defaultMode : ''
-  const additionalDirectories = stringArray(permissions.additionalDirectories)
+  const normalizedDefaultMode = normalizePermissionMode(defaultMode)
+  const settingsPermissionState = buildStaticPermissionModeState(defaultMode, {
+    bypassDisabledByPolicy: livePermissionMode?.bypass_permissions_disabled_by_policy === true,
+  })
 
   const navLabelOf = (id: SectionId): string => {
     switch (id) {
       case 'general': return t('nav.general')
       case 'permissions': return t('nav.permissions')
-      case 'directories': return t('nav.directories')
       case 'models': return t('nav.models')
       case 'lan-gateway': return t('nav.lanGateway')
       case 'cc-connect': return t('nav.ccConnect')
@@ -170,14 +201,47 @@ export function SettingsPanel({ open, onClose }: {
               <button
                 key={section.id}
                 type="button"
-                className={clsx(css.navCell, section.id === activeSection && css.active)}
-                aria-current={section.id === activeSection ? 'true' : undefined}
-                onClick={() => { setActiveSection(section.id) }}
+                className={clsx(css.navCell, activeProjectPath == null && section.id === activeSection && css.active)}
+                aria-current={activeProjectPath == null && section.id === activeSection ? 'true' : undefined}
+                onClick={() => {
+                  setActiveProjectPath(null)
+                  setActiveSection(section.id)
+                }}
               >
                 {section.icon}
                 <span className={css.navLabel}>{navLabelOf(section.id)}</span>
               </button>
             ))}
+
+            <div className={localCss.navGroupHeader}>
+              <span>项目</span>
+              <button
+                type="button"
+                className={localCss.navGroupAdd}
+                aria-label="新建项目"
+                title="新建项目"
+                onClick={() => { setCreateProjectOpen(true) }}
+              >
+                <IconPlusOutline16 size={12} />
+              </button>
+            </div>
+            {knownProjects.length === 0 ? (
+              <div className={localCss.navProjectEmpty}>暂无项目</div>
+            ) : (
+              knownProjects.map((project) => (
+                <button
+                  key={project.path}
+                  type="button"
+                  title={project.path}
+                  className={clsx(css.navCell, activeProjectPath === project.path && css.active)}
+                  aria-current={activeProjectPath === project.path ? 'true' : undefined}
+                  onClick={() => { setActiveProjectPath(project.path) }}
+                >
+                  <IconFolderOpenOutline16 className={css.navIcon} size={16} />
+                  <span className={css.navLabel}>{project.name}</span>
+                </button>
+              ))
+            )}
           </div>
         </nav>
         <div className={css.content}>
@@ -201,7 +265,11 @@ export function SettingsPanel({ open, onClose }: {
           <div className={css.options}>
             {error != null && <div className={localCss.error} role="alert">{error}</div>}
 
-            {activeSection === 'general' && (
+            {activeProjectPath != null && (
+              <ProjectSettingsSection projectPath={activeProjectPath} />
+            )}
+
+            {activeProjectPath == null && activeSection === 'general' && (
               <div className={sectionCss.section}>
                 <LanguageRow />
                 <AppearanceRow />
@@ -245,15 +313,31 @@ export function SettingsPanel({ open, onClose }: {
               </div>
             )}
 
-            {activeSection === 'permissions' && (
+            {activeProjectPath == null && activeSection === 'permissions' && (
               <div className={sectionCss.section}>
                 <SettingsRow title="默认模式写入层级">
                   <TierMenu value={modeTier} onChange={setModeTier} ariaLabel="permission mode tier" />
                 </SettingsRow>
-                <SettingsRow title="默认权限模式" description={`当前生效：${defaultMode || 'default'}`}>
-                  <ModeMenu
-                    value={defaultMode}
-                    onChange={(mode) => { void writePermissionMode(mode === UNSET_MODE ? null : mode, modeTier) }}
+                <SettingsRow
+                  title="默认权限模式"
+                  description={defaultMode
+                    ? `当前生效：${permT(`mode.${normalizedDefaultMode}.title`)}`
+                    : `当前生效：${permT('mode.default.title')}（未显式设置）`}
+                >
+                  <PermissionModeSelect
+                    state={settingsPermissionState}
+                    busy={loading}
+                    side="bottom"
+                    align="end"
+                    isUnset={defaultMode === ''}
+                    onUnset={defaultMode !== '' ? async () => {
+                      await writePermissionMode(null, modeTier)
+                      return useSettings.getState().error
+                    } : undefined}
+                    select={async (mode) => {
+                      await writePermissionMode(mode, modeTier)
+                      return useSettings.getState().error
+                    }}
                   />
                 </SettingsRow>
                 <SettingsRow title="规则写入层级">
@@ -281,72 +365,27 @@ export function SettingsPanel({ open, onClose }: {
               </div>
             )}
 
-            {activeSection === 'directories' && (
-              <div className={sectionCss.section}>
-                <SettingsRow title="写入层级">
-                  <TierMenu value={dirTier} onChange={setDirTier} ariaLabel="directories tier" />
-                </SettingsRow>
-                <ul className={localCss.list}>
-                  {additionalDirectories.length === 0 && (
-                    <li className={localCss.empty}>（无）</li>
-                  )}
-                  {additionalDirectories.map((directory) => (
-                    <li key={directory} className={localCss.listRow}>
-                      <span className={localCss.listLabel} title={directory}>{directory}</span>
-                      <button
-                        type="button"
-                        className={localCss.button}
-                        onClick={() => { void removeDirectories([directory], dirTier) }}
-                      >
-                        移除
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className={localCss.inline}>
-                  <Input
-                    className={localCss.grow}
-                    value={newDirectory}
-                    placeholder="/absolute/path"
-                    aria-label="new directory"
-                    onChange={(event) => { setNewDirectory(event.target.value) }}
-                  />
-                  <button
-                    type="button"
-                    className={localCss.button}
-                    disabled={newDirectory.trim() === ''}
-                    onClick={() => {
-                      void addDirectories([newDirectory.trim()], dirTier)
-                      setNewDirectory('')
-                    }}
-                  >
-                    添加
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'models' && (
+            {activeProjectPath == null && activeSection === 'models' && (
               <div className={sectionCss.section}>
                 <ModelsSection />
               </div>
             )}
 
-            {activeSection === 'lan-gateway' && (
+            {activeProjectPath == null && activeSection === 'lan-gateway' && (
               <div className={sectionCss.section}>
                 <LanGatewaySection />
               </div>
             )}
 
-            {activeSection === 'cc-connect' && (
+            {activeProjectPath == null && activeSection === 'cc-connect' && (
               <div className={sectionCss.section}>
                 <CcConnectSection />
               </div>
             )}
 
-            {activeSection === 'context' && <ContextSettingsSection />}
+            {activeProjectPath == null && activeSection === 'context' && <ContextSettingsSection />}
 
-            {activeSection === 'schedule' && (
+            {activeProjectPath == null && activeSection === 'schedule' && (
               <div className={sectionCss.section}>
                 <ScheduleSection />
               </div>
@@ -354,6 +393,15 @@ export function SettingsPanel({ open, onClose }: {
           </div>
         </div>
       </div>
+      <CreateProjectModal
+        open={createProjectOpen}
+        onClose={() => { setCreateProjectOpen(false) }}
+        onCreated={(created) => {
+          addWorkspace(created.path)
+          setActiveProjectPath(created.path)
+          toast.success(`已创建项目「${created.name}」`)
+        }}
+      />
     </div>
   )
 }
@@ -592,25 +640,6 @@ function TierMenu({ value, onChange, ariaLabel }: {
       options={options}
       onChange={(id) => { onChange(id as SettingsTier) }}
       ariaLabel={ariaLabel}
-    />
-  )
-}
-
-function ModeMenu({ value, onChange }: {
-  value: string
-  onChange: (mode: string) => void
-}) {
-  const options = [
-    { id: UNSET_MODE, label: '（未设置 → default）' },
-    ...MODES.map((mode) => ({ id: mode, label: mode })),
-  ]
-  return (
-    <MenuSelect
-      value={value === '' ? UNSET_MODE : value}
-      label={value === '' ? '（未设置 → default）' : value}
-      options={options}
-      onChange={onChange}
-      ariaLabel="permission default mode"
     />
   )
 }

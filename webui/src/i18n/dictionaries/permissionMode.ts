@@ -31,6 +31,7 @@ export const permissionModeZh = {
   'mode.dontAsk.confirmDescription': '此模式下所有权限请求都会被自动批准，不会再弹出确认提示。请仅在你完全信任当前任务时使用。',
   'bypassUnavailable.flag': '未以 --dangerously-skip-permissions 启动，此会话无法使用该模式',
   'bypassUnavailable.policy': '该模式已被管理策略禁用',
+  'unset': '恢复未设置',
 } as const
 
 export const permissionModeEn: Record<keyof typeof permissionModeZh, string> = {
@@ -53,6 +54,7 @@ export const permissionModeEn: Record<keyof typeof permissionModeZh, string> = {
   'mode.dontAsk.confirmDescription': 'Every permission request is auto-approved with no further prompts. Only use this when you fully trust the current task.',
   'bypassUnavailable.flag': 'Not launched with --dangerously-skip-permissions; this session cannot use this mode',
   'bypassUnavailable.policy': 'This mode is disabled by managed policy',
+  'unset': 'Reset to unset',
 }
 
 export const permissionModeDicts: Readonly<Record<LocaleId, LocaleDict>> = { zh: permissionModeZh, en: permissionModeEn }

@@ -111,6 +111,7 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySpinnerVerbsHandler spinnerVerbsApi;
     private final GatewayFileSuggestionsHandler fileSuggestionsApi;
     private final GatewayDirectoryPickerHandler directoryPickerApi = new GatewayDirectoryPickerHandler();
+    private final GatewayProjectsHandler projectsApi;
     private final GatewaySessionContextHandler sessionContextApi;
     private final GatewayPermissionModeHandler permissionModeApi;
     private final GatewaySessionCancelHandler sessionCancelApi;
@@ -164,6 +165,7 @@ public final class GatewayServer implements AutoCloseable {
         private InteractionCoordinator interactions;
         private GatewaySessionMessagesPort sessionMessages = new GatewaySessionMessagesPort() {};
         private GatewaySettingsPort settings = new GatewaySettingsPort() {};
+        private GatewayProjectsPort projects = new GatewayProjectsPort() {};
         private GatewaySchedulePort schedule = new GatewaySchedulePort() {};
         private GatewayRuntimeControlPort runtimeControl = new GatewayRuntimeControlPort() {};
         private GatewayModelsPort models = new GatewayModelsPort() {};
@@ -243,6 +245,11 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder settings(GatewaySettingsPort value) {
             this.settings = Objects.requireNonNull(value, "settings");
+            return this;
+        }
+
+        public Builder projects(GatewayProjectsPort value) {
+            this.projects = Objects.requireNonNull(value, "projects");
             return this;
         }
 
@@ -507,6 +514,7 @@ public final class GatewayServer implements AutoCloseable {
                 ? TranscriptSessionActions.configurationHomeOf(builder.webWorkers)
                 : null);
         this.settingsApi = new GatewaySettingsHandler(settings);
+        this.projectsApi = new GatewayProjectsHandler(builder.projects);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.runtimeControlApi = new GatewayRuntimeControlHandler(builder.runtimeControl);
         this.modelsApi = new GatewayModelsHandler(models);
@@ -1231,6 +1239,16 @@ public final class GatewayServer implements AutoCloseable {
         if (Strings.CS.equals("/api/directories", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> directoryPickerApi.handle(exchange));
+            return;
+        }
+        if (Strings.CS.equals("/api/projects", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> projectsApi.handleProjects(exchange));
+            return;
+        }
+        if (Strings.CS.equals("/api/projects/customizations", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> projectsApi.handleCustomizations(exchange));
             return;
         }
         if (get && Strings.CS.equals("/api/spinner-verbs", targetPath)) {

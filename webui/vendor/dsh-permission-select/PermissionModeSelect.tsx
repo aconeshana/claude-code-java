@@ -70,6 +70,46 @@ import css from './PermissionModeSelect.module.css'
 /** The two modes that auto-approve every tool call — gated behind RiskConfirmation. */
 const RISKY = new Set<PermissionModeValue>(['bypassPermissions', 'dontAsk'])
 
+const UNSET_ENTRY_ID = '__unset__'
+
+/**
+ * Canonical five selectable permission modes matching
+ * `SessionHostPermissionOptions.SELECTABLE` and `PermissionMode.java`.
+ * Used when rendering `PermissionModeSelect` outside an active session
+ * (e.g. the Settings panel's default permission mode row).
+ */
+export const DEFAULT_PERMISSION_MODE_CHOICES: readonly PermissionModeChoice[] = [
+  { value: 'default', title: 'Default', short_title: 'Default', symbol: '', color_key: 'TEXT', available: true },
+  { value: 'plan', title: 'Plan Mode', short_title: 'Plan', symbol: '⏸', color_key: 'PLAN_MODE', available: true },
+  { value: 'acceptEdits', title: 'Accept edits', short_title: 'Accept', symbol: '⏵⏵', color_key: 'AUTO_ACCEPT', available: true },
+  { value: 'bypassPermissions', title: 'Bypass Permissions', short_title: 'Bypass', symbol: '⏵⏵', color_key: 'ERROR', available: true },
+  { value: 'dontAsk', title: "Don't Ask", short_title: 'DontAsk', symbol: '⏵⏵', color_key: 'ERROR', available: true },
+]
+
+const VALID_MODES = new Set<string>(DEFAULT_PERMISSION_MODE_CHOICES.map((choice) => choice.value))
+
+export function normalizePermissionMode(mode: string | null | undefined): PermissionModeValue {
+  if (mode != null && VALID_MODES.has(mode)) return mode as PermissionModeValue
+  return 'default'
+}
+
+export function buildStaticPermissionModeState(
+  current: string | null | undefined,
+  options?: { bypassDisabledByPolicy?: boolean },
+): SessionPermissionMode {
+  const bypassDisabledByPolicy = options?.bypassDisabledByPolicy === true
+  const bypassAvailable = !bypassDisabledByPolicy
+  return {
+    current: normalizePermissionMode(current),
+    modes: DEFAULT_PERMISSION_MODE_CHOICES.map((choice) =>
+      choice.value === 'bypassPermissions'
+        ? { ...choice, available: bypassAvailable }
+        : choice),
+    bypass_permissions_available: bypassAvailable,
+    bypass_permissions_disabled_by_policy: bypassDisabledByPolicy,
+  }
+}
+
 /**
  * `PermissionMode.ColorKey` → a webui token, tinting the shield glyph.
  * Upstream's own icons carry no color axis (shape alone distinguishes its
@@ -133,10 +173,22 @@ function permissionGlyph(value: PermissionModeValue) {
 }
 
 export function PermissionModeSelect(
-  { state, busy, select }: {
+  {
+    state,
+    busy,
+    select,
+    side = 'top',
+    align = 'start',
+    isUnset = false,
+    onUnset,
+  }: {
     state: SessionPermissionMode | null
     busy: boolean
     select: (mode: string) => Promise<string | null>
+    side?: 'top' | 'bottom'
+    align?: 'start' | 'end'
+    isUnset?: boolean
+    onUnset?: (() => Promise<string | null>) | undefined
   },
 ) {
   const t = useTranslate(PERMISSION_MODE_NS, permissionModeDicts)
@@ -168,7 +220,7 @@ export function PermissionModeSelect(
 
   const choose = (choice: PermissionModeChoice): void => {
     setOpen(false)
-    if (choice.value === state.current) return
+    if (!isUnset && choice.value === state.current) return
     if (RISKY.has(choice.value)) {
       setConfirmChoice(choice)
       return
@@ -200,6 +252,12 @@ export function PermissionModeSelect(
         ...icon === undefined ? {} : { icon },
       }
     }),
+    ...(onUnset !== undefined
+      ? [
+          { type: 'separator', id: '__unset_sep' } satisfies MenuEntry,
+          { id: UNSET_ENTRY_ID, label: t('unset'), disabled: busy || applying } satisfies MenuEntry,
+        ]
+      : []),
   ]
 
   return (
@@ -210,10 +268,20 @@ export function PermissionModeSelect(
         items={items}
         selectedId={state.current}
         onSelect={(id) => {
+          if (id === UNSET_ENTRY_ID && onUnset !== undefined) {
+            setOpen(false)
+            setApplying(true)
+            void onUnset().then((failure) => {
+              setApplying(false)
+              if (failure !== null) setError(failure)
+            })
+            return
+          }
           const choice = choices.find(candidate => candidate.value === id)
           if (choice !== undefined) choose(choice)
         }}
-        side="top"
+        side={side}
+        align={align}
         portal
         anchor={(
           <button

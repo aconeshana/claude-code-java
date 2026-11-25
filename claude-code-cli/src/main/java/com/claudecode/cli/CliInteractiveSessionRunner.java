@@ -852,8 +852,14 @@ final class CliInteractiveSessionRunner {
      */
     static GatewaySettingsPort gatewaySettings(String cwd) {
         return new GatewaySettingsPort() {
+            private String resolveCwd(String requestedCwd) {
+                return StringUtils.isBlank(requestedCwd) ? cwd : requestedCwd.trim();
+            }
             @Override public ObjectNode effectiveSettings() {
                 return SettingsSnapshots.withSources(cwd);
+            }
+            @Override public ObjectNode effectiveSettings(String requestedCwd) {
+                return SettingsSnapshots.withSources(resolveCwd(requestedCwd));
             }
             @Override public void writeUserValue(String key, JsonNode value) {
                 SettingsEditor.writeUserValue(key, value == null || value.isNull() ? null
@@ -862,18 +868,36 @@ final class CliInteractiveSessionRunner {
             @Override public void writeDefaultPermissionMode(String mode, String tier) {
                 SettingsEditor.writeDefaultPermissionMode(cwd, mode, ruleSource(tier));
             }
+            @Override public void writeDefaultPermissionMode(String requestedCwd, String mode, String tier) {
+                SettingsEditor.writeDefaultPermissionMode(resolveCwd(requestedCwd), mode, ruleSource(tier));
+            }
             @Override public void replacePermissionRules(String behavior,
                     List<String> rules, String tier) {
                 SettingsEditor.replacePermissionRules(cwd, permissionBehavior(behavior),
+                    rules, ruleSource(tier));
+            }
+            @Override public void replacePermissionRules(String requestedCwd, String behavior,
+                    List<String> rules, String tier) {
+                SettingsEditor.replacePermissionRules(resolveCwd(requestedCwd), permissionBehavior(behavior),
                     rules, ruleSource(tier));
             }
             @Override public void addAdditionalDirectories(List<String> directories,
                     String tier) {
                 SettingsEditor.addAdditionalDirectories(cwd, directories, ruleSource(tier));
             }
+            @Override public void addAdditionalDirectories(String requestedCwd,
+                    List<String> directories, String tier) {
+                SettingsEditor.addAdditionalDirectoriesForProject(
+                    resolveCwd(requestedCwd), directories, ruleSource(tier));
+            }
             @Override public void removeAdditionalDirectories(List<String> directories,
                     String tier) {
                 SettingsEditor.removeAdditionalDirectories(cwd, directories, ruleSource(tier));
+            }
+            @Override public void removeAdditionalDirectories(String requestedCwd,
+                    List<String> directories, String tier) {
+                SettingsEditor.removeAdditionalDirectoriesForProject(
+                    resolveCwd(requestedCwd), directories, ruleSource(tier));
             }
         };
     }

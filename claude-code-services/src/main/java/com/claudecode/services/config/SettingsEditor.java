@@ -225,8 +225,22 @@ public final class SettingsEditor {
      */
     public static void addAdditionalDirectories(String cwd, List<String> directories,
                                                 RuleSource tier) {
+        addAdditionalDirectoriesToPath(editableSettingsPath(cwd, tier), cwd, directories, tier);
+    }
+
+    /**
+     * Project-scoped variant of {@link #addAdditionalDirectories(String, List, RuleSource)}
+     * that resolves {@code .claude/settings(.local).json} directly against {@code projectDir}
+     * without consulting {@code CwdState.getOriginalCwd()}.
+     */
+    public static void addAdditionalDirectoriesForProject(String projectDir, List<String> directories,
+                                                          RuleSource tier) {
+        addAdditionalDirectoriesToPath(explicitSettingsPath(projectDir, tier), projectDir, directories, tier);
+    }
+
+    private static void addAdditionalDirectoriesToPath(Path settingsPath, String cwd,
+                                                       List<String> directories, RuleSource tier) {
         if (directories == null || directories.isEmpty()) return;
-        Path settingsPath = editableSettingsPath(cwd, tier);
         try {
             SettingsFileStore.mutate(settingsPath, root -> {
                 ObjectNode permissions = permissionsObject(root);
@@ -253,11 +267,23 @@ public final class SettingsEditor {
     /** Removes the supplied directories from {@code permissions.additionalDirectories}. */
     public static void removeAdditionalDirectories(String cwd, List<String> directories,
                                                    RuleSource tier) {
-        Path settingsPath = editableSettingsPath(cwd, tier);
+        removeAdditionalDirectoriesFromPath(editableSettingsPath(cwd, tier), cwd, directories, tier);
+    }
+
+    /**
+     * Project-scoped variant of {@link #removeAdditionalDirectories(String, List, RuleSource)}
+     * that resolves {@code .claude/settings(.local).json} directly against {@code projectDir}
+     * without consulting {@code CwdState.getOriginalCwd()}.
+     */
+    public static void removeAdditionalDirectoriesForProject(String projectDir, List<String> directories,
+                                                             RuleSource tier) {
+        removeAdditionalDirectoriesFromPath(explicitSettingsPath(projectDir, tier), projectDir, directories, tier);
+    }
+
+    private static void removeAdditionalDirectoriesFromPath(Path settingsPath, String cwd,
+                                                            List<String> directories, RuleSource tier) {
         Set<String> directoriesToRemove = new HashSet<>(directories);
         try {
-
-
             // there is no matching rule.
             SettingsFileStore.mutate(settingsPath, root -> {
                 JsonNode permissionsNode = root.get("permissions");
@@ -327,6 +353,16 @@ public final class SettingsEditor {
             case USER_SETTINGS -> SettingsPaths.userSettingsPath();
             case PROJECT_SETTINGS -> SettingsPaths.sessionProjectSettingsPath(cwd);
             case LOCAL_SETTINGS -> SettingsPaths.sessionLocalSettingsPath(cwd);
+            default -> throw new IllegalArgumentException(
+                "Not a user-editable settings tier: " + tier);
+        };
+    }
+
+    private static Path explicitSettingsPath(String projectDir, RuleSource tier) {
+        return switch (tier) {
+            case USER_SETTINGS -> SettingsPaths.userSettingsPath();
+            case PROJECT_SETTINGS -> SettingsPaths.projectSettingsPath(projectDir);
+            case LOCAL_SETTINGS -> SettingsPaths.localSettingsPath(projectDir);
             default -> throw new IllegalArgumentException(
                 "Not a user-editable settings tier: " + tier);
         };

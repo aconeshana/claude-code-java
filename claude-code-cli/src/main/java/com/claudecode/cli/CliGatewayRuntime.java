@@ -349,6 +349,7 @@ final class CliGatewayRuntime implements GatewaySupervisorPort, AutoCloseable {
             .sessionMessages(sessionMessages != null ? sessionMessages
                 : new GatewaySessionMessagesPort() {})
             .settings(settings != null ? settings : new GatewaySettingsPort() {})
+            .projects(new CliProjectsAdapter())
             .schedule(schedule != null ? schedule : new GatewaySchedulePort() {})
             .models(models != null ? models : new GatewayModelsPort() {})
             .commands(commands != null ? commands : new GatewayCommandsPort() {})

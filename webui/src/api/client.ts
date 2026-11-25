@@ -242,8 +242,9 @@ export function respondSudo(request: SudoRespondRequest): Promise<unknown> {
  * GET /api/settings: the effective settings snapshot with per-tier source
  * attribution. Every POST op answers with the same refreshed shape.
  */
-export function fetchSettingsSnapshot(): Promise<SettingsSnapshot> {
-  return requestJson('GET', '/api/settings')
+export function fetchSettingsSnapshot(cwd?: string | null): Promise<SettingsSnapshot> {
+  const qs = cwd != null && cwd.trim() !== '' ? `?cwd=${encodeURIComponent(cwd.trim())}` : ''
+  return requestJson('GET', `/api/settings${qs}`)
 }
 
 /**
@@ -256,29 +257,98 @@ export function writeUserSettingValue(key: string, value: string | boolean | nul
 /**
  * Writes or removes (mode == null) permissions.defaultMode for one tier.
  */
-export function writePermissionMode(mode: string | null, tier: SettingsTier): Promise<SettingsSnapshot> {
-  return requestJson('POST', '/api/settings', { op: 'permissionMode', mode, tier })
+export function writePermissionMode(mode: string | null, tier: SettingsTier, cwd?: string | null): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', {
+    op: 'permissionMode',
+    mode,
+    tier,
+    ...(cwd != null && cwd.trim() !== '' ? { cwd: cwd.trim() } : {}),
+  })
 }
 
 /**
  * Replaces one permission behavior's rule array for one tier.
  */
-export function replacePermissionRules(behavior: PermissionBehaviorKind, rules: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
-  return requestJson('POST', '/api/settings', { op: 'permissionRules', behavior, rules, tier })
+export function replacePermissionRules(
+  behavior: PermissionBehaviorKind,
+  rules: readonly string[],
+  tier: SettingsTier,
+  cwd?: string | null,
+): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', {
+    op: 'permissionRules',
+    behavior,
+    rules,
+    tier,
+    ...(cwd != null && cwd.trim() !== '' ? { cwd: cwd.trim() } : {}),
+  })
 }
 
 /**
  * Appends unseen directories to permissions.additionalDirectories for one tier.
  */
-export function addAdditionalDirectories(directories: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
-  return requestJson('POST', '/api/settings', { op: 'addDirectories', directories, tier })
+export function addAdditionalDirectories(
+  directories: readonly string[],
+  tier: SettingsTier,
+  cwd?: string | null,
+): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', {
+    op: 'addDirectories',
+    directories,
+    tier,
+    ...(cwd != null && cwd.trim() !== '' ? { cwd: cwd.trim() } : {}),
+  })
 }
 
 /**
  * Removes directories from permissions.additionalDirectories for one tier.
  */
-export function removeAdditionalDirectories(directories: readonly string[], tier: SettingsTier): Promise<SettingsSnapshot> {
-  return requestJson('POST', '/api/settings', { op: 'removeDirectories', directories, tier })
+export function removeAdditionalDirectories(
+  directories: readonly string[],
+  tier: SettingsTier,
+  cwd?: string | null,
+): Promise<SettingsSnapshot> {
+  return requestJson('POST', '/api/settings', {
+    op: 'removeDirectories',
+    directories,
+    tier,
+    ...(cwd != null && cwd.trim() !== '' ? { cwd: cwd.trim() } : {}),
+  })
+}
+
+/** GET /api/projects: registered multi-folder projects and custom display names. */
+export function fetchWebProjects(): Promise<import('./types').WebProjectsListing> {
+  return requestJson('GET', '/api/projects')
+}
+
+/** POST /api/projects: creates or updates a multi-folder project record. */
+export function createWebProject(input: {
+  path: string
+  name?: string
+  additional_directories?: readonly string[]
+  tier?: 'local' | 'project'
+}): Promise<import('./types').WebProjectMutationResponse> {
+  return requestJson('POST', '/api/projects', {
+    path: input.path,
+    name: input.name ?? '',
+    additional_directories: input.additional_directories ?? [],
+    tier: input.tier ?? 'local',
+  })
+}
+
+/** PATCH /api/projects: updates a project's custom display name. */
+export function renameWebProject(path: string, name: string): Promise<import('./types').WebProjectMutationResponse> {
+  return requestJson('PATCH', '/api/projects', { path, name })
+}
+
+/** DELETE /api/projects: removes a project from the web registry (never deletes disk files). */
+export function deleteWebProject(path: string): Promise<import('./types').WebProjectsListing> {
+  return requestJson('DELETE', `/api/projects?path=${encodeURIComponent(path)}`)
+}
+
+/** GET /api/projects/customizations: project-scoped folders, Rules, Skills, and MCP overview. */
+export function fetchProjectCustomizations(path: string): Promise<import('./types').ProjectCustomizations> {
+  return requestJson('GET', `/api/projects/customizations?path=${encodeURIComponent(path)}`)
 }
 
 /**
