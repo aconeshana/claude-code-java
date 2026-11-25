@@ -184,19 +184,22 @@ public final class SlashCommandDispatcher {
                 }
                 CommandResult rendered = completed;
                 refs.gui().getGUIThread().invokeLater(() -> {
+                    RuntimeException dispatchFailure = null;
                     try {
                         handleDispatchResult(rendered, input, "compact", normalizedArgs, null,
                             handle.interrupted());
-                        if (rendered.outputChannel() == CommandOutputChannel.STDERR) {
-                            resultFuture.completeExceptionally(
-                                new IllegalStateException(rendered.output()));
-                        } else {
-                            resultFuture.complete(rendered);
-                        }
                     } catch (RuntimeException failure) {
-                        resultFuture.completeExceptionally(failure);
+                        dispatchFailure = failure;
                     } finally {
                         handle.finished();
+                    }
+                    if (dispatchFailure != null) {
+                        resultFuture.completeExceptionally(dispatchFailure);
+                    } else if (rendered.outputChannel() == CommandOutputChannel.STDERR) {
+                        resultFuture.completeExceptionally(
+                            new IllegalStateException(rendered.output()));
+                    } else {
+                        resultFuture.complete(rendered);
                     }
                 });
             });
