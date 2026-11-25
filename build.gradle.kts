@@ -158,6 +158,8 @@ subprojects {
             "org.openrewrite.staticanalysis.IndexOfShouldNotCompareGreaterThanZero",
             "org.openrewrite.staticanalysis.RemoveRedundantNullCheckBeforeInstanceof",
             "org.openrewrite.staticanalysis.RemoveRedundantNullCheckBeforeLiteralEquals",
+            "org.openrewrite.staticanalysis.NoValueOfOnStringType",
+            "com.claudecode.recipes.UnnecessaryStringValueOfInLogging",
             "com.claudecode.recipes.RemoveRedundantTypeCastSafely",
             "com.claudecode.recipes.ReplaceAnonymousClassWithLambdaSafely",
             "com.claudecode.recipes.ReplaceLambdaWithMethodReferenceSafely",
