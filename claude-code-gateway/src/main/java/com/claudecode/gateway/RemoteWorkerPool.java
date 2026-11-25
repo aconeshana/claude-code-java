@@ -103,7 +103,7 @@ final class RemoteWorkerPool implements AutoCloseable {
             // The first scan announces nothing: a client that connects reads the listing itself.
             // The notice goes out here, off the pool's lock, so a slow browser lane never holds up
             // a forwarded turn.
-            if (announced != null && live != null && !live.equals(announced)) {
+            if (announced != null && !live.equals(announced)) {
                 hub.publishSessionsChanged();
             }
             announced = live;

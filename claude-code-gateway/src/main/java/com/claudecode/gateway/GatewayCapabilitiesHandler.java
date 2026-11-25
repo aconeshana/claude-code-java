@@ -29,13 +29,13 @@ final class GatewayCapabilitiesHandler {
     private final SessionCapabilityPort capabilities;
     private final GatewaySessionContextPort sessionContext;
     private final GatewayHeadlessSessions headless;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
     GatewayCapabilitiesHandler(
             SessionCapabilityPort capabilities,
             GatewaySessionContextPort sessionContext,
             GatewayHeadlessSessions headless,
-            Optional<RemoteWorkerPool> remoteWorkers) {
+            RemoteWorkerPool remoteWorkers) {
         this.capabilities = capabilities;
         this.sessionContext = sessionContext;
         this.headless = headless;
@@ -120,9 +120,11 @@ final class GatewayCapabilitiesHandler {
                 return;
             }
         }
-        remoteWorkers.flatMap(pool -> pool.workDirOf(sessionId))
-            .filter(StringUtils::isNotBlank)
-            .ifPresent(workDir -> capabilities.bindSessionProject(sessionId, workDir));
+        if (remoteWorkers != null) {
+            remoteWorkers.workDirOf(sessionId)
+                .filter(StringUtils::isNotBlank)
+                .ifPresent(workDir -> capabilities.bindSessionProject(sessionId, workDir));
+        }
     }
 
     private String resolveActiveModel(String sessionId) {
@@ -130,8 +132,8 @@ final class GatewayCapabilitiesHandler {
             .map(GatewaySessionContextPort.ModelSelection::current)
             .filter(StringUtils::isNotBlank);
         if (local.isPresent()) return local.get();
-        if (StringUtils.isNotBlank(sessionId)) {
-            return remoteWorkers.flatMap(pool -> pool.model(sessionId))
+        if (StringUtils.isNotBlank(sessionId) && remoteWorkers != null) {
+            return remoteWorkers.model(sessionId)
                 .map(SessionHostModelState::current)
                 .filter(StringUtils::isNotBlank)
                 .orElse(null);

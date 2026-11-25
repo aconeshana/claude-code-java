@@ -75,7 +75,7 @@ public final class SkillListingAttachmentProvider implements AttachmentProvider 
             return List.of();
         }
 
-        boolean isInitial = active.isEmpty() && removedNames.isEmpty();
+        boolean isInitial = active.isEmpty();
         for (SkillListingEntry s : addedSkills) {
             active.add(s.name());
         }

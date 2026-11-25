@@ -173,7 +173,7 @@ public final class LanGatewayConfigStore {
         GatewayKey updatedKey = null;
         for (GatewayKey k : cur.keys()) {
             if (Strings.CS.equals(k.id(), keyId)) {
-                String nextName = name != null && StringUtils.isNotBlank(name)
+                String nextName = StringUtils.isNotBlank(name)
                     ? name.trim() : k.name();
                 boolean nextEnabled = enabled != null ? enabled : k.enabled();
                 List<String> nextModels = allowedModels != null

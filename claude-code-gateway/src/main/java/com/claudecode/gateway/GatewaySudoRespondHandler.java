@@ -59,10 +59,10 @@ final class GatewaySudoRespondHandler {
     private static final int MAX_PASSWORD_CHARS = 1024;
 
     private final InteractionCoordinator interactions;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
     GatewaySudoRespondHandler(
-            InteractionCoordinator interactions, Optional<RemoteWorkerPool> remoteWorkers) {
+            InteractionCoordinator interactions, RemoteWorkerPool remoteWorkers) {
         this.interactions = interactions;
         this.remoteWorkers = remoteWorkers;
     }
@@ -145,13 +145,13 @@ final class GatewaySudoRespondHandler {
      */
     private Optional<CompletableFuture<SessionLinkFrame>> forward(
             String requestId, String sessionId, String behavior, char[] password) {
-        if (remoteWorkers.isEmpty()) return Optional.empty();
+        if (remoteWorkers == null) return Optional.empty();
         ObjectNode payload = JsonUtils.getMapper().createObjectNode();
         payload.put("request_id", requestId);
         payload.put("interaction_kind", "sudo_password");
         payload.put("behavior", behavior);
         if (password != null) payload.put("password", new String(password));
-        return remoteWorkers.get().respondInteraction(sessionId, payload);
+        return remoteWorkers.respondInteraction(sessionId, payload);
     }
 
     private static void respondForwarded(

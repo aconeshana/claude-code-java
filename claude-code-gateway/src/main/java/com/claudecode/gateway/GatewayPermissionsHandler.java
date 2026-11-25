@@ -48,9 +48,9 @@ final class GatewayPermissionsHandler {
     private static final Duration REMOTE_TIMEOUT = Duration.ofSeconds(10);
 
     private final InteractionCoordinator interactions;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
-    GatewayPermissionsHandler(InteractionCoordinator interactions, Optional<RemoteWorkerPool> remoteWorkers) {
+    GatewayPermissionsHandler(InteractionCoordinator interactions, RemoteWorkerPool remoteWorkers) {
         this.interactions = interactions;
         this.remoteWorkers = remoteWorkers;
     }
@@ -98,8 +98,9 @@ final class GatewayPermissionsHandler {
             return;
         }
         ObjectNode remotePayload = remotePayload(requestId, allowed, skip, feedback, updatedInput);
-        Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.flatMap(
-            pool -> pool.respondInteraction(sessionId, remotePayload));
+        Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers != null
+            ? remoteWorkers.respondInteraction(sessionId, remotePayload)
+            : Optional.empty();
         if (forwarded.isEmpty()) {
             // Nothing is pending for this id here, so the answer has no ask to
             // land on. That covers a late answer to an ask another observer

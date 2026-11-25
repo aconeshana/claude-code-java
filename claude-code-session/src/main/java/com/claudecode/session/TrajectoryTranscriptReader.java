@@ -211,7 +211,7 @@ public final class TrajectoryTranscriptReader {
                     if (block instanceof ToolUseBlock tub) {
                         ToolResultBlock result = resultsByCallId.get(tub.id());
                         String outText = result != null ? extractToolResultText(result) : null;
-                        boolean isError = result != null && Boolean.TRUE.equals(result.isError());
+                        boolean isError = result != null && result.isError();
                         subtools.add(new SubtoolPreview(
                             tub.id(),
                             tub.name(),

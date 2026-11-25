@@ -128,7 +128,8 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
                 + " cannot be used with Skill tool due to disable-model-invocation");
         }
         if (!ModelSkillVisibility.isVisible(match.name(),
-                match.source() == Skill.SkillSource.BUNDLED, context.currentModel())) {
+                match.source() == Skill.SkillSource.BUNDLED,
+                context != null ? context.currentModel() : null)) {
             return ToolResult.error("Skill " + skillName
                 + " is hidden from GPT models; the user can invoke /" + skillName
                 + " explicitly when Claude API reference material is needed");

@@ -132,7 +132,7 @@ final class GatewayTrajectoryHandler {
         Path sessionFile = sessionMgr.findSessionFile(sessionId).orElse(null);
 
         String openHeadlessId = headless.isOpen(sessionId) ? sessionId : null;
-        List<Message> liveRows = null;
+        List<Message> liveRows;
         try {
             liveRows = messagesPort.messages(sessionId, openHeadlessId).orElse(null);
         } catch (RuntimeException _) {
@@ -167,7 +167,7 @@ final class GatewayTrajectoryHandler {
         SessionManager sessionMgr = new SessionManager(effectiveHome, ".");
         Path agentFile = sessionMgr.findAgentTranscriptPath(sessionId, agentId).orElse(null);
 
-        List<Message> liveRows = null;
+        List<Message> liveRows;
         try {
             liveRows = messagesPort.agentMessages(sessionId, agentId).orElse(null);
         } catch (RuntimeException _) {

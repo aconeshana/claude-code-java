@@ -8,6 +8,7 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.Serial;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
@@ -225,6 +226,7 @@ public final class SessionLinkClient implements AutoCloseable {
 
     /** A request the peer refused with an error frame. */
     public static final class RemoteException extends RuntimeException {
+        @Serial
         private static final long serialVersionUID = 1L;
         private final String code;
 

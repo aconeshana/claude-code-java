@@ -38,9 +38,9 @@ final class GatewaySessionCancelHandler {
     private static final Duration REMOTE_TIMEOUT = Duration.ofSeconds(10);
 
     private final GatewaySessionCancelPort cancel;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
-    GatewaySessionCancelHandler(GatewaySessionCancelPort cancel, Optional<RemoteWorkerPool> remoteWorkers) {
+    GatewaySessionCancelHandler(GatewaySessionCancelPort cancel, RemoteWorkerPool remoteWorkers) {
         this.cancel = cancel;
         this.remoteWorkers = remoteWorkers;
     }
@@ -59,9 +59,8 @@ final class GatewaySessionCancelHandler {
                     failure.getMessage(), failure.toString())));
             return;
         }
-        if (!reached && sessionId != null) {
-            Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.flatMap(
-                pool -> pool.cancelTurn(sessionId));
+        if (!reached && sessionId != null && remoteWorkers != null) {
+            Optional<CompletableFuture<SessionLinkFrame>> forwarded = remoteWorkers.cancelTurn(sessionId);
             if (forwarded.isPresent()) {
                 respondForwarded(exchange, sessionId, forwarded.get());
                 return;

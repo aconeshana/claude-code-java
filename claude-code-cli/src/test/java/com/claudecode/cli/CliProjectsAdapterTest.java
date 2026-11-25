@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -193,7 +194,7 @@ class CliProjectsAdapterTest {
             HttpClient client = HttpClient.newHttpClient();
 
             // POST /api/projects
-            String createBody = JsonUtils.toJson(java.util.Map.of(
+            String createBody = JsonUtils.toJson(Map.of(
                 "path", targetProject.toString(),
                 "name", "HTTP Project",
                 "additional_directories", List.of(boundFolder.toString()),
@@ -220,7 +221,7 @@ class CliProjectsAdapterTest {
             assertThat(Files.exists(daemonCwd.resolve(".claude/settings.local.json"))).isFalse();
 
             // POST /api/settings with cwd removes boundFolder from targetProject
-            String removeBody = JsonUtils.toJson(java.util.Map.of(
+            String removeBody = JsonUtils.toJson(Map.of(
                 "op", "removeDirectories",
                 "cwd", targetProject.toString(),
                 "directories", List.of(boundFolder.toAbsolutePath().normalize().toString()),

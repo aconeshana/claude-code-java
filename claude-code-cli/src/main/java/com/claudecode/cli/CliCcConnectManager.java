@@ -100,7 +100,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
             String lastError = sidecar != null ? sidecar.lastError : "";
 
             // Reflect live TUI collaboration selection if the TUI already reports one.
-            if (alive && currentBridge != null && StringUtils.isNotBlank(worker.sessionId())) {
+            if (alive && StringUtils.isNotBlank(worker.sessionId())) {
                 Optional<CollaborationState> live =
                     currentBridge.getCollaboration(worker.pid(), worker.sessionId());
                 if (live.isPresent() && live.get().enabled()) {

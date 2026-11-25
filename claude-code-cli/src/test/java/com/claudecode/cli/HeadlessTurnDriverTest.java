@@ -76,7 +76,7 @@ class HeadlessTurnDriverTest {
             @Override public void onIdle() { }
         }, null);
         List<Message> recorded = new CopyOnWriteArrayList<>();
-        TranscriptSink sink = (sessionId, message) -> recorded.add(message);
+        TranscriptSink sink = (_, message) -> recorded.add(message);
 
         QuerySession engine = engineYielding(
             List.of(new SDKMessage.Error(new IOException("API streaming connection timed out after 60000ms"))),
@@ -111,7 +111,7 @@ class HeadlessTurnDriverTest {
             @Override public void onIdle() { }
         }, null);
         List<Message> recorded = new CopyOnWriteArrayList<>();
-        TranscriptSink sink = (sessionId, message) -> recorded.add(message);
+        TranscriptSink sink = (_, message) -> recorded.add(message);
         AbortController abort = new AbortController();
         abort.abort("user_cancelled");
 
@@ -142,7 +142,7 @@ class HeadlessTurnDriverTest {
             @Override public void onIdle() { }
         }, null);
         List<Message> recorded = new CopyOnWriteArrayList<>();
-        TranscriptSink sink = (sessionId, message) -> recorded.add(message);
+        TranscriptSink sink = (_, message) -> recorded.add(message);
         AssistantMessage existing = MessageFactory.createAssistantAPIErrorMessage("API error");
 
         QuerySession engine = engineYielding(

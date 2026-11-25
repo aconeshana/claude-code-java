@@ -280,7 +280,6 @@ final class CliEngineAssembler {
                 String language = null;
                 String styleName = null;
                 OutputStyleConfig outputStyle = null;
-                boolean hasSkills = false;
                 try { language = RuntimeSettings.loadLanguage(); } catch (Throwable _) { }
                 try { styleName = RuntimeSettings.loadOutputStyleName(); } catch (Throwable _) { }
                 try {
@@ -290,7 +289,7 @@ final class CliEngineAssembler {
                 catch (Throwable _) { }
                 // Latch hasSkills=true whenever slash-command skills are active so enabling a
                 // skill mid-session never mutates the system prompt prefix.
-                hasSkills = !workspace.launch().request().workspace().disableSlashCommands();
+                boolean hasSkills = !workspace.launch().request().workspace().disableSlashCommands();
                 List<McpInstructionEntry> mcpInstr = new ArrayList<>();
                 try {
                     // Sorted for byte-stable prompt output — a shuffled order

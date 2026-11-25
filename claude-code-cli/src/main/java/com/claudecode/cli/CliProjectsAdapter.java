@@ -242,8 +242,7 @@ final class CliProjectsAdapter implements GatewayProjectsPort {
 
     private static List<String> mergeAdditionalDirectories(
             List<String> userDirs, List<String> projectDirs, List<String> localDirs) {
-        Set<String> merged = new LinkedHashSet<>();
-        merged.addAll(userDirs);
+        Set<String> merged = new LinkedHashSet<>(userDirs);
         merged.addAll(projectDirs);
         merged.addAll(localDirs);
         return List.copyOf(merged);

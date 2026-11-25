@@ -32,10 +32,10 @@ import com.sun.net.httpserver.HttpExchange;
 final class GatewayPermissionModeHandler {
 
     private final GatewayPermissionModePort permissionMode;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
     GatewayPermissionModeHandler(GatewayPermissionModePort permissionMode,
-            Optional<RemoteWorkerPool> remoteWorkers) {
+            RemoteWorkerPool remoteWorkers) {
         this.permissionMode = permissionMode;
         this.remoteWorkers = remoteWorkers;
     }
@@ -77,7 +77,7 @@ final class GatewayPermissionModeHandler {
     }
 
     private boolean isRemote(String sessionId) {
-        return remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false);
+        return remoteWorkers != null && remoteWorkers.owns(sessionId);
     }
 
     /**
@@ -89,8 +89,9 @@ final class GatewayPermissionModeHandler {
             throws IOException {
         SessionHostPermissionState state;
         try {
-            state = remoteWorkers.flatMap(pool -> pool.selectPermissionMode(sessionId, mode))
-                .orElse(null);
+            state = remoteWorkers != null
+                ? remoteWorkers.selectPermissionMode(sessionId, mode).orElse(null)
+                : null;
         } catch (IllegalStateException rejection) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 StringUtils.defaultIfBlank(rejection.getMessage(), "permission mode was rejected")));
@@ -130,7 +131,7 @@ final class GatewayPermissionModeHandler {
     /** The remote projection, or null when this session is not remote-owned here. */
     private Optional<SessionHostPermissionState> remoteState(String sessionId) {
         if (sessionId == null || !isRemote(sessionId)) return null;
-        return remoteWorkers.flatMap(pool -> pool.permissionMode(sessionId));
+        return remoteWorkers.permissionMode(sessionId);
     }
 
     private static void stateBody(ObjectNode node, SessionHostPermissionState state) {

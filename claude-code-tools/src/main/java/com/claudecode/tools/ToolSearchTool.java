@@ -215,12 +215,16 @@ public class ToolSearchTool extends AnnotatedTool<JsonNode, ToolSearchTool.Outpu
         }
 
         boolean progressiveMode = toolRegistry != null && toolRegistry.isProgressiveGatewayMode();
-        List<Tool<?, ?>> allTools = progressiveMode
-            ? toolRegistry.getSessionAllowedTools(context)
-            : new ArrayList<>(toolRegistry.getAll());
-        List<Tool<?, ?>> deferredTools = progressiveMode
-            ? toolRegistry.getActiveDeferredTools(context)
-            : allTools.stream().filter(ToolSearchTool::isDeferredTool).toList();
+        List<Tool<?, ?>> allTools = toolRegistry == null
+            ? List.of()
+            : progressiveMode
+                ? toolRegistry.getSessionAllowedTools(context)
+                : new ArrayList<>(toolRegistry.getAll());
+        List<Tool<?, ?>> deferredTools = toolRegistry == null
+            ? List.of()
+            : progressiveMode
+                ? toolRegistry.getActiveDeferredTools(context)
+                : allTools.stream().filter(ToolSearchTool::isDeferredTool).toList();
 
 
 

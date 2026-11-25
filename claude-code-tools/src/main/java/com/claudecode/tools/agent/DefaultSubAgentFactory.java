@@ -1358,7 +1358,8 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
 
     private void writeAgentMetadata(String agentId, SubAgentRequest request,
                                     WorktreeService.AgentWorktree agentWorktree) {
-        String parentSessionId = request != null && request.parentContext() != null
+        if (request == null) return;
+        String parentSessionId = request.parentContext() != null
             ? request.parentContext().sessionId() : null;
         Path transcript = sidechainTranscriptPath(agentId, null, parentSessionId);
         if (transcript == null) return;

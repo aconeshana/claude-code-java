@@ -247,10 +247,10 @@ final class GatewayModelsHandler {
                     : text(item, "model_name");
                 if (StringUtils.isBlank(modelName)) continue;
                 Long cw = item.isObject() && item.hasNonNull("context_window")
-                    ? item.path("context_window").asLong()
+                    ? Long.valueOf(item.path("context_window").asLong())
                     : defaultContextWindow;
                 Boolean mm = item.isObject() && item.has("multimodal") && item.path("multimodal").isBoolean()
-                    ? item.path("multimodal").asBoolean()
+                    ? Boolean.valueOf(item.path("multimodal").asBoolean())
                     : defaultMultimodal;
                 models.save(modelName.trim(), protocol, baseUrl.trim(), apiKey, headers, cw, mm);
                 saved++;

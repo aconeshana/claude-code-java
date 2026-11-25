@@ -20,40 +20,38 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The {@code ~/.claude/web-workers/} directory: one registration file per live
- * interactive process, written by the process itself and read by the standalone
- * {@code claude web} supervisor.
+ * The {@code ~/.claude/web-workers/} directory: one registration file per live interactive process,
+ * written by the process itself and read by the standalone {@code claude web} supervisor.
  *
  * <p>Registration is deliberately advisory. A process that dies without running
- * {@link Registration#close()} leaves its file behind, so {@link #scan()} treats
- * a registration whose pid is no longer alive as stale, deletes it, and never
- * reports it. The directory itself is created 0700 and each file 0600, because
- * every registration carries a live authentication token.
+ * {@link Registration#close()} leaves its file behind, so {@link #scan()} treats a registration
+ * whose pid is no longer alive as stale, deletes it, and never reports it. The directory itself is
+ * created 0700 and each file 0600, because every registration carries a live authentication token.
  *
  * <p>Writes go through a temporary sibling and an atomic move so a supervisor
  * polling this directory never observes a half-written JSON document.
  */
 @Explanation("Cross-process discovery of Session Link endpoints for the claude web supervisor")
-public final class WebWorkerDirectory {
+public record WebWorkerDirectory(Path directory) {
 
     private static final Logger log = LoggerFactory.getLogger(WebWorkerDirectory.class);
-
-    private final Path directory;
 
     public WebWorkerDirectory(Path directory) {
         this.directory = directory.toAbsolutePath().normalize();
     }
 
-    /** The directory this instance manages. */
+    /**
+     * The directory this instance manages.
+     */
+    @Override
     public Path directory() {
         return directory;
     }
 
     /**
-     * Publishes a registration for this process and returns a handle that
-     * deletes the file on close. A failure to publish is reported to the caller
-     * as an exception: the supervisor would otherwise silently never see this
-     * process, and the user would be told {@code claude web} shows nothing.
+     * Publishes a registration for this process and returns a handle that deletes the file on close.
+     * A failure to publish is reported to the caller as an exception: the supervisor would otherwise
+     * silently never see this process, and the user would be told {@code claude web} shows nothing.
      */
     public Registration register(WebWorkerRegistration registration) throws IOException {
         Files.createDirectories(directory);
@@ -67,11 +65,13 @@ public final class WebWorkerDirectory {
      * Every live registration, most recently modified first.
      *
      * <p>Stale entries are removed as a side effect: a pid that no longer exists
-     * cannot own a socket that accepts connections, and leaving those files
-     * behind would make every supervisor start do a growing amount of dead work.
+     * cannot own a socket that accepts connections, and leaving those files behind would make every
+     * supervisor start do a growing amount of dead work.
      */
     public List<WebWorkerRegistration> scan() {
-        if (!Files.isDirectory(directory)) return List.of();
+        if (!Files.isDirectory(directory)) {
+            return List.of();
+        }
         List<Path> files = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.json")) {
             stream.forEach(files::add);
@@ -87,7 +87,7 @@ public final class WebWorkerDirectory {
                 continue;
             }
             WebWorkerRegistration registration = parsed.get();
-            if (Boolean.FALSE.equals(ProcessHandle.of(registration.pid()).map(ProcessHandle::isAlive).orElse(false))) {
+            if (!ProcessHandle.of(registration.pid()).map(ProcessHandle::isAlive).orElse(false)) {
                 deleteQuietly(file);
                 continue;
             }
@@ -97,7 +97,9 @@ public final class WebWorkerDirectory {
         return List.copyOf(live);
     }
 
-    /** Removes this process's registration; safe to call more than once. */
+    /**
+     * Removes this process's registration; safe to call more than once.
+     */
     public void unregister(long pid) {
         deleteQuietly(fileFor(pid));
     }
@@ -113,7 +115,9 @@ public final class WebWorkerDirectory {
             boolean usable = registration.pid() > 0
                 && registration.socket() != null && !StringUtils.isBlank(registration.socket())
                 && registration.token() != null && !StringUtils.isBlank(registration.token());
-            if (!usable) return Optional.empty();
+            if (!usable) {
+                return Optional.empty();
+            }
             SessionLinkEndpoint.parse(registration.socket());
             return Optional.of(registration);
         } catch (IOException | RuntimeException failure) {
@@ -123,7 +127,7 @@ public final class WebWorkerDirectory {
     }
 
     private static void writeAtomically(Path target, WebWorkerRegistration registration)
-            throws IOException {
+        throws IOException {
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         JsonUtils.writeJson(temporary, registration, true);
         restrictFile(temporary);
@@ -154,8 +158,11 @@ public final class WebWorkerDirectory {
         }
     }
 
-    /** An owned registration file, deleted on close. */
+    /**
+     * An owned registration file, deleted on close.
+     */
     public static final class Registration implements AutoCloseable {
+
         private final Path file;
         private boolean closed;
 
@@ -169,7 +176,9 @@ public final class WebWorkerDirectory {
 
         @Override
         public synchronized void close() {
-            if (closed) return;
+            if (closed) {
+                return;
+            }
             closed = true;
             deleteQuietly(file);
         }

@@ -199,12 +199,11 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
         if (sessionId.isEmpty()) return null;
         Optional<String> local = transcriptUnder(sessionId, mainCwd) ? Optional.of(mainCwd)
             : Optional.empty();
-        if (local.isPresent()) return local.get();
-        return new WebWorkerDirectory(ClaudePaths.WEB_WORKERS_DIR).scan().stream()
+        return local.orElseGet(() -> new WebWorkerDirectory(ClaudePaths.WEB_WORKERS_DIR).scan().stream()
             .map(WebWorkerRegistration::workDir)
             .filter(workDir -> workDir != null && transcriptUnder(sessionId, workDir))
             .findFirst()
-            .orElse(null);
+            .orElse(null));
     }
 
     /** Whether {@code workDir} holds a readable transcript for {@code sessionId}. */

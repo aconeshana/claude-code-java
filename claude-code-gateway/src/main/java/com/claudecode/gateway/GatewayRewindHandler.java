@@ -29,15 +29,15 @@ final class GatewayRewindHandler {
     private static final int MAX_BODY_BYTES = 64 * 1024;
 
     private final GatewayHeadlessSessions headless;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
     private final Predicate<String> isTurnInFlight;
 
     GatewayRewindHandler(
             GatewayHeadlessSessions headless,
-            Optional<RemoteWorkerPool> remoteWorkers,
+            RemoteWorkerPool remoteWorkers,
             Predicate<String> isTurnInFlight) {
         this.headless = headless;
-        this.remoteWorkers = remoteWorkers != null ? remoteWorkers : Optional.empty();
+        this.remoteWorkers = remoteWorkers;
         this.isTurnInFlight = isTurnInFlight != null ? isTurnInFlight : _ -> false;
     }
 
@@ -47,8 +47,9 @@ final class GatewayRewindHandler {
                 respondJson(exchange, 400, errorBody("invalid_request", "messageId query parameter is required"));
                 return;
             }
-            Optional<CompletableFuture<SessionLinkFrame>> remote = remoteWorkers
-                .flatMap(pool -> pool.previewRewind(sessionId, messageId.trim()));
+            Optional<CompletableFuture<SessionLinkFrame>> remote = remoteWorkers != null
+                ? remoteWorkers.previewRewind(sessionId, messageId.trim())
+                : Optional.empty();
             if (remote.isPresent()) {
                 respondRemoteFrame(exchange, remote.get());
                 return;
@@ -97,8 +98,9 @@ final class GatewayRewindHandler {
                 return;
             }
 
-            Optional<CompletableFuture<SessionLinkFrame>> remote = remoteWorkers
-                .flatMap(pool -> pool.executeRewind(sessionId, messageId.trim(), mode.wire()));
+            Optional<CompletableFuture<SessionLinkFrame>> remote = remoteWorkers != null
+                ? remoteWorkers.executeRewind(sessionId, messageId.trim(), mode.wire())
+                : Optional.empty();
             if (remote.isPresent()) {
                 respondRemoteFrame(exchange, remote.get());
                 return;

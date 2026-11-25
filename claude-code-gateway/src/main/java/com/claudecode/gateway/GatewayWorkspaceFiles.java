@@ -75,7 +75,7 @@ public final class GatewayWorkspaceFiles {
                         try {
                             size = Files.size(child);
                         } catch (IOException _) {
-                            size = 0L;
+                            // Unreadable entry keeps default 0L size.
                         }
                     }
                     String rel = realRoot.relativize(child).toString().replace('\\', '/');

@@ -25,6 +25,7 @@ import com.claudecode.tools.skills.Skill;
 import com.claudecode.tools.skills.SkillLoader;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -125,7 +126,7 @@ final class CliSessionCapabilityService implements SessionCapabilityPort {
         Path path = Path.of(projectPath).toAbsolutePath().normalize();
         sessionProjects.put(sessionId, path);
         Path projectSkillsDir = path.resolve(".claude").resolve("skills");
-        if (java.nio.file.Files.isDirectory(projectSkillsDir)) {
+        if (Files.isDirectory(projectSkillsDir)) {
             skillLoader.addSource(Skill.SkillSource.PROJECT, projectSkillsDir);
         }
         sessions.computeIfAbsent(sessionId,

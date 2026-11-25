@@ -153,7 +153,8 @@ final class EventSourceStreamBridge {
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos));
         } catch (ExecutionException e) {
             log.debug("[stream-connect] connect failed elapsedMs={} cause={}",
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos), e.getCause());
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectStartNanos),
+                String.valueOf(e.getCause()), e.getCause());
             state.abort();
             Throwable cause = e.getCause();
             if (cause instanceof ApiException apiException) throw apiException;

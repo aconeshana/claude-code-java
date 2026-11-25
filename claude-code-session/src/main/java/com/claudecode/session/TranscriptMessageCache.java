@@ -103,7 +103,7 @@ public final class TranscriptMessageCache {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             AppendCursor.Appended appended = AppendCursor.read(
                 cached == null ? null : cached.cursor(), channel, attributes);
-            Snapshot next = (appended.restarted() ? Snapshot.EMPTY : cached)
+            Snapshot next = (appended.restarted() || cached == null ? Snapshot.EMPTY : cached)
                 .extend(storage, file, appended);
             slot.snapshot = next;
             return next.messages();

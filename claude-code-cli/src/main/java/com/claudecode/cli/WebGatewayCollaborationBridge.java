@@ -97,19 +97,13 @@ final class WebGatewayCollaborationBridge implements CollaborationSetupPort {
     @Override
     public boolean configured() {
         Optional<JsonNode> remote = fetchRemoteStatusIfLive();
-        if (remote.isPresent()) {
-            return remote.get().path("configured").asBoolean(false);
-        }
-        return CcConnectSupport.targetConfigured(fallbackConfig);
+        return remote.map(value -> value.path("configured").asBoolean(false)).orElseGet(() -> CcConnectSupport.targetConfigured(fallbackConfig));
     }
 
     @Override
     public boolean setupPending() {
         Optional<JsonNode> remote = fetchRemoteStatusIfLive();
-        if (remote.isPresent()) {
-            return remote.get().path("setup_pending").asBoolean(false);
-        }
-        return CcConnectSupport.setupPending(fallbackConfig);
+        return remote.map(value -> value.path("setup_pending").asBoolean(false)).orElseGet(() -> CcConnectSupport.setupPending(fallbackConfig));
     }
 
     @Override
@@ -197,32 +191,34 @@ final class WebGatewayCollaborationBridge implements CollaborationSetupPort {
                     .build();
                 HttpResponse<InputStream> response =
                     http.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    String errBody = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
-                    throw new IllegalStateException(extractError(errBody,
-                        "Web gateway rejected setup (HTTP " + response.statusCode() + ")"));
-                }
                 Result finalResult = null;
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                        response.body(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (StringUtils.isBlank(line)) continue;
-                        JsonNode frame = JsonUtils.getMapper().readTree(line);
-                        String type = frame.path("type").asText("");
-                        if (Strings.CS.equals("progress", type)) {
-                            if (progress != null) progress.accept(frame.path("line").asText(""));
-                        } else if (Strings.CS.equals("result", type)) {
-                            boolean ok = frame.path("ok").asBoolean(false);
-                            String channel = frame.path("channel").asText("");
-                            String message = frame.path("message").asText("");
-                            if (!ok) {
-                                throw new IllegalStateException(
-                                    StringUtils.isBlank(message) ? "Feishu setup failed" : message);
+                try (InputStream responseBody = response.body()) {
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        String errBody = new String(responseBody.readAllBytes(), StandardCharsets.UTF_8);
+                        throw new IllegalStateException(extractError(errBody,
+                            "Web gateway rejected setup (HTTP " + response.statusCode() + ")"));
+                    }
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                            responseBody, StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (StringUtils.isBlank(line)) continue;
+                            JsonNode frame = JsonUtils.getMapper().readTree(line);
+                            String type = frame.path("type").asText("");
+                            if (Strings.CS.equals("progress", type)) {
+                                if (progress != null) progress.accept(frame.path("line").asText(""));
+                            } else if (Strings.CS.equals("result", type)) {
+                                boolean ok = frame.path("ok").asBoolean(false);
+                                String channel = frame.path("channel").asText("");
+                                String message = frame.path("message").asText("");
+                                if (!ok) {
+                                    throw new IllegalStateException(
+                                        StringUtils.isBlank(message) ? "Feishu setup failed" : message);
+                                }
+                                finalResult = new Result(
+                                    StringUtils.isBlank(channel) ? "feishu" : channel,
+                                    StringUtils.isBlank(message) ? "Feishu collaboration is ready" : message);
                             }
-                            finalResult = new Result(
-                                StringUtils.isBlank(channel) ? "feishu" : channel,
-                                StringUtils.isBlank(message) ? "Feishu collaboration is ready" : message);
                         }
                     }
                 }

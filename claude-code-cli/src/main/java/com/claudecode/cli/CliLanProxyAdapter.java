@@ -105,10 +105,7 @@ final class CliLanProxyAdapter implements GatewayLanProxyPort {
     @Override
     public Optional<ModelApiProtocol> upstreamProtocol(String modelName) {
         Optional<CustomModelConfig> custom = customCatalog.find(modelName);
-        if (custom.isPresent()) {
-            return Optional.of(custom.get().protocol());
-        }
-        return defaultProviderAvailable ? Optional.of(ModelApiProtocol.ANTHROPIC) : Optional.empty();
+        return custom.map(value -> Optional.of(value.protocol())).orElseGet(() -> defaultProviderAvailable ? Optional.of(ModelApiProtocol.ANTHROPIC) : Optional.empty());
     }
 
     private Optional<CustomModelConfig> resolveCustomConfigWithLoopGuard(String modelName) {

@@ -46,10 +46,10 @@ import com.sun.net.httpserver.HttpExchange;
 final class GatewaySessionContextHandler {
 
     private final GatewaySessionContextPort context;
-    private final Optional<RemoteWorkerPool> remoteWorkers;
+    private final RemoteWorkerPool remoteWorkers;
 
     GatewaySessionContextHandler(GatewaySessionContextPort context,
-            Optional<RemoteWorkerPool> remoteWorkers) {
+            RemoteWorkerPool remoteWorkers) {
         this.context = context;
         this.remoteWorkers = remoteWorkers;
     }
@@ -77,7 +77,7 @@ final class GatewaySessionContextHandler {
                 "model and effort cannot be changed in one request"));
             return;
         }
-        if (sessionId != null && remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
+        if (sessionId != null && remoteWorkers != null && remoteWorkers.owns(sessionId)) {
             selectRemote(exchange, sessionId, model, effort);
             return;
         }
@@ -116,30 +116,33 @@ final class GatewaySessionContextHandler {
      */
     private void selectRemote(HttpExchange exchange, String sessionId,
             String model, String effort) throws IOException {
+        if (remoteWorkers == null) {
+            unsupported(exchange);
+            return;
+        }
         GatewaySessionContextPort.ModelSelection selection;
-        GatewaySessionContextPort.EffortSelection effortState = null;
+        GatewaySessionContextPort.EffortSelection effortState;
         try {
             if (model != null) {
-                SessionHostModelState state = remoteWorkers
-                    .flatMap(pool -> pool.selectModel(sessionId, model)).orElse(null);
+                SessionHostModelState state = remoteWorkers.selectModel(sessionId, model).orElse(null);
                 if (state == null) {
                     unsupported(exchange);
                     return;
                 }
                 // The model answer also carries the current effort state, so
                 // the response keeps both halves of the selection complete.
-                effortState = remoteWorkers.flatMap(pool -> pool.effort(sessionId))
+                effortState = remoteWorkers.effort(sessionId)
                     .map(GatewaySessionContextHandler::fromRemote).orElse(null);
                 selection = fromRemote(state, effortState);
             } else {
-                effortState = remoteWorkers.flatMap(pool -> pool.selectEffort(sessionId, effort))
+                effortState = remoteWorkers.selectEffort(sessionId, effort)
                     .map(GatewaySessionContextHandler::fromRemote).orElse(null);
                 if (effortState == null) {
                     unsupported(exchange);
                     return;
                 }
                 GatewaySessionContextPort.EffortSelection changed = effortState;
-                selection = remoteWorkers.flatMap(pool -> pool.model(sessionId))
+                selection = remoteWorkers.model(sessionId)
                     .map(state -> fromRemote(state, changed)).orElse(null);
             }
         } catch (IllegalStateException rejection) {
@@ -211,10 +214,10 @@ final class GatewaySessionContextHandler {
      * than "not this process's session".
      */
     private Optional<GatewaySessionContextPort.ModelSelection> selectionOf(String sessionId) {
-        if (sessionId == null || !remoteWorkers.map(pool -> pool.owns(sessionId)).orElse(false)) {
+        if (sessionId == null || remoteWorkers == null || !remoteWorkers.owns(sessionId)) {
             return context.selection(sessionId);
         }
-        return remoteWorkers.flatMap(pool -> pool.modelSelection(sessionId));
+        return remoteWorkers.modelSelection(sessionId);
     }
 
     private ObjectNode body(String sessionId) {
