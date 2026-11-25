@@ -445,7 +445,7 @@ public final class GatewayServer implements AutoCloseable {
                     String sessionId, SessionHostSubmission submission) {
                 if (remoteWorkers == null) return Optional.empty();
                 return remoteWorkers.submit(sessionId, submission)
-                    .map(accepted -> accepted.thenApply(_ -> (Void) null));
+                    .map(accepted -> accepted.thenApply(_ -> null));
             }
         };
         this.messages = new MessagesHandler(resolver, inFlight);
