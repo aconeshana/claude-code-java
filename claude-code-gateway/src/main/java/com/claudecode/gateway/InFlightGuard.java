@@ -25,6 +25,13 @@ final class InFlightGuard {
         return created.get() || slot.compareAndSet(false, true);
     }
 
+    /** True when a turn is currently running for {@code sessionId}. */
+    boolean isInFlight(String sessionId) {
+        if (sessionId == null) return false;
+        AtomicBoolean slot = inFlight.get(sessionId);
+        return slot != null && slot.get();
+    }
+
     /** Releases the session's turn slot; safe to call more than once. */
     void release(String sessionId) {
         AtomicBoolean slot = inFlight.get(sessionId);

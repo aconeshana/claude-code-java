@@ -53,6 +53,35 @@ public final class FileHistoryManager {
         public static final DiffStats EMPTY = new DiffStats(List.of(), 0, 0);
     }
 
+    /** Per-file rollback preview produced without mutating the workspace. */
+    public record FileDiffPreview(
+            String path,
+            int insertions,
+            int deletions,
+            boolean willDelete,
+            String unifiedDiff) {
+        public FileDiffPreview {
+            path = path != null ? path : "";
+            unifiedDiff = unifiedDiff != null ? unifiedDiff : "";
+        }
+    }
+
+    /** Full dry-run preview of rolling tracked files back to a snapshot. */
+    public record RewindPreview(
+            boolean snapshotFound,
+            List<FileDiffPreview> files,
+            int insertions,
+            int deletions) {
+        public static final RewindPreview MISSING = new RewindPreview(false, List.of(), 0, 0);
+
+        public RewindPreview {
+            files = files != null ? List.copyOf(files) : List.of();
+        }
+    }
+
+    private static final int MAX_PREVIEW_DIFF_LINES = 120;
+    private static final int MAX_PREVIEW_DIFF_CHARS = 8_192;
+
     private final SessionIdentity sessionIdentity;
     private final Path workingDirectory;
     private final Path backupRoot;
@@ -340,6 +369,91 @@ public final class FileHistoryManager {
             }
         }
         return new DiffStats(filesChanged, insertions, deletions);
+    }
+
+    /**
+     * Rich dry-run preview of {@link #rewind(String)}: returns whether a snapshot
+     * exists for {@code messageId} along with each affected file's line counts
+     * and a size-bounded unified diff from current disk state back to the snapshot.
+     */
+    public RewindPreview previewRewind(String messageId) {
+        awaitPendingSnapshots();
+        Snapshot target;
+        List<String> filesToCheck;
+        synchronized (this) {
+            target = findLastByMessageId(messageId);
+            if (target == null) return RewindPreview.MISSING;
+            filesToCheck = List.copyOf(trackedFiles);
+        }
+
+        List<FileDiffPreview> previews = new ArrayList<>();
+        int totalInsertions = 0;
+        int totalDeletions = 0;
+        for (String trackingPath : filesToCheck) {
+            try {
+                String absolutePath = expand(trackingPath);
+                Backup resolved = resolveBackupForRewind(trackingPath, target);
+                if (resolved == null) continue;
+
+                String currentContent = readIfExists(Path.of(absolutePath));
+                String backupContent = resolved.backupFileName() != null
+                        ? readIfExists(resolveBackupPath(resolved.backupFileName()))
+                        : null;
+                if (currentContent == null && backupContent == null) continue;
+
+                List<StructuredPatchHunk> hunks = DiffHunks.compute(
+                        currentContent != null ? currentContent : "",
+                        backupContent != null ? backupContent : "");
+                long[] counts = DiffHunks.countLinesChanged(hunks, null);
+                boolean willDelete = resolved.backupFileName() == null && Files.exists(Path.of(absolutePath));
+                if (counts[0] > 0 || counts[1] > 0 || willDelete) {
+                    int fileIns = (int) counts[0];
+                    int fileDel = (int) counts[1];
+                    totalInsertions += fileIns;
+                    totalDeletions += fileDel;
+                    previews.add(new FileDiffPreview(
+                            trackingPath,
+                            fileIns,
+                            fileDel,
+                            willDelete,
+                            formatUnifiedDiff(hunks)));
+                }
+            } catch (Exception e) {
+                log.warn("FileHistory: previewRewind failed for {}: {}", trackingPath, e.getMessage());
+            }
+        }
+        return new RewindPreview(true, previews, totalInsertions, totalDeletions);
+    }
+
+    private static String formatUnifiedDiff(List<StructuredPatchHunk> hunks) {
+        if (hunks == null || hunks.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        int lineCount = 0;
+        boolean truncated = false;
+        outer:
+        for (StructuredPatchHunk hunk : hunks) {
+            String header = "@@ -" + hunk.oldStart() + "," + hunk.oldLines()
+                    + " +" + hunk.newStart() + "," + hunk.newLines() + " @@";
+            if (lineCount >= MAX_PREVIEW_DIFF_LINES || sb.length() + header.length() + 1 > MAX_PREVIEW_DIFF_CHARS) {
+                truncated = true;
+                break;
+            }
+            if (!sb.isEmpty()) sb.append('\n');
+            sb.append(header);
+            lineCount++;
+            for (String line : hunk.lines()) {
+                if (lineCount >= MAX_PREVIEW_DIFF_LINES || sb.length() + line.length() + 1 > MAX_PREVIEW_DIFF_CHARS) {
+                    truncated = true;
+                    break outer;
+                }
+                sb.append('\n').append(line);
+                lineCount++;
+            }
+        }
+        if (truncated) {
+            sb.append("\n... (diff truncated)");
+        }
+        return sb.toString();
     }
 
     /**

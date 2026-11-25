@@ -98,6 +98,20 @@ final class RemoteWorkerFeed implements AutoCloseable {
         return client.request("turn.cancel", sessionId, JsonUtils.getMapper().createObjectNode());
     }
 
+    CompletableFuture<SessionLinkFrame> previewRewind(String sessionId, String messageId) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("message_id", messageId);
+        return client.request("rewind.preview", sessionId, payload);
+    }
+
+    CompletableFuture<SessionLinkFrame> executeRewind(
+            String sessionId, String messageId, String mode) {
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode();
+        payload.put("message_id", messageId);
+        payload.put("mode", mode);
+        return client.request("rewind.execute", sessionId, payload);
+    }
+
     CompletableFuture<SessionLinkFrame> respondInteraction(String sessionId, ObjectNode payload) {
         return client.request("interaction.respond", sessionId, payload);
     }

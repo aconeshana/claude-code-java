@@ -24,6 +24,10 @@ public interface SessionHostSessionView {
 
     SessionHostCancelController cancels();
 
+    default SessionHostRewindController rewinds() {
+        return SessionHostRewindController.unsupported();
+    }
+
     static SessionHostSessionView of(SessionHostSession session) {
         Objects.requireNonNull(session, "session");
         return new SessionHostSessionView() {
@@ -38,6 +42,7 @@ public interface SessionHostSessionView {
                 return session.permissions();
             }
             @Override public SessionHostCancelController cancels() { return session.cancels(); }
+            @Override public SessionHostRewindController rewinds() { return session.rewinds(); }
         };
     }
 }

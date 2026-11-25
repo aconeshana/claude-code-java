@@ -14,6 +14,7 @@ import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
 import com.claudecode.runtime.sessionhost.RemoteSubmissionPrompt;
 import com.claudecode.runtime.sessionhost.SessionCollaborationController;
 import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
+import com.claudecode.runtime.sessionhost.QuerySessionRewindService;
 import com.claudecode.runtime.sessionhost.SessionHostEffortController;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
 import com.claudecode.runtime.sessionhost.SessionHostInfo;
@@ -23,6 +24,7 @@ import com.claudecode.runtime.sessionhost.SessionHostModelState;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionController;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionOptions;
 import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
+import com.claudecode.runtime.sessionhost.SessionHostRewindController;
 import com.claudecode.runtime.sessionhost.SessionHostRegistry;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
@@ -284,7 +286,22 @@ final class SessionHostPublisher {
             // Same engine interrupt the TUI's Ctrl+C drives (the SDK interrupt
             // control request too), so a remote stop lands in the transcript
             // exactly like a local one. A no-op when the turn already ended.
-            () -> queryEngine.submission().interrupt());
+            () -> queryEngine.submission().interrupt(),
+            new SessionHostRewindController() {
+                @Override public Preview preview(String messageId) {
+                    requireActiveHostSession(sessionId);
+                    return new QuerySessionRewindService(
+                        queryEngine, queryEngine.execution().getTranscriptSink(), null)
+                        .preview(messageId);
+                }
+
+                @Override public Result execute(String messageId, RewindMode mode) {
+                    requireActiveHostSession(sessionId);
+                    return new QuerySessionRewindService(
+                        queryEngine, queryEngine.execution().getTranscriptSink(), null)
+                        .execute(messageId, mode);
+                }
+            });
     }
 
     private SessionHostModelState currentSessionModelState(String expectedSessionId) {

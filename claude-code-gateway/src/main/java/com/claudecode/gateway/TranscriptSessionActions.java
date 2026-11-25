@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Extends one process's own session-actions port with the sessions it does not
@@ -135,6 +136,15 @@ final class TranscriptSessionActions implements GatewaySessionActionsPort {
             return translate(() -> new ForkResult(
                 transcripts.forkSession(sessionId, (String) null, null, title).sessionId()));
         }
+    }
+
+    @Override
+    public ForkResult fork(String sessionId, String upToMessageId, String title) {
+        if (StringUtils.isBlank(upToMessageId)) {
+            return fork(sessionId, title);
+        }
+        return translate(() -> new ForkResult(
+            transcripts.forkSession(sessionId, upToMessageId.trim(), null, title).sessionId()));
     }
 
     @Override

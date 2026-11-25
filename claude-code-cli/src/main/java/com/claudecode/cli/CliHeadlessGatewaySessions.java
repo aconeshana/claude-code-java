@@ -127,7 +127,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
                 frozen.modifiedAt(), frozen.gitBranch()),
             host.events(), host.submitter(),
             host.models(), host.efforts(), host.compacts(),
-            host.permissions(), host.cancels());
+            host.permissions(), host.cancels(), host.rewinds());
     }
 
     /** The project directory an open headless session works in, or empty when none is open under that id. */

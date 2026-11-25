@@ -64,9 +64,10 @@ final class GatewaySessionActionsHandler {
         JsonNode request = readJson(exchange);
         if (request == null) return;
         String title = text(request, "title");
+        String upToMessageId = text(request, "up_to_message_id");
         GatewaySessionActionsPort.ForkResult forked;
         try {
-            forked = actions.fork(sessionId, title);
+            forked = actions.fork(sessionId, upToMessageId, title);
         } catch (IllegalArgumentException failure) {
             respondJson(exchange, 400, errorBody("invalid_request",
                 StringUtils.defaultIfBlank(failure.getMessage(), "invalid fork request")));

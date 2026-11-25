@@ -153,6 +153,24 @@ final class RemoteWorkerPool implements AutoCloseable {
             : Optional.of(owner.cancelTurn(sessionId));
     }
 
+    synchronized Optional<CompletableFuture<SessionLinkFrame>> previewRewind(
+            String sessionId, String messageId) {
+        liveSessions();
+        RemoteWorkerFeed owner = owners.get(sessionId);
+        return owner == null
+            ? Optional.empty()
+            : Optional.of(owner.previewRewind(sessionId, messageId));
+    }
+
+    synchronized Optional<CompletableFuture<SessionLinkFrame>> executeRewind(
+            String sessionId, String messageId, String mode) {
+        liveSessions();
+        RemoteWorkerFeed owner = owners.get(sessionId);
+        return owner == null
+            ? Optional.empty()
+            : Optional.of(owner.executeRewind(sessionId, messageId, mode));
+    }
+
     /**
      * Forwards an interaction answer to the process that owns {@code sessionId}, or empty when no
      * live process lists it.

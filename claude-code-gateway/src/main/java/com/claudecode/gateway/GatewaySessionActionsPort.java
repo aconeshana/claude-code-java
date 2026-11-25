@@ -41,6 +41,11 @@ public interface GatewaySessionActionsPort {
         throw new UnsupportedOperationException("session fork is not configured");
     }
 
+    /** Forks a session up to a specific message UUID (or the end when blank). */
+    default ForkResult fork(String sessionId, String upToMessageId, String title) {
+        return fork(sessionId, title);
+    }
+
     /** Hides a session from the default catalog listing without touching its transcript. */
     default void archive(String sessionId) {
         throw new UnsupportedOperationException("session archive is not configured");

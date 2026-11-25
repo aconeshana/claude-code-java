@@ -1,4 +1,4 @@
-import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
+import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type RewindExecuteResponse, type RewindMode, type RewindPreviewResponse, type ScheduleListing, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -189,9 +189,34 @@ export function renameSession(sessionId: string, title: string): Promise<RenameS
   return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title })
 }
 
-/** POST /api/sessions/{id}/fork: forks one session at its last completed turn. */
-export function forkSession(sessionId: string, title?: string): Promise<ForkSessionResponse> {
-  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/fork`, title == null ? {} : { title })
+/** POST /api/sessions/{id}/fork: forks one session at its last completed turn or a specific message. */
+export function forkSession(
+  sessionId: string,
+  title?: string,
+  upToMessageId?: string,
+): Promise<ForkSessionResponse> {
+  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/fork`, {
+    ...(title == null ? {} : { title }),
+    ...(upToMessageId == null ? {} : { up_to_message_id: upToMessageId }),
+  })
+}
+
+/** GET /api/sessions/{id}/rewind/preview: dry-run conversation & code diff impact preview. */
+export function previewRewind(sessionId: string, messageId: string): Promise<RewindPreviewResponse> {
+  const query = `?messageId=${encodeURIComponent(messageId)}`
+  return requestJson('GET', `/api/sessions/${encodeURIComponent(sessionId)}/rewind/preview${query}`)
+}
+
+/** POST /api/sessions/{id}/rewind: rewinds conversation and/or code to the target user message. */
+export function executeRewind(
+  sessionId: string,
+  messageId: string,
+  mode: RewindMode,
+): Promise<RewindExecuteResponse> {
+  return requestJson('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rewind`, {
+    message_id: messageId,
+    mode,
+  })
 }
 
 /** POST /api/sessions/{id}/archive: one-way hide from every catalog view. */

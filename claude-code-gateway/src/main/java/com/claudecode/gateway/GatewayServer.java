@@ -95,6 +95,7 @@ public final class GatewayServer implements AutoCloseable {
     private final ResponsesHandler responses;
     private final GatewaySessionsHandler sessionsApi;
     private final GatewaySessionActionsHandler sessionActionsApi;
+    private final GatewayRewindHandler rewindApi;
     private final GatewaySessionCatalogPort catalog;
     /** The transcript-backed session actions, when the standalone wiring installed them. */
     private final TranscriptSessionActions sessionActions;
@@ -460,6 +461,7 @@ public final class GatewayServer implements AutoCloseable {
                 contextTimeline.forget(sessionId);
             }
         }));
+        this.rewindApi = new GatewayRewindHandler(headless, this.remoteWorkers, inFlight::isInFlight);
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         // Set by the wiring above when it installs the transcript reader; the
         // listing asks it whether a live handle's transcript is still there, a
@@ -1049,6 +1051,41 @@ public final class GatewayServer implements AutoCloseable {
                 return;
             }
             serveAsync(exchange, () -> backgroundTasksApi.handleStopShell(exchange, taskId));
+            return;
+        }
+        if (get && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && Strings.CS.endsWith(targetPath, "/rewind/preview")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String sessionId = URLDecoder.decode(
+                targetPath.substring("/api/sessions/".length(),
+                    targetPath.length() - "/rewind/preview".length()),
+                StandardCharsets.UTF_8);
+            if (sessionId.isEmpty()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id is required"));
+                }
+                return;
+            }
+            String messageId = queryParam(exchange, "messageId");
+            serveAsync(exchange, () -> rewindApi.handlePreview(exchange, sessionId, messageId));
+            return;
+        }
+        if (post && Strings.CS.startsWith(targetPath, "/api/sessions/")
+                && Strings.CS.endsWith(targetPath, "/rewind")) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            String sessionId = URLDecoder.decode(
+                targetPath.substring("/api/sessions/".length(),
+                    targetPath.length() - "/rewind".length()),
+                StandardCharsets.UTF_8);
+            if (sessionId.isEmpty()) {
+                try (exchange) {
+                    respondJson(exchange, 400, errorBody("invalid_request",
+                        "session id is required"));
+                }
+                return;
+            }
+            serveAsync(exchange, () -> rewindApi.handleExecute(exchange, sessionId));
             return;
         }
         if (post && Strings.CS.startsWith(targetPath, "/api/sessions/") && (Strings.CS.endsWith(

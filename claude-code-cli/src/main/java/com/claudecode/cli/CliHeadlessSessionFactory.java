@@ -19,6 +19,7 @@ import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionFactory;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.sessionhost.RemoteAttachmentStore;
+import com.claudecode.runtime.sessionhost.QuerySessionRewindService;
 import com.claudecode.runtime.sessionhost.SessionHostCompactController;
 import com.claudecode.runtime.sessionhost.SessionHostEffortController;
 import com.claudecode.runtime.sessionhost.SessionHostEffortState;
@@ -39,6 +40,7 @@ import com.claudecode.services.claudemd.MemoryFileScanner;
 import com.claudecode.services.claudemd.MemoryPromptBuilder;
 import com.claudecode.services.claudemd.MemoryType;
 import com.claudecode.services.config.WorkspaceSettings;
+import com.claudecode.services.session.SessionFileHistorySink;
 import com.claudecode.session.SessionManager;
 import com.claudecode.session.SessionStorage;
 import com.claudecode.session.TranscriptRecorder;
@@ -152,6 +154,7 @@ final class CliHeadlessSessionFactory {
             .tools(toolRegistry.getAll().stream().map(Tool::name).toList())
             .toolExecutor(toolRegistry)
             .workingDirectory(projectPath)
+            .fileHistoryEnabled(true)
             .abortController(abort)
             .sessionIdentity(identity)
             .claudeMdContentSupplier(() -> loadClaudeMd(Path.of(projectPath)));
@@ -191,6 +194,10 @@ final class CliHeadlessSessionFactory {
         // tracker is already fresh-complete, and the sink install below emits
         // exactly one session/start row.
         engine.execution().setTranscriptSink(recorder);
+        if (engine.conversation().getFileHistoryManager() != null) {
+            engine.conversation().getFileHistoryManager().setSnapshotSink(
+                new SessionFileHistorySink(new SessionStorage(), recorder::sessionManager));
+        }
 
         PermissionGate gate = gateFor(projectPath);
         if (interactions != null) {
@@ -278,7 +285,8 @@ final class CliHeadlessSessionFactory {
             // Same engine interrupt the TUI Ctrl+C and the SDK interrupt
             // control request drive (reason user-cancel); a no-op when the
             // headless turn already ended.
-            () -> engine.submission().interrupt());
+            () -> engine.submission().interrupt(),
+            new QuerySessionRewindService(engine, recorder, null));
         return new Assembled(host, engine, abort, projectPath);
     }
 

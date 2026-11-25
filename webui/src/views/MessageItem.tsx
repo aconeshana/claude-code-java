@@ -23,6 +23,7 @@ import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
 import { markdownLabels } from './labels'
 import { DeliverablesRow } from './DeliverablesRow'
 import { ReasoningRow } from './ReasoningRow'
+import { RewindConfirmModal } from './RewindConfirmModal'
 import { SubagentRow, isSubagentCall } from './SubagentRow'
 import { ToolCallRow } from './ToolCallRow'
 import { useSessions } from '../store/sessions'
@@ -126,22 +127,13 @@ function UserItem({
   const addressedSessionId = sessionId ?? selectedSessionId
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.text)
-  const [sending, setSending] = useState(false)
+  const [rewindModalOpen, setRewindModalOpen] = useState(false)
 
-  const submitEdit = useCallback(async () => {
+  const openRewindConfirm = useCallback(() => {
     const trimmed = draft.trim()
-    if (trimmed === '' || addressedSessionId == null || sending) return
-    setSending(true)
-    try {
-      await submitTurn(addressedSessionId, trimmed)
-      setEditing(false)
-      toast.success('已重新发送编辑后的消息')
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? `发送失败：${err.message}` : '发送失败')
-    } finally {
-      setSending(false)
-    }
-  }, [draft, addressedSessionId, sending])
+    if (trimmed === '' || addressedSessionId == null) return
+    setRewindModalOpen(true)
+  }, [draft, addressedSessionId])
 
   return (
     <div className={css.userRow}>
@@ -174,7 +166,7 @@ function UserItem({
                   setDraft(message.text)
                 } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
-                  void submitEdit()
+                  openRewindConfirm()
                 }
               }}
               style={{
@@ -203,15 +195,29 @@ function UserItem({
               <Button
                 variant="primary"
                 size="sm"
-                disabled={sending || draft.trim() === ''}
-                onClick={() => { void submitEdit() }}
+                disabled={draft.trim() === ''}
+                onClick={openRewindConfirm}
+                data-testid="user-edit-continue"
               >
-                {sending ? '发送中…' : '重新发送'}
+                继续
               </Button>
             </div>
           </div>
         ) : (
           message.text !== '' && <div className={css.bubble}>{message.text}</div>
+        )}
+        {addressedSessionId != null && (
+          <RewindConfirmModal
+            open={rewindModalOpen}
+            sessionId={addressedSessionId}
+            messageId={message.id}
+            editedText={draft.trim()}
+            onClose={() => { setRewindModalOpen(false) }}
+            onCompleted={() => {
+              setRewindModalOpen(false)
+              setEditing(false)
+            }}
+          />
         )}
       </div>
       <MessageIconActions
@@ -361,7 +367,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
                     onClick={() => {
                       if (forking) return
                       setForking(true)
-                      void forkSession(addressedSessionId)
+                      void forkSession(addressedSessionId, undefined, message.id)
                         .then(async (res) => {
                           await useSessions.getState().refresh()
                           if (res.session_id) await useSessions.getState().select(res.session_id)

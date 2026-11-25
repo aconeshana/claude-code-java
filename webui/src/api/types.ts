@@ -446,6 +446,34 @@ export interface ForkSessionResponse {
   readonly session_id: string
 }
 
+export type RewindMode = 'both' | 'conversation_only' | 'code_only'
+
+export interface RewindFileDiff {
+  readonly path: string
+  readonly insertions: number
+  readonly deletions: number
+  readonly will_delete: boolean
+  readonly unified_diff: string
+}
+
+export interface RewindPreviewResponse {
+  readonly can_rewind_conversation: boolean
+  readonly can_rewind_code: boolean
+  readonly code_unavailable_reason: string | null
+  readonly turns_to_drop: number
+  readonly messages_to_drop: number
+  readonly insertions: number
+  readonly deletions: number
+  readonly files: readonly RewindFileDiff[]
+}
+
+export interface RewindExecuteResponse {
+  readonly rewound_conversation: boolean
+  readonly rewound_code: boolean
+  readonly retained_message_count: number
+  readonly restored_files: readonly string[]
+}
+
 export interface ArchiveSessionResponse {
   readonly session_id: string
   readonly archived: boolean

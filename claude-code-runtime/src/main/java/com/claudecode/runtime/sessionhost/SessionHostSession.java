@@ -18,7 +18,8 @@ public record SessionHostSession(
         SessionHostEffortController efforts,
         SessionHostCompactController compacts,
         SessionHostPermissionController permissions,
-        SessionHostCancelController cancels) {
+        SessionHostCancelController cancels,
+        SessionHostRewindController rewinds) {
 
     public SessionHostSession(
             SessionHostInfo info,
@@ -26,7 +27,8 @@ public record SessionHostSession(
             Function<SessionHostSubmission, CompletionStage<Void>> submitter) {
         this(info, events, submitter, SessionHostModelController.unsupported(),
             SessionHostEffortController.unsupported(), SessionHostCompactController.unsupported(),
-            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported(),
+            SessionHostRewindController.unsupported());
     }
 
     public SessionHostSession(
@@ -36,7 +38,7 @@ public record SessionHostSession(
             SessionHostModelController models) {
         this(info, events, submitter, models, SessionHostEffortController.unsupported(),
             SessionHostCompactController.unsupported(), SessionHostPermissionController.unsupported(),
-            SessionHostCancelController.unsupported());
+            SessionHostCancelController.unsupported(), SessionHostRewindController.unsupported());
     }
 
     public SessionHostSession(
@@ -46,7 +48,8 @@ public record SessionHostSession(
             SessionHostModelController models,
             SessionHostEffortController efforts) {
         this(info, events, submitter, models, efforts, SessionHostCompactController.unsupported(),
-            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported(),
+            SessionHostRewindController.unsupported());
     }
 
     public SessionHostSession(
@@ -57,7 +60,21 @@ public record SessionHostSession(
             SessionHostEffortController efforts,
             SessionHostCompactController compacts) {
         this(info, events, submitter, models, efforts, compacts,
-            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported());
+            SessionHostPermissionController.unsupported(), SessionHostCancelController.unsupported(),
+            SessionHostRewindController.unsupported());
+    }
+
+    public SessionHostSession(
+            SessionHostInfo info,
+            SessionEventHub events,
+            Function<SessionHostSubmission, CompletionStage<Void>> submitter,
+            SessionHostModelController models,
+            SessionHostEffortController efforts,
+            SessionHostCompactController compacts,
+            SessionHostPermissionController permissions,
+            SessionHostCancelController cancels) {
+        this(info, events, submitter, models, efforts, compacts, permissions, cancels,
+            SessionHostRewindController.unsupported());
     }
 
     public SessionHostSession {
@@ -69,6 +86,7 @@ public record SessionHostSession(
         Objects.requireNonNull(compacts, "compacts");
         Objects.requireNonNull(permissions, "permissions");
         Objects.requireNonNull(cancels, "cancels");
+        rewinds = rewinds != null ? rewinds : SessionHostRewindController.unsupported();
     }
 
     public CompletionStage<Void> submit(SessionHostSubmission submission) {

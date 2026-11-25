@@ -488,6 +488,8 @@ public final class SessionLinkServer implements AutoCloseable {
                     case "collaboration.get" -> getCollaboration(request);
                     case "collaboration.set" -> setCollaboration(request);
                     case "compact.run" -> runCompact(request);
+                    case "rewind.preview" -> previewRewind(request);
+                    case "rewind.execute" -> executeRewind(request);
                     case "session.ended.ack" -> acknowledgeSessionEnded(request);
                     default -> sendError(request, "unsupported_request", "unsupported request");
                 }
@@ -756,6 +758,63 @@ public final class SessionLinkServer implements AutoCloseable {
             payload(request, Set.of());
             requireAttachment(request).activeView().cancels().cancel();
             sendResponse(request, object());
+        }
+
+        private void previewRewind(SessionLinkFrame request) throws IOException {
+            AttachedSessionView attachment = requireAttachment(request);
+            ObjectNode body = payload(request, Set.of("message_id"));
+            String messageId = requiredText(body, "message_id");
+            var preview = attachment.activeView().rewinds().preview(messageId);
+            sendResponse(request, rewindPreviewPayload(preview));
+        }
+
+        private void executeRewind(SessionLinkFrame request) throws IOException {
+            AttachedSessionView attachment = requireAttachment(request);
+            ObjectNode body = payload(request, Set.of("message_id", "mode"));
+            String messageId = requiredText(body, "message_id");
+            var mode = com.claudecode.runtime.sessionhost.SessionHostRewindController.RewindMode
+                .parse(requiredText(body, "mode"));
+            var result = attachment.activeView().rewinds().execute(messageId, mode);
+            sendResponse(request, rewindResultPayload(result));
+        }
+
+        private static ObjectNode rewindPreviewPayload(
+                com.claudecode.runtime.sessionhost.SessionHostRewindController.Preview preview) {
+            ObjectNode out = object();
+            out.put("can_rewind_conversation", preview.canRewindConversation());
+            out.put("can_rewind_code", preview.canRewindCode());
+            if (preview.codeUnavailableReason() != null) {
+                out.put("code_unavailable_reason", preview.codeUnavailableReason());
+            } else {
+                out.putNull("code_unavailable_reason");
+            }
+            out.put("turns_to_drop", preview.turnsToDrop());
+            out.put("messages_to_drop", preview.messagesToDrop());
+            out.put("insertions", preview.insertions());
+            out.put("deletions", preview.deletions());
+            var files = out.putArray("files");
+            for (var file : preview.files()) {
+                ObjectNode item = files.addObject();
+                item.put("path", file.path());
+                item.put("insertions", file.insertions());
+                item.put("deletions", file.deletions());
+                item.put("will_delete", file.willDelete());
+                item.put("unified_diff", file.unifiedDiff());
+            }
+            return out;
+        }
+
+        private static ObjectNode rewindResultPayload(
+                com.claudecode.runtime.sessionhost.SessionHostRewindController.Result result) {
+            ObjectNode out = object();
+            out.put("rewound_conversation", result.rewoundConversation());
+            out.put("rewound_code", result.rewoundCode());
+            out.put("retained_message_count", result.retainedMessageCount());
+            var restored = out.putArray("restored_files");
+            for (String path : result.restoredFiles()) {
+                restored.add(path);
+            }
+            return out;
         }
 
         private void getModel(SessionLinkFrame request) throws IOException {
