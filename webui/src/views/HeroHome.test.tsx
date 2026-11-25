@@ -1,8 +1,9 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ConversationRoot } from './ConversationRoot'
 import { HeroHome } from './HeroHome'
-import { SessionNodeItem } from './SessionRows'
+import { ProjectRowItem, SessionNodeItem } from './SessionRows'
 import { useSessions } from '../store/sessions'
 import { useCcConnect } from '../store/ccConnect'
 import type { CatalogProject, CatalogSession } from '../api/types'
@@ -184,6 +185,38 @@ describe('HeroHome', () => {
     refreshSpy.mockRestore()
     selectSpy.mockRestore()
   })
+
+  it('inherits ConversationRoot width-axis container and headerHidden when hosted in hero mode', () => {
+    const prevResizeObserver = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class MockResizeObserver {
+      private readonly cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) { this.cb = cb }
+      observe(target: Element) {
+        this.cb([{ contentRect: { width: 1200, height: 800 } as DOMRectReadOnly, target } as ResizeObserverEntry], this)
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    try {
+      act(() => {
+        root.render(
+          <ConversationRoot
+            title="Pokemon Code"
+            hero={<HeroHome />}
+          />,
+        )
+      })
+
+      const rootEl = container.querySelector('[data-phase="blank"]') as HTMLElement | null
+      expect(rootEl).not.toBeNull()
+      expect(rootEl?.style.getPropertyValue('--dsh-conversation-column-width')).toBe('1200px')
+      expect(rootEl?.querySelector('[data-testid="hero-home"]')).not.toBeNull()
+      const header = rootEl?.firstElementChild
+      expect(header?.className).toContain('headerHidden')
+    } finally {
+      globalThis.ResizeObserver = prevResizeObserver
+    }
+  })
 })
 
 describe('SessionNodeItem TUI badge', () => {
@@ -272,5 +305,52 @@ describe('SessionNodeItem TUI badge', () => {
     })
 
     expect(container.textContent).not.toContain('TUI')
+  })
+})
+
+describe('ProjectRowItem actions', () => {
+  it('renders trailing + and ... menu actions (new session, hide, delete) without toggling the group', () => {
+    const onToggle = vi.fn()
+    const onNewSession = vi.fn()
+    const onHideProject = vi.fn()
+    const onDeleteProject = vi.fn()
+
+    act(() => {
+      root.render(
+        <ProjectRowItem
+          label="alpha"
+          expanded
+          containsCurrent={false}
+          onToggle={onToggle}
+          onNewSession={onNewSession}
+          onHideProject={onHideProject}
+          onDeleteProject={onDeleteProject}
+        />,
+      )
+    })
+
+    const newBtn = container.querySelector('button[aria-label="在“alpha”中新建会话"]') as HTMLButtonElement | null
+    expect(newBtn).not.toBeNull()
+    act(() => { newBtn?.click() })
+    expect(onNewSession).toHaveBeenCalledTimes(1)
+    expect(onToggle).not.toHaveBeenCalled()
+
+    const menuBtn = container.querySelector('button[aria-label="项目“alpha”的更多操作"]') as HTMLButtonElement | null
+    expect(menuBtn).not.toBeNull()
+    act(() => { menuBtn?.click() })
+    expect(onToggle).not.toHaveBeenCalled()
+
+    let menuItems = Array.from(document.querySelectorAll('[role="menu"] button, [role="menuitem"]'))
+    const hideItem = menuItems.find((el) => el.textContent?.includes('从列表隐藏')) as HTMLElement | undefined
+    expect(hideItem).toBeDefined()
+    act(() => { hideItem?.click() })
+    expect(onHideProject).toHaveBeenCalledTimes(1)
+
+    act(() => { menuBtn?.click() })
+    menuItems = Array.from(document.querySelectorAll('[role="menu"] button, [role="menuitem"]'))
+    const deleteItem = menuItems.find((el) => el.textContent?.includes('删除项目会话')) as HTMLElement | undefined
+    expect(deleteItem).toBeDefined()
+    act(() => { deleteItem?.click() })
+    expect(onDeleteProject).toHaveBeenCalledTimes(1)
   })
 })

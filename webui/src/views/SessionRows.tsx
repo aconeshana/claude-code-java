@@ -138,20 +138,65 @@ export function showSessionStatus(
 }
 
 /**
- * Project (workspace) header row, ported from upstream ProjectRowItem minus
- * the workspace menu/rename/delete actions and drag wiring.
+ * Project (workspace) header row, ported from upstream ProjectRowItem:
+ * folder glyph swapping to expand chevron on hover, active-tinted folder when
+ * the group holds the current session, and trailing hover actions (`...` menu
+ * for project management/deletion and `+` to create a new session in this
+ * workspace).
  */
-export function ProjectRowItem({ label, expanded, containsCurrent, onToggle }: {
+export function ProjectRowItem({ label, expanded, containsCurrent, onToggle, onNewSession, onHideProject, onDeleteProject, t }: {
   label: string
   expanded: boolean
   /** The group holds the current session (active folder tint). */
   containsCurrent: boolean
   onToggle: () => void
+  /** Creates a fresh headless session directly in this project. */
+  onNewSession?: (() => void) | undefined
+  /** Hides this project from the sidebar list while keeping all session transcripts intact. */
+  onHideProject?: (() => void) | undefined
+  /** Opens the delete-project confirmation dialog for this workspace. */
+  onDeleteProject?: (() => void) | undefined
+  t?: RowTranslate | undefined
 }) {
   const active = expanded && containsCurrent
+  const [menuOpen, setMenuOpen] = useState(false)
+  const hasActions = onNewSession !== undefined || onHideProject !== undefined || onDeleteProject !== undefined
+  const topItems: MenuEntry[] = [
+    ...(onNewSession !== undefined
+      ? [{
+          id: 'new-session',
+          label: t ? t('actions.newSession') : '新建会话',
+          icon: <IconPlusOutline16 />,
+        }]
+      : []),
+    ...(onHideProject !== undefined
+      ? [{
+          id: 'hide-project',
+          label: t ? t('actions.hideProject') : '从列表隐藏',
+          icon: <IconArchiveOutline20 size={16} />,
+        }]
+      : []),
+  ]
+  const menuItems: readonly MenuEntry[] = [
+    ...topItems,
+    ...(topItems.length > 0 && onDeleteProject !== undefined
+      ? [{ type: 'separator' as const, id: 'sep' }]
+      : []),
+    ...(onDeleteProject !== undefined
+      ? [{
+          id: 'delete-project',
+          label: t ? t('actions.deleteProject') : '删除项目会话',
+          icon: <IconTrashOutline16 />,
+          danger: true,
+        }]
+      : []),
+  ]
+  const newSessionLabel = t ? t('actions.newSession.aria', { name: label }) : `在“${label}”中新建会话`
+  const menuAriaLabel = t ? t('actions.projectMenu.aria', { name: label }) : `项目“${label}”的更多操作`
+
   return (
     <div
-      className={css.projectRow}
+      className={clsx(css.projectRow, menuOpen && css.menuOpen)}
       role="treeitem"
       aria-expanded={expanded}
       onClick={onToggle}
@@ -165,6 +210,51 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle }: {
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>
+      {hasActions && (
+        <span
+          className={css.rowActions}
+          onClick={(event) => { event.stopPropagation() }}
+        >
+          {menuItems.length > 0 && (
+            <Menu
+              open={menuOpen}
+              onClose={() => { setMenuOpen(false) }}
+              align="end"
+              items={menuItems}
+              onSelect={(id) => {
+                setMenuOpen(false)
+                if (id === 'new-session') onNewSession?.()
+                else if (id === 'hide-project') onHideProject?.()
+                else if (id === 'delete-project') onDeleteProject?.()
+              }}
+              anchor={(
+                <button
+                  type="button"
+                  className={css.iconButton}
+                  aria-label={menuAriaLabel}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  title={menuAriaLabel}
+                  onClick={() => { setMenuOpen((open) => !open) }}
+                >
+                  <IconEllipsisOutline16 />
+                </button>
+              )}
+            />
+          )}
+          {onNewSession !== undefined && (
+            <button
+              type="button"
+              className={css.iconButton}
+              aria-label={newSessionLabel}
+              title={newSessionLabel}
+              onClick={onNewSession}
+            >
+              <IconPlusOutline16 />
+            </button>
+          )}
+        </span>
+      )}
     </div>
   )
 }

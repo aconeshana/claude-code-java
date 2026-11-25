@@ -120,7 +120,7 @@ export function resolvesToStop(input: {
   return input.busy && input.stopAvailable && !input.hasContent
 }
 
-export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessionId, onClientCommand }: {
+export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessionId, onClientCommand, hero }: {
   disabled: boolean
   busy: boolean
   placeholder: string
@@ -138,6 +138,8 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
    * is offered here first; `true` = handled, the draft clears, no turn.
    */
   onClientCommand?: ((command: string) => boolean) | undefined
+  /** Centered hero landing surface: applies vendored `InputBar.module.css` `.hero` padding. */
+  hero?: boolean | undefined
 }) {
   const [attachments, setAttachments] = useState<readonly DraftAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -687,7 +689,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const fileBreadcrumbSegments = atToken == null ? [] : atBreadcrumbSegments(atToken.query)
 
   return (
-    <div className={css.root}>
+    <div className={hero ? `${css.root} ${css.hero}` : css.root}>
       <div
         className={`ccj-composer-card ${css.card}`}
         onDragOver={(event) => {

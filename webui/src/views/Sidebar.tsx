@@ -18,7 +18,12 @@ import type { SessionActivity } from '../store/sessions'
 import { pendingInteractions, useApprovals } from '../store/approvals'
 import type { PendingInteraction } from '../store/approvals'
 import { useSidebarCollapse } from '../store/sidebarCollapse'
-import { filterSidebarProjects, useWorkspacePrefs } from '../store/workspacePrefs'
+import {
+  filterSidebarProjects,
+  sortFlatSidebarEntries,
+  sortSidebarProjects,
+  useWorkspacePrefs,
+} from '../store/workspacePrefs'
 import { toast } from '../store/toast'
 import { useTranslate } from '../i18n/useTranslate'
 import { WORKSPACE_NS, workspaceDicts } from '../i18n/dictionaries/workspace'
@@ -115,11 +120,13 @@ export function Sidebar() {
   const selectByUser = useSessions((state) => state.selectByUser)
   const clearSelection = useSessions((state) => state.clearSelection)
   const openSession = useSessions((state) => state.openSession)
+  const createSession = useSessions((state) => state.createSession)
   const closeSession = useSessions((state) => state.closeSession)
   const renameSession = useSessions((state) => state.renameSession)
   const forkSession = useSessions((state) => state.forkSession)
   const archiveSession = useSessions((state) => state.archiveSession)
   const deleteSession = useSessions((state) => state.deleteSession)
+  const deleteProject = useSessions((state) => state.deleteProject)
   const refresh = useSessions((state) => state.refresh)
   const growPerPage = useSessions((state) => state.growPerPage)
   const loading = useSessions((state) => state.loading)
@@ -133,6 +140,8 @@ export function Sidebar() {
   const [renameValue, setRenameValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<CatalogSession | null>(null)
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false)
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<CatalogProject | null>(null)
+  const [deleteProjectAcknowledged, setDeleteProjectAcknowledged] = useState(false)
   const t = useTranslate(WORKSPACE_NS, workspaceDicts)
   const uiT = useTranslate(UI_NS, uiDicts)
   const dirT = useTranslate(DIRECTORY_BROWSER_NS, directoryBrowserDicts)
@@ -144,6 +153,9 @@ export function Sidebar() {
   const setViewMode = useWorkspacePrefs((state) => state.setViewMode)
   const togglePin = useWorkspacePrefs((state) => state.togglePin)
   const addWorkspace = useWorkspacePrefs((state) => state.addWorkspace)
+  const removeWorkspace = useWorkspacePrefs((state) => state.removeWorkspace)
+  const hiddenProjectPaths = useWorkspacePrefs((state) => state.hiddenProjectPaths)
+  const hideProject = useWorkspacePrefs((state) => state.hideProject)
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -221,19 +233,22 @@ export function Sidebar() {
     () => stripScheduledSessions(projects),
     [projects],
   )
+  const visibleProjects = useMemo(() => {
+    if (hiddenProjectPaths.length === 0) return regularProjects
+    const hiddenSet = new Set(hiddenProjectPaths)
+    return regularProjects.filter((project) => (
+      !hiddenSet.has(project.project_path)
+      || project.sessions.some((session) => session.tui_attached === true)
+    ))
+  }, [regularProjects, hiddenProjectPaths])
 
   const selectedProject = useMemo(
-    () => regularProjects.find((project) => project.sessions.some((session) => session.id === selectedId)),
-    [regularProjects, selectedId],
+    () => visibleProjects.find((project) => project.sessions.some((session) => session.id === selectedId)),
+    [visibleProjects, selectedId],
   )
   const sorted = useMemo(
-    () => [...regularProjects].sort((a, b) => {
-      const aCurrent = a.project_path === selectedProject?.project_path
-      const bCurrent = b.project_path === selectedProject?.project_path
-      if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
-      return a.project_name.localeCompare(b.project_name)
-    }),
-    [regularProjects, selectedProject],
+    () => sortSidebarProjects(visibleProjects, selectedProject?.project_path ?? null),
+    [visibleProjects, selectedProject],
   )
 
   const pinnedIdSet = useMemo(() => new Set(pinnedSessionIds), [pinnedSessionIds])
@@ -260,11 +275,7 @@ export function Sidebar() {
         entries.push({ session, projectPath: project.project_path, projectName: project.project_name })
       }
     }
-    return entries.sort((a, b) => {
-      const aTime = Date.parse(a.session.modified_at || '') || 0
-      const bTime = Date.parse(b.session.modified_at || '') || 0
-      return bTime - aTime
-    })
+    return sortFlatSidebarEntries(entries)
   }, [filtered.projects])
 
   const viewMenuItems = useMemo<readonly MenuEntry[]>(() => [
@@ -296,12 +307,32 @@ export function Sidebar() {
   // here beyond reading it out of the store.
   const activity = useSessions((state) => state.activity)
 
-  // Groups auto-expand to reveal the selected session.
+  // Groups auto-expand to reveal the selected session, and also expand once
+  // when a live TUI session is newly discovered under a collapsed project.
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
+  const seenTuiProjectsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     if (selectedProject == null) return
     setCollapsedGroups((keys) => keys.filter((key) => key !== selectedProject.project_path))
   }, [selectedProject])
+  useEffect(() => {
+    const activeTuiPaths = new Set<string>()
+    for (const project of regularProjects) {
+      if (project.sessions.some((session) => session.tui_attached === true)) {
+        activeTuiPaths.add(project.project_path)
+      }
+    }
+    const newlyDiscovered: string[] = []
+    for (const path of activeTuiPaths) {
+      if (!seenTuiProjectsRef.current.has(path)) {
+        newlyDiscovered.push(path)
+      }
+    }
+    seenTuiProjectsRef.current = activeTuiPaths
+    if (newlyDiscovered.length > 0) {
+      setCollapsedGroups((keys) => keys.filter((key) => !newlyDiscovered.includes(key)))
+    }
+  }, [regularProjects])
   // Local overflow expansion per project (upstream's expandedSessionGroups):
   // one list of project paths whose rows are NOT folded to the 5-row limit.
   const [expandedGroups, setExpandedGroups] = useState<string[]>([])
@@ -649,6 +680,21 @@ export function Sidebar() {
                                 : [...keys, project.project_path]
                             ))
                           }}
+                          onNewSession={() => {
+                            closeScheduleView()
+                            void createSession(project.project_path)
+                          }}
+                          onHideProject={() => {
+                            hideProject(project.project_path)
+                            if (selectedProject?.project_path === project.project_path) {
+                              clearSelection()
+                            }
+                            toast.info(`已隐藏项目「${project.project_name}」（保留全部会话记录）`)
+                          }}
+                          onDeleteProject={() => {
+                            setDeleteProjectTarget(project)
+                            setDeleteProjectAcknowledged(false)
+                          }}
                           onOpen={(session) => {
                             closeScheduleView()
                             void (session.active || session.headless_open
@@ -789,6 +835,30 @@ export function Sidebar() {
           void deleteSession(target.id)
         }}
       />
+      <RiskConfirmation
+        open={deleteProjectTarget != null}
+        title={t('deleteProject.title')}
+        description={deleteProjectTarget != null
+          ? t('deleteProject.description', {
+              name: deleteProjectTarget.project_name,
+              count: deleteProjectTarget.session_count || deleteProjectTarget.sessions.length,
+            })
+          : ''}
+        acknowledgeLabel={t('delete.acknowledge')}
+        cancelLabel={t('delete.cancel')}
+        closeLabel={t('dialog.close.aria')}
+        confirmLabel={t('delete.confirm')}
+        acknowledged={deleteProjectAcknowledged}
+        onAcknowledgedChange={setDeleteProjectAcknowledged}
+        onCancel={() => { setDeleteProjectTarget(null) }}
+        onConfirm={() => {
+          const target = deleteProjectTarget
+          if (target == null) return
+          setDeleteProjectTarget(null)
+          removeWorkspace(target.project_path)
+          void deleteProject(target)
+        }}
+      />
     </div>
   )
 }
@@ -812,7 +882,7 @@ function toggled(list: readonly string[], key: string): string[] {
 }
 
 /** One project group: the 34px header row plus its 32px session rows. */
-function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedIds, now, pending, activity, containsCurrent, onToggle, onOpen, onClose, onRename, onFork, onArchive, onDelete, onTogglePin, onOverflowToggle, t }: {
+function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedIds, now, pending, activity, containsCurrent, onToggle, onNewSession, onHideProject, onDeleteProject, onOpen, onClose, onRename, onFork, onArchive, onDelete, onTogglePin, onOverflowToggle, t }: {
   project: CatalogProject
   expanded: boolean
   /** Rows unfolded past the 5-row limit (upstream's sessionsExpanded). */
@@ -826,6 +896,9 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedI
   activity: Readonly<Record<string, SessionActivity>>
   containsCurrent: boolean
   onToggle: () => void
+  onNewSession: () => void
+  onHideProject: () => void
+  onDeleteProject: () => void
   onOpen: (session: CatalogSession) => void
   onClose: (session: CatalogSession) => void
   onRename: (session: CatalogSession) => void
@@ -866,6 +939,10 @@ function GroupSection({ project, expanded, overflowExpanded, selectedId, pinnedI
         expanded={expanded}
         containsCurrent={containsCurrent}
         onToggle={onToggle}
+        onNewSession={onNewSession}
+        onHideProject={onHideProject}
+        onDeleteProject={onDeleteProject}
+        t={t}
       />
       {rows.map((session) => (
         <SessionNodeItem

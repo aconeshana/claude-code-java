@@ -306,7 +306,10 @@ export function App() {
       {scheduleViewOpen ? (
         <ScheduledTasksWorkspace />
       ) : selectedId == null ? (
-        <HeroHome onClientCommand={onClientCommand} />
+        <ConversationRoot
+          title="Pokemon Code"
+          hero={<HeroHome onClientCommand={onClientCommand} />}
+        />
       ) : (
       <ConversationRoot
         title={selectedId == null ? 'Pokemon Code' : selectedId.slice(0, 8)}

@@ -1,9 +1,13 @@
 package com.claudecode.cli;
 
+import com.claudecode.core.message.SDKMessage;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionHostSubmission;
+import com.claudecode.runtime.turn.SessionSink;
+import com.claudecode.runtime.turn.TurnOutcome;
+import com.claudecode.runtime.turn.UserInput;
 import com.claudecode.tools.cron.CronScheduler;
 import com.claudecode.tools.cron.CronStore;
 import java.io.IOException;
@@ -13,6 +17,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.commons.lang3.StringUtils;
@@ -197,15 +202,44 @@ final class CliWebCronDaemon implements AutoCloseable {
                 "cron-" + task.id() + "-" + UUID.randomUUID().toString().substring(0, 8),
                 List.of(),
                 List.of());
-            session.submit(submission).toCompletableFuture().join();
-            succeeded = true;
-            if (opts.archiveOnSuccess() && opts.newSessionPerRun() && StringUtils.isNotBlank(openedSessionId)) {
-                headless.close(openedSessionId);
+            AtomicReference<Throwable> turnFailure = new AtomicReference<>();
+            AutoCloseable subscription = session.events().subscribe(new SessionSink() {
+                @Override public void onTurnStart(UserInput input) {}
+                @Override public void onMessage(SDKMessage msg) {}
+                @Override public void onError(Throwable error, boolean userCancel) {
+                    turnFailure.compareAndSet(null, error);
+                }
+                @Override public void onTurnComplete(TurnOutcome outcome) {}
+                @Override public void onIdle() {}
+            });
+            try {
+                session.submit(submission).toCompletableFuture().join();
+            } finally {
+                closeQuietly(subscription);
+            }
+            Throwable failure = turnFailure.get();
+            if (failure != null) {
+                log.log(Level.WARNING, "Scheduled task " + task.id() + " turn failed", failure);
+            } else {
+                succeeded = true;
+                if (opts.archiveOnSuccess() && opts.newSessionPerRun()
+                        && StringUtils.isNotBlank(openedSessionId)) {
+                    headless.close(openedSessionId);
+                }
             }
         } catch (RuntimeException failure) {
             log.log(Level.WARNING, "Scheduled task " + task.id() + " execution failed", failure);
         } finally {
             maybeNotify(task, opts.notificationMode(), succeeded);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable resource) {
+        if (resource == null) return;
+        try {
+            resource.close();
+        } catch (Exception failure) {
+            log.log(Level.FINE, "Failed to close cron event subscription", failure);
         }
     }
 

@@ -9,6 +9,7 @@ interface PersistedWorkspacePrefs {
   viewMode: SidebarViewMode
   pinnedSessionIds: string[]
   addedWorkspaces: string[]
+  hiddenProjectPaths: string[]
   activeHeroWorkspace: string | null
 }
 
@@ -34,6 +35,7 @@ function readPersisted(): PersistedWorkspacePrefs {
     viewMode: 'grouped',
     pinnedSessionIds: [],
     addedWorkspaces: [],
+    hiddenProjectPaths: [],
     activeHeroWorkspace: null,
   }
   if (typeof window === 'undefined') {
@@ -50,10 +52,13 @@ function readPersisted(): PersistedWorkspacePrefs {
     const addedWorkspaces = Array.isArray(parsed.addedWorkspaces)
       ? parsed.addedWorkspaces.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
       : []
+    const hiddenProjectPaths = Array.isArray(parsed.hiddenProjectPaths)
+      ? parsed.hiddenProjectPaths.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+      : []
     const activeHeroWorkspace = typeof parsed.activeHeroWorkspace === 'string' && parsed.activeHeroWorkspace.trim() !== ''
       ? parsed.activeHeroWorkspace
       : null
-    return { viewMode, pinnedSessionIds, addedWorkspaces, activeHeroWorkspace }
+    return { viewMode, pinnedSessionIds, addedWorkspaces, hiddenProjectPaths, activeHeroWorkspace }
   } catch {
     return empty
   }
@@ -73,26 +78,35 @@ interface WorkspacePrefsState extends PersistedWorkspacePrefs {
   togglePin: (sessionId: string) => boolean
   isPinned: (sessionId: string) => boolean
   addWorkspace: (path: string) => void
+  removeWorkspace: (path: string) => void
+  hideProject: (path: string) => void
+  unhideProject: (path: string) => void
   setActiveHeroWorkspace: (path: string | null) => void
   reset: () => void
 }
 
 const initial = readPersisted()
 
+function persistState(state: PersistedWorkspacePrefs): void {
+  writePersisted({
+    viewMode: state.viewMode,
+    pinnedSessionIds: state.pinnedSessionIds,
+    addedWorkspaces: state.addedWorkspaces,
+    hiddenProjectPaths: state.hiddenProjectPaths,
+    activeHeroWorkspace: state.activeHeroWorkspace,
+  })
+}
+
 export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
   viewMode: initial.viewMode,
   pinnedSessionIds: initial.pinnedSessionIds,
   addedWorkspaces: initial.addedWorkspaces,
+  hiddenProjectPaths: initial.hiddenProjectPaths,
   activeHeroWorkspace: initial.activeHeroWorkspace,
 
   setViewMode: (mode) => {
     set((state) => {
-      writePersisted({
-        viewMode: mode,
-        pinnedSessionIds: state.pinnedSessionIds,
-        addedWorkspaces: state.addedWorkspaces,
-        activeHeroWorkspace: state.activeHeroWorkspace,
-      })
+      persistState({ ...state, viewMode: mode })
       return { viewMode: mode }
     })
   },
@@ -106,12 +120,7 @@ export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
       ? current.filter((id) => id !== trimmed)
       : [trimmed, ...current]
     set((state) => {
-      writePersisted({
-        viewMode: state.viewMode,
-        pinnedSessionIds: nextPinned,
-        addedWorkspaces: state.addedWorkspaces,
-        activeHeroWorkspace: state.activeHeroWorkspace,
-      })
+      persistState({ ...state, pinnedSessionIds: nextPinned })
       return { pinnedSessionIds: nextPinned }
     })
     return !exists
@@ -126,42 +135,79 @@ export const useWorkspacePrefs = create<WorkspacePrefsState>((set, get) => ({
       const nextAdded = state.addedWorkspaces.includes(trimmed)
         ? state.addedWorkspaces
         : [trimmed, ...state.addedWorkspaces]
-      writePersisted({
-        viewMode: state.viewMode,
-        pinnedSessionIds: state.pinnedSessionIds,
+      const nextHidden = state.hiddenProjectPaths.filter((p) => p !== trimmed)
+      persistState({
+        ...state,
         addedWorkspaces: nextAdded,
+        hiddenProjectPaths: nextHidden,
         activeHeroWorkspace: trimmed,
       })
-      return { addedWorkspaces: nextAdded, activeHeroWorkspace: trimmed }
+      return { addedWorkspaces: nextAdded, hiddenProjectPaths: nextHidden, activeHeroWorkspace: trimmed }
+    })
+  },
+
+  removeWorkspace: (path) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    set((state) => {
+      const nextAdded = state.addedWorkspaces.filter((p) => p !== trimmed)
+      const nextActive = state.activeHeroWorkspace === trimmed ? null : state.activeHeroWorkspace
+      persistState({
+        ...state,
+        addedWorkspaces: nextAdded,
+        activeHeroWorkspace: nextActive,
+      })
+      return { addedWorkspaces: nextAdded, activeHeroWorkspace: nextActive }
+    })
+  },
+
+  hideProject: (path) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    set((state) => {
+      const nextHidden = state.hiddenProjectPaths.includes(trimmed)
+        ? state.hiddenProjectPaths
+        : [trimmed, ...state.hiddenProjectPaths]
+      const nextAdded = state.addedWorkspaces.filter((p) => p !== trimmed)
+      const nextActive = state.activeHeroWorkspace === trimmed ? null : state.activeHeroWorkspace
+      persistState({
+        ...state,
+        addedWorkspaces: nextAdded,
+        hiddenProjectPaths: nextHidden,
+        activeHeroWorkspace: nextActive,
+      })
+      return { addedWorkspaces: nextAdded, hiddenProjectPaths: nextHidden, activeHeroWorkspace: nextActive }
+    })
+  },
+
+  unhideProject: (path) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    set((state) => {
+      const nextHidden = state.hiddenProjectPaths.filter((p) => p !== trimmed)
+      persistState({ ...state, hiddenProjectPaths: nextHidden })
+      return { hiddenProjectPaths: nextHidden }
     })
   },
 
   setActiveHeroWorkspace: (path) => {
     const next = path != null && path.trim() !== '' ? path.trim() : null
     set((state) => {
-      writePersisted({
-        viewMode: state.viewMode,
-        pinnedSessionIds: state.pinnedSessionIds,
-        addedWorkspaces: state.addedWorkspaces,
-        activeHeroWorkspace: next,
-      })
+      persistState({ ...state, activeHeroWorkspace: next })
       return { activeHeroWorkspace: next }
     })
   },
 
   reset: () => {
-    writePersisted({
+    const empty: PersistedWorkspacePrefs = {
       viewMode: 'grouped',
       pinnedSessionIds: [],
       addedWorkspaces: [],
+      hiddenProjectPaths: [],
       activeHeroWorkspace: null,
-    })
-    set({
-      viewMode: 'grouped',
-      pinnedSessionIds: [],
-      addedWorkspaces: [],
-      activeHeroWorkspace: null,
-    })
+    }
+    writePersisted(empty)
+    set(empty)
   },
 }))
 
@@ -263,4 +309,74 @@ export function filterSidebarProjects(
     searchResults,
     totalMatchedSessions,
   }
+}
+
+function sessionModifiedEpoch(session: CatalogSession): number {
+  return Date.parse(session.modified_at || '') || 0
+}
+
+/**
+ * Sorts sidebar projects and their sessions for display:
+ * - Any project currently hosting a discovered live TUI (`session.tui_attached`)
+ *   is temporarily floated to the top of the sidebar (no localStorage mutation,
+ *   so it returns to its normal position as soon as the TUI exits).
+ * - Within each project, live `tui_attached` sessions float to the top of the
+ *   group so they are never hidden behind the per-project 5-row fold.
+ */
+export function sortSidebarProjects(
+  projects: readonly CatalogProject[],
+  selectedProjectPath?: string | null,
+): CatalogProject[] {
+  const normalized = projects.map((project) => {
+    const hasTui = project.sessions.some((session) => session.tui_attached === true)
+    if (!hasTui) {
+      return { project, hasTui: false, latestTuiEpoch: 0 }
+    }
+    const tuiSessions: CatalogSession[] = []
+    const otherSessions: CatalogSession[] = []
+    let latestTuiEpoch = 0
+    for (const session of project.sessions) {
+      if (session.tui_attached === true) {
+        tuiSessions.push(session)
+        const epoch = sessionModifiedEpoch(session)
+        if (epoch > latestTuiEpoch) latestTuiEpoch = epoch
+      } else {
+        otherSessions.push(session)
+      }
+    }
+    const sessions = [...tuiSessions, ...otherSessions]
+    return {
+      project: { ...project, sessions },
+      hasTui: true,
+      latestTuiEpoch,
+    }
+  })
+
+  normalized.sort((a, b) => {
+    if (a.hasTui !== b.hasTui) return a.hasTui ? -1 : 1
+    const aCurrent = selectedProjectPath != null && a.project.project_path === selectedProjectPath
+    const bCurrent = selectedProjectPath != null && b.project.project_path === selectedProjectPath
+    if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
+    if (a.hasTui && b.hasTui && a.latestTuiEpoch !== b.latestTuiEpoch) {
+      return b.latestTuiEpoch - a.latestTuiEpoch
+    }
+    return a.project.project_name.localeCompare(b.project.project_name)
+  })
+
+  return normalized.map((entry) => entry.project)
+}
+
+/**
+ * Sorts flat-view sidebar entries with live `tui_attached` sessions temporarily
+ * floated to the top, then by most recently modified descending.
+ */
+export function sortFlatSidebarEntries<T extends { readonly session: CatalogSession }>(
+  entries: readonly T[],
+): T[] {
+  return [...entries].sort((a, b) => {
+    const aTui = a.session.tui_attached === true
+    const bTui = b.session.tui_attached === true
+    if (aTui !== bTui) return aTui ? -1 : 1
+    return sessionModifiedEpoch(b.session) - sessionModifiedEpoch(a.session)
+  })
 }

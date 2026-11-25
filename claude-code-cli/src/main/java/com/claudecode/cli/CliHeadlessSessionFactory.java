@@ -207,7 +207,9 @@ final class CliHeadlessSessionFactory {
         HeadlessTurnDriver driver = new HeadlessTurnDriver(engine, events,
             file -> RemoteAttachmentStore.persist(projectPath, sessionId,
                 submissionMessageId(file), file).toString(),
-            () -> gate.currentMode().external());
+            () -> gate.currentMode().external(),
+            recorder,
+            sessionId);
         SessionHostSession host = new SessionHostSession(
             info, events, driver::submit,
             new SessionHostModelController() {

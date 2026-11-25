@@ -16,7 +16,7 @@ export interface BreadcrumbChild {
   readonly onExit: () => void
 }
 
-export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript, composer, view, onView, trajectory, context, tabLabels, headerActions }: {
+export function ConversationRoot({ title, subtitle, breadcrumbChild, hero, transcript, composer, view, onView, trajectory, context, tabLabels, headerActions }: {
   title: string
   subtitle?: string | undefined
   /**
@@ -25,8 +25,15 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
    * returns to the main conversation.
    */
   breadcrumbChild?: BreadcrumbChild | undefined
-  transcript: ReactNode
-  composer: ReactNode
+  /**
+   * Blank landing hero (upstream ui-conversation hosts HeroShell inside
+   * ConversationRoot with `.headerHidden` so the hero inherits the root's
+   * ResizeObserver-published `--dsh-conversation-column-width` and
+   * `--dsh-composer-card-max-width` tokens).
+   */
+  hero?: ReactNode
+  transcript?: ReactNode
+  composer?: ReactNode
   /**
    * The header's actions band, trailing the title cluster — dsh's
    * `conversation.session.header.actions` slot, where upstream seats the
@@ -79,8 +86,8 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
   }, [view, composer])
 
   return (
-    <div ref={rootRef} className={css.root} data-phase={view === 'trajectory' ? 'active' : undefined}>
-      <div className={css.header}>
+    <div ref={rootRef} className={css.root} data-phase={hero != null ? 'blank' : view === 'trajectory' ? 'active' : undefined}>
+      <div className={hero != null ? `${css.header} ${css.headerHidden}` : css.header}>
         <div className={css.titleRow}>
           <div className={css.titleCluster}>
             <nav className={css.crumbs} aria-label="会话路径">
@@ -140,23 +147,25 @@ export function ConversationRoot({ title, subtitle, breadcrumbChild, transcript,
           </div>
         )}
       </div>
-      {view === 'context'
-        ? <div className={css.viewArea}>{context}</div>
-        : view === 'trajectory'
-          ? (
-            <div className={css.scrollBody}>
-              <div data-slot="conversation.session" style={{ display: 'contents' }}>
-                <div className={css.viewArea}>{trajectory}</div>
+      {hero != null
+        ? hero
+        : view === 'context'
+          ? <div className={css.viewArea}>{context}</div>
+          : view === 'trajectory'
+            ? (
+              <div className={css.scrollBody}>
+                <div data-slot="conversation.session" style={{ display: 'contents' }}>
+                  <div className={css.viewArea}>{trajectory}</div>
+                </div>
+                {composer != null && <div ref={composerRef} className={css.composerSeat}>{composer}</div>}
               </div>
-              {composer != null && <div ref={composerRef} className={css.composerSeat}>{composer}</div>}
-            </div>
-          )
-          : (
-            <>
-              {transcript}
-              <div ref={composerRef}>{composer}</div>
-            </>
-          )}
+            )
+            : (
+              <>
+                {transcript}
+                <div ref={composerRef}>{composer}</div>
+              </>
+            )}
     </div>
   )
 }

@@ -71,6 +71,7 @@ export interface SessionsStore {
   forkSession(sessionId: string, title?: string): Promise<void>
   archiveSession(sessionId: string): Promise<void>
   deleteSession(sessionId: string): Promise<void>
+  deleteProject(project: CatalogProject): Promise<void>
 }
 
 export const useSessions = create<SessionsStore>((set, get) => ({
@@ -281,6 +282,41 @@ export const useSessions = create<SessionsStore>((set, get) => ({
         set((state) => ({ projects: removeSession(state.projects, sessionId) }))
       }
       if (get().selectedSessionId === sessionId) {
+        set({ selectedSessionId: null })
+        await get().selectActiveOrFirst()
+      }
+    } catch (failure) {
+      set({ error: messageOf(failure) })
+    }
+  },
+
+  async deleteProject(project: CatalogProject) {
+    try {
+      const deletedIds = new Set<string>()
+      for (const session of project.sessions) {
+        try {
+          const removed = await deleteSessionApi(session.id)
+          if (removed.deleted) deletedIds.add(session.id)
+        } catch {
+          // Continue deleting remaining sessions in this project even if one live session cannot be removed.
+        }
+      }
+      if (deletedIds.size > 0) {
+        set((state) => ({
+          projects: state.projects
+            .map((p) => (p.project_path === project.project_path
+              ? {
+                  ...p,
+                  sessions: p.sessions.filter((s) => !deletedIds.has(s.id)),
+                  session_count: Math.max(0, p.session_count - deletedIds.size),
+                }
+              : p))
+            .filter((p) => p.sessions.length > 0),
+        }))
+      }
+      await get().refresh()
+      const currentSelected = get().selectedSessionId
+      if (currentSelected != null && deletedIds.has(currentSelected)) {
         set({ selectedSessionId: null })
         await get().selectActiveOrFirst()
       }

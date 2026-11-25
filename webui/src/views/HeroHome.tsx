@@ -199,6 +199,7 @@ export function HeroHome({ onClientCommand }: HeroHomeProps) {
             />
           </div>
           <InputBar
+            hero
             disabled={submitting}
             busy={submitting}
             placeholder={uiT('composer.placeholder')}
