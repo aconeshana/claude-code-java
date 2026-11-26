@@ -14,8 +14,6 @@
  *   {@link SessionActivity} — see `sessionStatus` and `showSessionStatus`.
  * - `timeLabel`/`displayTitle` helpers (search-result and hover-card variants
  *   dropped — no search, no HoverCard in this port).
- * This port's own extension: the row's dot is also tinted by ownership (this
- * browser / the terminal / the row the user has open) — see {@link statusState}.
  * Dropped by subtraction (no backend surface): workspace rename/delete menus,
  * drag-and-drop reorder wiring, HoverCard previews, schedule indicator,
  * subagent statuses, the visually-hidden status labels.
@@ -68,9 +66,9 @@ export function timeLabel(updatedAt: number, now: number, t: RowTranslate): stri
  * it, and only the client knows whether the user has since looked.
  *
  * `active` (the TUI's current session) deliberately does NOT map to a status:
- * being the TUI's session says nothing about whether a turn is running. It
- * survives here only as the idle fallback below, which is this port's one
- * deviation from upstream — see {@link showSessionStatus}.
+ * being the TUI's session says nothing about whether a turn is running. TUI
+ * ownership is already surfaced via the dedicated `TUI` badge rather than a
+ * dot tint.
  */
 export function sessionStatus(
   activity: SessionActivity | undefined,
@@ -84,57 +82,20 @@ export function sessionStatus(
 }
 
 /**
- * Which ownership state the row's dot carries, as a local class that overrides
- * the `data-state` colors of the vendored `StateDot`.
- *
- * The dot answers two independent questions and this port splices them: which
- * of `StateDot`'s states to draw says what the session is doing (a running
- * chase, a finished turn, a pending ask), while the class says whose session
- * it is — this browser's, the terminal's, or the row the user currently has
- * open. Upstream has no second axis because its sidebar is the whole product;
- * here the list mixes all three, and a bare grey dot cannot tell a TUI row the
- * user can only watch from one they can drive.
- *
- * The row being read outranks ownership: it is the one thing the user must
- * never lose track of.
- *
- * Activity deliberately plays no part here. Whether a turn is running is
- * already `state`'s job — it picks `ongoing`, the vendored chase matrix — and
- * the tint rides whichever element that state renders, so a running session
- * keeps both its animation and its ownership color instead of one axis
- * overwriting the other.
- */
-export function statusState(
-  session: CatalogSession,
-  selected: boolean,
-): string | undefined {
-  if (selected) return localCss.stateCurrent
-  if (session.remote === true) return localCss.stateTerminal
-  return localCss.stateWeb
-}
-
-/**
  * Whether the row draws its status dot at all.
  *
- * Upstream hides the dot when the primary status is idle (`primaryStatus.state
- * !== 'idle'`), leaving the 16px slot blank — an idle row says nothing rather
- * than showing a grey dot. That rule is kept.
- *
- * Deviation: this port draws the dot on every row, idle included. Upstream can
- * leave idle silent because its sidebar lists only sessions it drives; here
- * the list mixes the terminal's sessions, this browser's, and the open row,
- * and the dot's tint is what carries that (see {@link statusState}). Its
- * absence must not be a third signal for a row the user cannot otherwise name.
- *
- * `session`/`activity`/`pending` stay in the signature so the rule keeps being
- * evaluated where the row's state is, not that any of them can veto the dot.
+ * Matches upstream: hide the dot when the primary status is idle
+ * (`primaryStatus.state !== 'idle'`), leaving the 16px slot blank rather than
+ * showing a grey dot. Active signals use StateDot's native semantics:
+ * amber (`warning`) for pending approval/question, blue chase (`ongoing`) for
+ * running, and green (`done`) for an unread completion.
  */
 export function showSessionStatus(
   _session: CatalogSession,
-  _activity: SessionActivity | undefined,
-  _pending?: PendingInteraction,
+  activity: SessionActivity | undefined,
+  pending?: PendingInteraction,
 ): boolean {
-  return true
+  return sessionStatus(activity, pending).state !== 'idle'
 }
 
 /**
@@ -362,10 +323,7 @@ export function SessionNodeItem({ session, selected, pinned = false, now, activi
     >
       <span className={css.slot}>
         {showStatus && (
-          <StateDot
-            state={status.state}
-            className={statusState(session, selected)}
-          />
+          <StateDot state={status.state} />
         )}
       </span>
       {(session.tui_attached === true || session.remote === true) && (

@@ -33,31 +33,6 @@
   transform: rotate(45deg);
 }
 
-/*
- * Session ownership tints. See vendor/chat-styles/WorkspaceRows.module.css
- * for the base StateDot rules; tripled selector outranks StateDot's
- * `.dot[data-state]` specificity.
- */
-.stateWeb:is(.stateWeb, .stateWeb)[data-state] {
-  color: var(--dsw-alias-state-business-primary);
-}
-
-.stateTerminal:is(.stateTerminal, .stateTerminal)[data-state] {
-  color: var(--dsw-alias-label-secondary);
-}
-
-.stateCurrent:is(.stateCurrent, .stateCurrent)[data-state] {
-  color: var(--dsw-static-green-500);
-}
-
-.stateTerminal {
-  --dsh-state-ongoing: var(--dsw-alias-label-secondary);
-}
-
-.stateCurrent {
-  --dsh-state-ongoing: var(--dsw-static-green-500);
-}
-
 /* Pinned sessions group & monochrome thumbtack toggle (aligned to WorkspaceRows grammar). */
 .pinnedSection {
   margin-bottom: 6px;

@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { sessionStatus, showSessionStatus, statusState } from './SessionRows'
-import localCss from './Sidebar.module.css'
+import { sessionStatus, showSessionStatus } from './SessionRows'
 import type { CatalogSession } from '../api/types'
 import type { SessionActivity } from '../store/sessions'
 
 /**
- * The row's status dot, reduced from upstream's `sessionStatuses`. The
- * precedence is the whole point: a session waiting on the user outranks a
- * running turn, which outranks an unread completion, which outranks idle.
- * Upstream additionally hides the dot entirely for idle — the one deviation
- * being this port's grey anchor on the TUI's own session.
+ * The row's status dot, matching upstream's `sessionStatuses`. The precedence
+ * is: a session waiting on the user outranks a running turn, which outranks an
+ * unread completion, which outranks idle. Idle hides the dot entirely so there
+ * is no grey idle dot and no Web/TUI ownership tinting (TUI rows already carry
+ * a dedicated `TUI` badge).
  */
 
 function session(overrides: Partial<CatalogSession> = {}): CatalogSession {
@@ -69,47 +68,17 @@ describe('sessionStatus', () => {
 })
 
 describe('showSessionStatus', () => {
-  it('draws the dot on every row, idle included', () => {
-    // The tint, not the dot's presence, names a row's owner — so an idle row
-    // must still carry one or its ownership would be invisible.
-    expect(showSessionStatus(session(), IDLE)).toBe(true)
-    expect(showSessionStatus(session(), undefined)).toBe(true)
+  it('hides the dot when idle, regardless of Web or TUI ownership', () => {
+    expect(showSessionStatus(session(), IDLE)).toBe(false)
+    expect(showSessionStatus(session(), undefined)).toBe(false)
+    expect(showSessionStatus(session({ remote: true }), undefined)).toBe(false)
+    expect(showSessionStatus(session({ headless_open: true }), undefined)).toBe(false)
+  })
+
+  it('shows the dot for running, unread completion, and pending interaction', () => {
     expect(showSessionStatus(session(), RUNNING)).toBe(true)
     expect(showSessionStatus(session(), COMPLETED)).toBe(true)
     expect(showSessionStatus(session(), undefined, 'approval')).toBe(true)
-  })
-
-  it('does not treat an open headless row as running', () => {
-    // `headless_open` says the row is routable, never that a turn runs — the
-    // confusion that made every open session permanently green.
-    expect(sessionStatus(undefined).state).toBe('idle')
-    expect(statusState(session({ headless_open: true }), false))
-      .toBe(localCss.stateWeb)
-  })
-})
-
-describe('statusState', () => {
-  it('tints a row this browser drives as the web session', () => {
-    // Nothing on the wire says "opened from here" — a row the gateway serves
-    // that the terminal is not on is this browser's own session.
-    expect(statusState(session(), false)).toBe(localCss.stateWeb)
-  })
-
-  it('tints a session the terminal hosts as the TUI session', () => {
-    expect(statusState(session({ remote: true }), false)).toBe(localCss.stateTerminal)
-  })
-
-  it('puts the row being read above ownership', () => {
-    // The row the user has open must stay findable even when the terminal
-    // hosts it.
-    expect(statusState(session({ remote: true }), true)).toBe(localCss.stateCurrent)
-  })
-
-  it('leaves activity out of the tint, so running keeps its ownership color', () => {
-    // A running turn is the state's business (`ongoing` picks the chase
-    // matrix); the class only names the owner. Folding `running` in here would
-    // repaint a running web row as something that is not web.
-    expect(statusState(session(), false)).toBe(localCss.stateWeb)
-    expect(statusState(session({ remote: true }), false)).toBe(localCss.stateTerminal)
+    expect(showSessionStatus(session(), undefined, 'question')).toBe(true)
   })
 })

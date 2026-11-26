@@ -580,17 +580,12 @@ export function Sidebar() {
                       >
                         <div className={rowCss.searchResultHeading}>
                           <span className={rowCss.slot} aria-hidden="true">
-                            <StateDot
-                              state={sessionStatus(activity[session.id], pending.get(session.id)).state}
-                              className={clsx(
-                                rowCss.dot,
-                                session.id === selectedId
-                                  ? localCss.stateCurrent
-                                  : session.headless_open
-                                    ? localCss.stateWeb
-                                    : localCss.stateTerminal,
-                              )}
-                            />
+                            {(() => {
+                              const status = sessionStatus(activity[session.id], pending.get(session.id))
+                              return status.state !== 'idle'
+                                ? <StateDot state={status.state} className={rowCss.dot} />
+                                : null
+                            })()}
                           </span>
                           <span className={rowCss.searchResultTitle}>{displayTitle(session)}</span>
                         </div>
