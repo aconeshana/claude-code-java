@@ -64,10 +64,11 @@ export function ChatView(
   const [following, setFollowing] = useState(true)
   const setOpen = useTurnProcess((state) => state.setOpen)
   const openTurns = useTurnProcess((state) => openTurnsOf(state, sessionId))
-  // The derivation reads the transcript mode too (it disables folding
-  // outright outside compact), so the view must re-derive when it flips —
-  // and the memo must depend on it, or a settings toggle would not repaint.
+  // The derivation reads the transcript mode and folded-replies preference too,
+  // so the view must re-derive when either flips — and the memo must depend on
+  // them, or a settings toggle would not repaint.
   const transcriptMode = useTranscriptView((state) => state.mode)
+  const foldedReplies = useTranscriptView((state) => state.foldedReplies)
   const chatT = useTranslate(STATS_NS, statsDicts)
   const stepProcessT = useTranslate(STEP_PROCESS_NS, stepProcessDicts)
   const verbs = useSpinnerVerbs((state) => state.vocabulary)
@@ -80,8 +81,8 @@ export function ChatView(
   // internally, so the re-run this key admits re-specs the active turn only.
   const foldView = useMemo(
     () => deriveTurnProcessView(conversation, openTurns),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- transcriptMode is read inside the derivation
-    [conversation?.messages, conversation?.turnRunning, openTurns, transcriptMode],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- transcriptMode and foldedReplies are read inside the derivation
+    [conversation?.messages, conversation?.turnRunning, openTurns, transcriptMode, foldedReplies],
   )
 
   useEffect(() => {
@@ -175,7 +176,8 @@ export function ChatView(
             const firstId = entry.items[0]?.message.id
             const outerTurn = firstId !== undefined ? foldView.memberTurns[firstId] : undefined
             const allMembers = outerTurn !== undefined && entry.items.every(
-              (item) => foldView.roles[item.message.id] === 'member'
+              (item) => (foldView.roles[item.message.id] === 'member'
+                || foldView.roles[item.message.id] === 'reply')
                 && foldView.memberTurns[item.message.id] === outerTurn,
             )
             const outerHidden = allMembers && !foldView.expandedTurns.has(outerTurn)
@@ -199,10 +201,10 @@ export function ChatView(
                   outerTurn={allMembers ? outerTurn : undefined}
                 >
                   {entry.items.map((item) => (
-                    <div key={`${item.message.id}:process`} data-chat-flow-key={item.message.id}>
+                    <div key={`${item.message.id}:${item.part}`} data-chat-flow-key={item.message.id}>
                       <MessageItem
                         message={item.message}
-                        part="process"
+                        part={item.part}
                         hideReasoning={false}
                         showTail={false}
                         sessionId={sessionId}

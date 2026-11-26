@@ -24,7 +24,7 @@ import { create } from 'zustand'
 import type { ConversationState, MessageState } from './conversations'
 import { useTranscriptView } from './transcriptView'
 import {
-  derivePresentation, processSpec, tailAnchor,
+  derivePresentation, hasAssistantReplyContent, processSpec, tailAnchor,
   type AssistantBlock, type AssistantStep, type TurnInput, type TurnMemberRow,
 } from '../../vendor/dsh-turn-process/turnProcessRules'
 
@@ -68,10 +68,12 @@ export const useTurnProcess = create<TurnProcessStore>(set => ({
 /**
  * One message row's fold classification inside its turn.
  * - `member`: hidden behind the control while the group is collapsed;
- * - `answer`: the visible answer row;
+ * - `reply`: intermediate reply kept visible when `foldedReplies === 'all'`
+ *   (its process slices — reasoning/tools — still fold with the turn);
+ * - `answer`: the visible final answer row;
  * - `undefined`: independent (user rows, open turns, no-answer turns).
  */
-export type RowRole = 'member' | 'answer'
+export type RowRole = 'member' | 'reply' | 'answer'
 
 /** The control's summary segments (upstream's three counts). */
 export interface TurnProcessCounts {
@@ -270,12 +272,12 @@ let lastCache: TurnCache = new Map()
  */
 function sliceKey(
   messages: readonly MessageState[], start: number, end: number,
-  turnRunning: boolean, isLastSlice: boolean,
+  turnRunning: boolean, isLastSlice: boolean, keepReplies: boolean,
 ): string {
   const ids: string[] = [String(start), String(end)]
   for (let seq = start; seq < end; seq++) ids.push(identityToken(messages[seq]))
-  // The closed/open decision reads both flags, so they belong in the key.
-  ids.push(turnRunning ? 'running' : 'idle', isLastSlice ? 'last' : 'mid')
+  // The closed/open and folded-reply decisions read these flags, so they belong in the key.
+  ids.push(turnRunning ? 'running' : 'idle', isLastSlice ? 'last' : 'mid', keepReplies ? 'all' : 'final')
   return ids.join('\u0000')
 }
 
@@ -293,7 +295,7 @@ function identityToken(message: MessageState): string {
 }
 
 /** Run the vendored rules over one slice. */
-function deriveContribution(slice: TurnSlice): TurnContribution {
+function deriveContribution(slice: TurnSlice, keepReplies: boolean): TurnContribution {
   // The tail anchor is the turn's own fact (upstream's `turn-tail` node), so
   // it resolves whether or not this turn folds. `idsBySeq` maps the anchor
   // step's row index to its message id.
@@ -301,25 +303,32 @@ function deriveContribution(slice: TurnSlice): TurnContribution {
   const tailAnchorId = anchorStep === null
     ? null
     : slice.idsBySeq.get(anchorStep.seq) ?? null
-  return { tailAnchorId, process: deriveProcess(slice) }
+  return { tailAnchorId, process: deriveProcess(slice, keepReplies) }
 }
 
 /** The fold's share of a slice, or null when the turn contributes no fold. */
-function deriveProcess(slice: TurnSlice): TurnProcessContribution | null {
+function deriveProcess(slice: TurnSlice, keepReplies: boolean): TurnProcessContribution | null {
   const spec = processSpec(slice.input)
   if (spec === null) return null
   const presentation = derivePresentation(slice.input, spec)
-  // Upstream's seat gate: the control exists from the first process
-  // evidence but only shows once a closed turn has a final answer with
-  // process rows outside the answer step.
+  // Upstream's seat gate (`ChatNodeSeat.tsx`): when `foldedReplies === 'all'`,
+  // intermediate replies stay visible, so a turn with only replies and no
+  // tools/reasoning/context has nothing to fold.
+  const hasFoldableProcess = keepReplies
+    ? (presentation.hasNonReplyProcess || spec.inlineReasoning)
+    : presentation.hasExternalProcess
   if (!presentation.turnClosed
     || spec.answerAnchorSeq === null
-    || !presentation.hasExternalProcess) return null
+    || !hasFoldableProcess) return null
+
+  const stepsBySeq = new Map<number, AssistantStep>()
+  for (const step of slice.input.steps) stepsBySeq.set(step.seq, step)
 
   const roles: (readonly [string, RowRole])[] = []
   const memberIds: string[] = []
   let compactAnswerId: string | null = null
   let inlineReasoningAnswerId: string | null = null
+  let hasKeptReply = false
 
   for (const [seq, id] of slice.idsBySeq) {
     if (seq === spec.answerAnchorSeq) {
@@ -329,9 +338,17 @@ function deriveProcess(slice: TurnSlice): TurnProcessContribution | null {
       continue
     }
     if (seq < spec.processStartSeq || seq > spec.answerAnchorSeq) continue
-    roles.push([id, 'member'])
-    memberIds.push(id)
+    const step = stepsBySeq.get(seq)
+    if (keepReplies && step !== undefined && hasAssistantReplyContent(step.blocks)) {
+      roles.push([id, 'reply'])
+      memberIds.push(id)
+      hasKeptReply = true
+    } else {
+      roles.push([id, 'member'])
+      memberIds.push(id)
+    }
   }
+  if (hasKeptReply) compactAnswerId = null
 
   return {
     anchorId: slice.userRow.kind === 'user' ? slice.userRow.id : `head-${slice.turn}`,
@@ -381,7 +398,9 @@ export function deriveTurnProcessView(
   // Rebuilt rather than mutated in place, so dropped turns drop their entries.
   const nextCache: TurnCache = new Map()
   // Folding is a compact-mode affordance; upstream's turn-tail node is not.
-  const folding = useTranscriptView.getState().mode === 'compact'
+  const transcriptState = useTranscriptView.getState()
+  const folding = transcriptState.mode === 'compact'
+  const keepReplies = transcriptState.foldedReplies === 'all'
 
   for (let boundary = 0; boundary < boundaries.length; boundary++) {
     const start = boundaries[boundary]
@@ -396,11 +415,11 @@ export function deriveTurnProcessView(
     if (seenTurns.has(slice.turn)) continue
     seenTurns.add(slice.turn)
 
-    const key = sliceKey(messages, start, end, conversation.turnRunning, isLastSlice)
+    const key = sliceKey(messages, start, end, conversation.turnRunning, isLastSlice, keepReplies)
     const cached = lastCache.get(slice.turn)
     const contribution = cached !== undefined && cached.key === key
       ? cached.value
-      : deriveContribution(slice)
+      : deriveContribution(slice, keepReplies)
     nextCache.set(slice.turn, { key, value: contribution })
     if (contribution.tailAnchorId !== null) {
       tailAnchors.add(contribution.tailAnchorId)

@@ -304,6 +304,12 @@ export interface TurnProcessPresentation {
   readonly turnClosed: boolean
   /** Whether any process row outside the answer step exists to fold. */
   readonly hasExternalProcess: boolean
+  /**
+   * Whether any non-reply process evidence (tool call, reasoning, or context
+   * injection) exists outside the answer step. Used when `foldedReplies === 'all'`
+   * so reply-only turns never show an empty fold control.
+   */
+  readonly hasNonReplyProcess: boolean
   /** Whether the collapsed control sits directly against the answer (8px gap). */
   readonly compactAnswer: boolean
 }
@@ -326,6 +332,7 @@ export function derivePresentation(
   }
 
   let hasExternalProcess = false
+  let hasNonReplyProcess = false
   let compactAnswer = true
   for (const row of turn.rows) {
     if (row.kind === 'turn-process') continue
@@ -338,17 +345,26 @@ export function derivePresentation(
       || row.seq < spec.processStartSeq
       || (spec.answerAnchorSeq !== null && row.seq >= spec.answerAnchorSeq)) continue
     hasExternalProcess = true
+    hasNonReplyProcess = true
   }
   for (const step of turn.steps) {
     if (step.seq < spec.processStartSeq
       || (spec.answerAnchorSeq !== null && step.seq >= spec.answerAnchorSeq)) continue
-    if (spec.answerStep === null || step.step !== spec.answerStep) hasExternalProcess = true
+    if (spec.answerStep === null || step.step !== spec.answerStep) {
+      hasExternalProcess = true
+      if (!hasAssistantReplyContent(step.blocks)
+        || step.blocks.some((block) => block.kind === 'tool-call'
+          || (block.kind === 'reasoning' && block.text.trim() !== ''))) {
+        hasNonReplyProcess = true
+      }
+    }
   }
   return {
     turn: turn.turn,
     spec,
     turnClosed: turn.closed,
     hasExternalProcess,
+    hasNonReplyProcess,
     compactAnswer,
   }
 }

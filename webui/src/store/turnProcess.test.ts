@@ -51,6 +51,7 @@ beforeEach(() => {
   useConversations.setState({ conversations: {} })
   useTurnProcess.setState({ openTurns: {} })
   useTranscriptView.getState().setMode('compact')
+  useTranscriptView.getState().setFoldedReplies('all')
 })
 
 describe('turn-process fold over the live frame path', () => {
@@ -221,6 +222,44 @@ describe('turn-process fold over the live frame path', () => {
     expect(view().counts[rows[0].id]).toEqual({
       toolCallCount: 0, messageCount: 0, subagentCount: 0,
     })
+  })
+
+  it('keeps intermediate replies visible when foldedReplies is all (default), and folds them in final mode', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.thinking', { content: '先查一下', message_id: 'msg-1' })
+    apply('output.text', { content: '阶段汇报', message_id: 'msg-1' })
+    toolStep('msg-1', 'Bash', 'tu-1')
+    apply('output.text', { content: '最终答案', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 200, user_cancel: false, turn: 1 })
+
+    const rows = conversation().messages
+    const allView = view()
+    expect(allView.controlTurns[rows[0].id]).toBe(1)
+    expect(allView.roles[rows[1].id]).toBe('reply')
+    expect(allView.memberTurns[rows[1].id]).toBe(1)
+    expect(allView.roles[rows[2].id]).toBe('answer')
+    expect(allView.compactAnswers.has(rows[2].id)).toBe(false)
+
+    useTranscriptView.getState().setFoldedReplies('final')
+    const finalView = view()
+    expect(finalView.roles[rows[1].id]).toBe('member')
+    expect(finalView.roles[rows[2].id]).toBe('answer')
+    expect(finalView.compactAnswers.has(rows[2].id)).toBe(true)
+  })
+
+  it('does not show a fold control for reply-only multi-step turns when foldedReplies is all', () => {
+    apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
+    apply('output.text', { content: '第一段回复', message_id: 'msg-1' })
+    apply('output.text', { content: '第二段回复', message_id: 'msg-2' })
+    apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
+
+    expect(view().controlTurns).toEqual({})
+
+    useTranscriptView.getState().setFoldedReplies('final')
+    const rows = conversation().messages
+    expect(view().controlTurns[rows[0].id]).toBe(1)
+    expect(view().roles[rows[1].id]).toBe('member')
+    expect(view().roles[rows[2].id]).toBe('answer')
   })
 })
 

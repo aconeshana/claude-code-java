@@ -57,8 +57,8 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
   inSubagentTranscript?: boolean
   /** Preceding user prompt text for the assistant turn's Retry action. */
   retryPrompt?: string | undefined
-  /** When split across a step-process group: `process` renders thinking/tools, `response` renders prose/tail. */
-  part?: 'all' | 'process' | 'response'
+  /** When split across a step-process group: `process`/`reasoning`/`tools` render process slices, `response` renders prose/tail. */
+  part?: 'all' | 'process' | 'reasoning' | 'tools' | 'response'
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
@@ -261,10 +261,11 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
   sessionId: string | null
   inSubagentTranscript: boolean
   retryPrompt?: string | undefined
-  part?: 'all' | 'process' | 'response'
+  part?: 'all' | 'process' | 'reasoning' | 'tools' | 'response'
 }) {
-  const showProcess = part !== 'response'
-  const showResponse = part !== 'process'
+  const showReasoning = part === 'all' || part === 'process' || part === 'reasoning'
+  const showTools = part === 'all' || part === 'process' || part === 'tools'
+  const showResponse = part === 'all' || part === 'response'
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   const [feedback, setFeedback] = useState<FeedbackVote>(() => readFeedback(message.id))
   const [forking, setForking] = useState(false)
@@ -283,7 +284,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      {showProcess && !hideReasoning && message.thinkingBlocks.map((text: string, index: number) => (
+      {showReasoning && !hideReasoning && message.thinkingBlocks.map((text: string, index: number) => (
         <ReasoningRow
           key={index}
           text={text}
@@ -299,7 +300,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           labels={labels}
         />
       ))}
-      {showProcess && message.toolCalls.map((call) => (
+      {showTools && message.toolCalls.map((call) => (
         !inSubagentTranscript && isSubagentCall(call)
           ? (
             <SubagentRow
@@ -314,7 +315,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
       {/* The per-message chip row below this row's own tool calls (upstream's
           per-step produced list). Kept as-is; the turn-wide row above the tail
           is the vendored ui-deliverables one. */}
-      {showProcess && <DeliverablesRow toolCalls={message.toolCalls} />}
+      {showTools && <DeliverablesRow toolCalls={message.toolCalls} />}
       {/* The delivered-files row — vendored from upstream ui-deliverables and
           mounted on the turn's tail anchor, the one row that carries the tail.
           Upstream seats it at `conversation.chat.turnTail`; this project has no

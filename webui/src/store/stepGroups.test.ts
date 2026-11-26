@@ -242,4 +242,54 @@ describe('buildChatFlowEntries', () => {
     expect(entries[2].message.textBlocks[0]).toContain('先确认一件事')
     expect(entries[2].message.toolCalls).toHaveLength(0)
   })
+
+  it('splits thinking + text + toolCalls in one step into [G1: reasoning] -> response -> [G2: tools]', () => {
+    const messages: MessageState[] = [
+      {
+        kind: 'assistant',
+        id: 'a0',
+        textBlocks: [],
+        thinkingBlocks: ['第一步思考'],
+        toolCalls: [bashCall('tu-0', 'pwd', '查看目录')],
+        open: false,
+        turn: 1,
+      },
+      {
+        kind: 'assistant',
+        id: 'a1',
+        textBlocks: ['先查到了目录，接下来继续检查配置。'],
+        thinkingBlocks: ['第二步思考'],
+        toolCalls: [bashCall('tu-1', 'ls -la', '列出文件')],
+        open: false,
+        turn: 1,
+      },
+      {
+        kind: 'assistant',
+        id: 'a2',
+        textBlocks: ['全部完成。'],
+        thinkingBlocks: [],
+        toolCalls: [],
+        open: false,
+        turn: 1,
+      },
+    ]
+
+    const entries = buildChatFlowEntries(messages, false)
+    // Order: G1 (a0:process + a1:reasoning) -> a1:response -> G2 (a1:tools) -> a2 (all)
+    expect(entries.map((e) => e.kind)).toEqual(['step-group', 'message', 'step-group', 'message'])
+    const g1 = entries[0]!
+    const mid = entries[1]!
+    const g2 = entries[2]!
+    if (g1.kind !== 'step-group' || g2.kind !== 'step-group' || mid.kind !== 'message') {
+      throw new Error('unexpected entry kinds')
+    }
+    expect(g1.items.map((item) => `${item.message.id}:${item.part}`)).toEqual(['a0:process', 'a1:reasoning'])
+    // G1 must count only a0's Bash call, NOT a1's trailing tool call.
+    expect(g1.summary.totalCalls).toBe(1)
+    expect(mid.key).toBe('a1:response')
+    expect(mid.part).toBe('response')
+    expect(g2.items.map((item) => `${item.message.id}:${item.part}`)).toEqual(['a1:tools'])
+    expect(g2.summary.totalCalls).toBe(1)
+    expect(g1.key).not.toBe(g2.key)
+  })
 })

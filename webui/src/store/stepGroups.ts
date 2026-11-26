@@ -18,7 +18,7 @@ export type AssistantMessageRow = Extract<MessageState, { kind: 'assistant' }>
 
 export interface StepGroupItem {
   readonly message: AssistantMessageRow
-  readonly part: 'process'
+  readonly part: 'process' | 'reasoning' | 'tools'
   readonly index: number
 }
 
@@ -65,21 +65,22 @@ export function buildChatFlowEntries(
     if (pending.length === 0) return
     const first = pending[0]!
     const hasRunningStep = pending.some(
-      (item) => item.message.open || item.message.toolCalls.some((call) => call.status === 'pending'),
+      (item) => (item.part !== 'tools' && item.message.open)
+        || (item.part !== 'reasoning' && item.message.toolCalls.some((call) => call.status === 'pending')),
     )
     const closed = followedByBoundary || (!turnRunning && !hasRunningStep)
     const summary = summarizeProcessSteps(
       pending.map((item) => ({
-        thinkingBlocks: item.message.thinkingBlocks,
-        toolCalls: item.message.toolCalls,
-        open: item.message.open,
+        thinkingBlocks: item.part === 'tools' ? [] : item.message.thinkingBlocks,
+        toolCalls: item.part === 'reasoning' ? [] : item.message.toolCalls,
+        open: item.part !== 'tools' && item.message.open,
         synthetic: item.message.synthetic,
       })),
     )
     const turn = pending.find((item) => item.message.turn !== undefined)?.message.turn
     entries.push({
       kind: 'step-group',
-      key: `step-group:${first.message.id}`,
+      key: `step-group:${first.message.id}:${first.part}`,
       turn,
       closed,
       summary,
@@ -119,17 +120,15 @@ export function buildChatFlowEntries(
     }
 
     // Both process and reply exist on the same assistant row.
+    // Upstream `process-groups.ts`: reasoning joins the current process group,
+    // reply flushes and stands outside, and trailing tool calls start the next group.
+    if (hasThinking) {
+      pending.push({ message, part: 'reasoning', index })
+    }
+    flush(true)
+    entries.push({ kind: 'message', key: `${message.id}:response`, message, part: 'response', index })
     if (hasTools) {
-      // Text precedes tool calls (e.g. intro sentence followed by Bash/Read calls):
-      // keep the reply visible outside and start/continue the process group with the tools.
-      flush(true)
-      entries.push({ kind: 'message', key: `${message.id}:response`, message, part: 'response', index })
-      pending.push({ message, part: 'process', index })
-    } else {
-      // Thinking precedes reply (no tool calls): thinking joins the step group, then reply stands outside.
-      pending.push({ message, part: 'process', index })
-      flush(true)
-      entries.push({ kind: 'message', key: `${message.id}:response`, message, part: 'response', index })
+      pending.push({ message, part: 'tools', index })
     }
   }
 

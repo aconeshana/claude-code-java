@@ -138,6 +138,8 @@ export function SettingsPanel({ open, onClose }: {
   const replacePermissionRules = useSettings((state) => state.replacePermissionRules)
   const transcriptViewMode = useTranscriptView((state) => state.mode)
   const setTranscriptViewMode = useTranscriptView((state) => state.setMode)
+  const foldedReplies = useTranscriptView((state) => state.foldedReplies)
+  const setFoldedReplies = useTranscriptView((state) => state.setFoldedReplies)
   const enterBehavior = useEnterBehavior((state) => state.behavior)
   const setEnterBehavior = useEnterBehavior((state) => state.setBehavior)
   const sessionProjects = useSessions((state) => state.projects)
@@ -201,6 +203,10 @@ export function SettingsPanel({ open, onClose }: {
   const transcriptOptions = [
     { id: 'normal', label: t('transcript.normal') },
     { id: 'compact', label: t('transcript.compact') },
+  ]
+  const foldedRepliesOptions = [
+    { id: 'all', label: t('foldedReplies.all') },
+    { id: 'final', label: t('foldedReplies.final') },
   ]
   const enterBehaviorOptions = [
     { id: 'queue', label: t('enterBehavior.queue') },
@@ -300,6 +306,17 @@ export function SettingsPanel({ open, onClose }: {
                     ariaLabel="transcript view mode"
                   />
                 </SettingsRow>
+                {transcriptViewMode === 'compact' && (
+                  <SettingsRow title={t('foldedReplies.title')} description={t('foldedReplies.desc')}>
+                    <MenuSelect
+                      value={foldedReplies}
+                      label={foldedReplies === 'all' ? t('foldedReplies.all') : t('foldedReplies.final')}
+                      options={foldedRepliesOptions}
+                      onChange={(id) => { setFoldedReplies(id as 'all' | 'final') }}
+                      ariaLabel="folded replies mode"
+                    />
+                  </SettingsRow>
+                )}
                 <SettingsRow title={t('enterBehavior.title')} description={t('enterBehavior.desc')}>
                   <MenuSelect
                     value={enterBehavior}
