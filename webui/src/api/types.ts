@@ -274,8 +274,9 @@ export type MirrorFrame =
   | { readonly event: 'tool.started'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly name: string
-      readonly tool_use_id: string
-      readonly input?: Readonly<Record<string, unknown>>
+      readonly tool_use_id?: string
+      readonly input?: Readonly<Record<string, unknown>> | string
+      readonly input_raw?: Readonly<Record<string, unknown>>
       readonly message_id?: string
     } }
   | { readonly event: 'tool.progress'; readonly id: number; readonly data: {
@@ -289,8 +290,9 @@ export type MirrorFrame =
   | { readonly event: 'tool.completed'; readonly id: number; readonly data: {
       readonly session_id: string
       readonly status: 'completed' | 'failed'
-      readonly tool_use_id: string
-      readonly result: ToolResult
+      readonly tool_use_id?: string
+      readonly name?: string
+      readonly result: ToolResult | string
     } }
   | { readonly event: 'permission.asked'; readonly id: number; readonly data: PermissionAsk }
   | { readonly event: 'permission.resolved'; readonly id: number; readonly data: {

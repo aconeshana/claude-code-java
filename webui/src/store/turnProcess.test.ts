@@ -181,10 +181,10 @@ describe('turn-process fold over the live frame path', () => {
     expect(view().controlTurns[secondUser!.id]).toBeUndefined()
   })
 
-  it('degrades to one row when the gateway reports no step id', () => {
-    // An older gateway publishes no message_id; the reduction keeps its
-    // single-row behavior and the turn stays unfolded rather than guessing a
-    // boundary from block order.
+  it('splits after a completed tool even when the gateway reports no step id', () => {
+    // A remote/legacy gateway without message_id must still open a new step
+    // after tool.completed so the final conclusion renders BELOW prior tools
+    // instead of merging into the tool row above them.
     apply('turn.started', { display_text: 'hi', permission_mode: 'default', origin: 'web' })
     apply('tool.started', { name: 'Bash', tool_use_id: 'tu-1', input: {} })
     apply('tool.completed', {
@@ -193,8 +193,12 @@ describe('turn-process fold over the live frame path', () => {
     apply('output.text', { content: '答案' })
     apply('turn.completed', { done: true, elapsed_ms: 100, user_cancel: false, turn: 1 })
 
-    expect(conversation().messages.filter((row) => row.kind === 'assistant')).toHaveLength(1)
-    expect(view().roles).toEqual({})
+    const assistants = conversation().messages.filter((row) => row.kind === 'assistant')
+    expect(assistants).toHaveLength(2)
+    expect(assistants[0]?.kind === 'assistant' && assistants[0].toolCalls).toHaveLength(1)
+    expect(assistants[1]?.kind === 'assistant' && assistants[1].textBlocks).toEqual(['答案'])
+    expect(view().roles[assistants[0]!.id]).toBe('member')
+    expect(view().roles[assistants[1]!.id]).toBe('answer')
   })
 
   it('passes the expanded set through for manually opened groups', () => {

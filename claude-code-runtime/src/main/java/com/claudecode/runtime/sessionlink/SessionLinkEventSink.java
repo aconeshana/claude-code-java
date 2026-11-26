@@ -201,22 +201,32 @@ public final class SessionLinkEventSink implements SessionSink {
         if (assistant.message() == null || assistant.message().message() == null) return;
         List<ContentBlock> blocks = assistant.message().message().content();
         if (blocks == null) return;
+        String stepId = stepId(assistant.message());
         for (ContentBlock block : blocks) {
             switch (block) {
-                case TextBlock text -> publishText(text.text(), false, Map.of());
+                case TextBlock text -> {
+                    ObjectNode payload = object();
+                    payload.put("content", text.text());
+                    payload.put("synthetic", false);
+                    if (stepId != null) payload.put("message_id", stepId);
+                    publish("output.text", payload);
+                }
                 case ThinkingBlock thinking -> {
                     ObjectNode payload = object();
                     payload.put("content", thinking.thinking());
+                    if (stepId != null) payload.put("message_id", stepId);
                     publish("output.thinking", payload);
                 }
                 case ToolUseBlock tool -> {
-                    toolNames.put(tool.id(), tool.name());
+                    if (tool.id() != null) toolNames.put(tool.id(), tool.name());
                     ObjectNode payload = object();
                     payload.put("name", tool.name());
+                    if (tool.id() != null) payload.put("tool_use_id", tool.id());
                     if (tool.input() != null) {
                         payload.put("input", tool.input().toString());
                         payload.set("input_raw", tool.input());
                     }
+                    if (stepId != null) payload.put("message_id", stepId);
                     publish("tool.started", payload);
                 }
                 default -> { /* Unsupported rich blocks stay in the local renderer. */ }
@@ -224,11 +234,18 @@ public final class SessionLinkEventSink implements SessionSink {
         }
     }
 
+    private static String stepId(AssistantMessage message) {
+        if (StringUtils.isNotBlank(message.uuid())) return message.uuid();
+        AssistantContent envelope = message.message();
+        return envelope == null || StringUtils.isBlank(envelope.id()) ? null : envelope.id();
+    }
+
     private void publishToolResults(List<ContentBlock> blocks) {
         if (blocks == null) return;
         for (ContentBlock block : blocks) {
             if (!(block instanceof ToolResultBlock result)) continue;
             ObjectNode payload = object();
+            if (result.toolUseId() != null) payload.put("tool_use_id", result.toolUseId());
             payload.put("name", toolNames.getOrDefault(result.toolUseId(), "Tool"));
             payload.put("result", textOf(result.content()));
             payload.put("status", result.isError() ? "failed" : "completed");
@@ -252,14 +269,6 @@ public final class SessionLinkEventSink implements SessionSink {
             .put("is_error", result.isError())
             .put("stop_reason", result.stopReason());
         publish("turn.completed", payload);
-    }
-
-    private void publishText(String content, boolean synthetic, Map<String, String> metadata) {
-        ObjectNode payload = object();
-        payload.put("content", content == null ? "" : content);
-        if (synthetic) payload.put("synthetic", true);
-        if (!metadata.isEmpty()) payload.set("metadata", JsonUtils.getMapper().valueToTree(metadata));
-        publish("output.text", payload);
     }
 
     private void publish(String name, JsonNode payload) {

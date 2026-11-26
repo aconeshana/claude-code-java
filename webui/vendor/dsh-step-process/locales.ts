@@ -1,0 +1,86 @@
+/**
+ * Vendored verbatim from deepseek-ai/deepseek-harness
+ * `packages/client/ui-chat/src/client/locale.ts` (`message.stepProcess.*` subset).
+ */
+import type { LocaleDict, LocaleId } from '../../src/i18n/types'
+
+export const STEP_PROCESS_NS = 'stepProcess'
+
+export const stepProcessZh = {
+  'message.stepProcess.thinking': '正在分析请求',
+  'message.stepProcess.read': '正在读取文件',
+  'message.stepProcess.readImage': '正在读取图片',
+  'message.stepProcess.write': '正在写入文件',
+  'message.stepProcess.search': '正在搜索代码',
+  'message.stepProcess.edit': '正在编辑文件',
+  'message.stepProcess.commands': '正在运行命令',
+  'message.stepProcess.code': '正在运行代码',
+  'message.stepProcess.webSearch': '正在搜索网页',
+  'message.stepProcess.webFetch': '正在访问网页',
+  'message.stepProcess.subagents': '正在协调子智能体',
+  'message.stepProcess.plan': '正在更新计划',
+  'message.stepProcess.questions': '等待你的操作',
+  'message.stepProcess.tools': '正在调用工具',
+  'message.stepProcess.done.thinking': '已完成分析',
+  'message.stepProcess.done.read': '已读取文件',
+  'message.stepProcess.done.readImage': '已读取图片',
+  'message.stepProcess.done.write': '已写入文件',
+  'message.stepProcess.done.search': '已搜索代码',
+  'message.stepProcess.done.edit': '修改了文件',
+  'message.stepProcess.done.commands': '执行了命令',
+  'message.stepProcess.done.code': '运行了代码',
+  'message.stepProcess.done.webSearch': '已搜索网页',
+  'message.stepProcess.done.webFetch': '已访问网页',
+  'message.stepProcess.done.subagents': '已协调子智能体',
+  'message.stepProcess.done.plan': '更新了计划',
+  'message.stepProcess.done.questions': '向用户提出了问题',
+  'message.stepProcess.done.tools': '已调用工具',
+  'message.stepProcess.done.context': '已注入上下文',
+  'message.stepProcess.joinTwo': '{first}并{second}',
+  'message.stepProcess.comma': '，',
+  'message.stepProcess.sharedPrefix': '已',
+  'message.stepProcess.more': '{title}等',
+  'message.turnProcess.separator': ' · ',
+} as const
+
+export const stepProcessEn: Record<keyof typeof stepProcessZh, string> = {
+  'message.stepProcess.thinking': 'Analyzing the request',
+  'message.stepProcess.read': 'Reading files',
+  'message.stepProcess.readImage': 'Reading images',
+  'message.stepProcess.write': 'Writing files',
+  'message.stepProcess.search': 'Searching code',
+  'message.stepProcess.edit': 'Editing files',
+  'message.stepProcess.commands': 'Running commands',
+  'message.stepProcess.code': 'Running code',
+  'message.stepProcess.webSearch': 'Searching the web',
+  'message.stepProcess.webFetch': 'Visiting web pages',
+  'message.stepProcess.subagents': 'Coordinating subagents',
+  'message.stepProcess.plan': 'Updating the plan',
+  'message.stepProcess.questions': 'Waiting for your action',
+  'message.stepProcess.tools': 'Calling tools',
+  'message.stepProcess.done.thinking': 'Analysis completed',
+  'message.stepProcess.done.read': 'Read files',
+  'message.stepProcess.done.readImage': 'Read images',
+  'message.stepProcess.done.write': 'Wrote files',
+  'message.stepProcess.done.search': 'Searched code',
+  'message.stepProcess.done.edit': 'Edited files',
+  'message.stepProcess.done.commands': 'Ran commands',
+  'message.stepProcess.done.code': 'Ran code',
+  'message.stepProcess.done.webSearch': 'Searched the web',
+  'message.stepProcess.done.webFetch': 'Visited web pages',
+  'message.stepProcess.done.subagents': 'Coordinated subagents',
+  'message.stepProcess.done.plan': 'Updated the plan',
+  'message.stepProcess.done.questions': 'Asked questions',
+  'message.stepProcess.done.tools': 'Called tools',
+  'message.stepProcess.done.context': 'Injected context',
+  'message.stepProcess.joinTwo': '{first} and {second}',
+  'message.stepProcess.comma': ', ',
+  'message.stepProcess.sharedPrefix': '',
+  'message.stepProcess.more': '{title}, etc.',
+  'message.turnProcess.separator': ' · ',
+}
+
+export const stepProcessDicts: Readonly<Record<LocaleId, LocaleDict>> = {
+  zh: stepProcessZh,
+  en: stepProcessEn,
+}

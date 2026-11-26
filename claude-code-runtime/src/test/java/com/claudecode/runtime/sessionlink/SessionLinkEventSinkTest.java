@@ -49,6 +49,10 @@ class SessionLinkEventSinkTest {
         assertEquals("default", frames.getFirst().payload().path("permission_mode").asText());
         assertEquals("claude-opus-4-6", frames.get(1).payload().path("model").asText());
         assertEquals("Bash", frames.get(4).payload().path("name").asText());
+        assertEquals("tool-1", frames.get(4).payload().path("tool_use_id").asText());
+        assertEquals("a1", frames.get(4).payload().path("message_id").asText());
+        assertEquals("pwd", frames.get(4).payload().path("input_raw").path("command").asText());
+        assertEquals("tool-1", frames.get(5).payload().path("tool_use_id").asText());
         assertEquals("/project", frames.get(5).payload().path("result").asText());
         assertTrue(frames.get(5).payload().path("success").asBoolean());
     }

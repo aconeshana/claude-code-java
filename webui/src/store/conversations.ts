@@ -219,7 +219,7 @@ export function toMessageState(message: SnapshotMessage): MessageState {
       toolCalls.push({
         toolUseId: tool.tool_use_id,
         name: tool.name,
-        args: tool.args,
+        args: normalizeToolArgs(tool.args),
         status: tool.status,
         ready: tool.ready,
         resultData: tool.result?.data ?? null,
@@ -312,10 +312,13 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
       return { ...settleDraft(state), messages }
     }
     case 'tool.started': {
+      const toolUseId = typeof frame.data.tool_use_id === 'string' && frame.data.tool_use_id !== ''
+        ? frame.data.tool_use_id
+        : `remote-tool-${frame.id}`
       const call: ToolCallState = {
-        toolUseId: frame.data.tool_use_id,
+        toolUseId,
         name: frame.data.name,
-        args: frame.data.input ?? null,
+        args: normalizeToolArgs(frame.data.input_raw ?? frame.data.input),
         status: 'pending',
         ready: false,
         resultData: null,
@@ -341,10 +344,21 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
       return streaming === state.streaming || streaming === undefined ? state : { ...state, streaming }
     }
     case 'tool.completed': {
+      const rawResult = frame.data.result
+      const isStringResult = typeof rawResult === 'string'
+      const completedStatus = frame.data.status === 'completed' ? 'executed' : 'failed'
+      const targetId = typeof frame.data.tool_use_id === 'string' && frame.data.tool_use_id !== ''
+        ? frame.data.tool_use_id
+        : null
+      let matched = false
       const messages = state.messages.map((message) => {
         if (message.kind !== 'assistant') return message
         const toolCalls: ToolCallState[] = message.toolCalls.map((call) => {
-          if (call.toolUseId !== frame.data.tool_use_id) return call
+          const idMatch = targetId !== null && call.toolUseId === targetId
+          const fallbackMatch = targetId === null && !matched && call.status === 'pending'
+            && (frame.data.name === undefined || call.name === frame.data.name)
+          if (!idMatch && !fallbackMatch) return call
+          matched = true
           const completed: ToolCallState = {
             toolUseId: call.toolUseId,
             name: call.name,
@@ -352,13 +366,15 @@ function reduceFrame(state: ConversationState, frame: MirrorFrame): Conversation
             // The mirror frame reports completed|failed; the snapshot's
             // tool vocabulary uses executed for the success case — the same
             // state the snapshot path produces.
-            status: frame.data.status === 'completed' ? 'executed' : 'failed',
+            status: completedStatus,
             ready: true,
-            resultData: frame.data.result.data,
-            resultType: frame.data.result.type,
-            resultError: frame.data.result.errorMessage ?? null,
-            transcriptPath: frame.data.result.transcript_path ?? null,
-            locations: frame.data.result.locations ?? null,
+            resultData: isStringResult ? rawResult : rawResult.data,
+            resultType: isStringResult ? inferredResultType(call.name) : rawResult.type,
+            resultError: isStringResult
+              ? (completedStatus === 'failed' ? rawResult : null)
+              : (rawResult.errorMessage ?? null),
+            transcriptPath: isStringResult ? null : (rawResult.transcript_path ?? null),
+            locations: isStringResult ? null : (rawResult.locations ?? null),
             // The live progress log outlives the result: a settled sub-agent
             // still shows the steps it took on the way there.
             progress: call.progress,
@@ -458,6 +474,55 @@ function settleDraft(state: ConversationState): ConversationState {
   return rest
 }
 
+/**
+ * Normalizes tool arguments into a plain object: local sessions send a JSON
+ * object, whereas remote TUI workers over Session Link may send a JSON string
+ * in `input` alongside `input_raw`. Parsing stringified JSON objects keeps
+ * tool summaries (`description`, `command`, `file_path`) working for both.
+ */
+function normalizeToolArgs(raw: unknown): Readonly<Record<string, unknown>> | null {
+  if (raw == null) return null
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed.startsWith('{')) return null
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      if (parsed != null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Readonly<Record<string, unknown>>
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Readonly<Record<string, unknown>>
+  }
+  return null
+}
+
+/** Infers the gateway result_type when a remote worker sends a raw string result. */
+function inferredResultType(toolName: string): string {
+  switch (toolName) {
+    case 'Bash':
+    case 'PowerShell':
+      return 'execute_command_tool_result'
+    case 'Read':
+      return 'read_file_tool_result'
+    case 'Write':
+      return 'write_to_file_tool_result'
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      return 'replace_in_file_tool_result'
+    case 'Task':
+    case 'Agent':
+      return 'task_tool_result'
+    default:
+      return 'generic'
+  }
+}
+
 /** One step's identity as reported by the frame that carries a block. */
 interface StepIdentity {
   readonly messageId?: string
@@ -513,8 +578,14 @@ function appendBlock(
 
 function opensNewStep(open: AssistantMessageState, step: StepIdentity): boolean {
   if (step.synthetic === true || open.synthetic === true) return true
-  if (step.messageId == null || open.messageId == null) return false
-  return open.messageId !== step.messageId
+  if (step.messageId != null && open.messageId != null) {
+    return open.messageId !== step.messageId
+  }
+  // When no step id is reported (remote/legacy gateway without message_id),
+  // once any tool in the current open step has already completed, any later
+  // block belongs to a subsequent LLM step so the final conclusion never
+  // merges into the earlier tool-calling row and renders ABOVE prior tools.
+  return open.toolCalls.some((call) => call.ready)
 }
 
 function closeAssistant(

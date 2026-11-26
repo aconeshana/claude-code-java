@@ -48,7 +48,7 @@ import turnTailCss from '@chat-styles/TurnTailNodeView.module.css'
  * row of each turn carries it — never one per step.
  */
 export function MessageItem({ message, hideReasoning = false, showTail = false,
-  changesTurn, sessionId = null, inSubagentTranscript = false, retryPrompt }: {
+  changesTurn, sessionId = null, inSubagentTranscript = false, retryPrompt, part = 'all' }: {
   message: MessageState
   hideReasoning?: boolean
   showTail?: boolean
@@ -57,6 +57,8 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
   inSubagentTranscript?: boolean
   /** Preceding user prompt text for the assistant turn's Retry action. */
   retryPrompt?: string | undefined
+  /** When split across a step-process group: `process` renders thinking/tools, `response` renders prose/tail. */
+  part?: 'all' | 'process' | 'response'
 }) {
   const statsT = useTranslate(STATS_NS, statsDicts)
   if (message.kind === 'user') {
@@ -79,6 +81,7 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
       sessionId={sessionId}
       inSubagentTranscript={inSubagentTranscript}
       retryPrompt={retryPrompt}
+      part={part}
     />
   )
 }
@@ -249,7 +252,7 @@ function UserItem({
 }
 
 function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessionId,
-  inSubagentTranscript, retryPrompt }: {
+  inSubagentTranscript, retryPrompt, part = 'all' }: {
   message: Extract<MessageState, { kind: 'assistant' }>
   t: ReturnType<typeof useTranslate>
   hideReasoning: boolean
@@ -258,7 +261,10 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
   sessionId: string | null
   inSubagentTranscript: boolean
   retryPrompt?: string | undefined
+  part?: 'all' | 'process' | 'response'
 }) {
+  const showProcess = part !== 'response'
+  const showResponse = part !== 'process'
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
   const [feedback, setFeedback] = useState<FeedbackVote>(() => readFeedback(message.id))
   const [forking, setForking] = useState(false)
@@ -277,7 +283,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      {!hideReasoning && message.thinkingBlocks.map((text: string, index: number) => (
+      {showProcess && !hideReasoning && message.thinkingBlocks.map((text: string, index: number) => (
         <ReasoningRow
           key={index}
           text={text}
@@ -285,7 +291,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           defaultOpen={defaultOpen}
         />
       ))}
-      {message.textBlocks.map((text: string, index: number) => (
+      {showResponse && message.textBlocks.map((text: string, index: number) => (
         <MarkdownText
           key={index}
           text={text}
@@ -293,7 +299,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           labels={labels}
         />
       ))}
-      {message.toolCalls.map((call) => (
+      {showProcess && message.toolCalls.map((call) => (
         !inSubagentTranscript && isSubagentCall(call)
           ? (
             <SubagentRow
@@ -308,13 +314,13 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
       {/* The per-message chip row below this row's own tool calls (upstream's
           per-step produced list). Kept as-is; the turn-wide row above the tail
           is the vendored ui-deliverables one. */}
-      <DeliverablesRow toolCalls={message.toolCalls} />
+      {showProcess && <DeliverablesRow toolCalls={message.toolCalls} />}
       {/* The delivered-files row — vendored from upstream ui-deliverables and
           mounted on the turn's tail anchor, the one row that carries the tail.
           Upstream seats it at `conversation.chat.turnTail`; this project has no
           such hole, so the anchor renders it with the paths aggregated over the
           whole turn (see ChatView.producedByTurn). */}
-      {showTail && !message.open && changesTurn !== undefined && addressedSessionId != null && (
+      {showResponse && showTail && !message.open && changesTurn !== undefined && addressedSessionId != null && (
         <ChangedFilesCard
           sessionId={addressedSessionId}
           turn={changesTurn}
@@ -329,7 +335,7 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
           gateway stamps the turn facts on every row; a running turn has no
           anchor yet, and an anchor row that carries no facts shows no row
           (upstream facts-absent semantics). */}
-      {showTail && !message.open && (message.turnUsage !== undefined
+      {showResponse && showTail && !message.open && (message.turnUsage !== undefined
         || message.runMs !== undefined || message.time !== undefined) && (
         <MessageIconActions
           text={plainText}

@@ -43,6 +43,28 @@ class MirrorHubRemoteTest {
     }
 
     @Test
+    void remoteToolStartedPromotesStructuredInputRawForWebUiSummaries() {
+        MirrorHub hub = new MirrorHub(registry);
+        ObjectNode raw = JsonUtils.getMapper().createObjectNode()
+            .put("command", "git status")
+            .put("description", "Check workspace status");
+        ObjectNode payload = JsonUtils.getMapper().createObjectNode()
+            .put("name", "Bash")
+            .put("tool_use_id", "tu-1")
+            .put("input", raw.toString());
+        payload.set("input_raw", raw);
+
+        hub.publishRemote("remote-1", "tool.started", payload);
+
+        List<MirrorHub.MirrorFrame> replay = hub.replayAfter(0);
+        assertThat(replay).hasSize(1);
+        var data = JsonUtils.getMapper().valueToTree(
+            replay.getFirst().data());
+        assertThat(data.asText()).contains("\"description\":\"Check workspace status\"");
+        assertThat(data.asText()).contains("\"input\":{\"command\":\"git status\",\"description\":\"Check workspace status\"}");
+    }
+
+    @Test
     void journalingDoesNotNeedTheHubMonitorHeldByDetach() throws InterruptedException {
         MirrorHub hub = new MirrorHub(registry);
         Thread publisher = Thread.ofVirtual().start(() ->

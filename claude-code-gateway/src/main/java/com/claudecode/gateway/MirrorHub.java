@@ -1098,6 +1098,27 @@ public final class MirrorHub {
         if (TURN_MODEL.equals(event) && copy.hasNonNull("message_count")) {
             messageCounts.put(sessionId, copy.path("message_count").asInt());
         }
+        // SessionLinkEventSink encodes tool.started input as a JSON string for IM consumers
+        // and carries the structured object on input_raw. Promote the object onto input so
+        // remote TUI tool calls carry the same args shape as local headless tool calls.
+        if (Strings.CS.equals("tool.started", event)) {
+            JsonNode rawInput = copy.get("input_raw");
+            if (rawInput != null && rawInput.isObject()) {
+                copy.set("input", rawInput);
+            } else {
+                JsonNode existingInput = copy.get("input");
+                if (existingInput != null && existingInput.isTextual()) {
+                    try {
+                        JsonNode parsed = JsonUtils.getMapper().readTree(existingInput.asText());
+                        if (parsed != null && parsed.isObject()) {
+                            copy.set("input", parsed);
+                        }
+                    } catch (Exception _) {
+                        // Keep the original textual input when it is not a JSON object.
+                    }
+                }
+            }
+        }
         publish(sessionId, event, copy);
     }
 

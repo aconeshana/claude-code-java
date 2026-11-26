@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@primitives'
 import type { ConversationState, ToolCallState } from '../store/conversations'
+import { buildChatFlowEntries } from '../store/stepGroups'
 import { deriveTurnProcessView, openTurnsOf, useTurnProcess } from '../store/turnProcess'
 import { useTranscriptView } from '../store/transcriptView'
 import { useSpinnerVerbs } from '../store/spinnerVerbs'
@@ -8,6 +9,8 @@ import { withStreamingDraft } from '../store/streamingDraft'
 import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
 import { useTranslate } from '../i18n/useTranslate'
 import { RunningStatus } from '@vendor/dsh-running-status/RunningStatus.tsx'
+import { StepProcessGroup } from '@vendor/dsh-step-process/StepProcessGroup'
+import { STEP_PROCESS_NS, stepProcessDicts } from '@vendor/dsh-step-process/locales'
 import css from '@chat-styles/ChatView.module.css'
 import { MessageItem } from './MessageItem'
 import { TurnProcessControl } from './TurnProcessControl'
@@ -66,6 +69,7 @@ export function ChatView(
   // and the memo must depend on it, or a settings toggle would not repaint.
   const transcriptMode = useTranscriptView((state) => state.mode)
   const chatT = useTranslate(STATS_NS, statsDicts)
+  const stepProcessT = useTranslate(STEP_PROCESS_NS, stepProcessDicts)
   const verbs = useSpinnerVerbs((state) => state.vocabulary)
   const loadVerbs = useSpinnerVerbs((state) => state.load)
   useEffect(() => { void loadVerbs() }, [loadVerbs])
@@ -124,6 +128,11 @@ export function ChatView(
   const messages = conversation?.messages ?? []
   const draft = conversation?.streaming
   const rendered = useMemo(() => withStreamingDraft(messages, draft), [messages, draft])
+  const flowEntries = useMemo(
+    () => buildChatFlowEntries(rendered, conversation?.turnRunning === true, foldView.inlineReasoningAnswers),
+    [rendered, conversation?.turnRunning, foldView.inlineReasoningAnswers],
+  )
+  const stepGroupingEnabled = transcriptMode === 'compact'
 
   // Turn numbers that produced files, so the tail anchor knows whether to
   // mount the changed-files card. Upstream mounts its card at the
@@ -161,7 +170,51 @@ export function ChatView(
       onScroll={onScroll}
     >
       <div className={css.column}>
-        {rendered.flatMap((message, index) => {
+        {flowEntries.flatMap((entry) => {
+          if (entry.kind === 'step-group') {
+            const firstId = entry.items[0]?.message.id
+            const outerTurn = firstId !== undefined ? foldView.memberTurns[firstId] : undefined
+            const allMembers = outerTurn !== undefined && entry.items.every(
+              (item) => foldView.roles[item.message.id] === 'member'
+                && foldView.memberTurns[item.message.id] === outerTurn,
+            )
+            const outerHidden = allMembers && !foldView.expandedTurns.has(outerTurn)
+            return [
+              <div
+                key={entry.key}
+                className={css.flowItem}
+                data-chat-flow-kind="step-process"
+                data-turn-process-member={allMembers ? String(outerTurn) : undefined}
+                hidden={outerHidden ? ('until-found' as unknown as boolean) : undefined}
+              >
+                <StepProcessGroup
+                  groupKey={entry.key}
+                  turn={entry.turn}
+                  closed={entry.closed}
+                  grouped={stepGroupingEnabled}
+                  liveProcessDetail
+                  summary={entry.summary}
+                  t={stepProcessT}
+                  outerHidden={outerHidden}
+                  outerTurn={allMembers ? outerTurn : undefined}
+                >
+                  {entry.items.map((item) => (
+                    <div key={`${item.message.id}:process`} data-chat-flow-key={item.message.id}>
+                      <MessageItem
+                        message={item.message}
+                        part="process"
+                        hideReasoning={false}
+                        showTail={false}
+                        sessionId={sessionId}
+                      />
+                    </div>
+                  ))}
+                </StepProcessGroup>
+              </div>,
+            ]
+          }
+
+          const { message, index, part } = entry
           const role = foldView.roles[message.id]
           const controlTurn = foldView.controlTurns[message.id]
           const rows = []
@@ -190,7 +243,7 @@ export function ChatView(
           }
           rows.push(
             <div
-              key={message.id}
+              key={entry.key}
               className={css.flowItem}
               data-chat-flow-kind={message.kind === 'user' ? 'user' : 'assistant'}
               data-turn-process-member={memberTurn !== undefined ? String(memberTurn) : undefined}
@@ -199,6 +252,7 @@ export function ChatView(
             >
               <MessageItem
                 message={message}
+                part={part}
                 hideReasoning={foldView.inlineReasoningAnswers.has(message.id)}
                 showTail={foldView.tailAnchors.has(message.id)}
                 changesTurn={foldView.tailAnchorTurns[message.id] !== undefined
