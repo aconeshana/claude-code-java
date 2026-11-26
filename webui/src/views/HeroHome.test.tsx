@@ -340,6 +340,11 @@ describe('ProjectRowItem actions', () => {
     act(() => { menuBtn?.click() })
     expect(onToggle).not.toHaveBeenCalled()
 
+    // Menu must portal to document.body so sidebar scroll overflow never clips it
+    const menuEl = document.querySelector('[role="menu"]') as HTMLElement | null
+    expect(menuEl).not.toBeNull()
+    expect(menuEl?.parentElement).toBe(document.body)
+
     let menuItems = Array.from(document.querySelectorAll('[role="menu"] button, [role="menuitem"]'))
     const hideItem = menuItems.find((el) => el.textContent?.includes('从列表隐藏')) as HTMLElement | undefined
     expect(hideItem).toBeDefined()

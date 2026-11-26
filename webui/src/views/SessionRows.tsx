@@ -181,6 +181,7 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle, onN
               open={menuOpen}
               onClose={() => { setMenuOpen(false) }}
               align="end"
+              portal
               items={menuItems}
               onSelect={(id) => {
                 setMenuOpen(false)
