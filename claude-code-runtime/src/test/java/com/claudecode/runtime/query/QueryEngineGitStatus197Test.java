@@ -5,7 +5,6 @@ import com.claudecode.core.engine.StreamingClient;
 import org.apache.commons.lang3.Strings;
 import com.claudecode.core.process.ProcessResult;
 import com.claudecode.core.process.ProcessRunner;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -27,10 +26,8 @@ class QueryEngineGitStatus197Test {
 
     @BeforeEach
     @AfterEach
-    void resetProcessGitStatusSnapshot() throws Exception {
-        Field field = DefaultQuerySession.class.getDeclaredField("gitStatusCache");
-        field.setAccessible(true);
-        field.set(null, null);
+    void resetProcessGitStatusSnapshot() {
+        QuerySessionGitStatus.resetForTest();
     }
 
     @Test

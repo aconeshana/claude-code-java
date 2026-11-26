@@ -2,7 +2,6 @@ package com.claudecode.tools.agent;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import com.claudecode.core.agent.AgentSource;
 import com.claudecode.core.agent.BuiltInAgentDefinitions;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.serialization.JsonUtils;
@@ -15,16 +14,11 @@ import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
 import com.claudecode.runtime.query.PreparedQueryRequest;
 import com.claudecode.runtime.query.QuerySessionFactory;
-import com.claudecode.runtime.query.QuerySessionEnvironment;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.StreamingClient;
-import com.claudecode.core.engine.StructuredToolOutput;
 import com.claudecode.core.engine.SubmitOptions;
 import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolExecutor;
-import com.claudecode.core.engine.PostToolUseOutputResult;
-import com.claudecode.core.engine.ToolResult;
-import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.message.*;
 import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.core.engine.SubAgentLifecycleListener;
@@ -40,44 +34,29 @@ import com.claudecode.session.TeamInfo;
 import com.claudecode.tools.tasks.teammate.TeammateContext;
 import com.claudecode.tools.tasks.teammate.TeammateContextHolder;
 import com.claudecode.core.effort.EffortHelpers;
-import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.prompt.SystemPromptRuntime;
-import com.claudecode.core.prompt.UnrestrictedPrompt;
-import com.claudecode.core.prompt.EnvInfoSection;
 import com.claudecode.core.util.AgentId;
 import com.claudecode.core.message.SkillListingEntry;
 import com.claudecode.core.model.ModelSkillVisibility;
-import com.claudecode.core.model.ModelCatalog;
 import com.claudecode.core.model.PermissionModeKind;
 import com.claudecode.session.SessionManager;
-import com.claudecode.session.SessionStorage;
-import com.claudecode.session.AgentMetadata;
 import com.claudecode.session.TranscriptRecorder;
 import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.tools.skills.Skill;
-import com.claudecode.core.prompt.ArgumentSubstitutor;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.claudecode.tools.output.SyntheticOutputTool;
 import com.claudecode.tools.plan.PlanFiles;
 import com.claudecode.tools.tasks.TaskRegistry;
 import com.claudecode.tools.worktree.WorktreeInfo;
-import com.claudecode.tools.ToolErrors;
 
 /**
  * Default implementation of SubAgentFactory.
@@ -426,7 +405,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             .agentId(agentId)
             .agentDepth(Math.max(0, request.agentDepth()))
             .subagentMaxDepthSnapshot(request.teammate()
-                ? null : normalizedMaxDepth(request.subagentMaxDepthSnapshot()))
+                ? null : SubAgentToolRestrictions.normalizedMaxDepth(request.subagentMaxDepthSnapshot()))
             .messageQueue(request.parentQueue())
 
             // from an interactive CLI on the CLI prompt profile.
@@ -562,46 +541,17 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                                                      String transcriptSubdir,
                                                      String attributionAgent,
                                                      String parentSessionId) {
-        String effectiveSessionId = sidechainSessionId(parentSessionId);
-        if (effectiveSessionId == null) {
-            return null;
-        }
-        SessionManager sidechainSessionManager = sidechainSessionManager();
-        Path explicit = sidechainTranscriptPath(agentId, transcriptSubdir, effectiveSessionId);
-        return new TranscriptRecorder(sidechainSessionManager, new SessionStorage(),
-            workingDirectory, /* isSidechain */ true, agentId, explicit,
-            attributionAgent);
+        return transcriptSupport().buildSidechainTranscriptSink(
+            agentId, transcriptSubdir, attributionAgent, parentSessionId);
     }
 
-    private String sidechainSessionId(String parentSessionId) {
-        if (StringUtils.isNotBlank(parentSessionId)) {
-            return parentSessionId;
-        }
-        return sessionIdentity != null ? sessionIdentity.get() : null;
+    private SubAgentTranscriptSupport transcriptSupport() {
+        return new SubAgentTranscriptSupport(sessionIdentity, claudeHomeOverride, workingDirectory);
     }
 
-    private SessionManager sidechainSessionManager() {
-        return claudeHomeOverride != null
-            ? new SessionManager(claudeHomeOverride, workingDirectory)
-            : new SessionManager(workingDirectory);
-    }
-
-    private Path sidechainTranscriptPath(String agentId, String transcriptSubdir,
-                                         String parentSessionId) {
-        String effectiveSessionId = sidechainSessionId(parentSessionId);
-        if (effectiveSessionId == null) return null;
-        SessionManager manager = sidechainSessionManager();
-        if (StringUtils.isBlank(transcriptSubdir)) {
-            return manager.getAgentTranscriptPath(effectiveSessionId, agentId).normalize();
-        }
-        Path base = manager.getProjectDir()
-            .resolve(effectiveSessionId).resolve("subagents").normalize();
-        Path explicit = base.resolve(transcriptSubdir)
-            .resolve("agent-" + agentId + ".jsonl").normalize();
-        if (!explicit.startsWith(base)) {
-            throw new IllegalArgumentException("Invalid sub-agent transcript subdirectory");
-        }
-        return explicit;
+    private SubAgentPromptAssembler promptAssembler() {
+        return new SubAgentPromptAssembler(
+            claudeHomeOverride, skillSupplier, includeGitInstructionsSupplier, effectiveSettingsSupplier);
     }
 
     private SubAgentResult executeSubAgent(SubAgentRequest request) {
@@ -751,22 +701,23 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
                 }
             }
             if (effectiveRequest.transcriptSubdir() != null) {
-                writeWorkflowAgentMetadata(agentId, effectiveRequest);
+                transcriptSupport().writeWorkflowAgentMetadata(agentId, effectiveRequest);
             } else {
-                writeAgentMetadata(agentId, effectiveRequest, agentWorktree);
+                transcriptSupport().writeAgentMetadata(agentId, effectiveRequest, agentWorktree);
             }
         }
 
         if (lifecycleListener != null) {
             BuiltInAgentDefinitions.AgentDefinition definition =
-                resolveAgentDefinition(effectiveRequest);
+                SubAgentPromptAssembler.resolveAgentDefinition(
+                    effectiveRequest, resolveWorkingDirectory(effectiveRequest));
             var configuredMode = config.permissionModeSupplier() == null
                 ? null : config.permissionModeSupplier().get();
             String permissionMode = configuredMode == null
                 ? null : configuredMode.wireValue();
             String effort = EffortHelpers.resolveAppliedEffort(
                 config.model(), effectiveRequest.effort());
-            Path transcriptPath = sidechainTranscriptPath(
+            Path transcriptPath = transcriptSupport().sidechainTranscriptPath(
                 agentId, effectiveRequest.transcriptSubdir(), parentSessionId);
             HookDispatcher childHooks = lifecycleListener.createSubAgentHookDispatcher(
                 new SubAgentLifecycleListener.SubAgentHookContext(
@@ -1019,7 +970,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         cleaned.set(true);
         if (agentWorktree != null && keptWorktreePath.isEmpty()
                 && effectiveRequest.transcriptSubdir() == null) {
-            writeAgentMetadata(agentId, effectiveRequest, null);
+            transcriptSupport().writeAgentMetadata(agentId, effectiveRequest, null);
         }
 
         // Hand the full post-turn conversation back so a multi-turn caller (the
@@ -1096,7 +1047,7 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
             .agentId(agentId)
             .agentDepth(Math.max(0, request.agentDepth()))
             .subagentMaxDepthSnapshot(request.teammate()
-                ? null : normalizedMaxDepth(request.subagentMaxDepthSnapshot()))
+                ? null : SubAgentToolRestrictions.normalizedMaxDepth(request.subagentMaxDepthSnapshot()))
             .build();
     }
 
@@ -1328,67 +1279,6 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         }
     }
 
-    private void writeWorkflowAgentMetadata(String agentId, SubAgentRequest request) {
-        String transcriptSubdir = request.transcriptSubdir();
-        if (sessionIdentity == null || transcriptSubdir == null) return;
-        SessionManager manager = claudeHomeOverride != null
-            ? new SessionManager(claudeHomeOverride, workingDirectory)
-            : new SessionManager(workingDirectory);
-        Path base = manager.getProjectDir().resolve(sessionIdentity.get())
-            .resolve("subagents").normalize();
-        Path metadata = base.resolve(transcriptSubdir)
-            .resolve("agent-" + agentId + ".meta.json").normalize();
-        if (!metadata.startsWith(base)) {
-            throw new IllegalArgumentException("Invalid sub-agent transcript subdirectory");
-        }
-        try {
-            Files.createDirectories(metadata.getParent());
-            ObjectNode json = JsonUtils.getMapper().createObjectNode();
-            json.put("agentType", "workflow-subagent");
-            json.put("spawnDepth", Math.max(0, request.agentDepth()));
-            json.put("subagentMaxDepth", normalizedMaxDepth(
-                request.subagentMaxDepthSnapshot()));
-            Files.writeString(metadata, JsonUtils.getMapper().writeValueAsString(json),
-                StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            log.warn("Failed to persist workflow-agent metadata {}: {}",
-                metadata, e.getMessage());
-        }
-    }
-
-    private void writeAgentMetadata(String agentId, SubAgentRequest request,
-                                    WorktreeService.AgentWorktree agentWorktree) {
-        if (request == null) return;
-        String parentSessionId = request.parentContext() != null
-            ? request.parentContext().sessionId() : null;
-        Path transcript = sidechainTranscriptPath(agentId, null, parentSessionId);
-        if (transcript == null) return;
-        SessionStorage storage = new SessionStorage();
-        String worktreePath = agentWorktree == null ? null : agentWorktree.worktreePath();
-        if (worktreePath == null && StringUtils.isNotBlank(request.cwd())) {
-            try {
-                AgentMetadata previous = storage.readAgentMetadata(transcript).orElse(null);
-                if (previous != null && Strings.CS.equals(previous.worktreePath(), request.cwd())
-                        && Files.isDirectory(Path.of(previous.worktreePath()))) {
-                    worktreePath = previous.worktreePath();
-                }
-            } catch (RuntimeException error) {
-                log.debug("Unable to preserve prior agent worktree metadata for {}", agentId, error);
-            }
-        }
-        String agentType = request.fork() ? "fork"
-            : StringUtils.defaultIfBlank(request.subagentType(), "general-purpose");
-        String description = StringUtils.isBlank(request.description())
-            ? null : request.description();
-        try {
-            storage.writeAgentMetadata(transcript,
-                new AgentMetadata(agentType, worktreePath, description, false,
-                    Math.max(0, request.agentDepth()), request.teammate() ? null
-                        : normalizedMaxDepth(request.subagentMaxDepthSnapshot())));
-        } catch (RuntimeException error) {
-            log.warn("Failed to persist agent metadata {}: {}", agentId, error.getMessage());
-        }
-    }
 
     /**
      * Counts the number of {@code tool_use} blocks across all assistant messages in the sub-agent's
@@ -1408,331 +1298,22 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         return count;
     }
 
-    /**
-     * Builds the first user turn for an agent invocation.  Claude Code's
-     * {@code runAgent} appends model-invocable skills declared by custom-agent
-     * frontmatter after the task prompt, in the same user message.  Keeping
-     * this as structured content (rather than concatenating strings) preserves
-     * the block boundaries and the final prompt-cache breakpoint used by the
-     * Anthropic request formatter.
-     */
+
     Object buildAgentPrompt(SubAgentRequest request) {
-        BuiltInAgentDefinitions.AgentDefinition resolved = resolveAgentDefinition(request);
-        if (resolved == null || resolved.skills() == null || resolved.skills().isEmpty()
-                || skillSupplier == null) {
-            return request.prompt();
-        }
-
-        List<Skill> available;
-        try {
-            available = skillSupplier.get();
-        } catch (Throwable t) {
-            log.debug("Unable to load skills for agent preloading", t);
-            return request.prompt();
-        }
-        if (available == null || available.isEmpty()) return request.prompt();
-
-        List<ContentBlock> blocks = new ArrayList<>();
-        blocks.add(new TextBlock(request.prompt() == null ? "" : request.prompt()));
-        boolean preloaded = false;
-        for (String requestedName : resolved.skills()) {
-            if (StringUtils.isBlank(requestedName)) continue;
-            Skill skill = findSkill(available, requestedName.trim());
-            if (skill == null || skill.content() == null) continue;
-            String content = skillPromptContent(skill);
-            if (StringUtils.isEmpty(content)) continue;
-            blocks.add(new TextBlock(skillLoadingMetadata(skill.name())));
-            blocks.add(new TextBlock(content));
-            preloaded = true;
-        }
-        return preloaded ? MessageContent.ofBlocks(List.copyOf(blocks)) : request.prompt();
-    }
-
-    private BuiltInAgentDefinitions.AgentDefinition resolveAgentDefinition(SubAgentRequest request) {
-        if (request == null) return null;
-        String effectiveType = StringUtils.defaultIfBlank(
-            request.subagentType(), "general-purpose");
-        String cwd = resolveWorkingDirectory(request);
-        return AgentDefinitionLoader.getAll(cwd).stream()
-            .filter(a -> a.agentType().equals(effectiveType))
-            .findFirst()
-            .orElse(null);
-    }
-
-    private static Skill findSkill(List<Skill> available, String requested) {
-        String bare = Strings.CS.contains(requested, ":")
-            ? requested.substring(requested.lastIndexOf(':') + 1) : null;
-        for (Skill skill : available) {
-            if (requested.equals(skill.name())) return skill;
-            if (bare != null && bare.equals(skill.name())
-                    && skill.source() == Skill.SkillSource.PLUGIN) return skill;
-        }
-        return null;
-    }
-
-    private static String skillLoadingMetadata(String name) {
-        return "<command-message>" + name + "</command-message>\n"
-            + "<command-name>" + name + "</command-name>\n"
-            + "<skill-format>true</skill-format>";
-    }
-
-    private static String skillPromptContent(Skill skill) {
-        String content = skill.content();
-        if (content == null) return null;
-        if (skill.source() != Skill.SkillSource.MCP && skill.sourceFile() != null
-                && skill.sourceFile().getFileName() != null
-                && Strings.CI.equals("SKILL.md", skill.sourceFile().getFileName().toString())) {
-            Path root = skill.sourceFile().toAbsolutePath().normalize().getParent();
-            if (root != null) {
-                String base = root.toString();
-                if (File.separatorChar == '\\') base = base.replace('\\', '/');
-                content = "Base directory for this skill: " + base + "\n\n" + content;
-                content = content.replace("${CLAUDE_SKILL_DIR}", base);
-            }
-        }
-
-        String dormantRequest = "\n\n## User Request\n\n$ARGUMENTS";
-        if (Strings.CS.endsWith(content, dormantRequest)) {
-            content = content.substring(0, content.length() - dormantRequest.length());
-        }
-        // A preloaded agent skill is already the complete instruction body.
-        return ArgumentSubstitutor.substitute(content, "", skill.argumentNames(), false);
+        return promptAssembler().buildAgentPrompt(request, resolveWorkingDirectory(request));
     }
 
     // Package-private (not private) so SubAgentTypeRoutingTest can exercise
     // it directly without threading a fake StreamingClient through the full
-    // runSubAgent → QuerySession pipeline just to inspect the prompt string.
+    // runSubAgent -> QuerySession pipeline just to inspect the prompt string.
     String buildSystemPrompt(SubAgentRequest request) {
-        if (request.systemPromptOverride() != null) {
-            return request.systemPromptOverride();
-        }
-        // The claude-code-guide agent has its own dedicated system prompt
-
-
-        // Bypass the generic DEFAULT_AGENT_PROMPT path when routing to it.
-        if (request.subagentType() != null
-                && request.subagentType().equals(ClaudeCodeGuideAgentPrompt.AGENT_TYPE)) {
-            String cwd = resolveWorkingDirectory(request);
-            StringBuilder guide = new StringBuilder(ClaudeCodeGuideAgentPrompt.build(
-                usingThirdPartyServices, buildClaudeCodeGuideContext(request)));
-            // --unrestricted: same inheritance as the generic path below — the guide agent's
-            // dedicated body is its persona, so the contract goes directly behind it.
-            if (unrestricted) {
-                guide.append("\n\n").append(UnrestrictedPrompt.contractBlock());
-            }
-            // getSystemPrompt supplies the guide-specific body; runAgent then
-            // applies the same notes/environment enhancement as every other
-            // sub-agent. Returning early here used to drop that shared tail.
-            guide.append("\n\n").append(EnvInfoSection.agentNotes());
-            guide.append("\n\n").append(EnvInfoSection.computeEnvInfo(
-                resolvedSubAgentModel(request.model()), cwd, isGitRepository(cwd), List.of()));
-            if (includeGitInstructions()) {
-                String gitStatus = QuerySessionEnvironment.initialGitStatusSnapshot(cwd);
-                if (StringUtils.isNotBlank(gitStatus)) {
-                    guide.append("\n\ngitStatus: ").append(gitStatus);
-                }
-            }
-            return guide.toString();
-        }
-
-        String cwd = resolveWorkingDirectory(request);
-
-        // Looks across built-in AND custom (~/.claude/agents, <cwd>/.claude/agents)
-        // definitions — previously only checked built-ins, so a custom agent's
-        // hand-authored system prompt was silently discarded and every custom
-        // agent ran with the generic DEFAULT_AGENT_PROMPT instead of what the
-        // user actually wrote in their .md file.
-        String effectiveType = StringUtils.defaultIfBlank(
-            request.subagentType(), "general-purpose");
-        BuiltInAgentDefinitions.AgentDefinition resolved =
-            AgentDefinitionLoader.getAll(cwd).stream()
-                .filter(a -> a.agentType().equals(effectiveType))
-                .findFirst()
-                .orElse(null);
-
-        StringBuilder sb = new StringBuilder();
-        boolean authoredPrompt = resolved != null
-            && resolved.systemPrompt() != null && !StringUtils.isBlank(resolved.systemPrompt());
-        if (authoredPrompt) {
-            // Custom/user/project agent: the authored body IS the whole prompt.
-            sb.append(resolved.systemPrompt());
-        } else {
-            // Built-in with no authored prompt (general-purpose/Explore/Plan/ statusline-setup), or
-            // an unresolvable subagent_type — unchanged synthesis.
-            if (resolved != null) {
-                sb.append("You are the \"").append(resolved.agentType()).append("\" agent.\n\n");
-                sb.append(resolved.whenToUse()).append("\n\n");
-            }
-            sb.append(SystemPromptConstants.DEFAULT_AGENT_PROMPT);
-        }
-
-        // --unrestricted: append the delivery contract directly behind the persona, matching the
-        // main loop's placement in SystemPromptService. Sub-agent prompts are synthesized here
-        // rather than assembled by SystemPromptService, so this is the only injection point.
-        if (unrestricted) {
-            sb.append("\n\n").append(UnrestrictedPrompt.contractBlock());
-        }
-
-        if (resolved != null && resolved.memory() != null && !StringUtils.isBlank(resolved.memory())) {
-            Path memoryDir = AgentMemoryPrompt.resolveDirectory(
-                resolved.agentType(), resolved.memory(), Path.of(cwd), claudeHomeOverride);
-            String memoryPrompt = AgentMemoryPrompt.build(memoryDir, resolved.memory());
-            if (!StringUtils.isBlank(memoryPrompt)) sb.append("\n\n").append(memoryPrompt);
-        }
-
-        if (!authoredPrompt && !request.tools().isEmpty()) {
-            sb.append("\n\nAvailable tools: ");
-            sb.append(String.join(", ", request.tools()));
-        }
-
-
-        if (request.teammate()) {
-            sb.append("\n\n").append(TEAMMATE_SYSTEM_ADDENDUM);
-        }
-
-
-        // full environment context (cwd, repository status, platform/shell,
-        // model and cutoff). This is distinct from the main loop's compact
-        // env_info_simple section.
-        sb.append("\n\n").append(EnvInfoSection.agentNotes());
-        sb.append("\n\n").append(EnvInfoSection.computeEnvInfo(
-            resolvedSubAgentModel(request.model()),
-            cwd,
-            isGitRepository(cwd),
-            List.of()));
-
-        if (!isGitOmittingAgent(request.subagentType()) && includeGitInstructions()) {
-            String gitStatus = QuerySessionEnvironment.initialGitStatusSnapshot(cwd);
-            if (StringUtils.isNotBlank(gitStatus)) {
-                sb.append("\n\ngitStatus: ").append(gitStatus);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    private ClaudeCodeGuideAgentPrompt.Context buildClaudeCodeGuideContext(
-            SubAgentRequest request) {
-        List<Skill> skills = safeSkills();
-        List<ClaudeCodeGuideAgentPrompt.Command> customSkills = guideCommands(skills);
-        List<ClaudeCodeGuideAgentPrompt.Command> pluginSkills = skills.stream()
-            .filter(skill -> skill.source() == Skill.SkillSource.PLUGIN)
-            .filter(skill -> !StringUtils.isBlank(skill.name()))
-            .map(skill -> new ClaudeCodeGuideAgentPrompt.Command(
-                skill.name(), Objects.toString(skill.description(), "")))
-            .toList();
-        String cwd = resolveWorkingDirectory(request);
-        List<ClaudeCodeGuideAgentPrompt.Agent> customAgents = AgentDefinitionLoader.getAll(cwd)
-            .stream()
-            .filter(agent -> agent.source() != AgentSource.BUILT_IN)
-            .map(agent -> new ClaudeCodeGuideAgentPrompt.Agent(
-                agent.agentType(), Objects.toString(agent.whenToUse(), "")))
-            .toList();
-        return new ClaudeCodeGuideAgentPrompt.Context(
-            customSkills, customAgents, pluginSkills, safeEffectiveSettings());
-    }
-
-    private static List<ClaudeCodeGuideAgentPrompt.Command> guideCommands(List<Skill> skills) {
-        List<ClaudeCodeGuideAgentPrompt.Command> commands = new ArrayList<>();
-        for (Skill skill : skills) {
-            if (StringUtils.isBlank(skill.name())) continue;
-            String description = Objects.toString(skill.description(), "");
-            if (Strings.CS.equals("deep-research", skill.name())) {
-                description = "Deep research harness — fan-out web searches, fetch sources, "
-                    + "adversarially verify claims, synthesize a cited report.";
-            } else if (Strings.CS.equals("loop", skill.name())) {
-                description = "Run a prompt or slash command on a recurring interval "
-                    + "(e.g. /loop 5m /foo, defaults to 10m)";
-            }
-            commands.add(new ClaudeCodeGuideAgentPrompt.Command(skill.name(), description));
-            switch (skill.name()) {
-                case "verify" -> commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                    "debug", "Enable debug logging for this session and help diagnose issues"));
-                case "simplify" -> commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                    "batch", "Research and plan a large-scale change, then execute it in parallel "
-                        + "across 5–30 isolated worktree agents that each open a PR."));
-                case "run" -> commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                    "run-skill-generator", "Author or improve the run-<unit> skill — a per-project "
-                        + "skill that tells agents how to build, launch, and drive this project's app. "
-                        + "Use when the user asks to set up the project, get it running, write run "
-                        + "instructions, or verify build/run steps work from a clean environment."));
-                case "init" -> commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                    "statusline", "Set up Claude Code's status line UI"));
-                case "security-review" -> {
-                    commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                        "insights", "Generate a report analyzing your Claude Code sessions"));
-                    commands.add(new ClaudeCodeGuideAgentPrompt.Command(
-                        "team-onboarding", "Help teammates ramp on Claude Code with a guide from your usage"));
-                }
-                default -> { }
-            }
-        }
-        return List.copyOf(commands);
-    }
-
-    private List<Skill> safeSkills() {
-        try {
-            List<Skill> skills = skillSupplier != null ? skillSupplier.get() : List.of();
-            return skills == null ? List.of() : skills;
-        } catch (RuntimeException _) {
-            return List.of();
-        }
-    }
-
-    private JsonNode safeEffectiveSettings() {
-        try {
-            JsonNode settings = effectiveSettingsSupplier != null
-                ? effectiveSettingsSupplier.get() : null;
-            return settings == null ? null : settings.deepCopy();
-        } catch (RuntimeException _) {
-            return null;
-        }
-    }
-
-    private static boolean isGitOmittingAgent(String subagentType) {
-        return Strings.CS.equals("Explore", subagentType) || Strings.CS.equals("Plan", subagentType);
-    }
-
-    private boolean includeGitInstructions() {
-        try {
-            return !Boolean.FALSE.equals(includeGitInstructionsSupplier.get());
-        } catch (RuntimeException _) {
-            return true;
-        }
-    }
-
-    private static boolean isGitRepository(String cwd) {
-        if (StringUtils.isBlank(cwd)) return false;
-        try {
-            Process process = new ProcessBuilder("git", "rev-parse", "--is-inside-work-tree")
-                .directory(Path.of(cwd).toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-            boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            return finished && process.exitValue() == 0;
-        } catch (Exception _) {
-            return false;
-        }
+        return promptAssembler().buildSystemPrompt(
+            request, resolveWorkingDirectory(request), usingThirdPartyServices, unrestricted);
     }
 
     private static String resolvedSubAgentModel(String requested) {
-        if (StringUtils.isBlank(requested)) return "claude-sonnet-4-20250514";
-        return switch (requested.toLowerCase(Locale.ROOT)) {
-            case "haiku", "sonnet", "opus", "fable" -> ModelCatalog.resolve(requested);
-            default -> requested;
-        };
+        return SubAgentPromptAssembler.resolvedSubAgentModel(requested);
     }
-
-
-    private static final String TEAMMATE_SYSTEM_ADDENDUM =
-        """
-            You are running as an in-process teammate within a larger agent team.
-            - The team leader (the main coordinator) will send you tasks. Work on one task at a time.
-            - Use the SendMessage tool to communicate with the leader or other teammates by name.
-            - When you finish a task and have no further tool calls, report your result briefly and stop; \
-            the leader will send the next task.
-            - If the leader asks you to shut down, call the shutdown approval tool (or explain why you should continue).
-            - Never prompt the user directly; route all questions through the leader.""";
 
     static SubmitOptions buildSubmitOptions(SubAgentRequest request) {
         SubmitOptions options = request.jsonSchema() != null
@@ -1753,82 +1334,17 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         return createRestrictedToolExecutor(request, effectiveToolNames, context);
     }
 
+
     private ToolExecutor createRestrictedToolExecutor(
             SubAgentRequest request, List<String> effectiveToolNames,
             ToolExecutionContext toolDefinitionContext) {
-        // Defense-in-depth: even if a caller manages to put an interactive / coordination tool
-        // (AskUserQuestion, ExitPlanMode,...) into the sub-agent's tool list, the restricted
-        // executor refuses it and hides it from the model.
-        Set<String> requested = new LinkedHashSet<>(effectiveToolNames);
-
-        // including Agent; recursive fork attempts are rejected by the injected
-        // fork directive/history guard rather than by changing this definition.
-        Set<String> allowed = new HashSet<>(requested);
-        Set<String> denied = request.fork()
-            ? new HashSet<>()
-            : new HashSet<>(AgentTool.AGENT_DISALLOWED_TOOLS);
-        if (!request.fork()
-                && request.agentDepth() >= normalizedMaxDepth(
-                    request.subagentMaxDepthSnapshot())) {
-            denied.add("Agent");
-        }
-        boolean synchronousAgent = !request.async();
-        if (synchronousAgent) {
-            denied.remove("TaskStop");
-        }
-        if (!request.fork()) {
-            allowed.removeAll(AgentTool.AGENT_DISALLOWED_TOOLS);
-            if (synchronousAgent && requested.contains("TaskStop")) {
-                allowed.add("TaskStop");
-            }
-        }
-        if (request.disallowedTools() != null) {
-            denied.addAll(request.disallowedTools());
-        }
-        allowed.removeAll(denied);
-        SyntheticOutputTool structuredOutput = null;
-        if (request.jsonSchema() != null) {
-            SyntheticOutputTool.CreateResult created = SyntheticOutputTool.create(request.jsonSchema());
-            if (created instanceof SyntheticOutputTool.CreateResult.Ok(SyntheticOutputTool tool)) {
-                structuredOutput = tool;
-            } else if (created instanceof SyntheticOutputTool.CreateResult.Err(String error)) {
-                throw new IllegalArgumentException(error);
-            }
-        }
-        List<String> ordered = effectiveToolNames.stream()
-            .filter(StringUtils::isNotBlank)
-            .filter(name -> !denied.contains(name))
-            .distinct()
-            .toList();
-        return RestrictedToolExecutor.create(toolExecutor, allowed, denied,
-            structuredOutput, ordered, toolDefinitionContext);
+        return SubAgentToolRestrictions.createRestrictedToolExecutor(
+            toolExecutor, request, effectiveToolNames, toolDefinitionContext);
     }
 
     private List<String> effectiveToolNames(SubAgentRequest request) {
-        List<String> source = request.tools().isEmpty()
-            ? toolExecutor.getToolDefinitions().stream()
-                .map(StreamingClient.StreamRequest.ToolDef::name).toList()
-            : request.tools();
-        Set<String> denied = new HashSet<>(request.fork()
-            ? Set.of() : AgentTool.AGENT_DISALLOWED_TOOLS);
-        if (!request.fork()
-                && request.agentDepth() >= normalizedMaxDepth(
-                    request.subagentMaxDepthSnapshot())) {
-            denied.add("Agent");
-        }
-        if (request.disallowedTools() != null) denied.addAll(request.disallowedTools());
-        return source.stream()
-            .filter(StringUtils::isNotBlank)
-            .filter(name -> !denied.contains(name))
-            .distinct()
-            .toList();
+        return SubAgentToolRestrictions.effectiveToolNames(toolExecutor, request);
     }
-
-    private static int normalizedMaxDepth(Integer configured) {
-        return configured != null && configured >= 1 && configured <= 5
-            ? configured : 2;
-    }
-
 
     private String resolveWorkingDirectory(SubAgentRequest request) {
         // Explicit cwd input overrides the inherited cwd / session worktree
@@ -1844,161 +1360,4 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         return active != null ? active.worktreePath() : workingDirectory;
     }
 
-    /**
-     * Restricted tool executor that only allows specified tools.
-     */
-    private record RestrictedToolExecutor(ToolExecutor delegate,
-                                          Set<String> allowedTools,
-                                          Set<String> deniedTools,
-                                          SyntheticOutputTool structuredOutput,
-                                          List<String> orderedToolNames,
-                                          List<StreamingClient.StreamRequest.ToolDef> eagerDefinitions,
-                                          List<StreamingClient.StreamRequest.ToolDef> deferredDefinitions)
-            implements ToolExecutor {
-
-        static RestrictedToolExecutor create(
-                ToolExecutor delegate, Set<String> allowedTools,
-                Set<String> deniedTools, SyntheticOutputTool structuredOutput,
-                List<String> orderedToolNames,
-                ToolExecutionContext definitionContext) {
-            Set<String> allowedSnapshot = Set.copyOf(allowedTools);
-            Set<String> deniedSnapshot = Set.copyOf(deniedTools);
-            List<String> orderSnapshot = List.copyOf(orderedToolNames);
-            List<StreamingClient.StreamRequest.ToolDef> eager = freezeDefinitions(
-                delegate.getToolDefinitions(definitionContext), allowedSnapshot,
-                deniedSnapshot, structuredOutput, orderSnapshot);
-            List<StreamingClient.StreamRequest.ToolDef> deferred = freezeDefinitions(
-                delegate.getToolDefinitions(new LinkedHashSet<>(orderSnapshot),
-                    definitionContext),
-                allowedSnapshot, deniedSnapshot, structuredOutput, orderSnapshot);
-            return new RestrictedToolExecutor(delegate, allowedSnapshot,
-                deniedSnapshot, structuredOutput, orderSnapshot, eager, deferred);
-        }
-
-        @Override
-        public ToolResult execute(String toolName, JsonNode input, ToolExecutionContext context) {
-            if (structuredOutput != null && SyntheticOutputTool.NAME.equals(toolName)) {
-                try {
-                    Object value = structuredOutput.call(input, context);
-                    if (value instanceof StructuredToolOutput(String text, Object toolUseResult)) {
-                        return ToolResult.success(text).withToolUseResult(toolUseResult);
-                    }
-                    return ToolResult.success(value == null ? "" : value.toString());
-                } catch (Exception e) {
-                    return ToolResult.error(ToolErrors.formatError(e));
-                }
-            }
-            if (deniedTools.contains(toolName)
-                    || !allowedTools.isEmpty() && !allowedTools.contains(toolName)) {
-                return ToolResult.error(
-                    "Tool '" + toolName + "' is not allowed for this sub-agent");
-            }
-            return delegate.execute(toolName, input, context);
-        }
-
-        @Override
-        public PostToolUseOutputResult processPostToolUseOutput(
-                String toolName, JsonNode originalInput, JsonNode updatedOutput,
-                ToolResult originalResult, ToolExecutionContext context) {
-            if (deniedTools.contains(toolName)
-                    || !allowedTools.isEmpty() && !allowedTools.contains(toolName)) {
-                return new PostToolUseOutputResult.Rejected(
-                    "Tool '" + toolName + "' is not allowed for this sub-agent");
-            }
-            return delegate.processPostToolUseOutput(
-                toolName, originalInput, updatedOutput, originalResult, context);
-        }
-
-        @Override
-        public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions() {
-            return eagerDefinitions;
-        }
-
-        @Override
-        public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions(
-                ToolExecutionContext context) {
-            return eagerDefinitions;
-        }
-
-        @Override
-        public List<Message> applyToolResultBudget(List<Message> messages,
-                String sessionId, String workingDirectory, String agentId) {
-            return delegate.applyToolResultBudget(
-                messages, sessionId, workingDirectory, agentId);
-        }
-
-        @Override
-        public void restoreToolResultBudget(List<Message> messages,
-                List<ToolResultBudget.Replacement> replacements,
-                String sessionId, String workingDirectory, String agentId) {
-            delegate.restoreToolResultBudget(
-                messages, replacements, sessionId, workingDirectory, agentId);
-        }
-
-        @Override
-        public List<ToolResultBudget.Replacement>
-                drainToolResultBudgetReplacements(
-                    String sessionId, String workingDirectory, String agentId) {
-            return delegate.drainToolResultBudgetReplacements(
-                sessionId, workingDirectory, agentId);
-        }
-
-        @Override
-        public List<StreamingClient.StreamRequest.ToolDef> getToolDefinitions(
-                Set<String> discoveredToolNames, ToolExecutionContext context) {
-            Set<String> discovered = discoveredToolNames != null
-                ? discoveredToolNames : Set.of();
-            return deferredDefinitions.stream()
-                .filter(def -> !def.deferLoading() || discovered.contains(def.name()))
-                .toList();
-        }
-
-        private static List<StreamingClient.StreamRequest.ToolDef> freezeDefinitions(
-                List<StreamingClient.StreamRequest.ToolDef> source,
-                Set<String> allowedTools, Set<String> deniedTools,
-                SyntheticOutputTool structuredOutput,
-                List<String> orderedToolNames) {
-            List<StreamingClient.StreamRequest.ToolDef> definitions = new ArrayList<>(
-                source.stream()
-                .filter(def -> !deniedTools.contains(def.name()))
-                .filter(def -> allowedTools.isEmpty() || allowedTools.contains(def.name()))
-                .map(RestrictedToolExecutor::copyDefinition)
-                .toList());
-            if (structuredOutput != null) {
-                definitions.add(new StreamingClient.StreamRequest.ToolDef(
-                    structuredOutput.name(), structuredOutput.description(),
-                    structuredOutput.inputSchema()));
-            }
-            if (!orderedToolNames.isEmpty()) {
-                Map<String, Integer> order = new HashMap<>();
-                for (int i = 0; i < orderedToolNames.size(); i++) {
-                    order.putIfAbsent(orderedToolNames.get(i), i);
-                }
-                definitions.sort(Comparator
-                    .comparingInt((StreamingClient.StreamRequest.ToolDef def) ->
-                        order.getOrDefault(def.name(), Integer.MAX_VALUE))
-                    .thenComparing(StreamingClient.StreamRequest.ToolDef::name));
-            }
-            return List.copyOf(definitions);
-        }
-
-        private static StreamingClient.StreamRequest.ToolDef copyDefinition(
-                StreamingClient.StreamRequest.ToolDef definition) {
-            Object schema = definition.inputSchema();
-            if (schema instanceof JsonNode node) {
-                schema = node.deepCopy();
-            } else if (schema != null) {
-                schema = JsonUtils.getMapper().valueToTree(schema);
-            }
-            return new StreamingClient.StreamRequest.ToolDef(
-                definition.name(), definition.description(), schema,
-                definition.type(), definition.maxUses(),
-                definition.allowedDomains() == null ? null
-                    : List.copyOf(definition.allowedDomains()),
-                definition.blockedDomains() == null ? null
-                    : List.copyOf(definition.blockedDomains()),
-                definition.deferLoading(), definition.strict(),
-                definition.eagerInputStreaming());
-        }
-    }
 }

@@ -26,25 +26,19 @@ import com.claudecode.core.message.Usage;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.core.metrics.SessionMetricsEvent;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
-import com.claudecode.core.model.ModelNames;
 import com.claudecode.runtime.metrics.SessionMetricsTracker;
 import com.claudecode.core.prompt.SystemPromptConfig;
 import com.claudecode.core.prompt.SystemPromptConstants;
 import com.claudecode.core.prompt.SystemPromptRuntime;
 import com.claudecode.core.prompt.SystemPromptService;
-import com.claudecode.core.effort.EffortHelpers;
 import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.state.CwdState;
-import com.claudecode.core.process.ProcessResult;
-import com.claudecode.core.process.ProcessRunner;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.io.File;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -128,14 +122,12 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     private volatile List<String> previousTurnTools;
     private final SessionIdentity sessionIdentity;
 
-    private static volatile String gitStatusCache;
-
     /**
      * Prime the process-level startup snapshot before a caller mutates the repository (for example by
-     * creating {@code.claude/worktrees}).
+     * creating {@code .claude/worktrees}).
      */
     public static void primeGitStatusSnapshot(String cwd) {
-        initialGitStatusSnapshot(cwd);
+        QuerySessionGitStatus.primeSnapshot(cwd);
     }
 
     /**
@@ -144,16 +136,7 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
      * inside a Git work tree or Git could not be queried.
      */
     public static String initialGitStatusSnapshot(String cwd) {
-        if (StringUtils.isBlank(cwd)) return null;
-        String cached = gitStatusCache;
-        if (cached != null) return cached.isEmpty() ? null : cached;
-        synchronized (DefaultQuerySession.class) {
-            if (gitStatusCache == null) {
-                String computed = buildGitStatus(cwd);
-                gitStatusCache = computed != null ? computed : "";
-            }
-            return gitStatusCache.isEmpty() ? null : gitStatusCache;
-        }
+        return QuerySessionGitStatus.initialSnapshot(cwd);
     }
 
     /**
@@ -162,19 +145,19 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
      * subprocesses off the event loop and still discard the result if the resume aborts.
      */
     public static String computeGitStatusSnapshot(String cwd) {
-        return StringUtils.isBlank(cwd) ? null : buildGitStatus(cwd);
+        return QuerySessionGitStatus.computeSnapshot(cwd);
     }
 
     /**
-     * Replaces the memo once a project switch is committed. The memo exists to keep the
-     * status block byte-identical across turns so the system prompt stays a stable API-cache
-     * prefix; a project switch has already invalidated that prefix, so refreshing here costs
-     * nothing and avoids reporting the abandoned project's branch for the rest of the session.
+     * Replaces the memo once a project switch is committed.
      */
     public static void publishGitStatusSnapshot(String snapshot) {
-        synchronized (DefaultQuerySession.class) {
-            gitStatusCache = snapshot != null ? snapshot : "";
-        }
+        QuerySessionGitStatus.publishSnapshot(snapshot);
+    }
+
+    /** Clears the process-wide git-status snapshot memo (for test isolation). */
+    public static void resetGitStatusSnapshotForTests() {
+        QuerySessionGitStatus.resetForTest();
     }
     private final MessageCompactor compactService;
     private volatile HookDispatcher hookDispatcher;
@@ -677,64 +660,6 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
         return initialGitStatusSnapshot(config.gitStatusWorkingDirectory());
     }
 
-
-    private static String buildGitStatus(String cwd) {
-        if (cwd == null) return null;
-        File dir = new File(cwd);
-        try {
-            String insideWorkTree = runGit(dir, "rev-parse", "--is-inside-work-tree");
-            if (!Strings.CS.equals("true", insideWorkTree)) return null;
-
-            String branch = runGit(dir, "symbolic-ref", "--short", "HEAD");
-            if (branch == null) {
-                branch = runGit(dir, "rev-parse", "--abbrev-ref", "HEAD");
-            }
-            if (branch == null) branch = "HEAD";
-
-            String mainBranch = runGit(dir, "rev-parse", "--abbrev-ref", "origin/HEAD");
-            if (mainBranch != null && Strings.CS.startsWith(mainBranch, "origin/")) {
-                mainBranch = mainBranch.substring("origin/".length());
-            }
-            if (Strings.CS.equals("HEAD", mainBranch)) mainBranch = null;
-            if (mainBranch == null) mainBranch = "main"; // safe default
-
-            String status = runGit(dir, "--no-optional-locks", "status", "--short");
-            if (status == null) status = "";
-            final int MAX_STATUS_CHARS = 2000;
-            if (status.length() > MAX_STATUS_CHARS) {
-                status = status.substring(0, MAX_STATUS_CHARS)
-                    + "\n... (truncated because it exceeds 2k characters. If you need more information, run \"git status\" using BashTool)";
-            }
-
-            String log      = runGit(dir, "--no-optional-locks", "log", "--oneline", "-n", "5");
-            if (log == null) log = "";
-
-            String userName = runGit(dir, "config", "user.name");
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.");
-            sb.append("\n\nCurrent branch: ").append(branch);
-            sb.append("\n\nMain branch (you will usually use this for PRs): ").append(mainBranch);
-            if (StringUtils.isNotBlank(userName)) {
-                sb.append("\n\nGit user: ").append(userName);
-            }
-            sb.append("\n\nStatus:\n").append(StringUtils.isBlank(status) ? "(clean)" : status);
-            sb.append("\n\nRecent commits:\n").append(log);
-            return sb.toString();
-        } catch (Exception _) {
-            return null;
-        }
-    }
-
-    /** Runs a git command and returns trimmed stdout, or {@code null} on failure / non-zero exit. */
-    private static String runGit(File dir, String... args) {
-        List<String> command = new ArrayList<>();
-        command.add("git");
-        Collections.addAll(command, args);
-        ProcessResult result = ProcessRunner.run(command, dir.toPath(), Duration.ofSeconds(30));
-        return result.succeeded() ? result.stdout().trim() : null;
-    }
-
     // ---- Task 6.7: orphanedPermission handling ----
 
     /**
@@ -785,127 +710,13 @@ public class DefaultQuerySession implements QuerySession, QuerySession.Submissio
     @Override
     public StreamingClient.StreamRequest buildCacheSharingRequest(
             List<Message> messages, String forkPrompt, String querySource) {
-        return buildFork(messages, forkPrompt, querySource);
+        return QueryForkBuilder.buildFork(this, messages, forkPrompt, querySource);
     }
 
     @Override
     public StreamingClient.StreamRequest buildWithoutTools(
             List<Message> messages, String forkPrompt, String querySource) {
-        // Derived from the request it falls back from rather than rebuilt with
-        // an empty catalog: building a second request would re-resolve the tool
-        // catalog to throw it away, and would silently reintroduce the narrowed
-        // Read declaration if the two builders ever drift.
-        return buildFork(messages, forkPrompt, querySource).withoutTools();
-    }
-
-    private StreamingClient.StreamRequest buildFork(
-            List<Message> messages, String forkPrompt, String querySource) {
-        List<Message> forkMessages = new ArrayList<>(messages.size() + 1);
-        forkMessages.addAll(messages);
-        forkMessages.add(new UserMessage(
-            UUID.randomUUID().toString(), MessageContent.ofText(forkPrompt)));
-        String claudeMdContext = QueryHelpers.buildClaudeMdUserContext(this);
-        // config.model() may still hold a bare alias (e.g. "sonnet") set by
-        // /model — the main query loop resolves this via
-        // QueryHelpers.resolveRuntimeModel, but this fork bypasses that path.
-        String resolvedModel = ModelNames.parseUserSpecifiedModel(config.model());
-        List<StreamingClient.StreamRequest.RequestMessage> requestMessages =
-            QueryHelpers.buildRequestMessages(
-                this, forkMessages, claudeMdContext, resolvedModel, List.of());
-        ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(
-            this, resolvedModel);
-        List<StreamingClient.StreamRequest.ToolDef> toolDefs =
-            forkToolDefs(forkMessages, resolvedModel, toolPromptContext, querySource);
-        String effortValue = getEffortOverride() != null
-            ? getEffortOverride() : config.effortValue();
-        String resolvedEffort = EffortHelpers.resolveAppliedEffort(resolvedModel, effortValue);
-        // Full canonical shape: the shorter overloads silently default the tail
-        // components, which is how forks built here lost thinkingBudgetTokens and
-        // the Fast Mode pair — a rebuilt /recap or /btw fork in a Fast Mode
-        // session went out without speed: "fast" and with no cooldown callback.
-        return new StreamingClient.StreamRequest(
-            resolvedModel, config.maxTokens(), fetchSystemPromptParts(), requestMessages,
-            true, toolDefs, null, resolvedEffort, config.fallbackModel(), null, null,
-            null, null, config.isThinkingEnabled(), getSessionId(), config.agentId(),
-            true, querySource, getAbortController(), config.thinkingBudgetTokens(),
-            config.fastModeController().isFastRequest(resolvedModel),
-            config.fastModeController().failureHandler());
-    }
-
-    /**
-     * The tool catalog a fork declares. Compaction gets the narrowed set; every
-     * other fork keeps the session's full catalog (or its deferred-discovery
-     * view when tool search is on for this model).
-     */
-    private List<StreamingClient.StreamRequest.ToolDef> forkToolDefs(
-            List<Message> forkMessages, String resolvedModel,
-            ToolExecutionContext toolPromptContext, String querySource) {
-        if (isCompactFork(querySource)) {
-            return narrowCompactForkTools(resolvedModel, toolPromptContext);
-        }
-        return ToolSearchGate.isEnabled(resolvedModel)
-            ? config.toolExecutor().getToolDefinitions(
-                ToolSearchGate.extractDiscoveredToolNames(forkMessages), toolPromptContext)
-            : config.toolExecutor().getToolDefinitions(toolPromptContext);
-    }
-
-    /** The {@code querySource} of the compaction fork. */
-    private static final String COMPACT_QUERY_SOURCE = "compact";
-
-    /**
-     * The two tools a compaction fork is still allowed to keep, plus every MCP
-     * tool. Authoritative rule from the 2.1.236 bundle ({@code Nhf}'s
-     * {@code C0([k0, n5n, ...tools.filter(isMcp)], "name")}, where {@code k0} is
-     * the Read tool and {@code n5n} the ToolSearch tool).
-     */
-    private static final String COMPACT_FORK_READ_TOOL = "Read";
-    private static final String COMPACT_FORK_TOOL_SEARCH = "ToolSearch";
-    private static final String COMPACT_FORK_MCP_PREFIX = "mcp__";
-
-    /**
-     * Whether this fork is the compaction fork.
-     *
-     * <p>The same builder also serves {@code /recap} ({@code "away_summary"}) and
-     * sub-agent compaction, which must keep the session's full tool catalog.
-     */
-    private static boolean isCompactFork(String querySource) {
-        return Strings.CS.equals(COMPACT_QUERY_SOURCE, querySource);
-    }
-
-    /**
-     * Narrows the compaction fork's tool catalog.
-     *
-     * <p>A compaction prompt asks for text only, but a model with weak
-     * instruction-following still reaches for a tool if one is declared — and
-     * this fork consumes the response as a plain text stream with no execution
-     * loop, so a tool call spends the turn and the summary is never written.
-     * Narrowing the catalog is what the 2.1.236 bundle does instead of relying
-     * on the prompt alone: Read plus ToolSearch plus MCP servers when tool
-     * search is on for this model, and bare Read otherwise. Bash and every
-     * other writer are dropped.
-     */
-    private List<StreamingClient.StreamRequest.ToolDef> narrowCompactForkTools(
-            String resolvedModel, ToolExecutionContext toolPromptContext) {
-        boolean toolSearchEnabled = ToolSearchGate.isEnabled(resolvedModel);
-        // Deliberately the unfiltered catalog: the deferred-tool discovery pass
-        // exists to hide schemas the *conversation* has not surfaced yet, but
-        // compaction wants a fixed Read/ToolSearch/MCP set regardless of what
-        // this history already discovered.
-        List<StreamingClient.StreamRequest.ToolDef> all =
-            config.toolExecutor().getToolDefinitions(toolPromptContext);
-        List<StreamingClient.StreamRequest.ToolDef> narrowed = new ArrayList<>();
-        for (StreamingClient.StreamRequest.ToolDef def : all) {
-            String name = def.name();
-            if (name == null) continue;
-            if (Strings.CS.equals(name, COMPACT_FORK_READ_TOOL)) {
-                narrowed.add(def);
-            } else if (toolSearchEnabled
-                    && (Strings.CS.equals(name, COMPACT_FORK_TOOL_SEARCH)
-                        || Strings.CS.startsWith(name, COMPACT_FORK_MCP_PREFIX))) {
-                narrowed.add(def);
-            }
-        }
-        return narrowed;
+        return QueryForkBuilder.buildFork(this, messages, forkPrompt, querySource).withoutTools();
     }
 
     @Override public void setLastCacheSafeForkRequest(StreamingClient.StreamRequest request) {

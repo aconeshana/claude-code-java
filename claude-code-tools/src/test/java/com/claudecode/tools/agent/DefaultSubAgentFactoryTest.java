@@ -966,10 +966,8 @@ class DefaultSubAgentFactoryTest {
         resetProcessGitStatusSnapshot();
     }
 
-    private static void resetProcessGitStatusSnapshot() throws Exception {
-        Field field = DefaultQuerySession.class.getDeclaredField("gitStatusCache");
-        field.setAccessible(true);
-        field.set(null, null);
+    private static void resetProcessGitStatusSnapshot() {
+        DefaultQuerySession.resetGitStatusSnapshotForTests();
     }
 
     @Test
