@@ -26,8 +26,8 @@ import { useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   IconArchiveOutline20, IconBranchOutline16, IconEditOutline16, IconEllipsisOutline16,
-  IconFolderClose16, IconFolderOpen16, IconPlusOutline16, IconTrashOutline16,
-  IconTriangleRightFill14, MarqueeText, Menu, relativeTime, StateDot, useHoverMarquee,
+  IconFolderCloseRegular, IconFolderOpenRegular, IconPlusOutline16, IconTrashOutline16,
+  IconTriangleRightFillRegular, MarqueeText, Menu, relativeTime, StateDot, useHoverMarquee,
 } from '@primitives'
 import type { MenuEntry, StateDotState } from '@primitives'
 import type { CatalogSession } from '../api/types'
@@ -163,10 +163,10 @@ export function ProjectRowItem({ label, expanded, containsCurrent, onToggle, onN
       onClick={onToggle}
     >
       <span className={clsx(css.slot, css.folder, active && css.folderActive)}>
-        {expanded ? <IconFolderOpen16 /> : <IconFolderClose16 />}
+        {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
       </span>
       <span className={clsx(css.slot, css.chevron)}>
-        <IconTriangleRightFill14 className={clsx(css.arrow, expanded && css.arrowOpen)} />
+        <IconTriangleRightFillRegular className={clsx(css.arrow, expanded && css.arrowOpen)} />
       </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>

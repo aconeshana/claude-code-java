@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   IconChevronDownOutline14,
   IconChevronRightOutline14,
-  IconFolderClose16,
-  IconFolderOpen16,
+  IconFolderCloseRegular,
+  IconFolderOpenRegular,
   IconRefreshOutline14,
 } from '@primitives'
 import { fetchWorkspaceTree, type WorkspaceTreeEntry } from '../../api/client'
@@ -97,7 +97,7 @@ export function WorkspaceFilesTab({
             </span>
             <span className={css.icon}>
               {entry.directory
-                ? (isOpen ? <IconFolderOpen16 size={15} /> : <IconFolderClose16 size={15} />)
+                ? (isOpen ? <IconFolderOpenRegular size={15} /> : <IconFolderCloseRegular size={15} />)
                 : <FileTypeIcon path={entry.path} size={15} />}
             </span>
             <span className={css.name}>{entry.name}</span>
