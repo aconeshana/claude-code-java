@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@primitives'
 import type { ConversationState, ToolCallState } from '../store/conversations'
 import { buildChatFlowEntries } from '../store/stepGroups'
@@ -86,6 +86,11 @@ export function ChatView(
   )
 
   useEffect(() => {
+    followingRef.current = true
+    setFollowing(true)
+  }, [sessionId])
+
+  useEffect(() => {
     const scroller = scrollRef.current
     if (scroller == null || !followingRef.current) return
     scroller.scrollTop = scroller.scrollHeight
@@ -100,13 +105,29 @@ export function ChatView(
     setFollowing(next)
   }
 
-  const scrollToBottom = (): void => {
+  const scrollToBottom = useCallback((): void => {
     const scroller = scrollRef.current
     if (scroller == null) return
-    scroller.scrollTop = scroller.scrollHeight
+    if (typeof scroller.scrollTo === 'function') {
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
+    } else {
+      scroller.scrollTop = scroller.scrollHeight
+    }
     followingRef.current = true
     setFollowing(true)
-  }
+  }, [])
+
+  // Maps TUI's scroll:bottom (Ctrl+End) to the Web UI back-to-bottom action.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.ctrlKey && event.key === 'End' && !followingRef.current) {
+        event.preventDefault()
+        scrollToBottom()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [scrollToBottom])
 
   // A beforematch on a hidden member reveals that node alone in the DOM;
   // flip the owning group's open state too, so the control reflects it and
@@ -282,7 +303,13 @@ export function ChatView(
         )}
         {!following && messages.length > 0 && (
           <div className={css.toBottomSlot}>
-            <button type="button" className={css.toBottom} onClick={scrollToBottom} aria-label="回到底部">
+            <button
+              type="button"
+              className={css.toBottom}
+              onClick={scrollToBottom}
+              aria-label="回到底部"
+              title="回到底部 (Ctrl+End)"
+            >
               <IconChevronDownOutline14 />
             </button>
           </div>

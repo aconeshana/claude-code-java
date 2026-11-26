@@ -16,6 +16,8 @@ import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.AbstractComponent;
 import com.googlecode.lanterna.gui2.ComponentRenderer;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
+import com.googlecode.lanterna.input.MouseAction;
+import com.googlecode.lanterna.input.MouseActionType;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -226,6 +228,9 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
     // ── Scroll state ───────────────────────────────────────────────────────
     private int scrollOffset      = 0;   // lines hidden at top
     private boolean autoScroll    = true; // follow bottom like a terminal
+    private volatile int jumpPillRow = -1;
+    private volatile int jumpPillStartCol = -1;
+    private volatile int jumpPillEndCol = -1;
     private volatile String searchHighlightQuery = null; // non-null = highlight matches
 
     /**
@@ -1155,8 +1160,42 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
 
     public void pageUp()              { scroll(-pageStep(), SelectionScrollMode.BOTH_ENDPOINTS); }
     public void pageDown()            { scroll(+pageStep(), SelectionScrollMode.BOTH_ENDPOINTS); }
-    public void scrollToBottom()      { scrollOffset = 0; autoScroll = true; invalidate(); }
+    public void scrollToBottom() {
+        scrollOffset = 0;
+        autoScroll = true;
+        jumpPillRow = -1;
+        invalidate();
+    }
     public void scrollToTop()         { scrollOffset = maxScrollOffset(); autoScroll = false; invalidate(); }
+
+    /** Whether the transcript viewport is currently scrolled up away from the bottom. */
+    public boolean isScrolledUp() { return scrollOffset > 0; }
+
+    /**
+     * Handles left-click on the floating "Jump to bottom" pill rendered on the bottom
+     * row when the user has scrolled up. Returns {@code true} when consumed.
+     */
+    public boolean handleJumpToBottomMouse(MouseAction mouse) {
+        if (mouse == null || scrollOffset <= 0) return false;
+        int row = jumpPillRow;
+        int startCol = jumpPillStartCol;
+        int endCol = jumpPillEndCol;
+        if (row < 0 || startCol < 0 || endCol <= startCol) return false;
+        if (mouse.getActionType() != MouseActionType.CLICK_DOWN || mouse.getButton() != 1) {
+            return false;
+        }
+        TerminalPosition origin = getGlobalPosition();
+        if (origin == null) return false;
+        TerminalPosition pos = mouse.getPosition();
+        if (pos == null) return false;
+        int relRow = pos.getRow() - origin.getRow();
+        int relCol = pos.getColumn() - origin.getColumn();
+        if (relRow == row && relCol >= startCol && relCol < endCol) {
+            scrollToBottom();
+            return true;
+        }
+        return false;
+    }
 
     private int pageStep() {
         TerminalSize size = getSize();
@@ -2127,7 +2166,31 @@ public class MessagePanel extends AbstractComponent<MessagePanel> {
                 }
             }
 
+            if (scrollOffset > 0 && height >= 2 && width >= 18) {
+                drawJumpToBottomPill(g, height - 1, width);
+            } else {
+                jumpPillRow = -1;
+                jumpPillStartCol = -1;
+                jumpPillEndCol = -1;
+            }
+        }
 
+        private void drawJumpToBottomPill(TextGUIGraphics g, int y, int width) {
+            String fullLabel = " Jump to bottom (ctrl+end) ↓ ";
+            String compactLabel = " Jump to bottom ↓ ";
+            String label = fullLabel.length() <= width - 2 ? fullLabel : compactLabel;
+            if (label.length() > width) {
+                jumpPillRow = -1;
+                return;
+            }
+            int startX = Math.max(0, (width - label.length()) / 2);
+            g.setForegroundColor(LanternaTheme.claude());
+            g.setBackgroundColor(LanternaTheme.userQueryBg());
+            g.putString(startX, y, label, SGR.BOLD);
+            g.setBackgroundColor(TextColor.ANSI.DEFAULT);
+            jumpPillRow = y;
+            jumpPillStartCol = startX;
+            jumpPillEndCol = startX + label.length();
         }
 
         private void drawLine(TextGUIGraphics g, int y, String text, TextColor color, int width) {

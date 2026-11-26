@@ -16,7 +16,15 @@ import {
   type EditorState,
   type LexicalEditor,
 } from 'lexical'
-import { IconPlusOutline16, IconSendOutline16, IconStopFill16 } from '@primitives'
+import {
+  IconEditOutline16,
+  IconPlusOutline16,
+  IconQueueOutline14,
+  IconSendOutline14,
+  IconSendOutline16,
+  IconStopFill16,
+  IconTrashOutline16,
+} from '@primitives'
 import type { FileCandidate, UserContentBlock } from '../api/types'
 import {
   AttachmentError,
@@ -29,9 +37,13 @@ import {
 import { AttachmentStrip } from './AttachmentStrip'
 import {
   clearQueuedSubmission,
-  readQueuedSubmission,
-  storeQueuedSubmission,
+  extractQueuedPreview,
+  mergeQueuedContents,
+  readQueuedItems,
+  storeQueuedItems,
+  type QueuedItem,
 } from './composerQueue'
+import queueCss from './QueueDock.module.css'
 import { useEnterBehavior } from '../store/enterBehavior'
 import { AtTriggerPlugin } from './AtTriggerPlugin'
 import {
@@ -144,10 +156,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const [attachments, setAttachments] = useState<readonly DraftAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [draftText, setDraftText] = useState('')
-  // The parked submission (composerQueue) re-rendered into state so the
-  // notice row and the flush effect both react to it; localStorage stays the
-  // source of truth (it survives a reload mid-turn).
-  const [queuedContent, setQueuedContent] = useState<string | readonly UserContentBlock[] | null>(null)
+  // The parked submissions (composerQueue) re-rendered into state so the
+  // composer-docked queue card and the flush effect both react to them;
+  // localStorage stays the source of truth (it survives a reload mid-turn).
+  const [queuedItems, setQueuedItems] = useState<readonly QueuedItem[]>([])
   // "+" and typed "/" menu: the vendored reducer state over the /api/commands
   // catalogue. Both entry points share one menu shell (`menuMode` distinguishes
   // the "+" button's Add+Commands pick list from a typed `/` fuzzy-ranked list).
@@ -212,21 +224,22 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   useEffect(() => {
     queuedSessionRef.current = sessionId
     wasBusyRef.current = busy
-    setQueuedContent(sessionId == null ? null : readQueuedSubmission(sessionId))
+    setQueuedItems(sessionId == null ? [] : readQueuedItems(sessionId))
   }, [sessionId]) // busy is the edge baseline, read once per re-base
 
-  // The flush: only the session the row was queued under, only on its own
-  // busy→idle edge. A session switch resets the baseline above, so a parked
-  // row can never ride another session's edge out.
+  // The flush: only the session the rows were queued under, only on its own
+  // busy→idle edge. A session switch resets the baseline above, so parked
+  // rows can never ride another session's edge out.
   useEffect(() => {
     if (wasBusyRef.current && !busy
-        && queuedContent != null && queuedSessionRef.current === sessionId) {
-      onSubmit(queuedContent)
+        && queuedItems.length > 0 && queuedSessionRef.current === sessionId) {
+      const merged = mergeQueuedContents(queuedItems.map((item) => item.content))
+      onSubmit(merged)
       if (sessionId != null) clearQueuedSubmission(sessionId)
-      setQueuedContent(null)
+      setQueuedItems([])
     }
     wasBusyRef.current = busy
-  }, [busy, queuedContent, onSubmit, sessionId])
+  }, [busy, queuedItems, onSubmit, sessionId])
 
   // Model seat + context meter: refreshed on mount, on every conversation
   // switch (the addressed session moves), after every settled turn (the
@@ -643,8 +656,53 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     return false
   }, [menu.open, menu.highlight, menuMode, closeMenu, pickMenuItem])
 
-  const submit = useCallback((): void => {
-    if (disabled || !hasSubmittableContent(draftText, attachments)) return
+  const updateQueuedItems = useCallback((next: readonly QueuedItem[]): void => {
+    setQueuedItems(next)
+    if (sessionId != null) storeQueuedItems(sessionId, next)
+  }, [sessionId])
+
+  const removeQueuedItem = useCallback((id: string): void => {
+    updateQueuedItems(queuedItems.filter((item) => item.id !== id))
+  }, [queuedItems, updateQueuedItems])
+
+  const editQueuedItem = useCallback((id: string): void => {
+    const target = queuedItems.find((item) => item.id === id)
+    if (target == null) return
+    updateQueuedItems(queuedItems.filter((item) => item.id !== id))
+    const text = extractQueuedPreview(target.content)
+    const nextText = draftText.trim() === '' ? text : `${draftText}\n${text}`
+    setDraftText(nextText)
+    editorRef.current?.update(() => {
+      const root = $getRoot()
+      root.clear()
+      const p = $createParagraphNode()
+      p.append($createTextNode(nextText))
+      root.append(p)
+      p.selectEnd()
+    })
+    editorRef.current?.focus()
+  }, [queuedItems, updateQueuedItems, draftText])
+
+  const steerQueuedItem = useCallback((id: string): void => {
+    const target = queuedItems.find((item) => item.id === id)
+    if (target == null) return
+    updateQueuedItems(queuedItems.filter((item) => item.id !== id))
+    onSubmit(target.content, { steer: true })
+  }, [queuedItems, updateQueuedItems, onSubmit])
+
+  const submit = useCallback((options?: { readonly forceSteer?: boolean }): void => {
+    const forceSteer = options?.forceSteer === true
+    if (disabled) return
+    if (!hasSubmittableContent(draftText, attachments)) {
+      // Cmd/Ctrl+Enter on an empty composer while busy promotes ALL parked
+      // queued submissions to interrupt and send immediately (matches upstream DSH).
+      if (forceSteer && busy && queuedItems.length > 0) {
+        const merged = mergeQueuedContents(queuedItems.map((item) => item.content))
+        updateQueuedItems([])
+        onSubmit(merged, { steer: true })
+      }
+      return
+    }
     const text = draftText.trim()
     if (attachments.length === 0 && onClientCommand?.(text) === true) {
       setDraftText('')
@@ -657,19 +715,28 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     setDraftText('')
     setAttachments([])
     editorRef.current?.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined)
-    if (busy && enterBehavior === 'queue') {
-      // Park under the addressed session only; another session's composer
-      // never reads it back.
-      if (sessionId != null) storeQueuedSubmission(sessionId, content)
-      setQueuedContent(content)
+    if (busy && (forceSteer || enterBehavior === 'steer')) {
+      if (queuedItems.length > 0) {
+        const merged = mergeQueuedContents([...queuedItems.map((item) => item.content), content])
+        updateQueuedItems([])
+        onSubmit(merged, { steer: true })
+      } else {
+        onSubmit(content, { steer: true })
+      }
       return
     }
-    if (busy && enterBehavior === 'steer') {
-      onSubmit(content, { steer: true })
+    if (busy && enterBehavior === 'queue') {
+      // Append under the addressed session only; another session's composer
+      // never reads it back.
+      const nextItem: QueuedItem = {
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        content,
+      }
+      updateQueuedItems([...queuedItems, nextItem])
       return
     }
     onSubmit(content)
-  }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, sessionId, onClientCommand])
+  }, [disabled, draftText, attachments, onSubmit, busy, enterBehavior, onClientCommand, queuedItems, updateQueuedItems])
 
   // Stop is offered only where a cancellation callback is wired; a composer
   // with no onStop never renders a stop affordance whose click does nothing.
@@ -688,10 +755,56 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   const commandHint = activeCommandHint(draftText, composerCommands)
   const fileBreadcrumbSegments = atToken == null ? [] : atBreadcrumbSegments(atToken.query)
 
+  const effectivePlaceholder = queuedItems.length > 0 && busy
+    ? uiT('composer.placeholderQueued')
+    : placeholder
+
   return (
     <div className={hero ? `${css.root} ${css.hero}` : css.root}>
+      {queuedItems.length > 0 && (
+        <div className={queueCss.dock} data-testid="composer-queue-dock" role="region" aria-label="排队消息">
+          {queuedItems.map((item) => (
+            <div key={item.id} className={queueCss.row}>
+              <span className={queueCss.icon} aria-hidden="true">
+                <IconQueueOutline14 />
+              </span>
+              <span className={queueCss.text}>{extractQueuedPreview(item.content)}</span>
+              <div className={queueCss.actions}>
+                <button
+                  type="button"
+                  className={queueCss.actionBtn}
+                  onClick={() => { editQueuedItem(item.id) }}
+                  aria-label={uiT('composer.queueEdit')}
+                  title={uiT('composer.queueEdit')}
+                >
+                  <IconEditOutline16 />
+                </button>
+                <button
+                  type="button"
+                  className={queueCss.actionBtn}
+                  onClick={() => { removeQueuedItem(item.id) }}
+                  aria-label={uiT('composer.queueDelete')}
+                  title={uiT('composer.queueDelete')}
+                >
+                  <IconTrashOutline16 />
+                </button>
+                <button
+                  type="button"
+                  className={queueCss.actionBtn}
+                  onClick={() => { steerQueuedItem(item.id) }}
+                  aria-label={uiT('composer.queueSteer')}
+                  title={uiT('composer.queueSteer')}
+                >
+                  <IconSendOutline14 />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         className={`ccj-composer-card ${css.card}`}
+        style={{ zIndex: 1 }}
         onDragOver={(event) => {
           // Allow drops without navigating the browser to the file.
           if (event.dataTransfer.types.includes('Files')) event.preventDefault()
@@ -753,9 +866,12 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
                   ariaLabel="消息输入框"
                 />
               }
-              placeholder={<span className={css.placeholder}>{placeholder}</span>}
+              placeholder={null}
               ErrorBoundary={ComposerErrorBoundary}
             />
+            {draftText === '' && (
+              <span className={css.placeholder}>{effectivePlaceholder}</span>
+            )}
             <HistoryPlugin />
             <ClearEditorPlugin />
             <EditorRefPlugin editorRef={editorRef} />
@@ -816,7 +932,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
             <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }}>
               {!interactive
                 ? uiT('composer.readOnly')
-                : queuedContent != null
+                : queuedItems.length > 0
                   ? uiT('composer.queued')
                   : uiT('composer.hint')}
             </span>
@@ -851,7 +967,7 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
               type="button"
               className={css.primary}
               disabled={stop ? false : disabled || !hasSubmittableContent(draftText, attachments)}
-              onClick={stop ? onStop : submit}
+              onClick={stop ? onStop : () => { submit() }}
               aria-label={stop ? '停止' : '发送'}
             >
               {stop ? <IconStopFill16 /> : <IconSendOutline16 />}
@@ -939,7 +1055,7 @@ function EditorRefPlugin({ editorRef }: {
  */
 function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown, onFileMenuKeyDown }: {
   disabled: boolean
-  onSubmit: () => void
+  onSubmit: (options?: { readonly forceSteer?: boolean }) => void
   onMenuKeyDown: (event: KeyboardEvent) => boolean
   onFileMenuKeyDown: (event: KeyboardEvent) => boolean
 }) {
@@ -957,7 +1073,7 @@ function SubmitKeyPlugin({ disabled, onSubmit, onMenuKeyDown, onFileMenuKeyDown 
         if (event.isComposing || event.keyCode === 229) return false
         if (event.shiftKey) return false
         event.preventDefault()
-        onSubmit()
+        onSubmit({ forceSteer: event.ctrlKey || event.metaKey })
         return true
       },
       COMMAND_PRIORITY_CRITICAL,

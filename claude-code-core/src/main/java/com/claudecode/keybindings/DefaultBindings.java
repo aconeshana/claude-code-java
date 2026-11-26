@@ -55,6 +55,9 @@ public final class DefaultBindings {
                 m.put("meta+o", "chat:fastMode");
                 m.put("meta+t", "chat:thinkingToggle");
                 m.put("enter", "chat:submit");
+                m.put("ctrl+x enter", "chat:queueSubmit");
+                m.put("ctrl+x ctrl+s", "chat:sendNow");
+                m.put("ctrl+enter", "chat:sendNow");
                 m.put("up", "history:previous");
                 m.put("down", "history:next");
                 m.put("ctrl+_", "chat:undo");

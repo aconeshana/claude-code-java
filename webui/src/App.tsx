@@ -139,17 +139,7 @@ export function App() {
     content: string | readonly UserContentBlock[],
     options?: { readonly steer?: boolean },
   ) => {
-    const run = async () => {
-      if (options?.steer === true && selectedId != null) {
-        await cancelTurn({ session_id: selectedId }).catch((failure: unknown) => {
-          if (failure instanceof ApiError && failure.status === 404) return
-          console.error('steer cancellation failed', failure)
-        })
-        await new Promise((resolve) => { window.setTimeout(resolve, 120) })
-      }
-      await submitTurn(selectedId, content)
-    }
-    void run().catch((failure: unknown) => {
+    void submitTurn(selectedId, content, options).catch((failure: unknown) => {
       console.error('turn submission failed', failure)
       toast.error(failure instanceof Error ? `发送失败：${failure.message}` : '消息发送失败')
     })

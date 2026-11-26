@@ -137,9 +137,39 @@ final class ReplSubmissionCoordinator {
         }, this::bashReleased);
     }
 
+    private enum SubmitSteerMode { DEFAULT, SEND_NOW, QUEUE_ONLY }
+
     // ── Routing ─────────────────────────────────────────────────────────────
 
     void handleInput(String value) {
+        handleInput(value, SubmitSteerMode.DEFAULT);
+    }
+
+    /**
+     * {@code chat:sendNow} ({@code ctrl+enter} / {@code ctrl+x ctrl+s}): interrupt the active
+     * turn and send the composed prompt immediately. When the composer is empty and queued
+     * commands are waiting while a turn is in flight, interrupts the active turn so the
+     * queued prompt(s) run immediately.
+     */
+    void handleSendNow(String value) {
+        if (StringUtils.isBlank(value)) {
+            if (turns.isInFlight() && turns.countQueued(_ -> true) > 0) {
+                turns.interruptForQueuedSubmit();
+            }
+            return;
+        }
+        handleInput(value, SubmitSteerMode.SEND_NOW);
+    }
+
+    /**
+     * {@code chat:queueSubmit} ({@code ctrl+x enter}): enqueue the composed prompt without
+     * steering/interrupting the active turn.
+     */
+    void handleQueueSubmit(String value) {
+        handleInput(value, SubmitSteerMode.QUEUE_ONLY);
+    }
+
+    private void handleInput(String value, SubmitSteerMode steerMode) {
         if (StringUtils.isBlank(value)) return;
         Map<Integer, PastedContent> raw = input.getPastedContents();
         Map<Integer, PastedContent> pasted = dropUnreferencedImages(value, raw);
@@ -160,8 +190,11 @@ final class ReplSubmissionCoordinator {
         Map<Integer, PastedContent> forTurn = hasImages ? pasted : Map.of();
 
         if (Strings.CS.startsWith(finalInput, "!")) {
-            // 236 steers the active turn for a bash submission exactly as for a prompt.
-            steerActiveTurn();
+            if (steerMode == SubmitSteerMode.SEND_NOW) {
+                if (turns.isInFlight()) turns.interruptForQueuedSubmit();
+            } else if (steerMode == SubmitSteerMode.DEFAULT) {
+                steerActiveTurn();
+            }
             bashSubmissions.submit(finalInput.substring(1),
                 Strings.CS.startsWith(value, "!") ? value.substring(1) : null, forTurn,
                 turns.isInFlight() || longRunning);
@@ -175,14 +208,21 @@ final class ReplSubmissionCoordinator {
             boolean busy = turns.isInFlight() || externallyBusy();
             if (command != null && immediate.tryDispatchImmediate(command, args, false, busy, commandContext)) return;
             if (externallyBusy()) {
-                enqueue(finalInput, forTurn, value);
+                enqueue(finalInput, forTurn, value, null,
+                    steerMode == SubmitSteerMode.SEND_NOW ? QueuePriority.NOW : QueuePriority.NEXT);
                 return;
             }
-            if (command == null || !command.isImmediate()) steerActiveTurn();
+            if (command == null || !command.isImmediate()) {
+                if (steerMode == SubmitSteerMode.SEND_NOW) {
+                    if (turns.isInFlight()) turns.interruptForQueuedSubmit();
+                } else if (steerMode == SubmitSteerMode.DEFAULT) {
+                    steerActiveTurn();
+                }
+            }
             slash.dispatch(finalInput);
             return;
         }
-        handleQuery(finalInput, forTurn, value, false);
+        handleQuery(finalInput, forTurn, value, false, steerMode);
     }
 
     /** Routes the one-shot argv prompt; turns started while it runs carry startup provenance. */
@@ -333,9 +373,26 @@ final class ReplSubmissionCoordinator {
 
     private void handleQuery(String value, Map<Integer, PastedContent> pasted,
                              String preExpansionValue, boolean remote) {
+        handleQuery(value, pasted, preExpansionValue, remote, SubmitSteerMode.DEFAULT);
+    }
+
+    private void handleQuery(String value, Map<Integer, PastedContent> pasted,
+                             String preExpansionValue, boolean remote,
+                             SubmitSteerMode steerMode) {
         if (turns.isInFlight() || externallyBusy()) {
-            steerActiveTurn();
-            enqueue(value, pasted, preExpansionValue, remote ? "session-host" : null);
+            if (steerMode == SubmitSteerMode.SEND_NOW) {
+                enqueue(value, pasted, preExpansionValue, remote ? "session-host" : null,
+                    QueuePriority.NOW);
+                if (turns.isInFlight()) {
+                    turns.interruptForQueuedSubmit();
+                }
+                return;
+            }
+            if (steerMode == SubmitSteerMode.DEFAULT) {
+                steerActiveTurn();
+            }
+            enqueue(value, pasted, preExpansionValue, remote ? "session-host" : null,
+                QueuePriority.NEXT);
             return;
         }
         if (remote) executeRemoteQuery(value, pasted);
@@ -346,14 +403,10 @@ final class ReplSubmissionCoordinator {
      * Queue an already-expanded submission.
      */
     private void enqueue(String value, Map<Integer, PastedContent> pasted,
-                         String preExpansionValue) {
-        enqueue(value, pasted, preExpansionValue, null);
-    }
-
-    private void enqueue(String value, Map<Integer, PastedContent> pasted,
-                         String preExpansionValue, String originKind) {
+                         String preExpansionValue, String originKind,
+                         QueuePriority priority) {
         String preview = preExpansionValue != null ? preExpansionValue : value;
-        renderAndQueue(new QueuedCommand(value, pasted, "prompt", QueuePriority.NEXT,
+        renderAndQueue(new QueuedCommand(value, pasted, "prompt", priority,
             false, originKind, false, false, preExpansionValue, null, null), preview);
         input.setQueuedHint(true);
     }

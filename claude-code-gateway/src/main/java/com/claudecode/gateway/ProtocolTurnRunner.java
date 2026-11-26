@@ -54,6 +54,10 @@ final class ProtocolTurnRunner {
             return null;
         }
 
+        default boolean extractSteer(JsonNode request) {
+            return request.path("metadata").path("steer").asBoolean(false);
+        }
+
         String errorBody(int status, String reason);
     }
 
@@ -78,10 +82,21 @@ final class ProtocolTurnRunner {
                 String sessionId, SessionHostSubmission submission) {
             return Optional.empty();
         }
+
+        /** Triggers cancellation of the active turn on a local session (for server-side steer). */
+        default boolean cancelLocal(String sessionId) {
+            return false;
+        }
+
+        /** Triggers cancellation of the active turn on a remote worker session (for server-side steer). */
+        default Optional<CompletableFuture<Void>> cancelRemote(String sessionId) {
+            return Optional.empty();
+        }
     }
 
     private static final int TOO_MANY_REQUESTS = 429;
     private static final Duration REMOTE_ACCEPT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration STEER_CANCEL_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration UNARY_TURN_TIMEOUT = Duration.ofMinutes(5);
 
     private final SessionResolver sessions;
@@ -131,10 +146,14 @@ final class ProtocolTurnRunner {
             ? "gw-" + UUID.randomUUID() : idempotencyKey;
 
         String sessionId = projection.extractSessionId(request);
+        boolean steer = projection.extractSteer(request);
         SessionHostSession session = sessions.resolve(sessionId).orElse(null);
-        log.debug("[gw-turn] resolve session={} found={} requestModel={} messageId={}",
-            sessionId, session != null, request.path("model").asText(""), messageId);
+        log.debug("[gw-turn] resolve session={} found={} steer={} requestModel={} messageId={}",
+            sessionId, session != null, steer, request.path("model").asText(""), messageId);
         if (session == null && sessionId != null) {
+            if (steer) {
+                awaitRemoteSteerCancel(sessionId);
+            }
             Optional<CompletableFuture<Void>> remote = sessions.submitRemote(sessionId,
                 new SessionHostSubmission(prompt, messageId,
                     attachments.images(), attachments.files()));
@@ -151,8 +170,8 @@ final class ProtocolTurnRunner {
             return;
         }
         String targetId = session.info().id();
-        if (!inFlight.tryAcquire(targetId)) {
-            log.debug("[gw-turn] rejected: in flight session={}", targetId);
+        if (!acquireTurnSlot(targetId, steer)) {
+            log.debug("[gw-turn] rejected: in flight session={} steer={}", targetId, steer);
             responder.respondJsonError(TOO_MANY_REQUESTS,
                 "a turn is already in flight on this session; retry after it completes");
             return;
@@ -215,6 +234,31 @@ final class ProtocolTurnRunner {
             Thread.currentThread().interrupt();
             unaryScope.fail("interrupted");
             responder.respondJsonError(502, "interrupted while waiting for turn");
+        }
+    }
+
+    private boolean acquireTurnSlot(String targetId, boolean steer) {
+        if (inFlight.tryAcquire(targetId)) return true;
+        if (!steer) return false;
+        sessions.cancelLocal(targetId);
+        try {
+            return inFlight.awaitAndAcquire(targetId, STEER_CANCEL_TIMEOUT);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void awaitRemoteSteerCancel(String sessionId) {
+        Optional<CompletableFuture<Void>> cancelled = sessions.cancelRemote(sessionId);
+        if (cancelled.isEmpty()) return;
+        try {
+            cancelled.get().get(STEER_CANCEL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException failure) {
+            log.debug("[gw-turn] remote steer cancel did not complete cleanly for session={}: {}",
+                sessionId, failure.getMessage());
         }
     }
 

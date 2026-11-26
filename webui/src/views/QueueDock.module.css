@@ -1,0 +1,74 @@
+/*
+ * Upstream DSH composer-docked queue card: sits directly above the composer
+ * card along the shared dock width axis (card width minus 4 * 8px dock inset)
+ * and tucks cleanly behind the composer card's rounded 22px top edge.
+ */
+.dock {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: calc(100% - 4 * var(--dsh-composer-dock-inset, 8px));
+  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset, 8px));
+  margin-bottom: -14px;
+  padding: 6px 12px 20px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  background: var(--dsw-alias-bg-secondary, var(--dsw-specific-menu));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  min-width: 0;
+}
+
+.icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.actionBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}

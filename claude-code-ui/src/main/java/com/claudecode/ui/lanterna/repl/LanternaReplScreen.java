@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.repl;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.commands.prompt.PromptInvocation;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.imagestore.ImageStore;
 import com.claudecode.core.lsp.LspPluginRecommendation;
 import com.claudecode.core.lsp.LspRecommendationResponse;
@@ -795,7 +796,7 @@ public class LanternaReplScreen implements SlashHost {
             .whenComplete((_, failure) -> {
                 if (failure != null) {
                     log.warn("Failed to persist alwaysThinkingEnabled: {}",
-                        rootMessage(failure));
+                        ErrorUtils.rootCauseMessage(failure));
                 }
             });
     }
@@ -805,15 +806,10 @@ public class LanternaReplScreen implements SlashHost {
         UiSettings.writeUserSettingAsync("model", model)
             .whenComplete((_, failure) -> {
                 if (failure != null) {
-                    log.warn("Failed to persist model setting: {}", rootMessage(failure));
+                    log.warn("Failed to persist model setting: {}",
+                        ErrorUtils.rootCauseMessage(failure));
                 }
             });
-    }
-
-    private static String rootMessage(Throwable failure) {
-        Throwable cause = failure;
-        while (cause.getCause() != null) cause = cause.getCause();
-        return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
     }
 
 
@@ -1272,6 +1268,23 @@ public class LanternaReplScreen implements SlashHost {
                 return;
             }
             handleInput(text);
+        }
+        @Override public void sendNow(String text) {
+            ViewedTeammateHolder viewed = ViewedTeammateHolder.instance();
+            if (viewed.isViewingLocalAgent() && localAgentInputRouter != null
+                    && StringUtils.isNotBlank(text)
+                    && localAgentInputRouter.submit(viewed.viewingTaskId(), text)) {
+                return;
+            }
+            submissionCoordinator.handleSendNow(text);
+        }
+        @Override public void queueSubmit(String text) {
+            ViewedTeammateHolder viewed = ViewedTeammateHolder.instance();
+            if (viewed.isViewingLocalAgent() && localAgentInputRouter != null
+                    && localAgentInputRouter.submit(viewed.viewingTaskId(), text)) {
+                return;
+            }
+            submissionCoordinator.handleQueueSubmit(text);
         }
         @Override public void cancel() {
             // Before anything aborts, rescue the in-flight thinking body (197 runs this at

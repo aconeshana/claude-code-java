@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import {
   archiveSession as archiveSessionApi, closeHeadlessSession, deleteSession as deleteSessionApi,
-  fetchCatalog, forkSession as forkSessionApi, openHeadlessSession, renameSession as renameSessionApi,
+  deleteWebProject, fetchCatalog, forkSession as forkSessionApi, openHeadlessSession,
+  renameSession as renameSessionApi,
 } from '../api/client'
 import type { CatalogProject, CatalogSession, MirrorFrame } from '../api/types'
 import { useConversations } from './conversations'
+import { useProjects } from './projects'
 
 /**
  * Session catalog + selection state.
@@ -292,36 +294,24 @@ export const useSessions = create<SessionsStore>((set, get) => ({
 
   async deleteProject(project: CatalogProject) {
     try {
-      const deletedIds = new Set<string>()
-      for (const session of project.sessions) {
-        try {
-          const removed = await deleteSessionApi(session.id)
-          if (removed.deleted) deletedIds.add(session.id)
-        } catch {
-          // Continue deleting remaining sessions in this project even if one live session cannot be removed.
-        }
-      }
-      if (deletedIds.size > 0) {
-        set((state) => ({
-          projects: state.projects
-            .map((p) => (p.project_path === project.project_path
-              ? {
-                  ...p,
-                  sessions: p.sessions.filter((s) => !deletedIds.has(s.id)),
-                  session_count: Math.max(0, p.session_count - deletedIds.size),
-                }
-              : p))
-            .filter((p) => p.sessions.length > 0),
-        }))
-      }
+      const result = await deleteWebProject(project.project_path)
+      useProjects.getState().setProjects(result.projects)
+      const deletedIds = new Set(result.deleted_session_ids)
+      set((state) => ({
+        projects: state.projects.filter((p) => p.project_path !== project.project_path),
+        error: null,
+      }))
       await get().refresh()
       const currentSelected = get().selectedSessionId
-      if (currentSelected != null && deletedIds.has(currentSelected)) {
+      if (currentSelected != null
+          && (deletedIds.has(currentSelected)
+            || project.sessions.some((s) => s.id === currentSelected))) {
         set({ selectedSessionId: null })
         await get().selectActiveOrFirst()
       }
     } catch (failure) {
       set({ error: messageOf(failure) })
+      await get().refresh()
     }
   },
 }))

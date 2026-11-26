@@ -1079,28 +1079,45 @@ final class PromptTextBox extends HighlightedTextBox {
             log.debug("[key-diag] Enter submit branch: lineCount={} text=[{}]",
                 getLineCount(), text.replace("\n", "\\n"));
         }
+        submitComposedPrompt(SubmitActionMode.DEFAULT, text);
+        return Result.HANDLED;
+    }
+
+    private enum SubmitActionMode { DEFAULT, SEND_NOW, QUEUE_ONLY }
+
+    private void submitComposedPrompt(SubmitActionMode mode, String text) {
         String submitText = state.prependModePrefix(text.trim());
         if (footer.taskNavigation().isViewing()) {
-            footer.taskNavigation().injectViewed(submitText);
-            state.suppressUndoRecording();
-            state.draftUndo().clear();
-            setText("");
-            pastedContent.clear();
-            host.pastedContentsChanged();
-            host.resetMode();
-            return Result.HANDLED;
+            if (!StringUtils.isBlank(submitText)) {
+                footer.taskNavigation().injectViewed(submitText);
+                clearAfterSubmit();
+            }
+            return;
         }
-        // Image-only input is intentionally submit-able.
-        if ((!StringUtils.isBlank(submitText) || !pastedContent.isEmpty()) && actions != null) {
-            actions.submit(submitText);
-            state.suppressUndoRecording();
-            state.draftUndo().clear();
-            setText("");
-            pastedContent.clear();
-            host.pastedContentsChanged();
-            host.resetMode();
+        if (actions == null) return;
+        boolean hasInput = !StringUtils.isBlank(submitText) || !pastedContent.isEmpty();
+        if (!hasInput) {
+            // 2.1.311 chat:sendNow on empty composer promotes already-queued prompts to run now.
+            if (mode == SubmitActionMode.SEND_NOW) {
+                actions.sendNow("");
+            }
+            return;
         }
-        return Result.HANDLED;
+        switch (mode) {
+            case DEFAULT -> actions.submit(submitText);
+            case SEND_NOW -> actions.sendNow(submitText);
+            case QUEUE_ONLY -> actions.queueSubmit(submitText);
+        }
+        clearAfterSubmit();
+    }
+
+    private void clearAfterSubmit() {
+        state.suppressUndoRecording();
+        state.draftUndo().clear();
+        setText("");
+        pastedContent.clear();
+        host.pastedContentsChanged();
+        host.resetMode();
     }
 
     /**
@@ -1518,6 +1535,8 @@ final class PromptTextBox extends HighlightedTextBox {
     private boolean dispatchChatAction(String action) {
         switch (action) {
             case "chat:submit", "chat:cancel" -> { return false; }
+            case "chat:sendNow"          -> { submitComposedPrompt(SubmitActionMode.SEND_NOW, getText()); return true; }
+            case "chat:queueSubmit"      -> { submitComposedPrompt(SubmitActionMode.QUEUE_ONLY, getText()); return true; }
             case "history:previous"      -> { rl_historyUp(); return true; }
             case "history:next"          -> { rl_historyDown(); return true; }
             case "chat:undo"             -> { rl_undo(); return true; }

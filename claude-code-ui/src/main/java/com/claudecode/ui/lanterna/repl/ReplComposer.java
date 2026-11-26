@@ -300,7 +300,8 @@ final class ReplComposer {
         // Screen-level selection: the GUI intercepts selection mouse events above window
         // dispatch and paints the highlight over the full back buffer after every draw.
         gui.wireSelection(selection, selectionController::handleMouse,
-            mouse -> inputPanel.handleProjectsButtonMouse(mouse)
+            mouse -> messagePanel.handleJumpToBottomMouse(mouse)
+                || inputPanel.handleProjectsButtonMouse(mouse)
                 || inputPanel.handleTasksPillMouse(mouse)
                 || inputPanel.handleCoordinatorPanelMouse(mouse));
         // SlashHost is a pure command port; the components a slash command reads/renders into

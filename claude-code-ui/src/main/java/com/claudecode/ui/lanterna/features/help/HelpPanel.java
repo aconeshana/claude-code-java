@@ -161,7 +161,7 @@ public final class HelpPanel extends Panel implements InlineOverlay {
     private Runnable onClose;
 
     public HelpPanel(int termRows) {
-        this(termRows, Strings.CI.contains(System.getProperty("os.name", ""), "win"), null);
+        this(termRows, Platform.IS_WINDOWS, null);
     }
 
     /** Test seam for the platform-dependent "ctrl + z to suspend" row. */

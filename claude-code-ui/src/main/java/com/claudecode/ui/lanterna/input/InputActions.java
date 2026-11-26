@@ -15,6 +15,17 @@ public interface InputActions {
     // ── Command flow ─────────────────────────────────────────────────────────
     /** Submit the composed prompt (text, with mode prefix already applied). */
     void submit(String text);
+    /**
+     * {@code chat:sendNow} ({@code ctrl+enter} / {@code ctrl+x ctrl+s}): interrupt the active
+     * turn and send the composed prompt immediately (or, when the prompt is empty, interrupt so
+     * already-queued prompts run now).
+     */
+    default void sendNow(String text) { submit(text); }
+    /**
+     * {@code chat:queueSubmit} ({@code ctrl+x enter}): enqueue the composed prompt without
+     * steering/interrupting the active turn.
+     */
+    default void queueSubmit(String text) { submit(text); }
     /** Cancel the in-flight turn (Esc while loading / Ctrl+D on empty / Vim Esc). */
     void cancel();
     /**

@@ -69,7 +69,7 @@ public final class SessionOperationsService {
         String jsonl = toJsonl(entries);
         String head = jsonl.substring(0, Math.min(jsonl.length(), LiteSessionReader.LITE_READ_BYTES));
         String tail = jsonl.substring(Math.max(0, jsonl.length() - LiteSessionReader.LITE_READ_BYTES));
-        String firstLine = firstLine(head);
+        String firstLine = com.claudecode.core.text.StringUtils.firstLineOf(head);
         if (Strings.CS.contains(firstLine, "\"isSidechain\":true")
                 || Strings.CS.contains(firstLine, "\"isSidechain\": true")) return Optional.empty();
         String custom = lastField(tail, "customTitle", lastField(head, "customTitle", null));
@@ -77,20 +77,20 @@ public final class SessionOperationsService {
         String lastPrompt = lastField(tail, "lastPrompt", null);
         String summaryField = lastTypedField(tail, "summary", "summary");
         String firstPrompt = firstPrompt(entries);
-        String summary = firstNonBlank(custom, ai, lastPrompt, summaryField, firstPrompt);
+        String summary = StringUtils.firstNonBlank(custom, ai, lastPrompt, summaryField, firstPrompt);
         if (summary == null) return Optional.empty();
         String timestamp = firstField(head, "timestamp");
         Instant created = parseInstant(timestamp, clock.instant());
         String latestTimestamp = entries.stream().map(e -> text(e, "timestamp"))
             .filter(StringUtils::isNotBlank).reduce((_, right) -> right).orElse(null);
         long modified = parseInstant(latestTimestamp, clock.instant()).toEpochMilli();
-        String cwd = firstNonBlank(lastTypedField(tail, "relocated", "relocatedCwd"),
+        String cwd = StringUtils.firstNonBlank(lastTypedField(tail, "relocated", "relocatedCwd"),
             firstField(head, "cwd"));
         String tag = lastTypedField(tail, "tag", "tag");
-        String git = firstNonBlank(lastField(tail, "gitBranch", null), firstField(head, "gitBranch"));
+        String git = StringUtils.firstNonBlank(lastField(tail, "gitBranch", null), firstField(head, "gitBranch"));
         return Optional.of(new SessionInfo(sessionId, modified, created, -1, summary, git, cwd,
             StringUtils.isBlank(tag) ? null : tag, jsonl.getBytes(StandardCharsets.UTF_8).length,
-            firstNonBlank(custom, ai), firstPrompt, false));
+            StringUtils.firstNonBlank(custom, ai), firstPrompt, false));
     }
 
     public List<HistoryMessage> getSessionMessages(String sessionId, String dir, Integer limit,
@@ -178,14 +178,15 @@ public final class SessionOperationsService {
      */
     public boolean deleteSession(String sessionId, String dir) {
         requireUuid(sessionId);
-        Optional<ResolvedSession> resolved = resolve(sessionId, dir);
-        if (resolved.isEmpty()) return false;
-        ResolvedSession target = resolved.get();
-        Path projectDir = target.file().getParent();
-        Path ownedDirectory = projectDir.resolve(sessionId).normalize();
+        List<ResolvedSession> targets = resolveAll(sessionId, dir);
+        if (targets.isEmpty()) return false;
         try {
-            deleteTreeStrict(ownedDirectory);
-            Files.deleteIfExists(target.file());
+            for (ResolvedSession target : targets) {
+                Path projectDir = target.file().getParent();
+                Path ownedDirectory = projectDir.resolve(sessionId).normalize();
+                deleteTreeStrict(ownedDirectory);
+                Files.deleteIfExists(target.file());
+            }
             return true;
         } catch (IOException failure) {
             throw new UncheckedIOException("Failed to permanently delete session " + sessionId, failure);
@@ -353,7 +354,7 @@ public final class SessionOperationsService {
             if (node.hasNonNull("customTitle")) custom = node.path("customTitle").asText();
             if (node.hasNonNull("aiTitle")) ai = node.path("aiTitle").asText();
         }
-        return firstNonBlank(custom, ai, firstPrompt(raw), "Forked session");
+        return StringUtils.firstNonBlank(custom, ai, firstPrompt(raw), "Forked session");
     }
 
     private void appendExisting(String sessionId, String dir, ObjectNode entry) {
@@ -381,7 +382,13 @@ public final class SessionOperationsService {
     }
 
     private Optional<ResolvedSession> resolve(String sessionId, String dir) {
+        List<ResolvedSession> matches = resolveAll(sessionId, dir);
+        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.getFirst());
+    }
+
+    private List<ResolvedSession> resolveAll(String sessionId, String dir) {
         String filename = sessionId + ".jsonl";
+        List<ResolvedSession> matches = new ArrayList<>();
         if (StringUtils.isNotBlank(dir)) {
             List<String> paths = new ArrayList<>();
             paths.add(dir);
@@ -390,20 +397,20 @@ public final class SessionOperationsService {
                 SessionManager manager = new SessionManager(configHome, path);
                 for (Path project : manager.compatibleProjectDirectories()) {
                     Path file = project.resolve(filename);
-                    if (nonEmpty(file)) return Optional.of(new ResolvedSession(file, manager.projectPath()));
+                    if (nonEmpty(file)) matches.add(new ResolvedSession(file, manager.projectPath()));
                 }
             }
-            return Optional.empty();
+            return matches;
         }
         Path root = configHome.resolve("projects");
-        if (!Files.isDirectory(root)) return Optional.empty();
+        if (!Files.isDirectory(root)) return matches;
         try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
             for (Path project : dirs) {
                 Path file = project.resolve(filename);
-                if (nonEmpty(file)) return Optional.of(new ResolvedSession(file, null));
+                if (nonEmpty(file)) matches.add(new ResolvedSession(file, null));
             }
         } catch (IOException _) { }
-        return Optional.empty();
+        return matches;
     }
 
     private static boolean nonEmpty(Path file) {
@@ -425,7 +432,7 @@ public final class SessionOperationsService {
 
     private static SessionInfo sdkInfo(SessionCatalog.Entry entry) {
         SessionInfo info = entry.info();
-        String title = firstNonBlank(info.customTitle(), entry.aiTitle());
+        String title = StringUtils.firstNonBlank(info.customTitle(), entry.aiTitle());
         return new SessionInfo(info.id(), info.lastModified(), info.createdAt(), info.messageCount(),
             info.summary(), info.gitBranch(), info.cwd(), info.tag(), info.fileSize(), title,
             info.firstPrompt(), info.archived());
@@ -449,11 +456,6 @@ public final class SessionOperationsService {
         StringBuilder result = new StringBuilder();
         for (JsonNode entry : entries) result.append(entry).append('\n');
         return result.toString();
-    }
-
-    private static String firstLine(String value) {
-        int newline = value.indexOf('\n');
-        return newline < 0 ? value : value.substring(0, newline);
     }
 
     private static String firstField(String jsonl, String field) {
@@ -494,11 +496,6 @@ public final class SessionOperationsService {
     private static Instant parseInstant(String value, Instant fallback) {
         if (value != null) try { return Instant.parse(value); } catch (RuntimeException _) { }
         return fallback;
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String value : values) if (StringUtils.isNotBlank(value)) return value;
-        return null;
     }
 
     private static String text(JsonNode node, String field) {

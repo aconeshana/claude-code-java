@@ -142,7 +142,6 @@ export function Sidebar() {
   const uiT = useTranslate(UI_NS, uiDicts)
   const webProjects = useProjects((state) => state.projects)
   const refreshWebProjects = useProjects((state) => state.refresh)
-  const removeWebProject = useProjects((state) => state.removeProject)
 
   useEffect(() => {
     void refreshWebProjects()
@@ -867,7 +866,6 @@ export function Sidebar() {
           if (target == null) return
           setDeleteProjectTarget(null)
           removeWorkspace(target.project_path)
-          void removeWebProject(target.project_path)
           void deleteProject(target)
         }}
       />

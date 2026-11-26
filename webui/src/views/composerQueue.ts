@@ -1,57 +1,120 @@
 import type { UserContentBlock } from '../api/types'
 
 /**
- * The composer's busy-queue persistence: a submission held while a turn runs
- * belongs to the session it was queued under, and only that session may ever
- * flush it. Without the session check a queued row leaks across a sidebar
- * switch — the busy→idle edge of the *next* selected session would submit the
- * previous session's parked text.
- *
- * The queue rides localStorage (not component state) so a queued-but-unsent
- * submission also survives a reload mid-turn; a flush or a session switch
- * clears it. Nothing here ever touches the gateway token's sessionStorage.
+ * The composer's busy-queue persistence: submissions held while a turn runs
+ * belong to the session they were queued under, and only that session may ever
+ * flush them. Supports multiple queued messages per session (mirroring upstream
+ * DSH's composer-docked queue card) while remaining backward-compatible with
+ * single-entry legacy payloads.
  */
 
 export const QUEUE_STORAGE_KEY = 'webui-composer-queue'
 
-/** The storage row one session's queued submission lives under. */
+/** The storage row one session's queued submissions live under. */
 export function QUEUED_SESSION_KEY(sessionId: string): string {
   return `${QUEUE_STORAGE_KEY}:${sessionId}`
 }
 
-type QueuedContent = string | readonly UserContentBlock[]
+export type QueuedContent = string | readonly UserContentBlock[]
 
-/** Parks one submission under its session; a re-queue replaces the previous. */
-export function storeQueuedSubmission(sessionId: string, content: QueuedContent): void {
-  try {
-    localStorage.setItem(QUEUED_SESSION_KEY(sessionId), JSON.stringify({ content }))
-  } catch { /* storage unavailable: the in-memory copy still serves this tab */ }
+export interface QueuedItem {
+  readonly id: string
+  readonly content: QueuedContent
 }
 
-/**
- * The session's parked submission, or null when this session queued nothing.
- * A malformed or absent row reads as empty — never as a throw.
- */
-export function readQueuedSubmission(sessionId: string): QueuedContent | null {
+function isValidContent(value: unknown): value is QueuedContent {
+  return typeof value === 'string' || Array.isArray(value)
+}
+
+/** Reads all queued items for {@code sessionId}. Malformed payloads return empty. */
+export function readQueuedItems(sessionId: string): readonly QueuedItem[] {
   let raw: string | null
   try {
     raw = localStorage.getItem(QUEUED_SESSION_KEY(sessionId))
   } catch {
-    return null
+    return []
   }
-  if (raw == null) return null
+  if (raw == null) return []
   try {
-    const parsed = JSON.parse(raw) as { content?: unknown }
-    if (typeof parsed.content !== 'string' && !Array.isArray(parsed.content)) return null
-    return parsed.content as QueuedContent
+    const parsed = JSON.parse(raw) as { items?: unknown; content?: unknown }
+    if (Array.isArray(parsed.items)) {
+      const valid: QueuedItem[] = []
+      for (const entry of parsed.items) {
+        if (entry != null && typeof entry === 'object') {
+          const item = entry as { id?: unknown; content?: unknown }
+          if (typeof item.id === 'string' && isValidContent(item.content)) {
+            valid.push({ id: item.id, content: item.content })
+          }
+        }
+      }
+      return valid
+    }
+    if (isValidContent(parsed.content)) {
+      return [{ id: 'legacy-0', content: parsed.content }]
+    }
+    return []
   } catch {
-    return null
+    return []
   }
 }
 
-/** Drops the session's parked submission (after a flush or a session switch). */
-export function clearQueuedSubmission(sessionId: string): void {
+/** Persists the ordered list of queued items for {@code sessionId}. */
+export function storeQueuedItems(sessionId: string, items: readonly QueuedItem[]): void {
   try {
-    localStorage.removeItem(QUEUED_SESSION_KEY(sessionId))
-  } catch { /* already absent for this tab */ }
+    if (items.length === 0) {
+      localStorage.removeItem(QUEUED_SESSION_KEY(sessionId))
+    } else {
+      localStorage.setItem(QUEUED_SESSION_KEY(sessionId), JSON.stringify({ items }))
+    }
+  } catch { /* storage unavailable: the in-memory copy still serves this tab */ }
+}
+
+/** Single-line human preview for a queued item's content. */
+export function extractQueuedPreview(content: QueuedContent): string {
+  if (typeof content === 'string') return content.replace(/\s+/g, ' ').trim()
+  const parts: string[] = []
+  for (const block of content) {
+    if (block.type === 'text' && block.text.trim() !== '') {
+      parts.push(block.text.replace(/\s+/g, ' ').trim())
+    } else if (block.type === 'image') {
+      parts.push('[图片]')
+    } else if (block.type === 'document') {
+      parts.push(`[文件: ${block.title ?? '附件'}]`)
+    }
+  }
+  return parts.join(' ').trim() || '[附件]'
+}
+
+/** Merges multiple queued items (and optional trailing draft) into one submission payload. */
+export function mergeQueuedContents(contents: readonly QueuedContent[]): QueuedContent {
+  if (contents.length === 1) return contents[0]
+  if (contents.every((c): c is string => typeof c === 'string')) {
+    return contents.join('\n\n')
+  }
+  const merged: UserContentBlock[] = []
+  contents.forEach((entry, index) => {
+    if (index > 0) merged.push({ type: 'text', text: '\n\n' })
+    if (typeof entry === 'string') {
+      if (entry !== '') merged.push({ type: 'text', text: entry })
+    } else {
+      merged.push(...entry)
+    }
+  })
+  return merged
+}
+
+/** Legacy single-item helper: parks one submission under its session. */
+export function storeQueuedSubmission(sessionId: string, content: QueuedContent): void {
+  storeQueuedItems(sessionId, [{ id: `q-${Date.now()}`, content }])
+}
+
+/** Legacy single-item helper: reads the first parked submission, or null. */
+export function readQueuedSubmission(sessionId: string): QueuedContent | null {
+  const items = readQueuedItems(sessionId)
+  return items.length > 0 ? items[0].content : null
+}
+
+/** Drops all parked submissions for {@code sessionId}. */
+export function clearQueuedSubmission(sessionId: string): void {
+  storeQueuedItems(sessionId, [])
 }

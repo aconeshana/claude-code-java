@@ -44,6 +44,9 @@ class DefaultBindingsTest {
         assertEquals("chat:cycleMode",  DefaultBindings.actionFor("Chat", expectedCycle));
         assertEquals("chat:imagePaste", DefaultBindings.actionFor("Chat", expectedPaste));
         assertEquals("chat:submit",     DefaultBindings.actionFor("Chat", "enter"));
+        assertEquals("chat:queueSubmit", DefaultBindings.actionFor("Chat", "ctrl+x enter"));
+        assertEquals("chat:sendNow",    DefaultBindings.actionFor("Chat", "ctrl+x ctrl+s"));
+        assertEquals("chat:sendNow",    DefaultBindings.actionFor("Chat", "ctrl+enter"));
         assertEquals("history:previous", DefaultBindings.actionFor("Chat", "up"));
         assertEquals("history:next",     DefaultBindings.actionFor("Chat", "down"));
     }

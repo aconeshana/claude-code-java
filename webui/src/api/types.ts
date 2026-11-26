@@ -1033,6 +1033,13 @@ export interface WebProjectMutationResponse {
   readonly projects: readonly WebProjectEntry[]
 }
 
+export interface WebProjectDeleteResponse {
+  readonly path: string
+  readonly deleted_session_ids: readonly string[]
+  readonly deleted_count: number
+  readonly projects: readonly WebProjectEntry[]
+}
+
 export interface ProjectRuleFile {
   readonly path: string
   readonly name: string

@@ -155,8 +155,11 @@ public final class ProjectCatalog {
         perDir.forEach((dirName, candidates) -> live.put(dirName, fingerprint(candidates)));
 
         // A vanished directory has no live fingerprint, so it is evicted too.
-        memory.entrySet().removeIf(
+        boolean evicted = memory.entrySet().removeIf(
             entry -> !Objects.equals(live.get(entry.getKey()), entry.getValue().fingerprint()));
+        if (evicted) {
+            dirty = true;
+        }
 
         for (Map.Entry<String, List<SessionCatalog.Candidate>> dir : perDir.entrySet()) {
             DirState previous = memory.get(dir.getKey());
@@ -185,7 +188,10 @@ public final class ProjectCatalog {
             staleDirs.add(dirName);
             stale.addAll(candidates);
         });
-        if (staleDirs.isEmpty()) return;
+        if (staleDirs.isEmpty()) {
+            persistLater();
+            return;
+        }
 
         Map<String, List<ProjectSessionRef>> scanned = new LinkedHashMap<>();
         for (SessionCatalog.Entry entry

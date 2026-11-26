@@ -341,8 +341,8 @@ export function renameWebProject(path: string, name: string): Promise<import('./
   return requestJson('PATCH', '/api/projects', { path, name })
 }
 
-/** DELETE /api/projects: removes a project from the web registry (never deletes disk files). */
-export function deleteWebProject(path: string): Promise<import('./types').WebProjectsListing> {
+/** DELETE /api/projects: atomically deletes all sessions under the project and removes it from the web registry (never deletes local code files). */
+export function deleteWebProject(path: string): Promise<import('./types').WebProjectDeleteResponse> {
   return requestJson('DELETE', `/api/projects?path=${encodeURIComponent(path)}`)
 }
 
@@ -778,8 +778,12 @@ async function persistedModel(): Promise<string> {
 export async function submitTurn(
   sessionId: string | null,
   content: string | readonly UserContentBlock[],
+  options?: { readonly steer?: boolean },
 ): Promise<void> {
   const model = await persistedModel()
+  const metadata: Record<string, unknown> = {}
+  if (sessionId != null) metadata.session_id = sessionId
+  if (options?.steer === true) metadata.steer = true
   const response = await fetch('/v1/messages', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -788,7 +792,9 @@ export async function submitTurn(
       stream: true,
       // Absent session_id targets the active TUI session; an explicit id
       // (TUI session or open headless) routes to that conversation.
-      ...(sessionId == null ? {} : { metadata: { session_id: sessionId } }),
+      // metadata.steer=true asks the gateway to cancel any in-flight turn and
+      // atomically acquire the turn slot server-side without blind sleeps.
+      ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
       messages: [{ role: 'user', content }],
     }),
   })

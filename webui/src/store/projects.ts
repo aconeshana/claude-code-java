@@ -20,6 +20,7 @@ export interface ProjectsStore {
   }): Promise<WebProjectEntry>
   renameProject(path: string, name: string): Promise<WebProjectEntry>
   removeProject(path: string): Promise<void>
+  setProjects(projects: readonly WebProjectEntry[]): void
 }
 
 export function basenameOf(path: string): string {
@@ -67,6 +68,10 @@ export const useProjects = create<ProjectsStore>((set) => ({
   async removeProject(path) {
     const listing = await deleteWebProject(path)
     set({ projects: listing.projects, error: null })
+  },
+
+  setProjects(projects) {
+    set({ projects, error: null })
   },
 }))
 
