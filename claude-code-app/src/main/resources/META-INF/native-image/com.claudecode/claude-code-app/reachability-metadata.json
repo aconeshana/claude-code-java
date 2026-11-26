@@ -847,7 +847,8 @@
     {
       "type": "com.claudecode.core.model.ModelApiProtocol",
       "allDeclaredFields": true,
-      "allPublicMethods": true
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
     },
     {
       "type": "com.claudecode.core.plan.PlanHistoryEntry",
@@ -1050,14 +1051,9 @@
     },
     {
       "type": "com.claudecode.services.plugins.marketplace.PluginScope",
-      "methods": [
-        {
-          "name": "fromWire",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        }
-      ]
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
     },
     {
       "type": "com.claudecode.services.plugins.marketplace.PluginSource$Deserializer",
@@ -1147,7 +1143,8 @@
     {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillPlacement",
       "allDeclaredFields": true,
-      "allPublicMethods": true
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
     },
     {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillResource",
@@ -1158,7 +1155,8 @@
     {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillSource",
       "allDeclaredFields": true,
-      "allPublicMethods": true
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
     },
     {
       "type": "com.claudecode.tools.bundled.BundledResourceCatalog$WorkflowResource",
@@ -3357,21 +3355,98 @@
           "sun.misc.SignalHandler"
         ]
       }
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$RelativePath",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$GitRepo",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$GithubRepo",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$GitSubdir",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$Npm",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.PluginSource$Pip",
+      "allDeclaredFields": true,
+      "allPublicMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.FlaggedPluginStore$Entry[]"
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.InstalledPlugins$InstallationEntry[]"
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.KnownMarketplaces$Entry[]"
+    },
+    {
+      "type": "com.claudecode.services.plugins.marketplace.MarketplacePluginEntry[]"
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$DailyActivity[]"
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$DailyModelTokens[]"
+    },
+    {
+      "type": "com.claudecode.session.stats.ClaudeCodeStats$ModelUsage[]"
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$SkillResource[]"
+    },
+    {
+      "type": "com.claudecode.tools.bundled.BundledResourceCatalog$WorkflowResource[]"
     }
   ],
   "foreign": {
     "downcalls": [
       {
         "returnType": "int",
-        "parameterTypes": ["int"]
+        "parameterTypes": [
+          "int"
+        ]
       },
       {
         "returnType": "int",
-        "parameterTypes": ["int", "int"]
+        "parameterTypes": [
+          "int",
+          "int"
+        ]
       },
       {
         "returnType": "int",
-        "parameterTypes": ["void*", "int"]
+        "parameterTypes": [
+          "void*",
+          "int"
+        ]
       }
     ]
   },

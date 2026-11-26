@@ -92,7 +92,19 @@ class NativeReachabilityMetadataTest {
         // On-disk entities for the to-do list / background-task persistence,
         // restored via TaskPersistence on launch and written by TaskStore.save().
         "com.claudecode.tools.tasks.Task",
-        "com.claudecode.tools.tasks.TaskState");
+        "com.claudecode.tools.tasks.TaskState",
+        // ObjectMapper.readValue targets across custom models, plugins, insights,
+        // session caches, and bundled resources.
+        "com.claudecode.api.CustomModelJsonStore$CatalogDocument",
+        "com.claudecode.services.insights.SessionMeta",
+        "com.claudecode.services.plugins.marketplace.FlaggedPluginStore$FileData",
+        "com.claudecode.services.plugins.marketplace.InstalledPlugins",
+        "com.claudecode.services.plugins.marketplace.KnownMarketplaces",
+        "com.claudecode.services.plugins.marketplace.MarketplaceManifest",
+        "com.claudecode.services.plugins.runtime.McpbBundleLoader$CacheMetadata",
+        "com.claudecode.session.ProjectIndexSnapshot",
+        "com.claudecode.session.stats.StatsCacheStore$PersistedStatsCache",
+        "com.claudecode.tools.bundled.BundledResourceCatalog$Manifest");
 
     private static final String METADATA_PATH =
         "claude-code-app/src/main/resources/META-INF/native-image"
@@ -100,7 +112,7 @@ class NativeReachabilityMetadataTest {
 
     @Test
     void everyJacksonReachableTypeAllowsReflectiveConstruction() throws IOException {
-        Set<String> registered = typesWithBlanketConstructorAccess();
+        Set<String> registered = typesWithBlanketReflectionAccess();
         List<String> offenders = new ArrayList<>();
         for (Class<?> type : jacksonClosure().types()) {
             if (!registered.contains(type.getName())) {
@@ -108,8 +120,9 @@ class NativeReachabilityMetadataTest {
             }
         }
         assertTrue(offenders.isEmpty(), () -> """
-            reachability metadata is missing blanket reflection registration for \
-            Jackson-reachable types; the native image will fail at runtime with \
+            reachability metadata is missing blanket reflection registration \
+            (allDeclaredConstructors + allPublicMethods) for Jackson-reachable \
+            types; the native image will fail at runtime with \
             MissingReflectionRegistrationError.
 
             Add an entry to %s for each type below:
@@ -174,7 +187,8 @@ class NativeReachabilityMetadataTest {
             Class<?> target = site.target();
             if (target == null) {
                 unresolved.add(site.describe());
-            } else if (!closure.contains(target)) {
+            } else if (Strings.CS.startsWith(target.getName(), "com.claudecode.")
+                    && !closure.contains(target)) {
                 unreachable.add(site.describe());
             }
         }
@@ -204,12 +218,13 @@ class NativeReachabilityMetadataTest {
     }
 
     /**
-     * Matches the deserializing overloads of {@code JsonUtils} and captures their type
-     * literal. The target is written as {@code Something.class} at the call site, which
-     * is what makes this statically extractable.
+     * Matches the deserializing overloads of {@code JsonUtils} and {@code ObjectMapper}
+     * and captures their type literal. The target is written as {@code Something.class}
+     * at the call site, which is what makes this statically extractable (including
+     * multi-line {@code readValue(...,\n Something.class)} calls).
      */
     private static final Pattern DESERIALIZE_CALL = Pattern.compile(
-        "\\b(?:readJson|fromJson|readJsonList|treeToValue)\\s*\\(\\s*[^,]+,?\\s*([A-Za-z_$][\\w.$]*)\\.class");
+        "\\b(?:readJson|fromJson|readJsonList|treeToValue|readValue)\\s*\\([^;]*?,\\s*([A-Za-z_$][\\w.$]*)\\.class\\s*\\)");
 
     private static List<DeserializationSite> deserializationSites() throws IOException {
         List<DeserializationSite> sites = new ArrayList<>();
@@ -227,45 +242,69 @@ class NativeReachabilityMetadataTest {
     }
 
     private static void collectSites(Path source, List<DeserializationSite> sites) throws IOException {
-        List<String> lines = Files.readAllLines(source);
-        for (int index = 0; index < lines.size(); index++) {
-            Matcher matcher = DESERIALIZE_CALL.matcher(lines.get(index));
-            while (matcher.find()) {
-                String raw = matcher.group(1);
-                sites.add(new DeserializationSite(source, index + 1, raw, resolveType(source, raw)));
-            }
+        String body = Files.readString(source);
+        Matcher matcher = DESERIALIZE_CALL.matcher(body);
+        while (matcher.find()) {
+            String raw = matcher.group(1);
+            int line = lineNumberAt(body, matcher.start());
+            sites.add(new DeserializationSite(source, line, raw, resolveType(source, body, raw)));
         }
     }
 
+    private static int lineNumberAt(String text, int offset) {
+        int line = 1;
+        for (int i = 0; i < offset; i++) {
+            if (text.charAt(i) == '\n') line++;
+        }
+        return line;
+    }
+
     /**
-     * Resolves a source-level type name against the file's imports and package. Only
-     * names that resolve to a class on the test classpath are returned; anything else
-     * comes back null so the caller can report it rather than assume it is fine.
+     * Resolves a source-level type name against the file's imports, enclosing class, and
+     * package. Only names that resolve to a class on the test classpath are returned;
+     * anything else comes back null so the caller can report it rather than assume it is fine.
      */
-    private static Class<?> resolveType(Path source, String raw) {
+    private static Class<?> resolveType(Path source, String body, String raw) {
         try {
-            if (Strings.CS.contains(raw, ".")) return Class.forName(raw);
-            String body = Files.readString(source);
+            if (Strings.CS.contains(raw, ".")) {
+                try {
+                    return Class.forName(raw);
+                } catch (ClassNotFoundException _) {
+                    // Could be Outer.Inner imported or in the same package.
+                }
+            }
+            if (Strings.CS.equals("Object", raw)) {
+                return Object.class;
+            }
             String pkg = Pattern.compile("(?m)^package\\s+([\\w.]+);")
                 .matcher(body).results().findFirst()
                 .map(match -> match.group(1)).orElse(null);
+            String fileClass = Strings.CS.removeEnd(source.getFileName().toString(), ".java");
             if (pkg != null) {
+                // Nested type declared inside the current source file (e.g. CatalogDocument inside CustomModelJsonStore).
                 try {
-                    return Class.forName(pkg + "." + raw);
+                    return Class.forName(pkg + "." + fileClass + "$" + raw.replace('.', '$'));
+                } catch (ClassNotFoundException _) {
+                    // Fall through to same-package lookup.
+                }
+                try {
+                    return Class.forName(pkg + "." + raw.replace('.', '$'));
                 } catch (ClassNotFoundException _) {
                     // Fall through to the import scan.
                 }
             }
+            String head = Strings.CS.contains(raw, ".") ? raw.substring(0, raw.indexOf('.')) : raw;
+            String tail = Strings.CS.contains(raw, ".") ? "$" + raw.substring(raw.indexOf('.') + 1).replace('.', '$') : "";
             var importPattern = Pattern.compile(
-                "(?m)^import\\s+(?:static\\s+)?[\\w.]*\\b" + Pattern.quote(raw) + ";");
+                "(?m)^import\\s+(?:static\\s+)?[\\w.]*\\b" + Pattern.quote(head) + ";");
             var imported = importPattern.matcher(body).results().findFirst();
             if (imported.isPresent()) {
                 String fqn = imported.get().group().replaceFirst("^import\\s+(?:static\\s+)?", "")
                     .replace(";", "").trim();
-                return Class.forName(fqn);
+                return Class.forName(fqn + tail);
             }
             return null;
-        } catch (ClassNotFoundException | IOException _) {
+        } catch (ClassNotFoundException _) {
             return null;
         }
     }
@@ -283,16 +322,19 @@ class NativeReachabilityMetadataTest {
     }
 
     /**
-     * Collects the types the metadata grants unconditional constructor access.
-     * Entries that enumerate individual {@code <init>} signatures are deliberately
-     * not accepted — that is the shape this guard exists to eliminate.
+     * Collects the types the metadata grants unconditional constructor and public
+     * method access. Entries that enumerate individual {@code <init>} or method
+     * signatures (such as an enum registering {@code fromWire} but omitting
+     * {@code @JsonValue wire()}) are deliberately not accepted — that is the shape
+     * this guard exists to eliminate.
      */
-    private static Set<String> typesWithBlanketConstructorAccess() throws IOException {
+    private static Set<String> typesWithBlanketReflectionAccess() throws IOException {
         Set<String> registered = new LinkedHashSet<>();
         for (JsonNode entry : reflectionEntries()) {
             JsonNode type = entry.get("type");
             if (type != null && type.isTextual()
-                && entry.path("allDeclaredConstructors").asBoolean(false)) {
+                && entry.path("allDeclaredConstructors").asBoolean(false)
+                && entry.path("allPublicMethods").asBoolean(false)) {
                 registered.add(type.asText());
             }
         }
