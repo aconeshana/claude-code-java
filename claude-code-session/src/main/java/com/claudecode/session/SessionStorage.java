@@ -1248,6 +1248,10 @@ public class SessionStorage {
         return new TranscriptLoader(mapper).loadTranscriptFromFile(sessionFile);
     }
 
+    public TranscriptLoader.StartupRestoreBundle loadForStartupRestore(Path sessionFile) {
+        return new TranscriptLoader(mapper).loadForStartupRestore(sessionFile);
+    }
+
 
     public Optional<TranscriptLoader.AgentTranscript> getAgentTranscript(
             Path agentFile, String agentId) {

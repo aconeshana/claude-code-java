@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -540,18 +541,43 @@ public class TranscriptRecorder implements TranscriptSink {
     /** Restores the lazy plan slug before resumed-session plan attachments run. */
     public void restoreSessionSlug(String sessionId) {
         Path file = sessionFile(sessionId);
-        sessionStorage.readSessionSlug(file).ifPresent(slug -> {
-            sessionSlugs.put(file.toString(), slug);
-            PlanSlugRegistry.set(sessionId, slug);
-        });
+        restoreSessionSlug(sessionId, sessionStorage.readSessionSlug(file));
+    }
+
+    /** Seeds the session slug from a pre-scanned startup restore bundle without re-reading disk. */
+    public void restoreSessionSlug(String sessionId, Optional<String> preloadedSlug) {
+        if (preloadedSlug == null || preloadedSlug.isEmpty()) return;
+        Path file = sessionFile(sessionId);
+        String slug = preloadedSlug.get();
+        sessionSlugs.put(file.toString(), slug);
+        PlanSlugRegistry.set(sessionId, slug);
     }
 
 
     public void restoreSessionMetadata(String sessionId, List<Message> messages) {
+        restoreSessionMetadata(sessionId, messages, null);
+    }
+
+    /**
+     * Restores recorder bookkeeping for a resumed session. When {@code preloaded} is supplied,
+     * seeds recorded UUIDs, parent/assistant pointers, mode, and last-prompt state from the
+     * single-pass startup bundle instead of re-scanning the JSONL twice.
+     */
+    public void restoreSessionMetadata(
+            String sessionId,
+            List<Message> messages,
+            TranscriptLoader.StartupRestoreBundle preloaded) {
         if (StringUtils.isBlank(sessionId)) return;
         Path file = sessionFile(sessionId);
         String key = file.toString();
-        recordedUuids.computeIfAbsent(key, _ -> seedState(file));
+        SessionStorage.MetadataSnapshot metadata;
+        if (preloaded != null) {
+            recordedUuids.computeIfAbsent(key, _ -> seedStateFromBundle(key, messages, preloaded));
+            metadata = preloaded.metadata();
+        } else {
+            recordedUuids.computeIfAbsent(key, _ -> seedState(file));
+            metadata = sessionStorage.scanMetadata(file);
+        }
 
         LeafState restoredLeaf = lastChainLeaf(messages);
         if (restoredLeaf != null) {
@@ -563,12 +589,35 @@ public class TranscriptRecorder implements TranscriptSink {
         // row. Existing metadata remains authoritative on disk and must not
         // be revived into this process's cache, or compact/shutdown will
         // duplicate it.
-        if (sessionStorage.scanMetadata(file).lastPrompt().isEmpty()) {
+        if (metadata.lastPrompt().isEmpty()) {
             String rendered = renderLastPrompt(firstMeaningfulUserPrompt(messages));
             if (StringUtils.isNotBlank(rendered)) {
                 enqueueLastPrompt(sessionId, rendered, false);
             }
         }
+    }
+
+    private Set<String> seedStateFromBundle(
+            String key,
+            List<Message> messages,
+            TranscriptLoader.StartupRestoreBundle preloaded) {
+        Set<String> seen = new HashSet<>(preloaded.allRecordedUuids());
+        Set<String> knownReplIds = replToolUseIds.computeIfAbsent(
+            key, _ -> ConcurrentHashMap.newKeySet());
+        if (messages != null && !messages.isEmpty()) {
+            TranscriptMessageCleaner.rememberReplToolUseIds(messages, knownReplIds);
+        }
+        if (preloaded.lastChainUuid() != null) {
+            currentParent.put(key, preloaded.lastChainUuid());
+        }
+        if (preloaded.lastAssistantUuid() != null) {
+            lastAssistantUuid.put(key, preloaded.lastAssistantUuid());
+        }
+        SessionStorage.MetadataSnapshot metadata = preloaded.metadata();
+        metadata.mode().ifPresent(mode -> currentModes.put(key, mode));
+        metadata.leafUuid().ifPresent(uuid -> currentLeaves.putIfAbsent(
+            key, new LeafState(uuid, Instant.EPOCH)));
+        return seen;
     }
 
 

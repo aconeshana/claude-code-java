@@ -18,6 +18,7 @@ import com.claudecode.services.config.TrustConfigStore;
 import com.claudecode.services.cost.CostTracker;
 import com.claudecode.services.hooks.HookEngine;
 import com.claudecode.session.SessionStorage;
+import com.claudecode.session.TranscriptLoader;
 import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.tools.tasks.TaskRegistry;
@@ -112,15 +113,21 @@ public final class ResumeStateRestorer {
 
     public void postSwitch(Path sessionFile, List<Message> msgs, String cwd,
                            boolean persistRecoveryTranscript) {
+        postSwitch(sessionFile, msgs, cwd, persistRecoveryTranscript, null);
+    }
+
+    public void postSwitch(Path sessionFile, List<Message> msgs, String cwd,
+                           boolean persistRecoveryTranscript,
+                           TranscriptLoader.StartupRestoreBundle preloaded) {
         if (persistRecoveryTranscript) {
             persistRecoveredMessages(sessionFile, msgs);
         }
-        restoreCost(sessionFile);
-        restoreMetadata(sessionFile);
+        restoreCost(sessionFile, preloaded);
+        restoreMetadata(sessionFile, preloaded);
         restoreReadFiles(msgs, cwd);
         restoreBashTools(msgs);
-        restoreFileHistory(sessionFile);
-        restoreWorktreeState(sessionFile);
+        restoreFileHistory(sessionFile, preloaded);
+        restoreWorktreeState(sessionFile, preloaded);
         restoreGoal(msgs, cwd);
         restoreOrphanedBackgroundWorkflows(msgs);
         fireSessionStart();
@@ -358,9 +365,15 @@ public final class ResumeStateRestorer {
     }
 
     void restoreCost(Path sessionFile) {
-        if (sessionFile == null) return;
+        restoreCost(sessionFile, null);
+    }
+
+    void restoreCost(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {
+        if (sessionFile == null && preloaded == null) return;
         try {
-            Usage summed = storage.sumAssistantUsage(sessionFile);
+            Usage summed = preloaded != null
+                ? preloaded.totalAssistantUsage()
+                : storage.sumAssistantUsage(sessionFile);
             // Seed the engine's running total — Java tracks cumulative usage
             // directly on QuerySession (no separate CostTracker in the CLI wiring).
             // Keeping the CostTracker branch below so services that DO wire one
@@ -376,9 +389,15 @@ public final class ResumeStateRestorer {
     }
 
     void restoreMetadata(Path sessionFile) {
-        if (sessionFile == null) return;
+        restoreMetadata(sessionFile, null);
+    }
+
+    void restoreMetadata(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {
+        if (sessionFile == null && preloaded == null) return;
         try {
-            SessionStorage.MetadataSnapshot snap = storage.scanMetadata(sessionFile);
+            SessionStorage.MetadataSnapshot snap = preloaded != null
+                ? preloaded.metadata()
+                : storage.scanMetadata(sessionFile);
             // Session-level metadata store is per-agent; clear stale entries
             // then apply the resumed snapshot so a fresh session doesn't leak
             // colour/name bindings from the previous run.
@@ -427,11 +446,17 @@ public final class ResumeStateRestorer {
      * file-history-snapshot} entries.
      */
     void restoreFileHistory(Path sessionFile) {
-        if (sessionFile == null) return;
+        restoreFileHistory(sessionFile, null);
+    }
+
+    void restoreFileHistory(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {
+        if (sessionFile == null && preloaded == null) return;
         FileHistoryManager fileHistoryManager = engine.conversation().getFileHistoryManager();
         if (fileHistoryManager == null) return;
         try {
-            List<SessionStorage.FileHistorySnapshotEntry> raw = storage.scanFileHistorySnapshots(sessionFile);
+            List<SessionStorage.FileHistorySnapshotEntry> raw = preloaded != null
+                ? preloaded.fileHistorySnapshots()
+                : storage.scanFileHistorySnapshots(sessionFile);
             List<FileHistoryManager.Snapshot> chain = FileHistorySnapshotCodec.buildChain(raw);
             fileHistoryManager.restoreFromSnapshots(chain);
         } catch (Exception e) {
@@ -441,14 +466,20 @@ public final class ResumeStateRestorer {
 
 
     void restoreWorktreeState(Path sessionFile) {
-        if (sessionFile == null) return;
+        restoreWorktreeState(sessionFile, null);
+    }
+
+    void restoreWorktreeState(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {
+        if (sessionFile == null && preloaded == null) return;
         try {
             WorktreeSession fresh = WorktreeService.getCurrentWorktreeSession();
             if (fresh != null) {
                 WorktreeService.persistWorktreeState(storage, sessionFile, engine.conversation().getSessionId(), fresh);
                 return;
             }
-            WorktreeSession persisted = WorktreeService.readPersistedWorktreeState(storage, sessionFile);
+            WorktreeSession persisted = preloaded != null
+                ? WorktreeService.fromWorktreeStateEntry(preloaded.worktreeState())
+                : WorktreeService.readPersistedWorktreeState(storage, sessionFile);
             if (persisted == null) return;
             Path worktreePath = Path.of(persisted.worktreePath());
             if (!Files.isDirectory(worktreePath)) {

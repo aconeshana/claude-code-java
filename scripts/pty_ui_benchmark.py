@@ -541,6 +541,120 @@ def run_heavy_inventory_session(
             session.close()
 
 
+def create_resume_transcript(
+    config: Path,
+    workspace: Path,
+    turns: int = 120,
+    payload_bytes: int = 12_000,
+) -> str:
+    """Create a deterministic ~3 MB multi-turn session JSONL for resume benchmarking."""
+    session_id = "00000000-0000-4000-8000-000000000197"
+    sanitized = str(workspace.resolve()).replace("/", "-")
+    project_dir = config / "projects" / sanitized
+    project_dir.mkdir(parents=True, exist_ok=True)
+    transcript = project_dir / f"{session_id}.jsonl"
+    padding = "x" * payload_bytes
+    lines: list[str] = []
+    parent_uuid: str | None = None
+    for index in range(turns):
+        user_uuid = f"00000000-0000-4000-8000-{index * 2 + 1:012d}"
+        asst_uuid = f"00000000-0000-4000-8000-{index * 2 + 2:012d}"
+        ts_u = f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.000Z"
+        ts_a = f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.500Z"
+        user_row = {
+            "type": "user",
+            "uuid": user_uuid,
+            "parentUuid": parent_uuid,
+            "sessionId": session_id,
+            "timestamp": ts_u,
+            "cwd": str(workspace.resolve()),
+            "isSidechain": False,
+            "message": {"role": "user", "content": f"Benchmark turn {index}: {padding[:256]}"},
+        }
+        asst_row = {
+            "type": "assistant",
+            "uuid": asst_uuid,
+            "parentUuid": user_uuid,
+            "sessionId": session_id,
+            "timestamp": ts_a,
+            "cwd": str(workspace.resolve()),
+            "isSidechain": False,
+            "slug": "benchmark-resume-plan",
+            "message": {
+                "model": "claude-sonnet-4-5",
+                "role": "assistant",
+                "content": [{"type": "text", "text": f"Response {index}: {padding}"}],
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": 1000,
+                    "output_tokens": 250,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 800,
+                },
+            },
+        }
+        lines.append(json.dumps(user_row, separators=(",", ":")))
+        lines.append(json.dumps(asst_row, separators=(",", ":")))
+        if index % 20 == 0:
+            lines.append(json.dumps({
+                "type": "file-history-snapshot",
+                "messageId": user_uuid,
+                "snapshot": {"messageId": user_uuid, "trackedFileBackups": {}, "timestamp": ts_u},
+                "isSnapshotUpdate": False,
+            }, separators=(",", ":")))
+        parent_uuid = asst_uuid
+    lines.append(json.dumps({
+        "type": "last-prompt",
+        "sessionId": session_id,
+        "lastPrompt": f"Benchmark turn {turns - 1}",
+        "leafUuid": parent_uuid,
+    }, separators=(",", ":")))
+    transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return session_id
+
+
+def run_resume_session(
+    target: str,
+    executable: str,
+    args: list[str],
+    run: int,
+    startup_timeout: float,
+) -> list[Measurement]:
+    """Benchmark startup latency when resuming a multi-megabyte session via --continue."""
+    results: list[Measurement] = []
+    with tempfile.TemporaryDirectory(prefix=f"ccj-resume-{target}-") as temp:
+        config = Path(temp) / "config"
+        isolated_config(config)
+        create_resume_transcript(config, ROOT)
+        session = PtySession(
+            target,
+            executable,
+            args + ["--continue"],
+            config,
+        )
+        try:
+            startup_before_bytes = session.capture.total_bytes
+            try:
+                ready_at = session.wait_for(ready, startup_timeout)
+                first_byte = session.capture.first_byte_seconds or (ready_at - session.started)
+                results.append(Measurement(
+                    target, run, "resume_first_byte", first_byte * 1000.0,
+                    session.capture.total_bytes - startup_before_bytes, True))
+                results.append(Measurement(
+                    target, run, "resume_ready", (ready_at - session.started) * 1000.0,
+                    session.capture.total_bytes - startup_before_bytes, True,
+                    f"rss_mb={session.rss_megabytes():.1f}"))
+                session.settle_output()
+            except TimeoutError:
+                screen = " | ".join(line for line in session.capture.lines() if line)
+                results.append(Measurement(
+                    target, run, "resume_ready", startup_timeout * 1000.0,
+                    session.capture.total_bytes, False, screen[-1200:]))
+            return results
+        finally:
+            session.close()
+
+
 def percentile(values: Iterable[float], quantile: float) -> float:
     ordered = sorted(values)
     if not ordered:
@@ -687,6 +801,9 @@ def main() -> int:
             run_heavy_inventory_session(
                 target, executable, arguments, -(warmup + 1),
                 options.heavy_startup_timeout)
+            run_resume_session(
+                target, executable, arguments, -(warmup + 1),
+                options.heavy_startup_timeout)
 
     measurements: list[Measurement] = []
     for run in range(options.runs):
@@ -698,6 +815,8 @@ def main() -> int:
             measurements.extend(run_session(
                 target, executable, arguments, run, options.startup_timeout))
             measurements.extend(run_heavy_inventory_session(
+                target, executable, arguments, run, options.heavy_startup_timeout))
+            measurements.extend(run_resume_session(
                 target, executable, arguments, run, options.heavy_startup_timeout))
 
     summaries = summarize(measurements)

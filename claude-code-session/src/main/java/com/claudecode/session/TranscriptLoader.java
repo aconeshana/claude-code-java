@@ -3,6 +3,7 @@ package com.claudecode.session;
 import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.MessageOrigin;
+import com.claudecode.core.message.Usage;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -67,9 +68,16 @@ public final class TranscriptLoader {
      * Loads a complete transcript.
      */
     public TranscriptFile loadTranscriptFile(Path file, boolean keepAllLeaves) {
-        MutableTranscript data = new MutableTranscript();
+        MutableTranscript data = new MutableTranscript(null);
         if (file == null || !Files.exists(file)) return data.freeze(keepAllLeaves, null);
 
+        readIntoMutable(file, keepAllLeaves, data);
+        String preservedTail = applyPreservedRelinks(data.messages, data.parents);
+        applySnipRemovals(data.messages, data.parents);
+        return data.freeze(keepAllLeaves, preservedTail);
+    }
+
+    private void readIntoMutable(Path file, boolean keepAllLeaves, MutableTranscript data) {
         try (BufferedReader reader = keepAllLeaves
                 ? Files.newBufferedReader(file, StandardCharsets.UTF_8)
                 : new BufferedReader(new InputStreamReader(new ByteArrayInputStream(
@@ -91,20 +99,61 @@ public final class TranscriptLoader {
                     continue;
                 }
                 if (!(parsed instanceof ObjectNode entry)) continue;
-                indexEntry(entry.deepCopy(), data);
+                indexEntry(entry, data);
             }
         } catch (IOException failure) {
             throw new UncheckedIOException("Failed to read transcript: " + file, failure);
         }
+    }
 
+    /**
+     * Single-pass loader for startup {@code --continue}/{@code --resume} restoration.
+     * Collects the resolved conversation chain together with all sidecar state
+     * (content replacements, cumulative assistant usage, metadata snapshot, slug,
+     * file-history snapshots, worktree state, and recorded-uuid seed) in one pass
+     * over the JSONL file instead of re-reading and re-parsing it up to 9 times.
+     */
+    public StartupRestoreBundle loadForStartupRestore(Path file) {
+        if (file == null || !Files.exists(file)) {
+            return StartupRestoreBundle.empty();
+        }
+        if (!Strings.CS.endsWith(file.toString(), ".jsonl")) {
+            List<Message> msgs;
+            try {
+                msgs = loadTranscriptFromFile(file).messages();
+            } catch (TranscriptFileFormatException _) {
+                msgs = List.of();
+            }
+            return new StartupRestoreBundle(
+                msgs, List.of(), Usage.EMPTY, SessionStorage.MetadataSnapshot.empty(),
+                Optional.empty(), List.of(), null, Set.of(), null, null);
+        }
+
+        StartupExtras extras = new StartupExtras();
+        MutableTranscript data = new MutableTranscript(extras);
+        readIntoMutable(file, false, data);
         String preservedTail = applyPreservedRelinks(data.messages, data.parents);
         applySnipRemovals(data.messages, data.parents);
-        return data.freeze(keepAllLeaves, preservedTail);
+        TranscriptFile loaded = data.freeze(false, preservedTail);
+
+        List<Message> messages = List.of();
+        if (!loaded.messageEntries().isEmpty()) {
+            String leafUuid = latestUuid(loaded.messageEntries(), loaded.leafUuids());
+            if (leafUuid == null && loaded.leafUuids().isEmpty() && !loaded.clearedToEmpty()) {
+                leafUuid = latestUuid(loaded.messageEntries(), uuid ->
+                    !loaded.messageEntries().get(uuid).path("isSidechain").asBoolean(false));
+            }
+            if (leafUuid != null) {
+                List<JsonNode> rawChain = buildConversationChain(loaded, leafUuid);
+                messages = toMessages(rawChain);
+            }
+        }
+        return extras.toBundle(messages);
     }
 
     /** Builds the same transformed graph from an external SessionStore entry stream. */
     public TranscriptFile loadTranscriptEntries(Iterable<? extends JsonNode> entries) {
-        MutableTranscript data = new MutableTranscript();
+        MutableTranscript data = new MutableTranscript(null);
         if (entries != null) for (JsonNode parsed : entries) {
             if (parsed instanceof ObjectNode entry) indexEntry(entry.deepCopy(), data);
         }
@@ -257,6 +306,9 @@ public final class TranscriptLoader {
     }
 
     private static void indexEntry(ObjectNode entry, MutableTranscript data) {
+        if (data.startupExtras != null) {
+            data.startupExtras.observe(entry);
+        }
         String type = text(entry, "type");
         String uuid = text(entry, "uuid");
         if (Strings.CS.equals("progress", type) && uuid != null) {
@@ -1055,8 +1107,173 @@ public final class TranscriptLoader {
         }
     }
 
+    /**
+     * All state needed by startup {@code --continue}/{@code --resume} restoration,
+     * collected in one pass over the transcript JSONL.
+     */
+    public record StartupRestoreBundle(
+        List<Message> messages,
+        List<ToolResultBudget.Replacement> contentReplacements,
+        Usage totalAssistantUsage,
+        SessionStorage.MetadataSnapshot metadata,
+        Optional<String> slug,
+        List<SessionStorage.FileHistorySnapshotEntry> fileHistorySnapshots,
+        SessionStorage.WorktreeStateEntry worktreeState,
+        Set<String> allRecordedUuids,
+        String lastChainUuid,
+        String lastAssistantUuid
+    ) {
+        public StartupRestoreBundle {
+            messages = List.copyOf(messages);
+            contentReplacements = List.copyOf(contentReplacements);
+            totalAssistantUsage = totalAssistantUsage == null ? Usage.EMPTY : totalAssistantUsage;
+            metadata = metadata == null ? SessionStorage.MetadataSnapshot.empty() : metadata;
+            slug = slug == null ? Optional.empty() : slug;
+            fileHistorySnapshots = List.copyOf(fileHistorySnapshots);
+            allRecordedUuids = Set.copyOf(allRecordedUuids);
+        }
+
+        public static StartupRestoreBundle empty() {
+            return new StartupRestoreBundle(
+                List.of(), List.of(), Usage.EMPTY, SessionStorage.MetadataSnapshot.empty(),
+                Optional.empty(), List.of(), null, Set.of(), null, null);
+        }
+    }
+
+    private static final Set<String> MESSAGE_ROW_TYPES = Set.of(
+        "user", "assistant", "system", "attachment", "progress",
+        "hook_result", "tool_use_summary", "tombstone", "grouped_tool_use");
+
+    private static final class StartupExtras {
+        long inputTokens;
+        long outputTokens;
+        long cacheCreateTokens;
+        long cacheReadTokens;
+        String metaMode;
+        String metaPermissionMode;
+        String metaCustomTitle;
+        String metaAgentName;
+        String metaAgentColor;
+        String metaTag;
+        String metaLastPrompt;
+        String metaLeafUuid;
+        String slug;
+        final List<ToolResultBudget.Replacement> contentReplacements = new ArrayList<>();
+        final List<SessionStorage.FileHistorySnapshotEntry> fileHistorySnapshots = new ArrayList<>();
+        SessionStorage.WorktreeStateEntry worktreeState;
+        final Set<String> allRecordedUuids = new HashSet<>();
+        String lastChainUuid;
+        String lastAssistantUuid;
+
+        void observe(ObjectNode node) {
+            if (node.hasNonNull("slug")) {
+                String candidateSlug = node.path("slug").asText();
+                if (StringUtils.isNotBlank(candidateSlug)) {
+                    slug = candidateSlug;
+                }
+            }
+            String type = text(node, "type");
+            if (type == null) return;
+
+            String rowPerm = text(node, "permissionMode");
+            if (rowPerm != null) {
+                metaPermissionMode = rowPerm;
+            }
+
+            if (MESSAGE_ROW_TYPES.contains(type)) {
+                String uuid = text(node, "uuid");
+                if (uuid != null) {
+                    allRecordedUuids.add(uuid);
+                    if (!Strings.CS.equals("progress", type) && !Strings.CS.equals("tombstone", type)) {
+                        lastChainUuid = uuid;
+                    }
+                    if (Strings.CS.equals("assistant", type)) {
+                        lastAssistantUuid = uuid;
+                    }
+                }
+                if (Strings.CS.equals("assistant", type)) {
+                    JsonNode usage = node.path("message").path("usage");
+                    if (!usage.isMissingNode() && !usage.isNull()) {
+                        inputTokens += usage.path("input_tokens").asLong(0);
+                        outputTokens += usage.path("output_tokens").asLong(0);
+                        cacheCreateTokens += usage.path("cache_creation_input_tokens").asLong(0);
+                        cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
+                    }
+                }
+                return;
+            }
+
+            switch (type) {
+                case "mode" -> metaMode = text(node, "mode");
+                case "permission-mode" -> metaPermissionMode = text(node, "permissionMode");
+                case "custom-title" -> metaCustomTitle = text(node, "customTitle");
+                case "agent-name" -> metaAgentName = text(node, "agentName");
+                case "agent-color" -> metaAgentColor = text(node, "agentColor");
+                case "tag" -> metaTag = text(node, "tag");
+                case "last-prompt" -> {
+                    String prompt = text(node, "lastPrompt");
+                    if (prompt != null) metaLastPrompt = prompt;
+                    String leaf = text(node, "leafUuid");
+                    if (leaf != null) metaLeafUuid = leaf;
+                }
+                case "file-history-snapshot" -> {
+                    String messageId = text(node, "messageId");
+                    JsonNode snapshot = node.get("snapshot");
+                    boolean isUpdate = node.path("isSnapshotUpdate").asBoolean(false);
+                    if (messageId != null && snapshot != null) {
+                        fileHistorySnapshots.add(
+                            new SessionStorage.FileHistorySnapshotEntry(messageId, snapshot, isUpdate));
+                    }
+                }
+                case "worktree-state" -> {
+                    String sid = text(node, "sessionId");
+                    JsonNode ws = node.get("worktreeSession");
+                    worktreeState = new SessionStorage.WorktreeStateEntry(
+                        sid, (ws == null || ws.isNull()) ? null : ws);
+                }
+                case "content-replacement" -> {
+                    JsonNode items = node.get("replacements");
+                    if (items != null && items.isArray()) {
+                        for (JsonNode item : items) {
+                            if (!Strings.CS.equals("tool-result", text(item, "kind"))) continue;
+                            String toolUseId = text(item, "toolUseId");
+                            String replacement = text(item, "replacement");
+                            if (toolUseId != null && replacement != null) {
+                                contentReplacements.add(
+                                    new ToolResultBudget.Replacement(toolUseId, replacement));
+                            }
+                        }
+                    }
+                }
+                default -> { /* ignored */ }
+            }
+        }
+
+        StartupRestoreBundle toBundle(List<Message> messages) {
+            SessionStorage.MetadataSnapshot metadata = new SessionStorage.MetadataSnapshot(
+                Optional.ofNullable(metaMode),
+                Optional.ofNullable(metaPermissionMode),
+                Optional.ofNullable(metaCustomTitle),
+                Optional.ofNullable(metaAgentName),
+                Optional.ofNullable(metaAgentColor),
+                Optional.ofNullable(metaTag),
+                Optional.ofNullable(metaLastPrompt),
+                Optional.ofNullable(metaLeafUuid));
+            Usage totalUsage = new Usage(inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens);
+            return new StartupRestoreBundle(
+                messages, contentReplacements, totalUsage, metadata,
+                Optional.ofNullable(slug), fileHistorySnapshots, worktreeState,
+                allRecordedUuids, lastChainUuid, lastAssistantUuid);
+        }
+    }
+
     private static final class MutableTranscript {
+        final StartupExtras startupExtras;
         final LinkedHashMap<String, ObjectNode> messages = new LinkedHashMap<>();
+
+        MutableTranscript(StartupExtras startupExtras) {
+            this.startupExtras = startupExtras;
+        }
         final Map<String, String> parents = new LinkedHashMap<>();
         final Map<String, String> progressBridge = new HashMap<>();
         final Map<String, String> summaries = new LinkedHashMap<>();

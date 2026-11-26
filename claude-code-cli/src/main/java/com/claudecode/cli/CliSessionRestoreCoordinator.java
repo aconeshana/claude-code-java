@@ -75,7 +75,7 @@ final class CliSessionRestoreCoordinator {
         // never gets a chance to abort a launch that --continue already answered.
         if (request.continueLastSession()) {
             SessionManager manager = new SessionManager(request.cwd());
-            String latest = latestSessionId(manager.listSessions());
+            String latest = latestSessionId(manager.listSessions(1));
             if (latest == null) return Restoration.NONE;
             return restoreExisting(request, manager.getSessionFile(latest), latest, true);
         }
@@ -179,19 +179,11 @@ final class CliSessionRestoreCoordinator {
             String sessionId,
             boolean continuing) {
         SessionStorage storage = new SessionStorage();
-        // Resolve the conversation through the persisted leaf chain, not by reading every
-        // row: a rewound session keeps its abandoned rows on disk as an alternate branch and
-        // records a rewound last-prompt anchor, so a flat read would pull the discarded
-        // branch back into the resumed context (197 omy/lZt anchor + 236 G6e chain walk).
-        // A transcript with no chain at all is tolerated here rather than refused: the
-        // loader reports it strictly, but resuming an empty session is an empty conversation.
-        List<Message> loaded;
-        try {
-            loaded = storage.loadTranscriptFromFile(transcript).messages();
-        } catch (TranscriptLoader.TranscriptFileFormatException _) {
-            loaded = List.of();
-        }
-        List<Message> messages = MessagesDeserializer.deserialize(loaded);
+        // Single-pass load: resolves the conversation leaf chain AND collects
+        // content replacements, cumulative usage, metadata, slug, file-history
+        // snapshots, worktree state, and recorded-uuid seed in one file sweep.
+        TranscriptLoader.StartupRestoreBundle bundle = storage.loadForStartupRestore(transcript);
+        List<Message> messages = MessagesDeserializer.deserialize(bundle.messages());
         if (StringUtils.isNotBlank(request.resumeSessionAt())) {
             int selected = -1;
             for (int i = 0; i < messages.size(); i++) {
@@ -205,8 +197,7 @@ final class CliSessionRestoreCoordinator {
             }
             messages = List.copyOf(messages.subList(0, selected + 1));
         }
-        List<ToolResultBudget.Replacement> contentReplacements =
-            storage.readContentReplacements(transcript);
+        List<ToolResultBudget.Replacement> contentReplacements = bundle.contentReplacements();
         ResumeStateRestorer restorer = newResumeRestorer(request.engine(), storage);
         restorer.preSwitch();
         // The session identity must change before loading anything. The engine,
@@ -218,8 +209,8 @@ final class CliSessionRestoreCoordinator {
             // transcript write, so restore the persisted slug immediately after
             // the identity changes rather than when the random launch id exists.
             if (request.transcriptRecorder() != null) {
-                request.transcriptRecorder().restoreSessionSlug(sessionId);
-                request.transcriptRecorder().restoreSessionMetadata(sessionId, messages);
+                request.transcriptRecorder().restoreSessionSlug(sessionId, bundle.slug());
+                request.transcriptRecorder().restoreSessionMetadata(sessionId, messages, bundle);
             }
         }
         restoreToolResultBudget(
@@ -230,7 +221,8 @@ final class CliSessionRestoreCoordinator {
             request.printMode(), request.initialPrompt());
         restorer.postSwitch(
             transcript, messages, request.cwd(),
-            shouldPersistRecoveryTranscript(request.printMode(), deferRecoveryTranscript));
+            shouldPersistRecoveryTranscript(request.printMode(), deferRecoveryTranscript),
+            bundle);
         List<Message> deferredMessages = messages;
         Runnable deferred = deferRecoveryTranscript
             ? () -> restorer.persistRecoveredMessages(transcript, deferredMessages)

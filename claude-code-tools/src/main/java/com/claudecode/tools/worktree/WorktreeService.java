@@ -996,7 +996,11 @@ public final class WorktreeService {
      */
     public static WorktreeSession readPersistedWorktreeState(SessionStorage storage, Path sessionFile) {
         if (storage == null || sessionFile == null) return null;
-        SessionStorage.WorktreeStateEntry entry = storage.scanWorktreeState(sessionFile);
+        return fromWorktreeStateEntry(storage.scanWorktreeState(sessionFile));
+    }
+
+    /** Reconstructs a {@link WorktreeSession} from an already-scanned JSONL entry without re-reading disk. */
+    public static WorktreeSession fromWorktreeStateEntry(SessionStorage.WorktreeStateEntry entry) {
         if (entry == null || entry.worktreeSessionJson() == null) return null;
         return fromJson(entry.worktreeSessionJson());
     }
