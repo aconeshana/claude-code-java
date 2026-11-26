@@ -1,6 +1,7 @@
 package com.claudecode.core.imagestore;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.ByteArrays;
 import com.claudecode.core.text.FormatUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -9,7 +10,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -292,19 +292,16 @@ public final class ImageResizer {
         if (bytes.length < 4) return null;
 
         if (bytes.length >= 24
-                && unsigned(bytes[0]) == 0x89 && bytes[1] == 'P'
-                && bytes[2] == 'N' && bytes[3] == 'G') {
+                && unsigned(bytes[0]) == 0x89 && ByteArrays.asciiEquals(bytes, 1, "PNG")) {
             return positiveDimensions(
-                readIntBigEndian(bytes, 16), readIntBigEndian(bytes, 20));
+                ByteArrays.readIntBE(bytes, 16), ByteArrays.readIntBE(bytes, 20));
         }
 
-        if (bytes.length >= 10 && bytes[0] == 'G' && bytes[1] == 'I'
-                && bytes[2] == 'F') {
+        if (bytes.length >= 10 && ByteArrays.asciiEquals(bytes, 0, "GIF")) {
             return positiveDimensions(
-                readUnsignedShortLittleEndian(bytes, 6),
-                readUnsignedShortLittleEndian(bytes, 8));
+                ByteArrays.readUnsignedShortLE(bytes, 6),
+                ByteArrays.readUnsignedShortLE(bytes, 8));
         }
-
 
         if (unsigned(bytes[0]) == 0xff
                 && unsigned(bytes[1]) == 0xd8 && unsigned(bytes[2]) == 0xff) {
@@ -312,24 +309,22 @@ public final class ImageResizer {
             if (jpeg != null) return jpeg;
         }
 
-        if (bytes.length >= 30 && bytes[0] == 'R' && bytes[1] == 'I'
-                && bytes[2] == 'F' && bytes[3] == 'F'
-                && bytes[8] == 'W' && bytes[9] == 'E'
-                && bytes[10] == 'B' && bytes[11] == 'P') {
-            String chunk = new String(bytes, 12, 4, StandardCharsets.US_ASCII);
-            if (Strings.CS.equals("VP8 ", chunk)) {
+        if (bytes.length >= 30
+                && ByteArrays.asciiEquals(bytes, 0, "RIFF")
+                && ByteArrays.asciiEquals(bytes, 8, "WEBP")) {
+            if (ByteArrays.asciiEquals(bytes, 12, "VP8 ")) {
                 return positiveDimensions(
-                    readUnsignedShortLittleEndian(bytes, 26) & 0x3fff,
-                    readUnsignedShortLittleEndian(bytes, 28) & 0x3fff);
+                    ByteArrays.readUnsignedShortLE(bytes, 26) & 0x3fff,
+                    ByteArrays.readUnsignedShortLE(bytes, 28) & 0x3fff);
             }
-            if (Strings.CS.equals("VP8L", chunk)) {
-                long bits = readUnsignedIntLittleEndian(bytes, 21);
+            if (ByteArrays.asciiEquals(bytes, 12, "VP8L")) {
+                long bits = ByteArrays.readUnsignedIntLE(bytes, 21);
                 return positiveDimensions((int) (bits & 0x3fff) + 1,
                     (int) ((bits >>> 14) & 0x3fff) + 1);
             }
-            if (Strings.CS.equals("VP8X", chunk)) {
-                return positiveDimensions(readUnsignedMediumLittleEndian(bytes, 24) + 1,
-                    readUnsignedMediumLittleEndian(bytes, 27) + 1);
+            if (ByteArrays.asciiEquals(bytes, 12, "VP8X")) {
+                return positiveDimensions(ByteArrays.readUnsignedMediumLE(bytes, 24) + 1,
+                    ByteArrays.readUnsignedMediumLE(bytes, 27) + 1);
             }
         }
         return null;
@@ -350,15 +345,15 @@ public final class ImageResizer {
             if (marker >= 0xc0 && marker <= 0xcf
                     && marker != 0xc4 && marker != 0xc8 && marker != 0xcc) {
                 return positiveDimensions(
-                    readUnsignedShortBigEndian(bytes, offset + 7),
-                    readUnsignedShortBigEndian(bytes, offset + 5));
+                    ByteArrays.readUnsignedShortBE(bytes, offset + 7),
+                    ByteArrays.readUnsignedShortBE(bytes, offset + 5));
             }
             if ((marker >= 0xd0 && marker <= 0xd9) || marker == 0x01) {
                 offset += 2;
                 continue;
             }
             if (offset + 3 >= bytes.length) return null;
-            int segmentLength = readUnsignedShortBigEndian(bytes, offset + 2);
+            int segmentLength = ByteArrays.readUnsignedShortBE(bytes, offset + 2);
             if (segmentLength < 2) return null;
             offset += 2 + segmentLength;
         }
@@ -371,31 +366,7 @@ public final class ImageResizer {
     }
 
     private static int unsigned(byte value) {
-        return value & 0xff;
-    }
-
-    private static int readUnsignedShortBigEndian(byte[] bytes, int offset) {
-        return (unsigned(bytes[offset]) << 8) | unsigned(bytes[offset + 1]);
-    }
-
-    private static int readUnsignedShortLittleEndian(byte[] bytes, int offset) {
-        return unsigned(bytes[offset]) | (unsigned(bytes[offset + 1]) << 8);
-    }
-
-    private static int readIntBigEndian(byte[] bytes, int offset) {
-        return (unsigned(bytes[offset]) << 24) | (unsigned(bytes[offset + 1]) << 16)
-            | (unsigned(bytes[offset + 2]) << 8) | unsigned(bytes[offset + 3]);
-    }
-
-    private static long readUnsignedIntLittleEndian(byte[] bytes, int offset) {
-        return unsigned(bytes[offset]) | ((long) unsigned(bytes[offset + 1]) << 8)
-            | ((long) unsigned(bytes[offset + 2]) << 16)
-            | ((long) unsigned(bytes[offset + 3]) << 24);
-    }
-
-    private static int readUnsignedMediumLittleEndian(byte[] bytes, int offset) {
-        return unsigned(bytes[offset]) | (unsigned(bytes[offset + 1]) << 8)
-            | (unsigned(bytes[offset + 2]) << 16);
+        return Byte.toUnsignedInt(value);
     }
 
     /**

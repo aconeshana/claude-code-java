@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,7 +45,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(CliCcConnectManager.class);
     private static final Duration HANDSHAKE_TIMEOUT = Duration.ofSeconds(8);
     private static final long HANDSHAKE_POLL_MS = 150L;
-    private static final long WATCHDOG_INTERVAL_MS = 2_000L;
+    private static final long WATCHDOG_FALLBACK_INTERVAL_MS = 15_000L;
 
     private final String defaultWorkDir;
     private volatile Path sourceConfig;
@@ -52,6 +53,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     private final Map<Long, ManagedSidecar> sidecars = new ConcurrentHashMap<>();
     private final AtomicReference<Process> setupProcess = new AtomicReference<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final CountDownLatch closeSignal = new CountDownLatch(1);
     private final Thread watchdog;
 
     CliCcConnectManager(String defaultWorkDir) {
@@ -68,6 +70,24 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     @Override
     public void bindRemoteBridge(RemoteBridge bridge) {
         this.bridge = bridge;
+    }
+
+    @Override
+    public void onWorkerDisconnected(long pid) {
+        if (closed.get() || pid <= 0 || !sidecars.containsKey(pid)) {
+            return;
+        }
+        // Only tear down if the TUI process actually exited; a transient Session Link drop
+        // (e.g. during /resume re-attach) while the process is still alive should keep the sidecar.
+        if (isProcessAlive(pid)) {
+            return;
+        }
+        Thread.ofVirtual().name("cc-connect-reap-" + pid).start(() -> {
+            if (!closed.get() && stopAndCleanupIfPresent(pid)) {
+                log.info("TUI pid={} disconnected and exited; stopped managed cc-connect sidecar", pid);
+                notifyChanged();
+            }
+        });
     }
 
     /** Re-reads configuration path after an in-place Web runtime reload. */
@@ -369,13 +389,10 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     private boolean awaitChannelHandshake(LiveWorker worker, ManagedSidecar sidecar, String channel) {
         RemoteBridge currentBridge = bridge;
         if (currentBridge == null) return true;
-        long deadline = System.currentTimeMillis() + HANDSHAKE_TIMEOUT.toMillis();
-        while (System.currentTimeMillis() < deadline) {
+        long deadlineNanos = System.nanoTime() + HANDSHAKE_TIMEOUT.toNanos();
+        while (true) {
             if (!sidecar.isAlive()) {
-                List<String> tail = logs(worker.pid(), 10).lines();
-                sidecar.lastError = tail.isEmpty()
-                    ? "cc-connect exited before completing Session Link handshake"
-                    : "cc-connect exited: " + tail.getLast();
+                sidecar.lastError = formatEarlyExitError(worker.pid());
                 return false;
             }
             Optional<CollaborationState> state =
@@ -383,34 +400,57 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
             if (state.isPresent() && state.get().availableChannels().contains(channel)) {
                 return true;
             }
+            long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
+            if (remainingMs <= 0) {
+                return false;
+            }
             try {
-                Thread.sleep(HANDSHAKE_POLL_MS);
+                if (sidecar.process.waitFor(
+                        Math.min(HANDSHAKE_POLL_MS, remainingMs), TimeUnit.MILLISECONDS)) {
+                    sidecar.lastError = formatEarlyExitError(worker.pid());
+                    return false;
+                }
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return false;
             }
         }
-        return false;
+    }
+
+    private String formatEarlyExitError(long pid) {
+        List<String> tail = logs(pid, 10).lines();
+        return tail.isEmpty()
+            ? "cc-connect exited before completing Session Link handshake"
+            : "cc-connect exited: " + tail.getLast();
     }
 
     private void watchSidecars() {
-        while (!closed.get() && !Thread.currentThread().isInterrupted()) {
+        while (!closed.get()) {
             try {
-                Thread.sleep(WATCHDOG_INTERVAL_MS);
+                if (closeSignal.await(WATCHDOG_FALLBACK_INTERVAL_MS, TimeUnit.MILLISECONDS)) {
+                    return;
+                }
             } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
                 return;
             }
-            boolean changed = false;
-            for (Long pid : List.copyOf(sidecars.keySet())) {
-                boolean tuiAlive = ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
-                if (!tuiAlive) {
-                    log.info("TUI pid={} exited; stopping managed cc-connect sidecar", pid);
-                    stopAndCleanup(pid);
-                    changed = true;
-                }
-            }
-            if (changed) notifyChanged();
+            reapExitedTuis();
         }
+    }
+
+    private void reapExitedTuis() {
+        boolean changed = false;
+        for (Long pid : List.copyOf(sidecars.keySet())) {
+            if (!isProcessAlive(pid) && stopAndCleanupIfPresent(pid)) {
+                log.info("TUI pid={} exited; stopping managed cc-connect sidecar", pid);
+                changed = true;
+            }
+        }
+        if (changed) notifyChanged();
+    }
+
+    private static boolean isProcessAlive(long pid) {
+        return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
     }
 
     private Optional<LiveWorker> findWorker(long pid, String sessionId) {
@@ -432,8 +472,12 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     }
 
     private void stopAndCleanup(long pid) {
+        stopAndCleanupIfPresent(pid);
+    }
+
+    private boolean stopAndCleanupIfPresent(long pid) {
         ManagedSidecar sidecar = sidecars.remove(pid);
-        if (sidecar == null) return;
+        if (sidecar == null) return false;
         sidecar.stopping.set(true);
         Process process = sidecar.process;
         if (process != null && process.isAlive()) {
@@ -449,6 +493,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
             }
         }
         cleanupDirs(sidecar.runtimeDir, sidecar.socketDir);
+        return true;
     }
 
     private boolean isSetupInProgress() {
@@ -502,6 +547,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
+        closeSignal.countDown();
         watchdog.interrupt();
         cancelSetup();
         for (Long pid : List.copyOf(sidecars.keySet())) {

@@ -362,10 +362,93 @@ class QueryLoop implements SdkEventSequencedIterator {
     }
 
 
+    private enum LoopAction {
+        CONTINUE,
+        TERMINATED,
+        COMPLETE_NORMAL
+    }
+
+    private enum PhaseOutcome {
+        PROCEED,
+        CONTINUE,
+        TERMINATED
+    }
+
+    private sealed interface ModelCallOutcome {
+        record ContinueLoop() implements ModelCallOutcome {}
+        record Terminated() implements ModelCallOutcome {}
+        record Completed(StreamResult streamResult) implements ModelCallOutcome {}
+    }
+
+    private record PreparedCall(
+        StreamingClient.StreamRequest request,
+        List<StreamingClient.StreamRequest.RequestMessage> requestMessages,
+        List<StreamingClient.StreamRequest.ToolDef> toolDefs,
+        int effectiveRequestMaxTokens
+    ) {}
+
+    private static final class LoopContext {
+        final DefaultQuerySession engine;
+        final QueryParams params;
+        final QuerySessionSpec config;
+        final MessageCompactor compactService;
+        final long loopStartTime;
+        final HeadlessTurnProfiler profiler;
+        final SessionMetricsTracker sessionMetrics;
+        final String claudeMdUserContext;
+        final String systemPrompt;
+        final boolean hasTurnModelOverride;
+        final int maxStructuredOutputRetries;
+        final int initialStructuredOutputCalls;
+        final int maxTurns;
+
+        QueryState state;
+        String currentModel;
+        boolean fallbackActive;
+        List<StreamingClient.StreamRequest.RequestMessage> fallbackRetryMessages;
+        List<StreamingClient.StreamRequest.ToolDef> fallbackRetryToolDefs;
+        String lastStopReason;
+        Exception lastError;
+        int loopTurns = 1;
+        int stopHookBlockingCount;
+        boolean hasAttemptedReactiveCompact;
+        boolean firstTurn = true;
+        String turnUserContext;
+        Long apiRetryChainStartMs;
+
+        LoopContext(DefaultQuerySession engine,
+                    QueryParams params,
+                    long loopStartTime,
+                    HeadlessTurnProfiler profiler,
+                    SessionMetricsTracker sessionMetrics,
+                    String claudeMdUserContext,
+                    String systemPrompt,
+                    QueryState state,
+                    boolean hasTurnModelOverride,
+                    String currentModel,
+                    int maxStructuredOutputRetries,
+                    int initialStructuredOutputCalls,
+                    int maxTurns) {
+            this.engine = engine;
+            this.params = params;
+            this.config = engine.getConfig();
+            this.compactService = engine.getCompactService();
+            this.loopStartTime = loopStartTime;
+            this.profiler = profiler;
+            this.sessionMetrics = sessionMetrics;
+            this.claudeMdUserContext = claudeMdUserContext;
+            this.systemPrompt = systemPrompt;
+            this.state = state;
+            this.hasTurnModelOverride = hasTurnModelOverride;
+            this.currentModel = currentModel;
+            this.maxStructuredOutputRetries = maxStructuredOutputRetries;
+            this.initialStructuredOutputCalls = initialStructuredOutputCalls;
+            this.maxTurns = maxTurns;
+        }
+    }
+
     private void runLoop(DefaultQuerySession engine, QueryParams params) {
         QuerySessionSpec config = engine.getConfig();
-        MessageCompactor compactService = engine.getCompactService();
-
         long loopStartTime = System.currentTimeMillis();
         HeadlessTurnProfiler profiler = config.headlessTurnProfiler();
         profiler.checkpoint("query_started");
@@ -387,7 +470,30 @@ class QueryLoop implements SdkEventSequencedIterator {
         if (StringUtils.isBlank(metricsTurnId)) metricsTurnId = UUID.randomUUID().toString();
         sessionMetrics.beginTurn(metricsTurnId);
         try {
+            LoopContext ctx = createLoopContext(engine, params, loopStartTime, profiler, sessionMetrics);
+            while (true) {
+                LoopAction action = runIteration(ctx);
+                if (action == LoopAction.TERMINATED) {
+                    return;
+                }
+                if (action == LoopAction.COMPLETE_NORMAL) {
+                    break;
+                }
+            }
+            emitResult(engine, new Terminal.Normal(), ctx.state.turnCount(), ctx.lastStopReason,
+                loopStartTime, ctx.state.structuredOutput());
+        } finally {
+            profiler.finishTurn();
+            sessionMetrics.endTurn();
+        }
+    }
 
+    private LoopContext createLoopContext(DefaultQuerySession engine,
+                                          QueryParams params,
+                                          long loopStartTime,
+                                          HeadlessTurnProfiler profiler,
+                                          SessionMetricsTracker sessionMetrics) {
+        QuerySessionSpec config = engine.getConfig();
         // CLAUDE.md + currentDate context is computed once and prepended to
         // every API call via buildRequestMessages (matches production line 390).
         String claudeMdUserContext = QueryHelpers.buildClaudeMdUserContext(engine);
@@ -406,11 +512,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         boolean hasTurnModelOverride = StringUtils.isNotBlank(options.modelOverride());
         String currentModel = hasTurnModelOverride
             ? params.model() : QueryHelpers.resolveRuntimeModel(engine);
-        boolean fallbackActive = false;
-        List<StreamingClient.StreamRequest.RequestMessage> fallbackRetryMessages = null;
-        List<StreamingClient.StreamRequest.ToolDef> fallbackRetryToolDefs = null;
-        String lastStopReason = null;
-
 
         // how many StructuredOutput calls are
         // allowed before erroring, so a model that never satisfies the Stop hook
@@ -419,736 +520,791 @@ class QueryLoop implements SdkEventSequencedIterator {
         int initialStructuredOutputCalls = options.hasJsonSchema()
             ? MessageConstants.countToolCalls(engine.getMutableMessages(), "StructuredOutput", null)
             : 0;
-        Exception lastError = null;
         int maxTurns = params.maxTurns() != null ? params.maxTurns() : config.maxTurns();
-        // The maxTurns gate counts API round-trips, NOT yielded user rows.
-        int loopTurns = 1;
-        // Consecutive stop-hook blocking re-entries (bundle `stopHookBlockingCount`);
-        // reset by every other transition, capped below.
-        int stopHookBlockingCount = 0;
-        boolean hasAttemptedReactiveCompact = false;
 
-        boolean firstTurn = true;
-        String turnUserContext = null;
-        Long apiRetryChainStartMs = null;
-        while (true) {
+        return new LoopContext(engine, params, loopStartTime, profiler, sessionMetrics,
+            claudeMdUserContext, systemPrompt, state, hasTurnModelOverride, currentModel,
+            maxStructuredOutputRetries, initialStructuredOutputCalls, maxTurns);
+    }
 
-            if (!(state.transition() instanceof Continue.StopHookReentry)) {
-                stopHookBlockingCount = 0;
+    private LoopAction runIteration(LoopContext ctx) {
+        if (!prepareIteration(ctx)) {
+            return LoopAction.TERMINATED;
+        }
+
+        ModelCallOutcome callOutcome = executeModelCall(ctx);
+        StreamResult sr;
+        switch (callOutcome) {
+            case ModelCallOutcome.ContinueLoop _ -> {
+                return LoopAction.CONTINUE;
             }
-            for (SystemMessage pending : engine.drainNotifications()) {
-                emit(new SDKMessage.System(pending));
+            case ModelCallOutcome.Terminated _ -> {
+                return LoopAction.TERMINATED;
             }
+            case ModelCallOutcome.Completed(StreamResult result) -> sr = result;
+        }
 
-            if (!fallbackActive) {
-                currentModel = hasTurnModelOverride
-                    ? params.model() : QueryHelpers.resolveRuntimeModel(engine);
+        PhaseOutcome refusalOutcome = handleRefusal(ctx, sr);
+        if (refusalOutcome == PhaseOutcome.CONTINUE) {
+            return LoopAction.CONTINUE;
+        }
+        if (refusalOutcome == PhaseOutcome.TERMINATED) {
+            return LoopAction.TERMINATED;
+        }
+
+        flushPendingToolUseSummary(ctx);
+
+        AssistantMessage assistantMsg = sr.assistantMessages().isEmpty()
+            ? null : sr.assistantMessages().getLast();
+        if (isMaxBudgetExceededAfterTurn(ctx, assistantMsg)) {
+            return LoopAction.TERMINATED;
+        }
+
+        if (!sr.toolUseBlocks().isEmpty()) {
+            return handleToolUse(ctx, sr.toolUseBlocks(), assistantMsg);
+        }
+        if (sr.apiErrorMessage() != null) {
+            return handleApiErrorMessage(ctx, sr.apiErrorMessage(), sr.turnUsage());
+        }
+        return handleNaturalTurnEnd(ctx);
+    }
+
+    private boolean prepareIteration(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        MessageCompactor compactService = ctx.compactService;
+
+        if (!(ctx.state.transition() instanceof Continue.StopHookReentry)) {
+            ctx.stopHookBlockingCount = 0;
+        }
+        for (SystemMessage pending : engine.drainNotifications()) {
+            emit(new SDKMessage.System(pending));
+        }
+
+        if (!ctx.fallbackActive) {
+            ctx.currentModel = ctx.hasTurnModelOverride
+                ? ctx.params.model() : QueryHelpers.resolveRuntimeModel(engine);
+        }
+
+        if (config.maxBudgetUsd() > 0) {
+            double cost = engine.getCostCalculator().calculateCost(engine.getTotalUsage());
+            if (cost >= config.maxBudgetUsd()) {
+                emitResult(engine, new Terminal.MaxBudget(cost), null,
+                    ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+                return false;
             }
+        }
 
-            if (config.maxBudgetUsd() > 0) {
-                double cost = engine.getCostCalculator().calculateCost(engine.getTotalUsage());
-                if (cost >= config.maxBudgetUsd()) {
-                    emitResult(engine, new Terminal.MaxBudget(cost), null, state.turnCount(), lastStopReason, loopStartTime);
-                    return;
-                }
+        emit(new SDKMessage.StreamRequestStart(ctx.currentModel, engine.getMessages().size()));
+
+        if (compactService != null) {
+            List<Message> currentMessages = engine.getMutableMessages();
+            MessageCompactor.MicrocompactResult mcResult =
+                compactService.microcompactMessages(currentMessages, /* liveMainThread */ true);
+            List<Message> compacted = mcResult.messages();
+            if (compacted != currentMessages) {
+                currentMessages.clear();
+                currentMessages.addAll(compacted);
             }
+        }
 
-            emit(new SDKMessage.StreamRequestStart(currentModel, engine.getMessages().size()));
+        AutoCompactStep acStep = runAutoCompactPhase(engine, ctx.params, ctx.state, false);
+        ctx.state = acStep.state();
+        boolean compactionHappened = acStep.compacted();
+        if (compactionHappened) {
+            engine.setCompactionOccurred(true);
+        }
 
-            if (compactService != null) {
-                List<Message> currentMessages = engine.getMutableMessages();
-                MessageCompactor.MicrocompactResult mcResult =
-                    compactService.microcompactMessages(currentMessages, /* liveMainThread */ true);
-                List<Message> compacted = mcResult.messages();
-                if (compacted != currentMessages) {
-                    currentMessages.clear();
-                    currentMessages.addAll(compacted);
-                }
+        // /compact when proactive compaction did not produce a smaller
+        // conversation. Keep compact/session_memory fork queries exempt: they
+        // need to call the model precisely in order to reduce the context.
+        if (!compactionHappened
+                && compactService != null
+                && !Strings.CS.equals("compact", ctx.params.querySource())
+                && !Strings.CS.equals("session_memory", ctx.params.querySource())
+                && !(compactService.isReactiveCompactEnabled()
+                    && compactService.isAutoCompactEnabled())
+                && compactService.isAtBlockingLimit(
+                    engine.getMutableMessages(), config.model())) {
+            AssistantMessage errorMessage =
+                MessageFactory.createAssistantAPIErrorMessage(
+                    "Prompt is too long", null, "invalid_request");
+            engine.getMutableMessages().add(errorMessage);
+            emit(new SDKMessage.Assistant(errorMessage, engine.getTotalUsage()));
+            QueryHelpers.recordTranscript(engine, errorMessage);
+            QueryHelpers.dispatchStopFailure(engine);
+            emitResult(engine, new Terminal.PromptTooLong(), null,
+                ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+            return false;
+        }
+
+        if (ctx.firstTurn) {
+            runFirstTurnSetup(ctx);
+        }
+        return true;
+    }
+
+    private void runFirstTurnSetup(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        ctx.turnUserContext = ctx.claudeMdUserContext;
+        if (!options.suppressInitialAttachments()) {
+            collectAttachments(engine, promptText(prompt), ctx.params.querySource());
+        }
+        appendPendingImageMetadata(engine);
+        if (pendingUserPromptHookContext != null) {
+            AttachmentMessage hookContext = new AttachmentMessage(
+                UUID.randomUUID().toString(), pendingUserPromptHookContext);
+            engine.getMutableMessages().add(hookContext);
+            QueryHelpers.recordTranscript(engine, hookContext);
+            pendingUserPromptHookContext = null;
+        }
+        if (pendingCommandPermissions != null) {
+            engine.getMutableMessages().add(pendingCommandPermissions);
+            QueryHelpers.recordTranscript(engine, pendingCommandPermissions);
+            pendingCommandPermissions = null;
+        }
+        appendAdditionalUserMessages(engine, options);
+        ctx.firstTurn = false;
+    }
+
+    private PreparedCall prepareModelCall(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        boolean replayingFallbackRequest = ctx.fallbackRetryMessages != null;
+        List<StreamingClient.StreamRequest.ToolDef> toolDefs = replayingFallbackRequest
+            ? ctx.fallbackRetryToolDefs
+            : resolveToolDefinitions(engine, ctx.currentModel);
+        List<StreamingClient.StreamRequest.RequestMessage> requestMessages;
+        if (replayingFallbackRequest) {
+            requestMessages = ctx.fallbackRetryMessages;
+            ctx.fallbackRetryMessages = null;
+            ctx.fallbackRetryToolDefs = null;
+        } else {
+            List<Message> requestConversation = applyToolResultBudget(engine, config);
+            requestMessages = QueryHelpers.buildRequestMessages(
+                engine, requestConversation, ctx.turnUserContext,
+                ctx.currentModel, List.of(), toolDefs);
+        }
+
+        String resolvedEffort = resolveAppliedEffort(engine, ctx.currentModel);
+        Integer maxOutputTokensOverride = ctx.state.maxOutputTokensOverride();
+        int effectiveRequestMaxTokens = maxOutputTokensOverride != null
+            ? maxOutputTokensOverride : config.maxTokens();
+        StreamingClient.StreamRequest request = new StreamingClient.StreamRequest(
+            ctx.currentModel, config.maxTokens(), ctx.systemPrompt, requestMessages, true, toolDefs,
+            options.hasJsonSchema() ? options.jsonSchema() : null, resolvedEffort, config.fallbackModel(),
+            maxOutputTokensOverride, ctx.params.taskBudget(), null, null,
+            config.isThinkingEnabled(), engine.getSessionId(), config.agentId(), ctx.params.skipCacheWrite(),
+            ctx.params.querySource(), engine.getAbortController(), config.thinkingBudgetTokens(),
+            config.fastModeController().isFastRequest(ctx.currentModel),
+            config.fastModeController().failureHandler());
+        return new PreparedCall(request, requestMessages, toolDefs, effectiveRequestMaxTokens);
+    }
+
+    private ModelCallOutcome executeModelCall(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        ctx.sessionMetrics.beginStep();
+
+        PreparedCall call = prepareModelCall(ctx);
+        long apiStartMs = System.currentTimeMillis();
+        if (ctx.apiRetryChainStartMs == null) ctx.apiRetryChainStartMs = apiStartMs;
+        ctx.profiler.checkpoint("api_request_sent");
+        engine.markQueryRequestStarted();
+        long requestHandshakeStartNanos = System.nanoTime();
+        String headerSha256 = cacheTrajectoryHeader(ctx.systemPrompt, call.toolDefs());
+        LlmRequestTraceCollector traceCollector = new LlmRequestTraceCollector(apiStartMs);
+        long traceTurn = ctx.sessionMetrics.currentTurn();
+        long traceStep = ctx.sessionMetrics.currentStep();
+
+        Iterator<StreamingClient.StreamingEvent> stream;
+        try {
+            stream = LlmRequestTraceCollector.observe(
+                traceCollector, () -> ctx.params.deps().callModel(call.request()));
+            if (!firstRequestLatencyLogged) {
+                firstRequestLatencyLogged = true;
+                long responseHeadersMs =
+                    (System.nanoTime() - requestHandshakeStartNanos) / 1_000_000L;
+                log.debug("[QUERY_LATENCY] request_ready_ms={} response_headers_ms={} messages={} tools={}",
+                    engine.getQueryTimeToRequestMs(), responseHeadersMs,
+                    call.requestMessages().size(), call.toolDefs().size());
             }
-
-            AutoCompactStep acStep = runAutoCompactPhase(engine, params, state, false);
-            state = acStep.state();
-            boolean compactionHappened = acStep.compacted();
-            if (compactionHappened) {
-                engine.setCompactionOccurred(true);
-            }
-
-
-            // /compact when proactive compaction did not produce a smaller
-            // conversation. Keep compact/session_memory fork queries exempt: they
-            // need to call the model precisely in order to reduce the context.
-            if (!compactionHappened
-                    && compactService != null
-                    && !Strings.CS.equals("compact", params.querySource())
-                    && !Strings.CS.equals("session_memory", params.querySource())
-                    && !(compactService.isReactiveCompactEnabled()
-                        && compactService.isAutoCompactEnabled())
-                    && compactService.isAtBlockingLimit(
-                        engine.getMutableMessages(), config.model())) {
-
-                // when reactiveCompact.isReactiveCompactEnabled &&
-                // isAutoCompactEnabled so the real API call can happen and the
-                // reactive-compact catch path (below, and in
-                // runAutoCompactPhase(..., reactive=true)) gets a chance to react
-                // to a genuine provider 413 instead of the turn dying on a local
-                // estimate before the call is even made.
-
-                // unported feature and plays no part in this condition.
-                // When auto-compact is off, keep the old behavior: reserve
-                // room so the user can still run /compact manually.
-                AssistantMessage errorMessage =
-                    MessageFactory.createAssistantAPIErrorMessage(
-                        "Prompt is too long", null, "invalid_request");
-                engine.getMutableMessages().add(errorMessage);
-                emit(new SDKMessage.Assistant(errorMessage, engine.getTotalUsage()));
-                QueryHelpers.recordTranscript(engine, errorMessage);
-                QueryHelpers.dispatchStopFailure(engine);
-                emitResult(engine, new Terminal.PromptTooLong(), null,
-                    state.turnCount(), lastStopReason, loopStartTime);
-                return;
-            }
-
-            if (firstTurn) {
-                turnUserContext = claudeMdUserContext;
-                if (!options.suppressInitialAttachments()) {
-                    collectAttachments(engine, promptText(prompt), params.querySource());
-                }
-                appendPendingImageMetadata(engine);
-                if (pendingUserPromptHookContext != null) {
-                    AttachmentMessage hookContext = new AttachmentMessage(
-                        UUID.randomUUID().toString(), pendingUserPromptHookContext);
-                    engine.getMutableMessages().add(hookContext);
-                    QueryHelpers.recordTranscript(engine, hookContext);
-                    pendingUserPromptHookContext = null;
-                }
-                if (pendingCommandPermissions != null) {
-                    engine.getMutableMessages().add(pendingCommandPermissions);
-                    QueryHelpers.recordTranscript(engine, pendingCommandPermissions);
-                    pendingCommandPermissions = null;
-                }
-                appendAdditionalUserMessages(engine, options);
-                firstTurn = false;
-            }
-            sessionMetrics.beginStep();
-            boolean replayingFallbackRequest = fallbackRetryMessages != null;
-            ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(
-                engine, currentModel);
-            List<StreamingClient.StreamRequest.ToolDef> toolDefs = replayingFallbackRequest
-                ? fallbackRetryToolDefs
-                : ToolSearchGate.isEnabled(currentModel)
-                    ? config.toolExecutor().getToolDefinitions(
-                        ToolSearchGate.extractDiscoveredToolNames(engine.getMessages()),
-                        toolPromptContext)
-                    : config.toolExecutor().getToolDefinitions(toolPromptContext);
-            List<StreamingClient.StreamRequest.RequestMessage> requestMessages;
-            if (replayingFallbackRequest) {
-                requestMessages = fallbackRetryMessages;
-                fallbackRetryMessages = null;
-                fallbackRetryToolDefs = null;
-            } else {
-                List<Message> requestConversation = applyToolResultBudget(engine, config);
-                requestMessages = QueryHelpers.buildRequestMessages(
-                    engine, requestConversation, turnUserContext,
-                    currentModel, List.of(), toolDefs);
-            }
-
-
-
-            String effectiveModel = currentModel;
-            String effortValue = StringUtils.isNotBlank(options.effortOverride())
-                ? options.effortOverride()
-                : (engine.getEffortOverride() != null
-                    ? engine.getEffortOverride() : config.effortValue());
-            String resolvedEffort = EffortHelpers.resolveAppliedEffort(
-                effectiveModel, effortValue, config.isCustomModel(effectiveModel));
-
-            Integer maxOutputTokensOverride = state.maxOutputTokensOverride();
-            int effectiveRequestMaxTokens = maxOutputTokensOverride != null
-                ? maxOutputTokensOverride : config.maxTokens();
-            StreamingClient.StreamRequest request = new StreamingClient.StreamRequest(
-                currentModel, config.maxTokens(), systemPrompt, requestMessages, true, toolDefs,
-                options.hasJsonSchema() ? options.jsonSchema() : null, resolvedEffort, config.fallbackModel(),
-                maxOutputTokensOverride, params.taskBudget(), null, null,
-                config.isThinkingEnabled(), engine.getSessionId(), config.agentId(), params.skipCacheWrite(),
-                params.querySource(), engine.getAbortController(), config.thinkingBudgetTokens(),
-                config.fastModeController().isFastRequest(currentModel),
-                config.fastModeController().failureHandler());
-
-            long apiStartMs = System.currentTimeMillis();
-            if (apiRetryChainStartMs == null) apiRetryChainStartMs = apiStartMs;
-            profiler.checkpoint("api_request_sent");
-            engine.markQueryRequestStarted();
-            long requestHandshakeStartNanos = System.nanoTime();
-            String headerSha256 = cacheTrajectoryHeader(systemPrompt, toolDefs);
-            LlmRequestTraceCollector traceCollector = new LlmRequestTraceCollector(apiStartMs);
-            long traceTurn = sessionMetrics.currentTurn();
-            long traceStep = sessionMetrics.currentStep();
-
-            Iterator<StreamingClient.StreamingEvent> stream;
-            try {
-                stream = LlmRequestTraceCollector.observe(
-                    traceCollector, () -> params.deps().callModel(request));
-                if (!firstRequestLatencyLogged) {
-                    firstRequestLatencyLogged = true;
-                    long responseHeadersMs =
-                        (System.nanoTime() - requestHandshakeStartNanos) / 1_000_000L;
-                    log.debug("[QUERY_LATENCY] request_ready_ms={} response_headers_ms={} messages={} tools={}",
-                        engine.getQueryTimeToRequestMs(), responseHeadersMs,
-                        requestMessages.size(), toolDefs.size());
-                }
-            } catch (FallbackTriggeredError fte) {
-                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
-                    currentModel, headerSha256, "failed", fte);
-                String fallback = QueryHelpers.handleFallback(engine, fte, this::emit);
-                if (fallback != null) {
-                    fallbackRetryMessages = List.copyOf(requestMessages);
-                    fallbackRetryToolDefs = List.copyOf(toolDefs);
-                    currentModel = fallback;
-                    fallbackActive = true;
-                    if (config.isThinkingEnabled()) {
-                        List<Message> stripped =
-                            MessageConstants.stripSignatureBlocks(engine.getMutableMessages());
-                        engine.getMutableMessages().clear();
-                        engine.getMutableMessages().addAll(stripped);
-                    }
-                    continue;
-                }
-                log.warn("[QUERY] Model request fallback failed [sessionId={}, model={}, "
-                        + "querySource={}, agentId={}, failureType={}]",
-                    engine.getSessionId(), currentModel, params.querySource(),
-                    config.agentId(), fte.getClass().getName(),
-                    ErrorUtils.redactedForLogging(fte));
-                emit(SDKMessage.error(fte));
-                QueryHelpers.dispatchStopFailure(engine);
-                emitResult(engine, new Terminal.StreamError(fte.getMessage(), fte), fte, state.turnCount(), lastStopReason, loopStartTime);
-                return;
-            } catch (Exception e) {
-                if (engine.getAbortController().isAborted()) {
-                    recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
-                        currentModel, headerSha256, "aborted", null);
-                    int resultTurns = emitVisibleInterruption(
-                        engine, state.turnCount(), false);
-                    emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
-                        resultTurns, lastStopReason, loopStartTime);
-                    return;
-                }
-                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
-                    currentModel, headerSha256, "failed", e);
-                if (isPromptTooLong(e) && compactService != null
-                        && compactService.isReactiveCompactEnabled()) {
-                    if (hasAttemptedReactiveCompact) {
-                        emitAutomaticCompactionFailure(engine, state, lastStopReason,
-                            loopStartTime, e);
-                        return;
-                    }
-                    AutoCompactStep recovery = runAutoCompactPhase(engine, params, state, true);
-                    state = recovery.state();
-                    if (recovery.compacted()) {
-                        apiRetryChainStartMs = null;
-                        hasAttemptedReactiveCompact = true;
-                        engine.setCompactionOccurred(true);
-                        state = state.withTransition(new Continue.PromptTooLongRecovery());
-                        continue;
-                    }
-                    emitAutomaticCompactionFailure(engine, state, lastStopReason,
-                        loopStartTime, e);
-                    return;
-                }
-                log.warn("[QUERY] Model request failed [sessionId={}, model={}, querySource={}, "
-                        + "agentId={}, failureType={}]",
-                    engine.getSessionId(), currentModel, params.querySource(),
-                    config.agentId(), e.getClass().getName(),
-                    ErrorUtils.redactedForLogging(e));
-                maybeInjectTooLargeApiError(engine, e);
-                emit(SDKMessage.error(e));
-                QueryHelpers.dispatchStopFailure(engine);
-                emitResult(engine, new Terminal.StreamError(e.getMessage(), e), e, state.turnCount(), lastStopReason, loopStartTime);
-                return;
-            }
-
-            StreamResult sr = consumeStream(stream, engine, lastStopReason, lastError,
-                effectiveRequestMaxTokens);
-            if (sr.fallbackModel() != null) {
-                fallbackRetryMessages = List.copyOf(requestMessages);
-                fallbackRetryToolDefs = List.copyOf(toolDefs);
-                currentModel = sr.fallbackModel();
-                fallbackActive = true;
-                if (config.isThinkingEnabled()) {
-                    List<Message> stripped =
-                        MessageConstants.stripSignatureBlocks(engine.getMutableMessages());
-                    engine.getMutableMessages().clear();
-                    engine.getMutableMessages().addAll(stripped);
-                }
-                continue;
-            }
-            List<ContentBlock> toolUseBlocks = sr.toolUseBlocks();
-            List<AssistantMessage> assistantMessages = sr.assistantMessages();
-            AssistantMessage apiErrorMessage = sr.apiErrorMessage();
-            Usage turnUsage = sr.turnUsage();
-            boolean streamError = sr.streamError();
-            boolean abortedDuringStream = sr.abortedDuringStream();
-            lastError = sr.lastError();
-            lastStopReason = sr.lastStopReason();
-
-            if (streamError) {
-                recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
-                    currentModel, headerSha256, "failed", lastError);
-                if (isPromptTooLong(lastError) && compactService != null
-                        && compactService.isReactiveCompactEnabled()) {
-                    if (hasAttemptedReactiveCompact) {
-                        emitAutomaticCompactionFailure(engine, state, lastStopReason,
-                            loopStartTime, lastError);
-                        return;
-                    }
-                    AutoCompactStep recovery = runAutoCompactPhase(engine, params, state, true);
-                    state = recovery.state();
-                    if (recovery.compacted()) {
-                        apiRetryChainStartMs = null;
-                        hasAttemptedReactiveCompact = true;
-                        engine.setCompactionOccurred(true);
-                        state = state.withTransition(new Continue.PromptTooLongRecovery());
-                        continue;
-                    }
-                    emitAutomaticCompactionFailure(engine, state, lastStopReason,
-                        loopStartTime, lastError);
-                    return;
-                }
-                log.warn("[QUERY] Model stream failed [sessionId={}, model={}, querySource={}, "
-                        + "agentId={}, failureType={}]",
-                    engine.getSessionId(), currentModel, params.querySource(),
-                    config.agentId(), lastError.getClass().getName(),
-                    ErrorUtils.redactedForLogging(lastError));
-                maybeInjectTooLargeApiError(engine, lastError);
-                QueryHelpers.dispatchStopFailure(engine);
-                emitResult(engine, new Terminal.StreamError(
-                    lastError.getMessage(), lastError), lastError,
-                    state.turnCount(), lastStopReason, loopStartTime);
-                return;
-            }
-
-            queryUsage = queryUsage.add(turnUsage);
-            engine.setTotalUsage(engine.getTotalUsage().add(turnUsage));
-            engine.getTurnTokenBudget().addOutputTokens(turnUsage.outputTokens());
-            long apiCompletedMs = System.currentTimeMillis();
-            long finalAttemptStartMs = stream instanceof StreamingClient.TimedStreamingIterator timed
-                && timed.lastAttemptStartMs() > 0L
-                    ? timed.lastAttemptStartMs() : apiStartMs;
-            SessionCostState.get().recordApiRequest(
-                currentModel, turnUsage,
-                apiCompletedMs - apiRetryChainStartMs,
-                apiCompletedMs - finalAttemptStartMs);
-            apiRetryChainStartMs = null;
-            sessionMetrics.usage(turnUsage);
-            if (!assistantMessages.isEmpty()) sessionMetrics.assistantMessage();
-
-            AssistantMessage assistantMsg = assistantMessages.isEmpty()
-                ? null : assistantMessages.getLast();
-            String respondedModel = assistantMsg != null && assistantMsg.message() != null
-                && StringUtils.isNotBlank(assistantMsg.message().model())
-                    ? assistantMsg.message().model()
-                    : currentModel;
+        } catch (FallbackTriggeredError fte) {
             recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
-                respondedModel, headerSha256,
-                (abortedDuringStream || engine.getAbortController().isAborted())
-                    ? "aborted" : "completed",
-                null);
-
-            if (abortedDuringStream || engine.getAbortController().isAborted()) {
-                for (AssistantMessage message : assistantMessages) {
-                    QueryHelpers.synthesizeMissingToolResults(
-                        engine, message, "Interrupted by user", this::emit);
-                }
-                int resultTurns = emitVisibleInterruption(
-                    engine, state.turnCount(), false);
-                emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
-                    resultTurns, lastStopReason, loopStartTime);
-                return;
+                ctx.currentModel, headerSha256, "failed", fte);
+            String fallback = QueryHelpers.handleFallback(engine, fte, this::emit);
+            if (fallback != null) {
+                activateModelFallback(ctx, fallback, call.requestMessages(), call.toolDefs());
+                return new ModelCallOutcome.ContinueLoop();
             }
+            log.warn("[QUERY] Model request fallback failed [sessionId={}, model={}, "
+                    + "querySource={}, agentId={}, failureType={}]",
+                engine.getSessionId(), ctx.currentModel, ctx.params.querySource(),
+                config.agentId(), fte.getClass().getName(),
+                ErrorUtils.redactedForLogging(fte));
+            emit(SDKMessage.error(fte));
+            QueryHelpers.dispatchStopFailure(engine);
+            emitResult(engine, new Terminal.StreamError(fte.getMessage(), fte), fte,
+                ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+            return new ModelCallOutcome.Terminated();
+        } catch (Exception e) {
+            return handleRequestException(ctx, e, traceCollector, traceTurn, traceStep, headerSha256);
+        }
 
-            // ── A refused turn replays itself on another model ────────────────.
-            if (Strings.CS.equals("refusal", lastStopReason)) {
-                boolean firstPartyLike =
-                    ApiProviderScope.usesFirstPartyModelIds(config.llmClient().provider());
-                RefusalFallbackTarget.Inputs targetInputs = new RefusalFallbackTarget.Inputs(
-                    firstPartyLike, SubprocessEnvironment::get, config::isModelAllowed);
-                String refusalTarget =
-                    RefusalFallbackTarget.resolve(currentModel, targetInputs);
-                if (refusalTarget == null) {
-                    // Nothing to offer, so nothing to ask about.
-                    if (config.agentId() == null) {
-                        announceNoRefusalFallback(engine, params, currentModel,
-                            sr.stopDetails(), sr.requestId());
-                    }
-                    emitRefusalError(engine, currentModel, sr.stopDetails(), sr.requestId(),
-                        turnUsage, RefusalFallbackTarget.exists(currentModel, targetInputs),
-                        firstPartyLike);
-                } else if (RefusalFallbackFeature.enabled(SubprocessEnvironment::get)) {
-                    RefusalFallbackDecision.Choice choice = refusalChoice(
-                        engine, currentModel, refusalTarget,
-                        sr.stopDetails() == null ? null : sr.stopDetails().category(),
-                        firstPartyLike);
-                    if (choice == RefusalFallbackDecision.Choice.RETRY_FALLBACK) {
-                        List<Message> withdrawn = retraction.retractAll(engine, this::emit);
-                        String refusedModel = currentModel;
-                        currentModel = refusalTarget;
-                        fallbackActive = true;
-                        if (config.agentId() == null && !hasTurnModelOverride) {
-                            config.activateRefusalFallback(refusalTarget);
-                        }
-                        if (config.isThinkingEnabled()) {
-                            List<Message> stripped = MessageConstants
-                                .stripSignatureBlocks(engine.getMutableMessages());
-                            engine.getMutableMessages().clear();
-                            engine.getMutableMessages().addAll(stripped);
-                        }
-                        if (config.agentId() == null) {
-                            announceRefusalFallback(engine, params, refusedModel,
-                                refusalTarget, sr.stopDetails(), sr.requestId(), withdrawn);
-                        }
-                        continue;
-                    }
-                    // The user was asked and declined the switch.
-                    retraction.retractAll(engine, this::emit);
-                    if (choice == RefusalFallbackDecision.Choice.EDIT_PROMPT) {
-                        engine.getAbortController().abort(REFUSAL_FALLBACK_EDIT);
-                    } else if (!engine.getAbortController().isAborted()) {
-                        emitRefusalError(engine, currentModel, sr.stopDetails(), sr.requestId(),
-                            turnUsage, RefusalFallbackTarget.exists(currentModel, targetInputs),
-                            firstPartyLike);
-                    }
-                    if (engine.getAbortController().isAborted()) {
+        StreamResult sr = consumeStream(stream, engine, ctx.lastStopReason, ctx.lastError,
+            call.effectiveRequestMaxTokens());
+        if (sr.fallbackModel() != null) {
+            activateModelFallback(ctx, sr.fallbackModel(), call.requestMessages(), call.toolDefs());
+            return new ModelCallOutcome.ContinueLoop();
+        }
 
-                        int resultTurns = emitVisibleInterruption(
-                            engine, state.turnCount(), false);
-                        emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
-                            resultTurns, lastStopReason, loopStartTime);
-                        return;
-                    }
-                }
-                        // A target existed but CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK is set.
+        ctx.lastError = sr.lastError();
+        ctx.lastStopReason = sr.lastStopReason();
+        if (sr.streamError()) {
+            return handleStreamError(ctx, traceCollector, traceTurn, traceStep, headerSha256);
+        }
+
+        recordTurnCompletion(ctx, stream, sr, apiStartMs, traceCollector, traceTurn, traceStep,
+            headerSha256);
+
+        if (sr.abortedDuringStream() || engine.getAbortController().isAborted()) {
+            for (AssistantMessage message : sr.assistantMessages()) {
+                QueryHelpers.synthesizeMissingToolResults(
+                    engine, message, "Interrupted by user", this::emit);
             }
+            int resultTurns = emitVisibleInterruption(
+                engine, ctx.state.turnCount(), false);
+            emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
+                resultTurns, ctx.lastStopReason, ctx.loopStartTime);
+            return new ModelCallOutcome.Terminated();
+        }
 
-            if (state.pendingToolUseSummary() != null) {
-                ToolUseSummaryMessage pendingSummary = state.pendingToolUseSummary().join();
-                if (pendingSummary != null) {
-                    emit(new SDKMessage.ToolUseSummary(
-                        pendingSummary.summary(), pendingSummary.precedingToolUseIds()));
-                }
-                state = state.withPendingToolUseSummary(null);
-            }
+        return new ModelCallOutcome.Completed(sr);
+    }
 
-            if (config.maxBudgetUsd() > 0) {
-                double cost = engine.getCostCalculator().calculateCost(engine.getTotalUsage());
-                if (cost >= config.maxBudgetUsd()) {
-                    QueryHelpers.synthesizeMissingToolResults(engine, assistantMsg,
-                        "Budget exceeded at " + FormatUtils.formatCost(cost), this::emit);
-                    emitResult(engine, new Terminal.MaxBudget(cost), null, state.turnCount(), lastStopReason, loopStartTime);
-                    return;
-                }
-            }
+    private void activateModelFallback(LoopContext ctx,
+                                       String fallbackModel,
+                                       List<StreamingClient.StreamRequest.RequestMessage> requestMessages,
+                                       List<StreamingClient.StreamRequest.ToolDef> toolDefs) {
+        ctx.fallbackRetryMessages = List.copyOf(requestMessages);
+        ctx.fallbackRetryToolDefs = List.copyOf(toolDefs);
+        ctx.currentModel = fallbackModel;
+        ctx.fallbackActive = true;
+        stripSignatureBlocksIfThinking(ctx.engine, ctx.config);
+    }
 
-            boolean hasToolUse = !toolUseBlocks.isEmpty();
+    private static void stripSignatureBlocksIfThinking(DefaultQuerySession engine, QuerySessionSpec config) {
+        if (config.isThinkingEnabled()) {
+            List<Message> stripped = MessageConstants.stripSignatureBlocks(engine.getMutableMessages());
+            engine.getMutableMessages().clear();
+            engine.getMutableMessages().addAll(stripped);
+        }
+    }
 
-            if (hasToolUse) {
-                int messagesBeforeTools = engine.getMutableMessages().size();
-                ToolRunner.RunOutcome outcome = toolRunner.run(
-                    toolUseBlocks, engine, options.hasJsonSchema(),
-                    state.turnCount(), this::emitToolFrame,
-                    assistantMsg != null ? assistantMsg.uuid() : null,
-                    engine.interruptibleToolTracker());
+    private ModelCallOutcome handleRequestException(LoopContext ctx,
+                                                    Exception e,
+                                                    LlmRequestTraceCollector traceCollector,
+                                                    long traceTurn,
+                                                    long traceStep,
+                                                    String headerSha256) {
+        DefaultQuerySession engine = ctx.engine;
+        if (engine.getAbortController().isAborted()) {
+            recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+                ctx.currentModel, headerSha256, "aborted", null);
+            int resultTurns = emitVisibleInterruption(engine, ctx.state.turnCount(), false);
+            emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
+                resultTurns, ctx.lastStopReason, ctx.loopStartTime);
+            return new ModelCallOutcome.Terminated();
+        }
+        recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+            ctx.currentModel, headerSha256, "failed", e);
+        ModelCallOutcome reactive = tryReactiveCompact(ctx, e);
+        if (reactive != null) {
+            return reactive;
+        }
+        log.warn("[QUERY] Model request failed [sessionId={}, model={}, querySource={}, "
+                + "agentId={}, failureType={}]",
+            engine.getSessionId(), ctx.currentModel, ctx.params.querySource(),
+            ctx.config.agentId(), e.getClass().getName(),
+            ErrorUtils.redactedForLogging(e));
+        maybeInjectTooLargeApiError(engine, e);
+        emit(SDKMessage.error(e));
+        QueryHelpers.dispatchStopFailure(engine);
+        emitResult(engine, new Terminal.StreamError(e.getMessage(), e), e,
+            ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+        return new ModelCallOutcome.Terminated();
+    }
 
-                if (engine.getAbortController().isAborted()) {
-                    // Tool execution has already emitted one combined user
+    private ModelCallOutcome handleStreamError(LoopContext ctx,
+                                               LlmRequestTraceCollector traceCollector,
+                                               long traceTurn,
+                                               long traceStep,
+                                               String headerSha256) {
+        DefaultQuerySession engine = ctx.engine;
+        Exception error = ctx.lastError;
+        recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+            ctx.currentModel, headerSha256, "failed", error);
+        ModelCallOutcome reactive = tryReactiveCompact(ctx, error);
+        if (reactive != null) {
+            return reactive;
+        }
+        log.warn("[QUERY] Model stream failed [sessionId={}, model={}, querySource={}, "
+                + "agentId={}, failureType={}]",
+            engine.getSessionId(), ctx.currentModel, ctx.params.querySource(),
+            ctx.config.agentId(), error.getClass().getName(),
+            ErrorUtils.redactedForLogging(error));
+        maybeInjectTooLargeApiError(engine, error);
+        QueryHelpers.dispatchStopFailure(engine);
+        emitResult(engine, new Terminal.StreamError(error.getMessage(), error), error,
+            ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+        return new ModelCallOutcome.Terminated();
+    }
 
-                    // for that user before it emits the visible interruption.
-                    int afterToolResultTurns = state.turnCount() + 1;
-                    int resultTurns = emitVisibleInterruption(
-                        engine, afterToolResultTurns, true);
-                    // Bundle: `let Le = se + 1; if (c && Le > c) yield max_turns_reached`
-                    // — the gate is on the round-trip counter, not on num_turns.
-                    if (maxTurns > 0 && loopTurns + 1 > maxTurns) {
-                        emit(new SDKMessage.Attachment("max_turns_reached",
-                            "Reached max turns (" + maxTurns + ")", null));
-                    }
-                    emitResult(engine, new Terminal.Aborted("aborted_tools"), null,
-                        resultTurns, lastStopReason, loopStartTime);
-                    return;
-                }
+    private ModelCallOutcome tryReactiveCompact(LoopContext ctx, Exception error) {
+        if (!isPromptTooLong(error)
+                || ctx.compactService == null
+                || !ctx.compactService.isReactiveCompactEnabled()) {
+            return null;
+        }
+        if (ctx.hasAttemptedReactiveCompact) {
+            emitAutomaticCompactionFailure(ctx.engine, ctx.state, ctx.lastStopReason,
+                ctx.loopStartTime, error);
+            return new ModelCallOutcome.Terminated();
+        }
+        AutoCompactStep recovery = runAutoCompactPhase(ctx.engine, ctx.params, ctx.state, true);
+        ctx.state = recovery.state();
+        if (recovery.compacted()) {
+            ctx.apiRetryChainStartMs = null;
+            ctx.hasAttemptedReactiveCompact = true;
+            ctx.engine.setCompactionOccurred(true);
+            ctx.state = ctx.state.withTransition(new Continue.PromptTooLongRecovery());
+            return new ModelCallOutcome.ContinueLoop();
+        }
+        emitAutomaticCompactionFailure(ctx.engine, ctx.state, ctx.lastStopReason,
+            ctx.loopStartTime, error);
+        return new ModelCallOutcome.Terminated();
+    }
 
-                if (outcome.preventContinuation()) {
-                    emitResult(engine, new Terminal.HookStopped(outcome.stopReason()), null, state.turnCount(), lastStopReason, loopStartTime);
-                    return;
-                }
+    private void recordTurnCompletion(LoopContext ctx,
+                                      Iterator<StreamingClient.StreamingEvent> stream,
+                                      StreamResult sr,
+                                      long apiStartMs,
+                                      LlmRequestTraceCollector traceCollector,
+                                      long traceTurn,
+                                      long traceStep,
+                                      String headerSha256) {
+        DefaultQuerySession engine = ctx.engine;
+        Usage turnUsage = sr.turnUsage();
+        queryUsage = queryUsage.add(turnUsage);
+        engine.setTotalUsage(engine.getTotalUsage().add(turnUsage));
+        engine.getTurnTokenBudget().addOutputTokens(turnUsage.outputTokens());
+        long apiCompletedMs = System.currentTimeMillis();
+        long finalAttemptStartMs = stream instanceof StreamingClient.TimedStreamingIterator timed
+            && timed.lastAttemptStartMs() > 0L
+                ? timed.lastAttemptStartMs() : apiStartMs;
+        SessionCostState.get().recordApiRequest(
+            ctx.currentModel, turnUsage,
+            apiCompletedMs - ctx.apiRetryChainStartMs,
+            apiCompletedMs - finalAttemptStartMs);
+        ctx.apiRetryChainStartMs = null;
+        ctx.sessionMetrics.usage(turnUsage);
+        if (!sr.assistantMessages().isEmpty()) ctx.sessionMetrics.assistantMessage();
 
-                if (outcome.structuredOutput() != null) {
-                    state = state.withStructuredOutput(outcome.structuredOutput());
-                }
+        AssistantMessage assistantMsg = sr.assistantMessages().isEmpty()
+            ? null : sr.assistantMessages().getLast();
+        String respondedModel = assistantMsg != null && assistantMsg.message() != null
+            && StringUtils.isNotBlank(assistantMsg.message().model())
+                ? assistantMsg.message().model()
+                : ctx.currentModel;
+        recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
+            respondedModel, headerSha256,
+            (sr.abortedDuringStream() || engine.getAbortController().isAborted())
+                ? "aborted" : "completed",
+            null);
+    }
 
-
-                // StructuredOutput calls made during this query are capped only
-                // while no valid payload has been accepted. The released runtime
-                // permits the final allowed attempt itself to succeed.
-                if (options.hasJsonSchema()) {
-                    int currentCalls = MessageConstants.countToolCalls(engine.getMutableMessages(), "StructuredOutput", null);
-                    int callsThisQuery = currentCalls - initialStructuredOutputCalls;
-                    if (state.structuredOutput() == null
-                            && callsThisQuery >= maxStructuredOutputRetries) {
-                        emitResult(engine, new Terminal.MaxStructuredOutputRetries(callsThisQuery),
-                            new RuntimeException("Failed to provide valid structured output after "
-                                + maxStructuredOutputRetries + " attempts"),
-                            state.turnCount(), lastStopReason, loopStartTime);
-                        return;
-                    }
-                }
-
-                CompletableFuture<ToolUseSummaryMessage> nextPendingSummary = null;
-                if (QueryHelpers.shouldFireToolUseSummary(config.toolBatchSummarizer(), config.agentId(),
-                        engine.getAbortController().isAborted(), SubprocessEnvironment::get)) {
-                    List<ToolCallInfo> toolCallInfo = QueryHelpers.buildToolCallInfo(toolUseBlocks, engine);
-                    List<String> toolUseIds = toolUseBlocks.stream()
-                        .filter(ToolUseBlock.class::isInstance)
-                        .map(b -> ((ToolUseBlock) b).id())
-                        .toList();
-                    String lastAssistantText = QueryHelpers.extractLastAssistantText(assistantMsg);
-                    boolean nonInteractive = engine.getConfig().promptRuntimeSupplier() != null
-                        && engine.getConfig().promptRuntimeSupplier().get().isNonInteractiveSession();
-                    nextPendingSummary = config.toolBatchSummarizer()
-                        .summarizeAsync(toolCallInfo, lastAssistantText, nonInteractive)
-                        .thenApply(summary -> (StringUtils.isBlank(summary))
-                            ? null
-                            : new ToolUseSummaryMessage(UUID.randomUUID().toString(), summary, toolUseIds))
-                        .exceptionally(_ -> null);
-                }
-                state = state.withPendingToolUseSummary(nextPendingSummary);
-
-                QueryHelpers.drainQueuedCommands(engine, this::emit);
-
-
-                // completed tool batch. This is where Read-triggered nested
-                // memories, changed files, late MCP instructions and queued
-                // notifications become visible to the continuation request.
-                // Delta providers see liveAttachmentHistory, so initial
-                // agent/skill/MCP listings are not emitted twice.
-                collectAttachments(engine, null, params.querySource());
-
-
-                // message. A normal tool contributes its tool_result; Skill
-                // additionally injects its synthetic body as a second user
-                // message, and a multi-tool batch contributes one result per
-                // call. Count the actual appended user rows instead of assuming
-                // every tool batch is exactly one logical turn.
-                int yieldedUserMessages = (int) engine.getMutableMessages().subList(
-                    messagesBeforeTools, engine.getMutableMessages().size()).stream()
-                    .filter(UserMessage.class::isInstance)
-                    .count();
-                int nextTurnCount = state.turnCount() + yieldedUserMessages;
-
-                int nextLoopTurns = loopTurns + 1;
-                if (maxTurns > 0 && nextLoopTurns > maxTurns) {
-                    emit(new SDKMessage.Attachment("max_turns_reached",
-                        "Reached max turns (" + maxTurns + ")", null));
-                    emitResult(engine, new Terminal.MaxTurns(nextLoopTurns),
-                        new RuntimeException(
-                            "Reached maximum number of turns (" + maxTurns + ")"),
-                        nextLoopTurns, lastStopReason, loopStartTime);
-                    return;
-                }
-                loopTurns = nextLoopTurns;
-                state = state.withTurnCount(nextTurnCount)
-                             .withMaxOutputTokensRecoveryCount(0)
-                             .withMaxOutputTokensOverride(null)
-                             .withTransition(new Continue.ToolUse(toolUseBlocks.size()));
-                sessionMetrics.endStep();
-                continue;
-            }
-
-            if (apiErrorMessage != null) {
-                String slotEnv = SubprocessEnvironment.get(
-                    "CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-                boolean canEscalate = config.featureFlags()
-                    .isEnabled(FeatureFlag.MAX_OUTPUT_TOKENS_SLOT)
-                    && state.maxOutputTokensOverride() == null
-                    && params.maxOutputTokensOverride() == null
-                    && !config.maxTokensExplicit()
-                    && (StringUtils.isBlank(slotEnv));
-
-                if (canEscalate) {
-                    state = state.withMaxOutputTokensOverride(64_000)
-                        .withPendingToolUseSummary(null)
-                        .withStopHookActive(null)
-                        .withTransition(new Continue.MaxOutputTokensEscalate());
-                    sessionMetrics.endStep();
-                    continue;
-                }
-
-                if (state.maxOutputTokensRecoveryCount() < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
-                    int attempt = state.maxOutputTokensRecoveryCount() + 1;
-                    UserMessage recoveryMsg = new UserMessage(
-                        UUID.randomUUID().toString(),
-                        MessageContent.ofText(
-                            "Output token limit hit. Resume directly — no apology, no recap of what you were doing. "
-                                + "Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."),
-                        true, false, null, MessageOrigin.USER, null, Instant.now(), null, null,
-                        engine.getSessionId(), null);
-                    engine.getMutableMessages().add(recoveryMsg);
-                    QueryHelpers.recordTranscript(engine, recoveryMsg);
-                    state = state.withMaxOutputTokensRecoveryCount(attempt)
-                        .withMaxOutputTokensOverride(null)
-                        .withPendingToolUseSummary(null)
-                        .withStopHookActive(null)
-                        .withTransition(new Continue.MaxOutputTokensRecovery(attempt));
-                    sessionMetrics.endStep();
-                    continue;
-                }
-
-                // Recovery exhausted — surface the withheld API error once and take
-                // the StopFailure path.
-                engine.getMutableMessages().add(apiErrorMessage);
-                emit(new SDKMessage.Assistant(apiErrorMessage, turnUsage));
-                QueryHelpers.recordTranscript(engine, apiErrorMessage);
-                QueryHelpers.dispatchStopFailure(engine,
-                    apiErrorMessage.error() != null
-                        ? apiErrorMessage.error() : "max_output_tokens");
-                emitResult(engine, new Terminal.Normal(), null, state.turnCount(),
-                    lastStopReason, loopStartTime);
-                return;
-            }
-
-            // Stop hooks run on EVERY natural turn end (matches
-
-
-            // enforcement flow.
-            List<String> stopBlockingErrors = new ArrayList<>();
-            String stopHookAdditionalContext = null;
-            HookDispatcher stopHooks = engine.getHookDispatcher();
-            if (stopHooks != null) {
-                emit(new SDKMessage.StreamEvent("stop_hook_run_start", "Stop"));
-                HookDispatcher.HookOutcome stopOutcome =
-                    stopHooks.dispatchStopWithOutcome(SDKMessage.Result.SUCCESS,
-                        Boolean.TRUE.equals(state.stopHookActive()));
-                emit(new SDKMessage.StreamEvent("stop_hook_run_done", ""));
-                persistHookMessages(engine, stopHooks.consumeHookMessages());
-                stopHooks.consumeGoalTransition()
-                    .ifPresent(transition -> persistGoalTransition(engine, transition));
-                if (stopOutcome.preventContinuation()) {
-                    emitResult(engine, new Terminal.StopHookPrevented(stopOutcome.stopReason()),
-                        state.turnCount(), lastStopReason, loopStartTime, state.structuredOutput());
-                    return;
-                }
-                if (stopOutcome.hasBlockingErrors()) {
-                    stopBlockingErrors.addAll(stopOutcome.blockingErrors());
-                }
-                if (stopOutcome.hasAdditionalContext()) {
-                    stopHookAdditionalContext = stopOutcome.additionalContext();
-                }
-            }
-
-            // StructuredOutput completion enforcement — a minimal, purpose-built
-
-            // merged into the same Stop
-            // dispatch rather than a general-purpose function-hook framework.
-            // Blocks natural termination until a successful StructuredOutput tool
-
-            if (options.hasJsonSchema()
-                    && !MessageConstants.hasSuccessfulToolCall(engine.getMutableMessages(), "StructuredOutput")) {
-                stopBlockingErrors.add("You MUST call the StructuredOutput tool to complete this request. Call this tool now.");
-            }
-
-            if (!stopBlockingErrors.isEmpty()) {
-
-                int nextLoopTurns = loopTurns + 1;
-                if (maxTurns > 0 && nextLoopTurns > maxTurns) {
-                    emit(new SDKMessage.Attachment("max_turns_reached",
-                        "Reached max turns (" + maxTurns + ")", null));
-                    emitResult(engine, new Terminal.MaxTurns(nextLoopTurns),
-                        new RuntimeException(
-                            "Reached maximum number of turns (" + maxTurns + ")"),
-                        nextLoopTurns, lastStopReason, loopStartTime);
-                    return;
-                }
-                int nextBlockingCount = stopHookBlockingCount + 1;
-                int blockCap = parseStopHookBlockCap();
-                if (blockCap > 0 && nextBlockingCount > blockCap) {
-
-                    emit(new SDKMessage.System(new SystemMessage(
-                        UUID.randomUUID().toString(), "informational", "warning",
-                        "A hook blocked the turn from ending " + nextBlockingCount
-                            + " consecutive times — overriding and ending turn. "
-                            + "For Stop/SubagentStop hooks, check stop_hook_active in"
-                            + " the input and return success while it's true. Set"
-                            + " CLAUDE_CODE_STOP_HOOK_BLOCK_CAP to raise this limit.")));
-                    emitResult(engine, new Terminal.Normal(), state.turnCount(),
-                        lastStopReason, loopStartTime, state.structuredOutput());
-                    return;
-                }
-
-
-                for (String err : stopBlockingErrors) {
-                    QueryHelpers.injectStopHookFeedback(engine, this::emit, "Stop hook feedback:\n" + err);
-                }
-                loopTurns = nextLoopTurns;
-                stopHookBlockingCount = nextBlockingCount;
-                state = state.withStopHookActive(true);
-                state = state.withMaxOutputTokensOverride(null)
-                    .withTransition(new Continue.StopHookReentry());
-                sessionMetrics.endStep();
-                continue; // re-enter loop; num_turns is unchanged (no yielded user turn)
-            }
-            if (stopHookAdditionalContext != null) {
-                QueryHelpers.injectHookContext(engine, stopHookAdditionalContext);
-            }
-
-
-            // turn so /btw and SDK side_question can share the exact system,
-            // tools, model, normalized message prefix and thinking settings.
-            // Store a fully assembled request template here, while this turn's
-            // CLAUDE.md context snapshot and effective prompt are still in scope.
+    /** Handles a refused turn by replaying on a fallback model or surfacing the refusal. */
+    private PhaseOutcome handleRefusal(LoopContext ctx, StreamResult sr) {
+        if (!Strings.CS.equals("refusal", ctx.lastStopReason)) {
+            return PhaseOutcome.PROCEED;
+        }
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        boolean firstPartyLike =
+            ApiProviderScope.usesFirstPartyModelIds(config.llmClient().provider());
+        RefusalFallbackTarget.Inputs targetInputs = new RefusalFallbackTarget.Inputs(
+            firstPartyLike, SubprocessEnvironment::get, config::isModelAllowed);
+        String refusalTarget = RefusalFallbackTarget.resolve(ctx.currentModel, targetInputs);
+        if (refusalTarget == null) {
+            // Nothing to offer, so nothing to ask about.
             if (config.agentId() == null) {
-                List<Message> forkConversation = applyToolResultBudget(engine, config);
-                ToolExecutionContext forkToolPromptContext = QueryHelpers.toolPromptContext(
-                    engine, currentModel);
-                List<StreamingClient.StreamRequest.ToolDef> forkTools = ToolSearchGate.isEnabled(currentModel)
-                    ? config.toolExecutor().getToolDefinitions(
-                        ToolSearchGate.extractDiscoveredToolNames(engine.getMessages()),
-                        forkToolPromptContext)
-                    : config.toolExecutor().getToolDefinitions(forkToolPromptContext);
-                List<StreamingClient.StreamRequest.RequestMessage> forkMessages =
-                    QueryHelpers.buildRequestMessages(engine, forkConversation,
-                        claudeMdUserContext, currentModel, List.of(), forkTools);
-                String forkEffortValue = StringUtils.isNotBlank(options.effortOverride())
-                    ? options.effortOverride()
-                    : (engine.getEffortOverride() != null
-                        ? engine.getEffortOverride() : config.effortValue());
-                engine.setLastCacheSafeForkRequest(new StreamingClient.StreamRequest(
-                    currentModel, config.maxTokens(), systemPrompt, forkMessages, true,
-                    forkTools, null,
-                    EffortHelpers.resolveAppliedEffort(
-                        currentModel, forkEffortValue, config.isCustomModel(currentModel)),
-                    config.fallbackModel(), null, params.taskBudget(), null, null,
-                    config.isThinkingEnabled(), engine.getSessionId(), null, false,
-                    "user", null, config.thinkingBudgetTokens(),
-                    config.fastModeController().isFastRequest(currentModel),
-                    config.fastModeController().failureHandler()));
+                announceNoRefusalFallback(engine, ctx.params, ctx.currentModel,
+                    sr.stopDetails(), sr.requestId());
             }
+            emitRefusalError(engine, ctx.currentModel, sr.stopDetails(), sr.requestId(),
+                sr.turnUsage(), RefusalFallbackTarget.exists(ctx.currentModel, targetInputs),
+                firstPartyLike);
+            return PhaseOutcome.PROCEED;
+        }
+        if (!RefusalFallbackFeature.enabled(SubprocessEnvironment::get)) {
+            // A target existed but CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK is set.
+            return PhaseOutcome.PROCEED;
+        }
+        RefusalFallbackDecision.Choice choice = refusalChoice(
+            engine, ctx.currentModel, refusalTarget,
+            sr.stopDetails() == null ? null : sr.stopDetails().category(),
+            firstPartyLike);
+        if (choice == RefusalFallbackDecision.Choice.RETRY_FALLBACK) {
+            List<Message> withdrawn = retraction.retractAll(engine, this::emit);
+            String refusedModel = ctx.currentModel;
+            ctx.currentModel = refusalTarget;
+            ctx.fallbackActive = true;
+            if (config.agentId() == null && !ctx.hasTurnModelOverride) {
+                config.activateRefusalFallback(refusalTarget);
+            }
+            stripSignatureBlocksIfThinking(engine, config);
+            if (config.agentId() == null) {
+                announceRefusalFallback(engine, ctx.params, refusedModel,
+                    refusalTarget, sr.stopDetails(), sr.requestId(), withdrawn);
+            }
+            return PhaseOutcome.CONTINUE;
+        }
+        // The user was asked and declined the switch.
+        retraction.retractAll(engine, this::emit);
+        if (choice == RefusalFallbackDecision.Choice.EDIT_PROMPT) {
+            engine.getAbortController().abort(REFUSAL_FALLBACK_EDIT);
+        } else if (!engine.getAbortController().isAborted()) {
+            emitRefusalError(engine, ctx.currentModel, sr.stopDetails(), sr.requestId(),
+                sr.turnUsage(), RefusalFallbackTarget.exists(ctx.currentModel, targetInputs),
+                firstPartyLike);
+        }
+        if (engine.getAbortController().isAborted()) {
+            int resultTurns = emitVisibleInterruption(engine, ctx.state.turnCount(), false);
+            emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
+                resultTurns, ctx.lastStopReason, ctx.loopStartTime);
+            return PhaseOutcome.TERMINATED;
+        }
+        return PhaseOutcome.PROCEED;
+    }
 
-            if (config.memoryExtractor() != null && config.agentId() == null) {
+    private void flushPendingToolUseSummary(LoopContext ctx) {
+        if (ctx.state.pendingToolUseSummary() == null) {
+            return;
+        }
+        ToolUseSummaryMessage pendingSummary = ctx.state.pendingToolUseSummary().join();
+        if (pendingSummary != null) {
+            emit(new SDKMessage.ToolUseSummary(
+                pendingSummary.summary(), pendingSummary.precedingToolUseIds()));
+        }
+        ctx.state = ctx.state.withPendingToolUseSummary(null);
+    }
+
+    private boolean isMaxBudgetExceededAfterTurn(LoopContext ctx, AssistantMessage assistantMsg) {
+        if (ctx.config.maxBudgetUsd() <= 0) {
+            return false;
+        }
+        double cost = ctx.engine.getCostCalculator().calculateCost(ctx.engine.getTotalUsage());
+        if (cost < ctx.config.maxBudgetUsd()) {
+            return false;
+        }
+        QueryHelpers.synthesizeMissingToolResults(ctx.engine, assistantMsg,
+            "Budget exceeded at " + FormatUtils.formatCost(cost), this::emit);
+        emitResult(ctx.engine, new Terminal.MaxBudget(cost), null,
+            ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+        return true;
+    }
+
+    private LoopAction handleToolUse(LoopContext ctx,
+                                     List<ContentBlock> toolUseBlocks,
+                                     AssistantMessage assistantMsg) {
+        DefaultQuerySession engine = ctx.engine;
+        int messagesBeforeTools = engine.getMutableMessages().size();
+        ToolRunner.RunOutcome outcome = toolRunner.run(
+            toolUseBlocks, engine, options.hasJsonSchema(),
+            ctx.state.turnCount(), this::emitToolFrame,
+            assistantMsg != null ? assistantMsg.uuid() : null,
+            engine.interruptibleToolTracker());
+
+        if (engine.getAbortController().isAborted()) {
+            int afterToolResultTurns = ctx.state.turnCount() + 1;
+            int resultTurns = emitVisibleInterruption(engine, afterToolResultTurns, true);
+            if (ctx.maxTurns > 0 && ctx.loopTurns + 1 > ctx.maxTurns) {
+                emit(new SDKMessage.Attachment("max_turns_reached",
+                    "Reached max turns (" + ctx.maxTurns + ")", null));
+            }
+            emitResult(engine, new Terminal.Aborted("aborted_tools"), null,
+                resultTurns, ctx.lastStopReason, ctx.loopStartTime);
+            return LoopAction.TERMINATED;
+        }
+
+        if (outcome.preventContinuation()) {
+            emitResult(engine, new Terminal.HookStopped(outcome.stopReason()), null,
+                ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+            return LoopAction.TERMINATED;
+        }
+
+        if (outcome.structuredOutput() != null) {
+            ctx.state = ctx.state.withStructuredOutput(outcome.structuredOutput());
+        }
+
+        // StructuredOutput calls made during this query are capped only
+        // while no valid payload has been accepted. The released runtime
+        // permits the final allowed attempt itself to succeed.
+        if (options.hasJsonSchema()) {
+            int currentCalls = MessageConstants.countToolCalls(
+                engine.getMutableMessages(), "StructuredOutput", null);
+            int callsThisQuery = currentCalls - ctx.initialStructuredOutputCalls;
+            if (ctx.state.structuredOutput() == null
+                    && callsThisQuery >= ctx.maxStructuredOutputRetries) {
+                emitResult(engine, new Terminal.MaxStructuredOutputRetries(callsThisQuery),
+                    new RuntimeException("Failed to provide valid structured output after "
+                        + ctx.maxStructuredOutputRetries + " attempts"),
+                    ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
+                return LoopAction.TERMINATED;
+            }
+        }
+
+        ctx.state = ctx.state.withPendingToolUseSummary(
+            maybeStartToolUseSummary(ctx, toolUseBlocks, assistantMsg));
+
+        QueryHelpers.drainQueuedCommands(engine, this::emit);
+        collectAttachments(engine, null, ctx.params.querySource());
+
+        int yieldedUserMessages = (int) engine.getMutableMessages().subList(
+            messagesBeforeTools, engine.getMutableMessages().size()).stream()
+            .filter(UserMessage.class::isInstance)
+            .count();
+        int nextTurnCount = ctx.state.turnCount() + yieldedUserMessages;
+        int nextLoopTurns = ctx.loopTurns + 1;
+        if (isMaxTurnsExceeded(ctx, nextLoopTurns)) {
+            return LoopAction.TERMINATED;
+        }
+        ctx.loopTurns = nextLoopTurns;
+        ctx.state = ctx.state.withTurnCount(nextTurnCount)
+            .withMaxOutputTokensRecoveryCount(0)
+            .withMaxOutputTokensOverride(null)
+            .withTransition(new Continue.ToolUse(toolUseBlocks.size()));
+        ctx.sessionMetrics.endStep();
+        return LoopAction.CONTINUE;
+    }
+
+    private CompletableFuture<ToolUseSummaryMessage> maybeStartToolUseSummary(
+            LoopContext ctx, List<ContentBlock> toolUseBlocks, AssistantMessage assistantMsg) {
+        QuerySessionSpec config = ctx.config;
+        DefaultQuerySession engine = ctx.engine;
+        if (!QueryHelpers.shouldFireToolUseSummary(config.toolBatchSummarizer(), config.agentId(),
+                engine.getAbortController().isAborted(), SubprocessEnvironment::get)) {
+            return null;
+        }
+        List<ToolCallInfo> toolCallInfo = QueryHelpers.buildToolCallInfo(toolUseBlocks, engine);
+        List<String> toolUseIds = toolUseBlocks.stream()
+            .filter(ToolUseBlock.class::isInstance)
+            .map(b -> ((ToolUseBlock) b).id())
+            .toList();
+        String lastAssistantText = QueryHelpers.extractLastAssistantText(assistantMsg);
+        boolean nonInteractive = config.promptRuntimeSupplier() != null
+            && config.promptRuntimeSupplier().get().isNonInteractiveSession();
+        return config.toolBatchSummarizer()
+            .summarizeAsync(toolCallInfo, lastAssistantText, nonInteractive)
+            .thenApply(summary -> (StringUtils.isBlank(summary))
+                ? null
+                : new ToolUseSummaryMessage(UUID.randomUUID().toString(), summary, toolUseIds))
+            .exceptionally(_ -> null);
+    }
+
+    private LoopAction handleApiErrorMessage(LoopContext ctx,
+                                             AssistantMessage apiErrorMessage,
+                                             Usage turnUsage) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        String slotEnv = SubprocessEnvironment.get("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        boolean canEscalate = config.featureFlags()
+            .isEnabled(FeatureFlag.MAX_OUTPUT_TOKENS_SLOT)
+            && ctx.state.maxOutputTokensOverride() == null
+            && ctx.params.maxOutputTokensOverride() == null
+            && !config.maxTokensExplicit()
+            && StringUtils.isBlank(slotEnv);
+
+        if (canEscalate) {
+            ctx.state = ctx.state.withMaxOutputTokensOverride(64_000)
+                .withPendingToolUseSummary(null)
+                .withStopHookActive(null)
+                .withTransition(new Continue.MaxOutputTokensEscalate());
+            ctx.sessionMetrics.endStep();
+            return LoopAction.CONTINUE;
+        }
+
+        if (ctx.state.maxOutputTokensRecoveryCount() < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
+            int attempt = ctx.state.maxOutputTokensRecoveryCount() + 1;
+            UserMessage recoveryMsg = new UserMessage(
+                UUID.randomUUID().toString(),
+                MessageContent.ofText(
+                    "Output token limit hit. Resume directly — no apology, no recap of what you were doing. "
+                        + "Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."),
+                true, false, null, MessageOrigin.USER, null, Instant.now(), null, null,
+                engine.getSessionId(), null);
+            engine.getMutableMessages().add(recoveryMsg);
+            QueryHelpers.recordTranscript(engine, recoveryMsg);
+            ctx.state = ctx.state.withMaxOutputTokensRecoveryCount(attempt)
+                .withMaxOutputTokensOverride(null)
+                .withPendingToolUseSummary(null)
+                .withStopHookActive(null)
+                .withTransition(new Continue.MaxOutputTokensRecovery(attempt));
+            ctx.sessionMetrics.endStep();
+            return LoopAction.CONTINUE;
+        }
+
+        // Recovery exhausted — surface the withheld API error once and take
+        // the StopFailure path.
+        engine.getMutableMessages().add(apiErrorMessage);
+        emit(new SDKMessage.Assistant(apiErrorMessage, turnUsage));
+        QueryHelpers.recordTranscript(engine, apiErrorMessage);
+        QueryHelpers.dispatchStopFailure(engine,
+            apiErrorMessage.error() != null
+                ? apiErrorMessage.error() : "max_output_tokens");
+        emitResult(engine, new Terminal.Normal(), null, ctx.state.turnCount(),
+            ctx.lastStopReason, ctx.loopStartTime);
+        return LoopAction.TERMINATED;
+    }
+
+    private LoopAction handleNaturalTurnEnd(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+
+        // Stop hooks run on EVERY natural turn end.
+        List<String> stopBlockingErrors = new ArrayList<>();
+        String stopHookAdditionalContext = null;
+        HookDispatcher stopHooks = engine.getHookDispatcher();
+        if (stopHooks != null) {
+            emit(new SDKMessage.StreamEvent("stop_hook_run_start", "Stop"));
+            HookDispatcher.HookOutcome stopOutcome =
+                stopHooks.dispatchStopWithOutcome(SDKMessage.Result.SUCCESS,
+                    Boolean.TRUE.equals(ctx.state.stopHookActive()));
+            emit(new SDKMessage.StreamEvent("stop_hook_run_done", ""));
+            persistHookMessages(engine, stopHooks.consumeHookMessages());
+            stopHooks.consumeGoalTransition()
+                .ifPresent(transition -> persistGoalTransition(engine, transition));
+            if (stopOutcome.preventContinuation()) {
+                emitResult(engine, new Terminal.StopHookPrevented(stopOutcome.stopReason()),
+                    ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime,
+                    ctx.state.structuredOutput());
+                return LoopAction.TERMINATED;
+            }
+            if (stopOutcome.hasBlockingErrors()) {
+                stopBlockingErrors.addAll(stopOutcome.blockingErrors());
+            }
+            if (stopOutcome.hasAdditionalContext()) {
+                stopHookAdditionalContext = stopOutcome.additionalContext();
+            }
+        }
+
+        // StructuredOutput completion enforcement — blocks natural termination
+        // until a successful StructuredOutput tool call is recorded.
+        if (options.hasJsonSchema()
+                && !MessageConstants.hasSuccessfulToolCall(engine.getMutableMessages(), "StructuredOutput")) {
+            stopBlockingErrors.add("You MUST call the StructuredOutput tool to complete this request. Call this tool now.");
+        }
+
+        if (!stopBlockingErrors.isEmpty()) {
+            return handleStopHookBlocking(ctx, stopBlockingErrors);
+        }
+        if (stopHookAdditionalContext != null) {
+            QueryHelpers.injectHookContext(engine, stopHookAdditionalContext);
+        }
+
+        if (config.agentId() == null) {
+            saveCacheSafeForkRequest(ctx);
+            if (config.memoryExtractor() != null) {
                 config.memoryExtractor().extractAsync(engine.getMutableMessages(), engine);
             }
-            // Auto-dream: background memory consolidation. Same main-thread-only
-            // gate as the memory extractor (config.agentId() == null) — matches
-
-            if (config.autoDreamEngine() != null && config.agentId() == null) {
+            if (config.autoDreamEngine() != null) {
                 config.autoDreamEngine().maybeRunAutoDream(engine);
             }
-            break;
+        }
+        return LoopAction.COMPLETE_NORMAL;
+    }
+
+    private LoopAction handleStopHookBlocking(LoopContext ctx, List<String> stopBlockingErrors) {
+        int nextLoopTurns = ctx.loopTurns + 1;
+        if (isMaxTurnsExceeded(ctx, nextLoopTurns)) {
+            return LoopAction.TERMINATED;
+        }
+        int nextBlockingCount = ctx.stopHookBlockingCount + 1;
+        int blockCap = parseStopHookBlockCap();
+        if (blockCap > 0 && nextBlockingCount > blockCap) {
+            emit(new SDKMessage.System(new SystemMessage(
+                UUID.randomUUID().toString(), "informational", "warning",
+                "A hook blocked the turn from ending " + nextBlockingCount
+                    + " consecutive times — overriding and ending turn. "
+                    + "For Stop/SubagentStop hooks, check stop_hook_active in"
+                    + " the input and return success while it's true. Set"
+                    + " CLAUDE_CODE_STOP_HOOK_BLOCK_CAP to raise this limit.")));
+            emitResult(ctx.engine, new Terminal.Normal(), ctx.state.turnCount(),
+                ctx.lastStopReason, ctx.loopStartTime, ctx.state.structuredOutput());
+            return LoopAction.TERMINATED;
         }
 
-        emitResult(engine, new Terminal.Normal(), state.turnCount(), lastStopReason,
-            loopStartTime, state.structuredOutput());
-        } finally {
-            profiler.finishTurn();
-            sessionMetrics.endTurn();
+        for (String err : stopBlockingErrors) {
+            QueryHelpers.injectStopHookFeedback(ctx.engine, this::emit, "Stop hook feedback:\n" + err);
         }
+        ctx.loopTurns = nextLoopTurns;
+        ctx.stopHookBlockingCount = nextBlockingCount;
+        ctx.state = ctx.state.withStopHookActive(true)
+            .withMaxOutputTokensOverride(null)
+            .withTransition(new Continue.StopHookReentry());
+        ctx.sessionMetrics.endStep();
+        return LoopAction.CONTINUE;
+    }
+
+    private boolean isMaxTurnsExceeded(LoopContext ctx, int nextLoopTurns) {
+        if (ctx.maxTurns <= 0 || nextLoopTurns <= ctx.maxTurns) {
+            return false;
+        }
+        emit(new SDKMessage.Attachment("max_turns_reached",
+            "Reached max turns (" + ctx.maxTurns + ")", null));
+        emitResult(ctx.engine, new Terminal.MaxTurns(nextLoopTurns),
+            new RuntimeException("Reached maximum number of turns (" + ctx.maxTurns + ")"),
+            nextLoopTurns, ctx.lastStopReason, ctx.loopStartTime);
+        return true;
+    }
+
+    private void saveCacheSafeForkRequest(LoopContext ctx) {
+        DefaultQuerySession engine = ctx.engine;
+        QuerySessionSpec config = ctx.config;
+        List<Message> forkConversation = applyToolResultBudget(engine, config);
+        List<StreamingClient.StreamRequest.ToolDef> forkTools =
+            resolveToolDefinitions(engine, ctx.currentModel);
+        List<StreamingClient.StreamRequest.RequestMessage> forkMessages =
+            QueryHelpers.buildRequestMessages(engine, forkConversation,
+                ctx.claudeMdUserContext, ctx.currentModel, List.of(), forkTools);
+        engine.setLastCacheSafeForkRequest(new StreamingClient.StreamRequest(
+            ctx.currentModel, config.maxTokens(), ctx.systemPrompt, forkMessages, true,
+            forkTools, null,
+            resolveAppliedEffort(engine, ctx.currentModel),
+            config.fallbackModel(), null, ctx.params.taskBudget(), null, null,
+            config.isThinkingEnabled(), engine.getSessionId(), null, false,
+            "user", null, config.thinkingBudgetTokens(),
+            config.fastModeController().isFastRequest(ctx.currentModel),
+            config.fastModeController().failureHandler()));
+    }
+
+    private static List<StreamingClient.StreamRequest.ToolDef> resolveToolDefinitions(
+            DefaultQuerySession engine, String model) {
+        ToolExecutionContext toolPromptContext = QueryHelpers.toolPromptContext(engine, model);
+        return ToolSearchGate.isEnabled(model)
+            ? engine.getConfig().toolExecutor().getToolDefinitions(
+                ToolSearchGate.extractDiscoveredToolNames(engine.getMessages()),
+                toolPromptContext)
+            : engine.getConfig().toolExecutor().getToolDefinitions(toolPromptContext);
+    }
+
+    private String resolveAppliedEffort(DefaultQuerySession engine, String model) {
+        QuerySessionSpec config = engine.getConfig();
+        String effortValue = StringUtils.isNotBlank(options.effortOverride())
+            ? options.effortOverride()
+            : (engine.getEffortOverride() != null
+                ? engine.getEffortOverride() : config.effortValue());
+        return EffortHelpers.resolveAppliedEffort(model, effortValue, config.isCustomModel(model));
     }
 
     /**
@@ -1342,12 +1498,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         }
         if (notify != null) notify.accept(new CompactProgressEvent.CompactStart());
 
-
-
-
         long snipTokensFreed = 0;
-
-
         final String effectiveHookInstructions = hookInstructions;
         LlmRequestTraceCollector compactTrace = new LlmRequestTraceCollector();
         long compactTurn = engine.sessionMetricsTracker().currentTurn();
@@ -1461,7 +1612,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         emit(new SDKMessage.Status(null, null, null));
         return new AutoCompactStep(state, false);
     }
-
 
     private StreamResult consumeStream(Iterator<StreamingClient.StreamingEvent> stream,
                                         DefaultQuerySession engine, String lastStopReason,
@@ -1779,7 +1929,6 @@ class QueryLoop implements SdkEventSequencedIterator {
 
     private record PreparedInputImage(ContentBlock block, ImageResizer.PastedDims dimensions) {}
 
-
     private static PreparedInputImage prepareInputImage(ImageBlock imageBlock) {
         JsonNode source = imageBlock.source();
         if (source == null || !source.isObject()
@@ -1885,7 +2034,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         boolean isSlash = options.isSlashCommand();
         // Text block value: a slash/prompt/skill re-submission uses the raw command
 
-
         // processTextPrompt (stdin trailing newlines are wire-significant).
         String promptBody = isSlash ? promptText : processed.processedPrompt();
 
@@ -1937,9 +2085,6 @@ class QueryLoop implements SdkEventSequencedIterator {
             }
         }
 
-
-
-
         String userUuid = StringUtils.isNotBlank(options.promptUuid())
             ? options.promptUuid() : UUID.randomUUID().toString();
         Instant userTimestamp = options.promptTimestamp() != null
@@ -1963,7 +2108,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         if (fhm != null) fhm.scheduleSnapshot(userMsg.uuid());
         emit(new SDKMessage.User(userMsg, true));
         QueryHelpers.recordTranscript(engine, userMsg);
-
 
         // addImageMetadataMessage appends this isMeta row. Keep it pending until
         // the first-turn attachment pass so transcript parentage is identical.
@@ -1994,7 +2138,6 @@ class QueryLoop implements SdkEventSequencedIterator {
             QueryHelpers.recordTranscript(engine, localCmdMsg);
             return new Terminal.Normal();
         }
-
 
         // the original prompt (a system warning replaces it, nothing reaches the
         // model), continue:false ends the turn while keeping the prompt in
@@ -2046,7 +2189,6 @@ class QueryLoop implements SdkEventSequencedIterator {
             }
         }
 
-
         // callbacks) before yielding the SDK init message. Keeping this after
         // the hook is wire-observable because callback requests write directly
         // to the shared stream-json stdout channel.
@@ -2070,7 +2212,6 @@ class QueryLoop implements SdkEventSequencedIterator {
 
         return null;
     }
-
 
     private static boolean isLocalCommandOutput(MessageContent content) {
         if (content == null) return false;
@@ -2165,7 +2306,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         return requestMessages;
     }
 
-
     private static int parseMaxStructuredOutputRetries() {        String raw = SubprocessEnvironment.get(
             "MAX_STRUCTURED_OUTPUT_RETRIES");
         if (StringUtils.isBlank(raw)) return 5;
@@ -2188,8 +2328,6 @@ class QueryLoop implements SdkEventSequencedIterator {
             return 8;
         }
     }
-
-
 
     /**
      * Builds the isMeta image-metadata line for a pasted image, preferring the post-resize dimensions
@@ -2215,7 +2353,6 @@ class QueryLoop implements SdkEventSequencedIterator {
             new ImageResizer.PastedDims(origW, origH, dispW, dispH), sourcePath);
     }
 
-
     private void maybeInjectTooLargeApiError(DefaultQuerySession engine, Throwable e) {
         ApiErrorMessages.TooLargeKind kind = ApiErrorMessages.classify(e.getMessage());
         if (kind == null) return;
@@ -2231,7 +2368,6 @@ class QueryLoop implements SdkEventSequencedIterator {
         emit(new SDKMessage.Assistant(msg, Usage.EMPTY));
         QueryHelpers.recordTranscript(engine, msg);
     }
-
 
     private static boolean isPromptTooLong(Throwable error) {
         return error != null

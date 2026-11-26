@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -541,16 +540,15 @@ public class TranscriptRecorder implements TranscriptSink {
     /** Restores the lazy plan slug before resumed-session plan attachments run. */
     public void restoreSessionSlug(String sessionId) {
         Path file = sessionFile(sessionId);
-        restoreSessionSlug(sessionId, sessionStorage.readSessionSlug(file));
+        restoreSessionSlug(sessionId, sessionStorage.readSessionSlug(file).orElse(null));
     }
 
     /** Seeds the session slug from a pre-scanned startup restore bundle without re-reading disk. */
-    public void restoreSessionSlug(String sessionId, Optional<String> preloadedSlug) {
-        if (preloadedSlug == null || preloadedSlug.isEmpty()) return;
+    public void restoreSessionSlug(String sessionId, String preloadedSlug) {
+        if (StringUtils.isBlank(preloadedSlug)) return;
         Path file = sessionFile(sessionId);
-        String slug = preloadedSlug.get();
-        sessionSlugs.put(file.toString(), slug);
-        PlanSlugRegistry.set(sessionId, slug);
+        sessionSlugs.put(file.toString(), preloadedSlug);
+        PlanSlugRegistry.set(sessionId, preloadedSlug);
     }
 
 

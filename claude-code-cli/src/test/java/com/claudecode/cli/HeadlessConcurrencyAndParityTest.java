@@ -82,7 +82,7 @@ class HeadlessConcurrencyAndParityTest {
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new EmptyStreamingClient(), new ToolRegistry(), new DefaultQuerySessionFactory(),
             new PermissionGate(ToolPermissionContext.of(mainProject)),
-            "claude-sonnet-5", mainProject.toString(), null, true, interactions);
+            "claude-sonnet-5", null, true, interactions);
         return new CliHeadlessGatewaySessions(factory, mainProject.toString());
     }
 

@@ -1,5 +1,6 @@
 package com.claudecode.session;
 
+import com.claudecode.core.io.ByteArrays;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
@@ -98,7 +99,7 @@ record AppendCursor(Object fileKey, long size, FileTime modified,
         ByteBuffer bytes = ByteBuffer.allocate(appended);
         readFully(channel, bytes, parsedBytes);
         byte[] raw = bytes.array();
-        int complete = lastNewline(raw) + 1;
+        int complete = ByteArrays.lastIndexOf(raw, (byte) '\n') + 1;
 
         List<String> settled = lines(raw, 0, complete);
         List<String> unfinished = lines(raw, complete, raw.length);
@@ -119,13 +120,6 @@ record AppendCursor(Object fileKey, long size, FileTime modified,
         System.arraycopy(previousTail, previousTail.length - kept, tail, 0, kept);
         System.arraycopy(raw, 0, tail, kept, complete);
         return tail;
-    }
-
-    private static int lastNewline(byte[] raw) {
-        for (int i = raw.length - 1; i >= 0; i--) {
-            if (raw[i] == '\n') return i;
-        }
-        return -1;
     }
 
     /**

@@ -279,6 +279,43 @@ class RemoteWorkerPoolTest {
         host.join(Duration.ofSeconds(5).toMillis());
     }
 
+    @Test
+    void notifiesListenerImmediatelyWhenWorkerSocketCloses() throws Exception {
+        WebWorkerDirectory directory = new WebWorkerDirectory(root.resolve("workers"));
+        long workerPid = ProcessHandle.current().pid();
+        CompletableFuture<Long> disconnectedPid = new CompletableFuture<>();
+        CompletableFuture<Void> closePeer = new CompletableFuture<>();
+        try (var ignored = directory.register(new WebWorkerRegistration(
+                workerPid, socketPath.toString(), "tok", "/work", "test"))) {
+            Thread host = Thread.ofVirtual().start(() -> {
+                try {
+                    peer = server.accept();
+                    peerInput = Channels.newInputStream(peer);
+                    SessionLinkFrame hello = readFrame();
+                    writeFrame(SessionLinkFrame.response(hello.id(), hello.name(), null,
+                        JsonUtils.getMapper().createObjectNode()));
+                    SessionLinkFrame list = readFrame();
+                    writeFrame(SessionLinkFrame.response(list.id(), list.name(), null,
+                        JsonUtils.getMapper().createObjectNode()));
+                    closePeer.get(5, TimeUnit.SECONDS);
+                    peer.close();
+                } catch (Exception _) {
+                    // Test teardown.
+                }
+            });
+
+            try (RemoteWorkerPool pool = new RemoteWorkerPool(directory, new MirrorHub(emptyRegistry()))) {
+                pool.setOnWorkerDisconnected(disconnectedPid::complete);
+                pool.liveSessions();
+                assertThat(disconnectedPid).isNotDone();
+
+                closePeer.complete(null);
+                assertThat(disconnectedPid.get(2, TimeUnit.SECONDS)).isEqualTo(workerPid);
+            }
+            host.join(Duration.ofSeconds(5).toMillis());
+        }
+    }
+
     private static SessionHostRegistry emptyRegistry() {
         return new SessionHostRegistry(new SessionHostRegistry.Activator() {
             @Override public CompletableFuture<SessionHostSession> activate(

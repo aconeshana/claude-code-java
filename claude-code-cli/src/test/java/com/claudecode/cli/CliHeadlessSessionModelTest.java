@@ -105,7 +105,7 @@ class CliHeadlessSessionModelTest {
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new EmptyStreamingClient(), new ToolRegistry(), new DefaultQuerySessionFactory(),
             new PermissionGate(ToolPermissionContext.of(project)),
-            MODEL, project.toString(), new FixedCatalog(custom), showBuiltInModelFamilies);
+            MODEL, new FixedCatalog(custom), showBuiltInModelFamilies);
         return new CliHeadlessGatewaySessions(factory, project.toString()).open(
             new GatewayHeadlessSessions.OpenRequest("model-session", project.toString()));
     }

@@ -102,7 +102,6 @@ final class CliHeadlessSessionFactory {
     private final QuerySessionFactory querySessionFactory;
     private final PermissionGate sharedGate;
     private final String resolvedModel;
-    private final String mainCwd;
     private final CustomModelCatalog customModels;
     private final boolean showBuiltInModelFamilies;
     private final InteractionCoordinator interactions;
@@ -115,11 +114,10 @@ final class CliHeadlessSessionFactory {
             QuerySessionFactory querySessionFactory,
             PermissionGate sharedGate,
             String resolvedModel,
-            String mainCwd,
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies) {
         this(client, toolRegistry, querySessionFactory, sharedGate, resolvedModel,
-            mainCwd, customModels, showBuiltInModelFamilies, null, null, null);
+            customModels, showBuiltInModelFamilies, null, null, null);
     }
 
     CliHeadlessSessionFactory(
@@ -128,12 +126,11 @@ final class CliHeadlessSessionFactory {
             QuerySessionFactory querySessionFactory,
             PermissionGate sharedGate,
             String resolvedModel,
-            String mainCwd,
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies,
             InteractionCoordinator interactions) {
         this(client, toolRegistry, querySessionFactory, sharedGate, resolvedModel,
-            mainCwd, customModels, showBuiltInModelFamilies, interactions, null, null);
+            customModels, showBuiltInModelFamilies, interactions, null, null);
     }
 
     CliHeadlessSessionFactory(
@@ -142,7 +139,6 @@ final class CliHeadlessSessionFactory {
             QuerySessionFactory querySessionFactory,
             PermissionGate sharedGate,
             String resolvedModel,
-            String mainCwd,
             CustomModelCatalog customModels,
             boolean showBuiltInModelFamilies,
             InteractionCoordinator interactions,
@@ -153,7 +149,6 @@ final class CliHeadlessSessionFactory {
         this.querySessionFactory = querySessionFactory;
         this.sharedGate = sharedGate;
         this.resolvedModel = resolvedModel;
-        this.mainCwd = mainCwd;
         this.customModels = customModels;
         this.showBuiltInModelFamilies = showBuiltInModelFamilies;
         this.interactions = interactions;

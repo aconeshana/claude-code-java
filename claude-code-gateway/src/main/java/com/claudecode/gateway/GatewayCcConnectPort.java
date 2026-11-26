@@ -118,6 +118,9 @@ public interface GatewayCcConnectPort {
 
     default void bindRemoteBridge(RemoteBridge bridge) {}
 
+    /** Notifies the manager that an online TUI worker disconnected from Session Link. */
+    default void onWorkerDisconnected(long pid) {}
+
     default Snapshot snapshot() {
         return new Snapshot(false, false, false, "", List.of(), false, List.of());
     }

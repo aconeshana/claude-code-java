@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,12 +43,39 @@ final class RemoteWorkerFeed implements AutoCloseable {
     private final Set<String> subscribed = ConcurrentHashMap.newKeySet();
 
     RemoteWorkerFeed(MirrorHub hub, Path socket, String token) {
-        this(hub, new SessionLinkEndpoint.UnixDomain(socket), token);
+        this(hub, new SessionLinkEndpoint.UnixDomain(socket), token, null);
     }
 
     RemoteWorkerFeed(MirrorHub hub, SessionLinkEndpoint endpoint, String token) {
+        this(hub, endpoint, token, null);
+    }
+
+    RemoteWorkerFeed(
+            MirrorHub hub, SessionLinkEndpoint endpoint, String token, Runnable onDisconnect) {
         this.hub = hub;
-        this.client = new SessionLinkClient(endpoint, token, this::onFrame);
+        this.client = new SessionLinkClient(endpoint, token, this::onFrame, onDisconnect);
+    }
+
+    /** Creates and connects a feed, closing it automatically if the handshake fails. */
+    static RemoteWorkerFeed connect(
+            MirrorHub hub,
+            SessionLinkEndpoint endpoint,
+            String token,
+            Runnable onDisconnect) throws IOException {
+        AtomicBoolean started = new AtomicBoolean();
+        RemoteWorkerFeed feed = new RemoteWorkerFeed(hub, endpoint, token, () -> {
+            if (started.get() && onDisconnect != null) {
+                onDisconnect.run();
+            }
+        });
+        try {
+            feed.start();
+            started.set(true);
+            return feed;
+        } catch (IOException | RuntimeException | Error failure) {
+            feed.close();
+            throw failure;
+        }
     }
 
     void start() throws IOException {

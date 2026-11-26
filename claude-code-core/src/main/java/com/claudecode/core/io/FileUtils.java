@@ -287,9 +287,8 @@ public final class FileUtils {
                     readPosition += read;
                 }
 
-                byte[] combined = Arrays.copyOf(chunk, chunk.length + remainder.length);
-                System.arraycopy(remainder, 0, combined, chunk.length, remainder.length);
-                int firstNewline = indexOf(combined, (byte) '\n');
+                byte[] combined = ByteArrays.concat(chunk, remainder);
+                int firstNewline = ByteArrays.indexOf(combined, (byte) '\n');
                 if (firstNewline < 0) {
                     remainder = combined;
                     continue;
@@ -307,13 +306,6 @@ public final class FileUtils {
                 visitor.test(new String(remainder, StandardCharsets.UTF_8));
             }
         }
-    }
-
-    private static int indexOf(byte[] bytes, byte target) {
-        for (int i = 0; i < bytes.length; i++) {
-            if (bytes[i] == target) return i;
-        }
-        return -1;
     }
 
     // -----------------------------------------------------------------------------------------

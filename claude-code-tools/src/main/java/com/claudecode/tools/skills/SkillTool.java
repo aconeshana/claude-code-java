@@ -82,8 +82,6 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
         return StringUtils.isBlank(skill) ? description() : "Execute skill: " + skill;
     }
 
-
-
     @Override
     public JsonNode inputSchema() {
 
@@ -142,8 +140,9 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
             invocationHandlesArgs = true;
         } else if (match.source() == Skill.SkillSource.BUNDLED
                 && BundledSkillPromptRenderer.handles(match.name())) {
+            String workingDirectory = context != null ? context.workingDirectory() : null;
             content = BundledSkillPromptRenderer.render(match.name(), content, args,
-                context.workingDirectory() == null ? null : Path.of(context.workingDirectory()));
+                workingDirectory == null ? null : Path.of(workingDirectory));
             invocationHandlesArgs = true;
         }
         if (match.source() == Skill.SkillSource.MCP) {
@@ -183,7 +182,8 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
             UUID.randomUUID().toString(),
             MessageContent.ofBlocks(List.of(new TextBlock(resolved))),
             true, false, null, MessageOrigin.USER,
-            null, Instant.now(), null, null, null, null, context.toolUseId());
+            null, Instant.now(), null, null, null, null,
+            context != null ? context.toolUseId() : null);
         AttachmentMessage permissions = new AttachmentMessage(
             UUID.randomUUID().toString(),
             new CommandPermissionsAttachment(match.allowedTools(), match.model()));
@@ -280,7 +280,7 @@ public class SkillTool extends AnnotatedTool<JsonNode, ToolResult> {
             .async(false)
             .fork(true)
             .model(match.model())
-            .cwd(context.workingDirectory())
+            .cwd(context != null ? context.workingDirectory() : null)
             .description(match.name())
             .build();
         try {

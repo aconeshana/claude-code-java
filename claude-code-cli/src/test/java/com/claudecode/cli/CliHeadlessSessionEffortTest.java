@@ -78,7 +78,7 @@ class CliHeadlessSessionEffortTest {
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new EmptyStreamingClient(), new ToolRegistry(), new DefaultQuerySessionFactory(),
             new PermissionGate(ToolPermissionContext.of(project)),
-            MODEL, project.toString(), null, true);
+            MODEL, null, true);
         CliHeadlessGatewaySessions sessions =
             new CliHeadlessGatewaySessions(factory, project.toString());
         return sessions.open(

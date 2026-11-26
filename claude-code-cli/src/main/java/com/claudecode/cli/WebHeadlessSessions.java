@@ -39,7 +39,7 @@ final class WebHeadlessSessions {
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new LlmClientAdapter(toolchain.llmClient(), HEADLESS_STREAM_CONNECT_TIMEOUT),
             toolchain.toolRegistry(), new DefaultQuerySessionFactory(),
-            toolchain.permissionGate(), workspace.launch().model(), workspace.cwd(),
+            toolchain.permissionGate(), workspace.launch().model(),
             toolchain.customModelCatalog(), toolchain.modelAvailability().showBuiltInModelFamilies(),
             interactions,
             toolchain.capabilityService(),

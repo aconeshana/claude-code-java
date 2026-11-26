@@ -210,7 +210,7 @@ final class CliSessionRestoreCoordinator {
             // transcript write, so restore the persisted slug immediately after
             // the identity changes rather than when the random launch id exists.
             if (request.transcriptRecorder() != null) {
-                request.transcriptRecorder().restoreSessionSlug(sessionId, bundle.slug());
+                request.transcriptRecorder().restoreSessionSlug(sessionId, bundle.slug().orElse(null));
                 request.transcriptRecorder().restoreSessionMetadata(sessionId, messages, bundle);
             }
         }

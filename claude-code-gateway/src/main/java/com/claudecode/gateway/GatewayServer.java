@@ -20,6 +20,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
@@ -35,9 +36,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -667,24 +670,34 @@ public final class GatewayServer implements AutoCloseable {
                 mirror.publishCcConnectChanged();
             }
         });
+        if (remoteWorkers != null) {
+            remoteWorkers.setOnWorkerDisconnected(ccConnectPort::onWorkerDisconnected);
+        }
         return ccConnectPort;
     }
 
+    private static final int MAX_BIND_ATTEMPTS = 20;
+    private static final long BIND_RETRY_DELAY_MS = 15L;
+
     private HttpServer bindWithRetry(String host, int targetPort) throws IOException {
-        for (int attempt = 0; ; attempt++) {
+        for (int attempt = 0; attempt < MAX_BIND_ATTEMPTS; attempt++) {
             try {
                 return createAndStartHttpServer(host, targetPort);
-            } catch (IOException bindErr) {
-                if (attempt >= 19) {
+            } catch (BindException bindErr) {
+                if (attempt + 1 >= MAX_BIND_ATTEMPTS) {
                     throw bindErr;
                 }
-                try {
-                    Thread.sleep(15L);
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                    throw bindErr;
-                }
+                pauseBeforeRetry(BIND_RETRY_DELAY_MS, bindErr);
             }
+        }
+        throw new IllegalStateException("Unreachable");
+    }
+
+    private static void pauseBeforeRetry(long delayMs, BindException cause) throws BindException {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(delayMs));
+        if (Thread.interrupted()) {
+            Thread.currentThread().interrupt();
+            throw cause;
         }
     }
 

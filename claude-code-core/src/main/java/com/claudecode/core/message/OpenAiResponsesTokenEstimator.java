@@ -1,6 +1,7 @@
 package com.claudecode.core.message;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.ByteArrays;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -9,8 +10,6 @@ import org.apache.commons.lang3.Strings;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import javax.imageio.ImageIO;
@@ -225,47 +224,41 @@ public final class OpenAiResponsesTokenEstimator {
     }
 
     private static boolean asciiEquals(byte[] bytes, int offset, String value) {
-        if (offset < 0 || offset + value.length() > bytes.length) return false;
-        for (int i = 0; i < value.length(); i++) {
-            if (bytes[offset + i] != (byte) value.charAt(i)) return false;
-        }
-        return true;
+        return ByteArrays.asciiEquals(bytes, offset, value);
     }
 
     private static int leInt(byte[] bytes, int offset) {
         if (offset < 0 || offset + 4 > bytes.length) return -1;
-        return ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        return ByteArrays.readIntLE(bytes, offset);
     }
 
     private static int beInt(byte[] bytes, int offset) {
         if (offset < 0 || offset + 4 > bytes.length) return -1;
-        return ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).getInt();
+        return ByteArrays.readIntBE(bytes, offset);
     }
 
     private static int unsigned(byte value) {
-        return value & 0xff;
+        return Byte.toUnsignedInt(value);
     }
 
     private static int leUnsignedShort(byte[] bytes, int offset) {
         if (offset < 0 || offset + 2 > bytes.length) return -1;
-        return unsigned(bytes[offset]) | unsigned(bytes[offset + 1]) << 8;
+        return ByteArrays.readUnsignedShortLE(bytes, offset);
     }
 
     private static int beUnsignedShort(byte[] bytes, int offset) {
         if (offset < 0 || offset + 2 > bytes.length) return -1;
-        return unsigned(bytes[offset]) << 8 | unsigned(bytes[offset + 1]);
+        return ByteArrays.readUnsignedShortBE(bytes, offset);
     }
 
     private static int leUnsignedMedium(byte[] bytes, int offset) {
         if (offset < 0 || offset + 3 > bytes.length) return -1;
-        return unsigned(bytes[offset])
-            | unsigned(bytes[offset + 1]) << 8
-            | unsigned(bytes[offset + 2]) << 16;
+        return ByteArrays.readUnsignedMediumLE(bytes, offset);
     }
 
     private static long leUnsignedInt(byte[] bytes, int offset) {
         if (offset < 0 || offset + 4 > bytes.length) return -1;
-        return Integer.toUnsignedLong(leInt(bytes, offset));
+        return ByteArrays.readUnsignedIntLE(bytes, offset);
     }
 
     private static boolean isWavMime(String mime) {

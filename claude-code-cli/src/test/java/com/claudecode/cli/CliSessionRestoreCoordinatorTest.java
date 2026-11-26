@@ -290,7 +290,7 @@ class CliSessionRestoreCoordinatorTest {
         assertInOrder(source,
             "restorer.preSwitch();",
             "request.engine().conversation().switchToSession(sessionId);",
-            "request.transcriptRecorder().restoreSessionSlug(sessionId, bundle.slug());",
+            "request.transcriptRecorder().restoreSessionSlug(sessionId, bundle.slug().orElse(null));",
             "request.transcriptRecorder().restoreSessionMetadata(sessionId, messages, bundle);",
             "restoreToolResultBudget(",
             "request.engine().conversation().loadMessages(messages);",

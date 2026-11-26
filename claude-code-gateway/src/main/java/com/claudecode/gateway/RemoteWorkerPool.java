@@ -25,11 +25,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -69,6 +71,7 @@ final class RemoteWorkerPool implements AutoCloseable {
     private final Map<Long, List<SessionHostInfo>> sessionsByPid = new HashMap<>();
     private final Map<String, Long> pidBySession = new HashMap<>();
     private volatile Consumer<String> onSessionClaimed = _ -> {};
+    private volatile LongConsumer onWorkerDisconnected = _ -> {};
     private Snapshot snapshot;
     private Thread watcher;
     private boolean closed;
@@ -189,6 +192,11 @@ final class RemoteWorkerPool implements AutoCloseable {
         this.onSessionClaimed = listener != null ? listener : _ -> {};
     }
 
+    /** Registers a callback invoked immediately when a connected worker's Session Link closes. */
+    void setOnWorkerDisconnected(LongConsumer listener) {
+        this.onWorkerDisconnected = listener != null ? listener : _ -> {};
+    }
+
     /** Returns the PID of the online TUI currently owning {@code sessionId}, if any. */
     synchronized Optional<Long> pidOf(String sessionId) {
         if (StringUtils.isBlank(sessionId)) return Optional.empty();
@@ -248,44 +256,50 @@ final class RemoteWorkerPool implements AutoCloseable {
     }
 
     Optional<GatewayCcConnectPort.CollaborationState> getCollaboration(long pid, String sessionId) {
-        RemoteWorkerFeed feed = feedFor(pid, sessionId);
-        if (feed == null) return Optional.empty();
-        try {
-            JsonNode payload = feed.getCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId)
-                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload();
-            return Optional.of(parseCollaborationState(payload));
-        } catch (ExecutionException | TimeoutException _) {
-            return Optional.empty();
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-            return Optional.empty();
-        }
+        return withFeed(pid, sessionId, feed -> {
+            try {
+                JsonNode payload = feed.getCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId)
+                    .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload();
+                return Optional.of(parseCollaborationState(payload));
+            } catch (ExecutionException | TimeoutException _) {
+                return Optional.empty();
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        });
     }
 
     Optional<GatewayCcConnectPort.CollaborationState> setCollaboration(
             long pid, String sessionId, String channel, boolean enabled) {
-        RemoteWorkerFeed feed = feedFor(pid, sessionId);
-        if (feed == null) return Optional.empty();
-        JsonNode payload = requestState(
-            feed.setCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId, channel, enabled),
-            "the session's host did not answer the collaboration change in time");
-        return Optional.of(parseCollaborationState(payload));
+        return withFeed(pid, sessionId, feed -> {
+            JsonNode payload = requestState(
+                feed.setCollaboration(StringUtils.isBlank(sessionId) ? null : sessionId, channel, enabled),
+                "the session's host did not answer the collaboration change in time");
+            return Optional.of(parseCollaborationState(payload));
+        });
     }
 
-    private synchronized RemoteWorkerFeed feedFor(long pid, String sessionId) {
-        if (closed) return null;
-        liveSessions();
-        if (pid > 0) {
-            WebWorkerRegistration worker = workersByPid.get(pid);
-            if (worker != null) {
-                RemoteWorkerFeed byPid = feeds.get(worker.socket());
-                if (byPid != null && byPid.isOpen()) return byPid;
+    private <T> Optional<T> withFeed(
+            long pid, String sessionId, Function<RemoteWorkerFeed, Optional<T>> action) {
+        RemoteWorkerFeed feed = null;
+        synchronized (this) {
+            if (closed) return Optional.empty();
+            liveSessions();
+            if (pid > 0) {
+                WebWorkerRegistration worker = workersByPid.get(pid);
+                if (worker != null) {
+                    RemoteWorkerFeed byPid = feeds.get(worker.socket());
+                    if (byPid != null && byPid.isOpen()) {
+                        feed = byPid;
+                    }
+                }
+            }
+            if (feed == null && StringUtils.isNotBlank(sessionId)) {
+                feed = owners.get(sessionId);
             }
         }
-        if (StringUtils.isNotBlank(sessionId)) {
-            return owners.get(sessionId);
-        }
-        return null;
+        return feed == null ? Optional.empty() : action.apply(feed);
     }
 
     private static GatewayCcConnectPort.CollaborationState parseCollaborationState(JsonNode payload) {
@@ -317,34 +331,34 @@ final class RemoteWorkerPool implements AutoCloseable {
      * caller can surface its message instead of an invented default.
      */
     Optional<SessionHostPermissionState> permissionMode(String sessionId) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        try {
-            return Optional.of(parsePermissionState(feed.getPermissionMode(sessionId)
-                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
-        } catch (ExecutionException | TimeoutException _) {
-            return Optional.empty();
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-            return Optional.empty();
-        }
+        return withOwner(sessionId, feed -> {
+            try {
+                return Optional.of(parsePermissionState(feed.getPermissionMode(sessionId)
+                    .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
+            } catch (ExecutionException | TimeoutException _) {
+                return Optional.empty();
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        });
     }
 
     /** Forwards one permission-mode selection to the owning worker; same contract as above. */
     Optional<SessionHostPermissionState> selectPermissionMode(String sessionId, String mode) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        try {
-            return Optional.of(parsePermissionState(feed.setPermissionMode(sessionId, mode)
-                .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
-        } catch (ExecutionException exception) {
-            throw new IllegalStateException(linkFailureMessage(exception), exception);
-        } catch (TimeoutException _) {
-            throw new IllegalStateException("the session's host did not answer in time");
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while waiting for the session's host");
-        }
+        return withOwner(sessionId, feed -> {
+            try {
+                return Optional.of(parsePermissionState(feed.setPermissionMode(sessionId, mode)
+                    .get(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).payload()));
+            } catch (ExecutionException exception) {
+                throw new IllegalStateException(linkFailureMessage(exception), exception);
+            } catch (TimeoutException _) {
+                throw new IllegalStateException("the session's host did not answer in time");
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for the session's host");
+            }
+        });
     }
 
     /**
@@ -355,26 +369,23 @@ final class RemoteWorkerPool implements AutoCloseable {
      * {@link IllegalStateException} carrying its message.
      */
     Optional<SessionHostModelState> model(String sessionId) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        return Optional.of(parseModelState(requestState(feed.getModel(sessionId),
-            "the session's host did not answer the model request in time")));
+        return withOwner(sessionId, feed -> Optional.of(parseModelState(requestState(
+            feed.getModel(sessionId),
+            "the session's host did not answer the model request in time"))));
     }
 
     /** Forwards one model selection to the owning worker; same contract as above. */
     Optional<SessionHostModelState> selectModel(String sessionId, String model) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        return Optional.of(parseModelState(requestState(feed.setModel(sessionId, model),
-            "the session's host did not answer the model change in time")));
+        return withOwner(sessionId, feed -> Optional.of(parseModelState(requestState(
+            feed.setModel(sessionId, model),
+            "the session's host did not answer the model change in time"))));
     }
 
     /** Forwards one effort read to the worker that hosts {@code sessionId}. */
     Optional<SessionHostEffortState> effort(String sessionId) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        return Optional.of(parseEffortState(requestState(feed.getEffort(sessionId),
-            "the session's host did not answer the effort request in time")));
+        return withOwner(sessionId, feed -> Optional.of(parseEffortState(requestState(
+            feed.getEffort(sessionId),
+            "the session's host did not answer the effort request in time"))));
     }
 
     /**
@@ -402,10 +413,9 @@ final class RemoteWorkerPool implements AutoCloseable {
 
     /** Forwards one effort selection to the owning worker; same contract as above. */
     Optional<SessionHostEffortState> selectEffort(String sessionId, String effort) {
-        RemoteWorkerFeed feed = ownerOf(sessionId);
-        if (feed == null) return Optional.empty();
-        return Optional.of(parseEffortState(requestState(feed.setEffort(sessionId, effort),
-            "the session's host did not answer the effort change in time")));
+        return withOwner(sessionId, feed -> Optional.of(parseEffortState(requestState(
+            feed.setEffort(sessionId, effort),
+            "the session's host did not answer the effort change in time"))));
     }
 
     /**
@@ -452,13 +462,15 @@ final class RemoteWorkerPool implements AutoCloseable {
     }
 
     /**
-     * The worker currently claiming {@code sessionId}, or null. Polls the same
-     * snapshot {@link #owns} uses so a freshly activated session routes here too.
+     * Runs {@code action} against the worker currently claiming {@code sessionId}, or returns
+     * empty when not remote-owned. Polls the same snapshot {@link #owns} uses so a freshly
+     * activated session routes here too.
      */
-    private RemoteWorkerFeed ownerOf(String sessionId) {
-        if (sessionId == null) return null;
-        if (!owns(sessionId)) return null;
-        return owners.get(sessionId);
+    private <T> Optional<T> withOwner(
+            String sessionId, Function<RemoteWorkerFeed, Optional<T>> action) {
+        if (sessionId == null || !owns(sessionId)) return Optional.empty();
+        RemoteWorkerFeed feed = owners.get(sessionId);
+        return feed == null ? Optional.empty() : action.apply(feed);
     }
 
     private static SessionHostPermissionState parsePermissionState(JsonNode payload) {
@@ -509,16 +521,16 @@ final class RemoteWorkerPool implements AutoCloseable {
             // The host ended this link (a restart, a re-attach); nothing will
             // ever answer on it again, so drop it and dial a fresh one rather
             // than pinning a dead connection for the life of this process.
-            RemoteWorkerFeed dead = feed;
-            dead.close();
-            feeds.remove(worker.socket());
-            owners.entrySet().removeIf(entry -> entry.getValue() == dead);
+            try (RemoteWorkerFeed dead = feeds.remove(worker.socket())) {
+                if (dead != null) {
+                    owners.entrySet().removeIf(entry -> entry.getValue() == dead);
+                }
+            }
             feed = null;
         }
         if (feed == null) {
-            feed = connect(worker);
-            if (feed == null) return Optional.empty();
-            feeds.put(worker.socket(), feed);
+            if (!connectAndRegister(worker)) return Optional.empty();
+            feed = feeds.get(worker.socket());
         }
         try {
             JsonNode response = feed.listSessions()
@@ -541,29 +553,38 @@ final class RemoteWorkerPool implements AutoCloseable {
                 .removeIf(entry -> entry.getValue() == owner && !listed.contains(entry.getKey()));
             return Optional.of(sessions);
         } catch (ExecutionException | TimeoutException _) {
-            feeds.remove(worker.socket());
-            feed.close();
-            return Optional.empty();
+            try (RemoteWorkerFeed _ = feeds.remove(worker.socket())) {
+                return Optional.empty();
+            }
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return Optional.empty();
         }
     }
 
-    private RemoteWorkerFeed connect(WebWorkerRegistration worker) {
+    private boolean connectAndRegister(WebWorkerRegistration worker) {
         SessionLinkEndpoint endpoint;
         try {
             endpoint = SessionLinkEndpoint.parse(worker.socket());
         } catch (IllegalArgumentException _) {
-            return null;
+            return false;
         }
-        RemoteWorkerFeed feed = new RemoteWorkerFeed(hub, endpoint, worker.token());
+        long pid = worker.pid();
         try {
-            feed.start();
-            return feed;
+            feeds.put(worker.socket(), RemoteWorkerFeed.connect(
+                hub, endpoint, worker.token(), () -> notifyWorkerDisconnected(pid)));
+            return true;
         } catch (IOException _) {
-            feed.close();
-            return null;
+            return false;
+        }
+    }
+
+    private void notifyWorkerDisconnected(long pid) {
+        if (closed) return;
+        try {
+            onWorkerDisconnected.accept(pid);
+        } catch (RuntimeException failure) {
+            log.debug("[remote-pool] worker-disconnected listener failed for pid={}", pid, failure);
         }
     }
 

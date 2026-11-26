@@ -44,20 +44,30 @@ public final class SessionLinkClient implements AutoCloseable {
     private final SessionLinkEndpoint endpoint;
     private final String token;
     private final Consumer<SessionLinkFrame> listener;
+    private final Runnable onClose;
     private final Map<String, CompletableFuture<SessionLinkFrame>> pending = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile SocketChannel channel;
 
     public SessionLinkClient(Path socketPath, String token, Consumer<SessionLinkFrame> listener) {
         this(new SessionLinkEndpoint.UnixDomain(Objects.requireNonNull(socketPath, "socketPath")),
-            token, listener);
+            token, listener, null);
     }
 
     public SessionLinkClient(
             SessionLinkEndpoint endpoint, String token, Consumer<SessionLinkFrame> listener) {
+        this(endpoint, token, listener, null);
+    }
+
+    public SessionLinkClient(
+            SessionLinkEndpoint endpoint,
+            String token,
+            Consumer<SessionLinkFrame> listener,
+            Runnable onClose) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.token = Objects.requireNonNull(token, "token");
         this.listener = Objects.requireNonNull(listener, "listener");
+        this.onClose = onClose != null ? onClose : () -> {};
     }
 
     /** Opens the socket and authenticates with {@code link.hello}. */
@@ -222,6 +232,11 @@ public final class SessionLinkClient implements AutoCloseable {
             reply.completeExceptionally(gone);
         }
         pending.clear();
+        try {
+            onClose.run();
+        } catch (RuntimeException _) {
+            // Listener failures must never prevent clean client teardown.
+        }
     }
 
     /** A request the peer refused with an error frame. */

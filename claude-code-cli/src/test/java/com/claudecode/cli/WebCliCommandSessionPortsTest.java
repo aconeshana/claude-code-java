@@ -53,7 +53,7 @@ class WebCliCommandSessionPortsTest {
         CliHeadlessSessionFactory factory = new CliHeadlessSessionFactory(
             new EmptyStreamingClient(), new ToolRegistry(), new DefaultQuerySessionFactory(),
             new PermissionGate(ToolPermissionContext.of(project)),
-            MODEL, project.toString(), new NoCustomModels(), true);
+            MODEL, new NoCustomModels(), true);
         headless = new CliHeadlessGatewaySessions(factory, project.toString());
         headless.open(new GatewayHeadlessSessions.OpenRequest(SESSION, project.toString()));
     }

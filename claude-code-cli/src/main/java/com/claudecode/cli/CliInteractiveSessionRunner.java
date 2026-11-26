@@ -391,7 +391,7 @@ final class CliInteractiveSessionRunner {
             CliHeadlessGatewaySessions headlessSessions = new CliHeadlessGatewaySessions(
                 new CliHeadlessSessionFactory(
                     client, toolRegistry, input.querySessionFactory(),
-                    permissionGate, resolvedModel, interactiveCwd, customModelCatalog,
+                    permissionGate, resolvedModel, customModelCatalog,
                     showBuiltInModelFamilies, null,
                     input.capabilityService(),
                     skillToolProvider.getSkillLoader()),
@@ -663,67 +663,67 @@ final class CliInteractiveSessionRunner {
             // The to-do board takes the same route: the board's own change feed
             // reaches a mirror client as a live frame, so the webui dock follows
             // without waiting for its next poll.
-            Runnable taskBoardBroadcast = taskBoardBroadcast(
-                taskBoard, sessionHostRuntime.registry(), gatewayRuntime);
-            hookEffects.bindUi(lanternaRepl::postSystemMessage,
-                lanternaRepl::applyHookSessionTitle);
-            CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
-                .thenRun(() -> Thread.ofVirtual()
-                    .name("interactive-optional-services")
-                    .start(() -> installOptionalInteractiveServices(
-                        optionalSettings.getNow(new OptionalInteractiveSettings(60_000, false)),
-                        lanternaRepl, hookEngine, client, engine)));
-            toolRegistry.get("Bash")
-                .filter(BashTool.class::isInstance)
-                .map(BashTool.class::cast)
-                .ifPresent(bash -> bash.setSudoPasswordInteraction(
-                    sessionHostRuntime.interactions()));
-            sessionHostRuntime.interactions().register(
-                InteractionFeatures.SUDO_PASSWORD,
-                new TuiSudoPasswordPresenter(
-                    sessionHostRuntime.interactions(),
-                    lanternaRepl::promptSudoPassword,
-                    lanternaRepl::dismissSudoPassword));
-            if (input.startupResumePicker()) {
-                lanternaRepl.requestStartupResumePicker(input.startupResumeSearchTerm());
-            }
-            lanternaRepl.setModel(resolvedModel);
-            lanternaRepl.setVerbose(verbose);
-            // Bind the progress sink to the REPL (engine config was built earlier,
-            // so the sink is late-bound via setScreen).
-            progressSink.setScreen(lanternaRepl);
-            // Install the REPL-bound LSP recommendation trigger only after
-            // the screen exists; its lifecycle and response persistence stay
-            // encapsulated in CliLspIntegration.
-            lspIntegration.attachRecommendationTrigger(engine, lanternaRepl);
-            lanternaRepl.sessionHostReady().thenRunAsync(() -> {
-                try {
-                    sessionHostRuntime.start();
-                } catch (RuntimeException failure) {
-                    log.warn("Session Host IM endpoint could not start", failure);
+            try (AutoCloseable _ = taskBoardBroadcast(
+                    taskBoard, sessionHostRuntime.registry(), gatewayRuntime)) {
+                hookEffects.bindUi(lanternaRepl::postSystemMessage,
+                    lanternaRepl::applyHookSessionTitle);
+                CompletableFuture.allOf(optionalSettings, lanternaRepl.sessionHostReady())
+                    .thenRun(() -> Thread.ofVirtual()
+                        .name("interactive-optional-services")
+                        .start(() -> installOptionalInteractiveServices(
+                            optionalSettings.getNow(new OptionalInteractiveSettings(60_000, false)),
+                            lanternaRepl, hookEngine, client, engine)));
+                toolRegistry.get("Bash")
+                    .filter(BashTool.class::isInstance)
+                    .map(BashTool.class::cast)
+                    .ifPresent(bash -> bash.setSudoPasswordInteraction(
+                        sessionHostRuntime.interactions()));
+                sessionHostRuntime.interactions().register(
+                    InteractionFeatures.SUDO_PASSWORD,
+                    new TuiSudoPasswordPresenter(
+                        sessionHostRuntime.interactions(),
+                        lanternaRepl::promptSudoPassword,
+                        lanternaRepl::dismissSudoPassword));
+                if (input.startupResumePicker()) {
+                    lanternaRepl.requestStartupResumePicker(input.startupResumeSearchTerm());
                 }
-            });
-            // Register /mcp and /tools now that the client manager exists (see ReplWiring).
-            McpCommand mcpCmd = new McpCommand(mcpManagement);
-            mcpCmd.setDialogLauncher(commandUi::openMcp);
-            cmdRegistry.registerBuiltIn(mcpCmd);
-            cmdRegistry.registerBuiltIn(new ToolsCommand());
-            if (input.capabilityService() != null) {
-                input.capabilityService().attachCommandRegistry(cmdRegistry);
-            }
-            lanternaRepl.setToolNames(toolRegistry.getAll().stream()
-                .map(Tool::name)
-                .collect(Collectors.toList()));
-            try {
-                lanternaRepl.run();
-                shutdownPort.awaitCompletion(SHUTDOWN_COMPLETION_TIMEOUT);
-                return 0;
-            } finally {
-                permissionModeBroadcast.run();
-                taskBoardBroadcast.run();
-                permissionModeSync.run();
-                sessionHostRuntime.close();
-                gatewayRuntime.close();
+                lanternaRepl.setModel(resolvedModel);
+                lanternaRepl.setVerbose(verbose);
+                // Bind the progress sink to the REPL (engine config was built earlier,
+                // so the sink is late-bound via setScreen).
+                progressSink.setScreen(lanternaRepl);
+                // Install the REPL-bound LSP recommendation trigger only after
+                // the screen exists; its lifecycle and response persistence stay
+                // encapsulated in CliLspIntegration.
+                lspIntegration.attachRecommendationTrigger(engine, lanternaRepl);
+                lanternaRepl.sessionHostReady().thenRunAsync(() -> {
+                    try {
+                        sessionHostRuntime.start();
+                    } catch (RuntimeException failure) {
+                        log.warn("Session Host IM endpoint could not start", failure);
+                    }
+                });
+                // Register /mcp and /tools now that the client manager exists (see ReplWiring).
+                McpCommand mcpCmd = new McpCommand(mcpManagement);
+                mcpCmd.setDialogLauncher(commandUi::openMcp);
+                cmdRegistry.registerBuiltIn(mcpCmd);
+                cmdRegistry.registerBuiltIn(new ToolsCommand());
+                if (input.capabilityService() != null) {
+                    input.capabilityService().attachCommandRegistry(cmdRegistry);
+                }
+                lanternaRepl.setToolNames(toolRegistry.getAll().stream()
+                    .map(Tool::name)
+                    .collect(Collectors.toList()));
+                try {
+                    lanternaRepl.run();
+                    shutdownPort.awaitCompletion(SHUTDOWN_COMPLETION_TIMEOUT);
+                    return 0;
+                } finally {
+                    permissionModeBroadcast.run();
+                    permissionModeSync.run();
+                    sessionHostRuntime.close();
+                    gatewayRuntime.close();
+                }
             }
         } catch (Exception e) {
             log.error("Lanterna UI failed", e);
@@ -1467,25 +1467,17 @@ final class CliInteractiveSessionRunner {
      * waiting for the model to touch it again. Frames are addressed to the
      * active session and dropped when none is live.
      */
-    static Runnable taskBoardBroadcast(
+    static AutoCloseable taskBoardBroadcast(
             TaskBoardPort taskBoard, SessionHostRegistry registry,
             CliGatewayRuntime gatewayRuntime) {
         if (taskBoard == null) return () -> { };
-        AutoCloseable subscription = taskBoard.subscribe(snapshot -> {
+        return taskBoard.subscribe(snapshot -> {
             MirrorHub mirror = gatewayRuntime.mirrorOrNull();
             if (mirror == null) return;
             registry.currentActivation()
                 .map(SessionHostRegistry.ActivationResult::session)
                 .ifPresent(session -> mirror.publishTaskBoard(session.info().id(), snapshot));
         });
-        return () -> {
-            try {
-                subscription.close();
-            } catch (Exception _) {
-                // Teardown must not fail the session; the subscription is the
-                // only thing not released and the board is being discarded too.
-            }
-        };
     }
 
     /**

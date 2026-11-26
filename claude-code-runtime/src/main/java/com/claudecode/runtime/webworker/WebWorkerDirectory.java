@@ -97,13 +97,6 @@ public record WebWorkerDirectory(Path directory) {
         return List.copyOf(live);
     }
 
-    /**
-     * Removes this process's registration; safe to call more than once.
-     */
-    public void unregister(long pid) {
-        deleteQuietly(fileFor(pid));
-    }
-
     private Path fileFor(long pid) {
         return directory.resolve(pid + ".json");
     }

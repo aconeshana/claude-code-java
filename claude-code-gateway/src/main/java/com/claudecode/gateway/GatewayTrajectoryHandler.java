@@ -575,6 +575,17 @@ final class GatewayTrajectoryHandler {
         return out;
     }
 
+    private record AssistantStepAggregation(
+            String text,
+            String thinking,
+            List<ToolUseBlock> toolCalls,
+            ArrayNode sourceBlocks,
+            Usage stepUsage,
+            String model,
+            boolean isError,
+            Long firstMsgTs,
+            Long lastMsgTs) {}
+
     private static void projectAssistantStep(
             ObjectMapper mapper,
             long turn,
@@ -595,6 +606,59 @@ final class GatewayTrajectoryHandler {
             ProjectedSection activeTurnSection,
             List<ObjectNode> allRequestNumbers) {
 
+        AssistantStepAggregation agg = aggregateAssistantStep(mapper, stepMessages, sm, timestampsByUuid);
+        Long stepStartedAt = sm != null && sm.stepStartMs != null
+            ? sm.stepStartMs
+            : (trace != null && trace.startedAt() > 0 ? trace.startedAt() : agg.firstMsgTs());
+        Long stepCompletedAt = sm != null && sm.assistantMessageMs != null
+            ? sm.assistantMessageMs
+            : (trace != null && trace.completedAt() > 0 ? trace.completedAt() : agg.lastMsgTs());
+        boolean usageProvided = hasAnyUsage(agg.stepUsage());
+
+        ObjectNode asstCell = buildAssistantCell(
+            mapper, stepMessages.getFirst(), agg, sm, trace,
+            stepStartedAt, stepCompletedAt, usageProvided, nextRecordIndex);
+
+        ObjectNode stepGroup = mapper.createObjectNode();
+        stepGroup.put("kind", "step");
+        stepGroup.put("step", step);
+        ArrayNode cells = stepGroup.putArray("cells");
+        cells.add(asstCell);
+
+        Long latestGroupEndMs = appendToolCells(
+            mapper, turn, step, agg.toolCalls(), stepCompletedAt,
+            outcomesByCallId, toolStartByCallId, toolEndByCallId,
+            subagents, activeToolSchemas, currentAgentDepth, nextRecordIndex, cells);
+
+        if (sm != null && sm.stepEndMs != null
+                && (latestGroupEndMs == null || sm.stepEndMs > latestGroupEndMs)) {
+            latestGroupEndMs = sm.stepEndMs;
+        }
+        if (stepStartedAt != null && latestGroupEndMs != null && latestGroupEndMs >= stepStartedAt) {
+            stepGroup.put("durationMs", latestGroupEndMs - stepStartedAt);
+        }
+        activeTurnSection.groups.add(stepGroup);
+
+        // Build 4-protocol TrajectoryRequestNumber entry!
+        allRequestNumbers.add(buildAssistantRequestNumber(
+            mapper,
+            nextRequestNumber[0]++,
+            turn,
+            step,
+            trace,
+            agg.model(),
+            stepStartedAt,
+            stepCompletedAt,
+            agg.isError(),
+            usageProvided ? agg.stepUsage() : null,
+            runningTotals));
+    }
+
+    private static AssistantStepAggregation aggregateAssistantStep(
+            ObjectMapper mapper,
+            List<AssistantMessage> stepMessages,
+            StepMetrics sm,
+            Map<String, Long> timestampsByUuid) {
         StringBuilder textOut = new StringBuilder();
         StringBuilder thinkingOut = new StringBuilder();
         List<ToolUseBlock> toolCalls = new ArrayList<>();
@@ -623,53 +687,7 @@ final class GatewayTrajectoryHandler {
             }
             if (asst.message().content() == null) continue;
             for (ContentBlock block : asst.message().content()) {
-                switch (block) {
-                    case ThinkingBlock tb -> {
-                        if (StringUtils.isNotEmpty(tb.thinking())) {
-                            if (!thinkingOut.isEmpty()) thinkingOut.append("\n\n");
-                            thinkingOut.append(tb.thinking());
-                            ObjectNode sb = sourceBlocks.addObject();
-                            sb.put("type", "thinking");
-                            sb.put("content", truncateDetail(tb.thinking()));
-                        }
-                    }
-                    case RedactedThinkingBlock _ -> {
-                        ObjectNode sb = sourceBlocks.addObject();
-                        sb.put("type", "thinking");
-                        sb.put("content", "[redacted thinking]");
-                    }
-                    case TextBlock txt -> {
-                        if (StringUtils.isNotEmpty(txt.text())) {
-                            if (!textOut.isEmpty()) textOut.append("\n\n");
-                            textOut.append(txt.text());
-                            ObjectNode sb = sourceBlocks.addObject();
-                            sb.put("type", "text");
-                            sb.put("content", truncateDetail(txt.text()));
-                        }
-                    }
-                    case ToolUseBlock tub -> {
-                        toolCalls.add(tub);
-                        ObjectNode sb = sourceBlocks.addObject();
-                        sb.put("type", "tool-call");
-                        sb.put("callId", tub.id());
-                        sb.put("toolName", tub.name());
-                        sb.put("content", tub.input() != null ? truncateDetail(tub.input().toString()) : "{}");
-                    }
-                    case ServerToolUseBlock stub -> {
-                        ObjectNode sb = sourceBlocks.addObject();
-                        sb.put("type", "server_tool_use");
-                        sb.put("callId", stub.id());
-                        sb.put("toolName", stub.name());
-                        sb.put("content", stub.input() != null ? truncateDetail(stub.input().toString()) : "{}");
-                    }
-                    case ServerToolResultBlock strb -> {
-                        ObjectNode sb = sourceBlocks.addObject();
-                        sb.put("type", "server_tool_result");
-                        sb.put("toolName", strb.name());
-                        sb.put("content", strb.content() != null ? truncateDetail(strb.content().toString()) : "");
-                    }
-                    default -> { }
-                }
+                collectAssistantBlock(block, textOut, thinkingOut, toolCalls, sourceBlocks);
             }
         }
 
@@ -683,35 +701,105 @@ final class GatewayTrajectoryHandler {
                 sm.usageEvent.cacheReadTokens());
         }
 
-        Long stepStartedAt = sm != null && sm.stepStartMs != null
-            ? sm.stepStartMs
-            : (trace != null && trace.startedAt() > 0 ? trace.startedAt() : firstMsgTs);
-        Long stepCompletedAt = sm != null && sm.assistantMessageMs != null
-            ? sm.assistantMessageMs
-            : (trace != null && trace.completedAt() > 0 ? trace.completedAt() : lastMsgTs);
+        return new AssistantStepAggregation(
+            textOut.toString(), thinkingOut.toString(), toolCalls, sourceBlocks,
+            stepUsage, model, isError, firstMsgTs, lastMsgTs);
+    }
+
+    private static void collectAssistantBlock(
+            ContentBlock block,
+            StringBuilder textOut,
+            StringBuilder thinkingOut,
+            List<ToolUseBlock> toolCalls,
+            ArrayNode sourceBlocks) {
+        switch (block) {
+            case ThinkingBlock tb -> {
+                if (StringUtils.isNotEmpty(tb.thinking())) {
+                    if (!thinkingOut.isEmpty()) thinkingOut.append("\n\n");
+                    thinkingOut.append(tb.thinking());
+                    ObjectNode sb = sourceBlocks.addObject();
+                    sb.put("type", "thinking");
+                    sb.put("content", truncateDetail(tb.thinking()));
+                }
+            }
+            case RedactedThinkingBlock _ -> {
+                ObjectNode sb = sourceBlocks.addObject();
+                sb.put("type", "thinking");
+                sb.put("content", "[redacted thinking]");
+            }
+            case TextBlock txt -> {
+                if (StringUtils.isNotEmpty(txt.text())) {
+                    if (!textOut.isEmpty()) textOut.append("\n\n");
+                    textOut.append(txt.text());
+                    ObjectNode sb = sourceBlocks.addObject();
+                    sb.put("type", "text");
+                    sb.put("content", truncateDetail(txt.text()));
+                }
+            }
+            case ToolUseBlock tub -> {
+                toolCalls.add(tub);
+                ObjectNode sb = sourceBlocks.addObject();
+                sb.put("type", "tool-call");
+                sb.put("callId", tub.id());
+                sb.put("toolName", tub.name());
+                sb.put("content", tub.input() != null ? truncateDetail(tub.input().toString()) : "{}");
+            }
+            case ServerToolUseBlock stub -> {
+                ObjectNode sb = sourceBlocks.addObject();
+                sb.put("type", "server_tool_use");
+                sb.put("callId", stub.id());
+                sb.put("toolName", stub.name());
+                sb.put("content", stub.input() != null ? truncateDetail(stub.input().toString()) : "{}");
+            }
+            case ServerToolResultBlock strb -> {
+                ObjectNode sb = sourceBlocks.addObject();
+                sb.put("type", "server_tool_result");
+                sb.put("toolName", strb.name());
+                sb.put("content", strb.content() != null ? truncateDetail(strb.content().toString()) : "");
+            }
+            default -> { }
+        }
+    }
+
+    private static boolean hasAnyUsage(Usage usage) {
+        return usage.inputTokens() > 0
+            || usage.outputTokens() > 0
+            || usage.cacheReadInputTokens() > 0
+            || usage.cacheCreationInputTokens() > 0;
+    }
+
+    private static ObjectNode buildAssistantCell(
+            ObjectMapper mapper,
+            AssistantMessage anchorMsg,
+            AssistantStepAggregation agg,
+            StepMetrics sm,
+            LlmRequestTraceRecord trace,
+            Long stepStartedAt,
+            Long stepCompletedAt,
+            boolean usageProvided,
+            int[] nextRecordIndex) {
         Double assistantSeconds = (stepStartedAt != null && stepCompletedAt != null
                 && stepCompletedAt >= stepStartedAt)
             ? (stepCompletedAt - stepStartedAt) / 1000.0
             : null;
 
-        AssistantMessage anchorMsg = stepMessages.getFirst();
         ObjectNode asstCell = mapper.createObjectNode();
         asstCell.put("index", nextRecordIndex[0]++);
         asstCell.put("recordId", "message\u0000" + anchorMsg.uuid());
         asstCell.put("kind", "message");
         asstCell.put("text", "");
-        if (!textOut.isEmpty()) {
-            String fullText = truncateDetail(textOut.toString());
+        if (!agg.text().isEmpty()) {
+            String fullText = truncateDetail(agg.text());
             asstCell.put("previewMarkdown", fullText);
             asstCell.put("outputDetail", fullText);
         }
-        if (!thinkingOut.isEmpty()) {
-            asstCell.put("thinkingDetail", truncateDetail(thinkingOut.toString()));
+        if (!agg.thinking().isEmpty()) {
+            asstCell.put("thinkingDetail", truncateDetail(agg.thinking()));
         }
-        if (!sourceBlocks.isEmpty()) {
-            asstCell.set("sourceBlocks", sourceBlocks);
+        if (!agg.sourceBlocks().isEmpty()) {
+            asstCell.set("sourceBlocks", agg.sourceBlocks());
         }
-        if (isError || (trace != null && Strings.CS.equals("failed", trace.status()))) {
+        if (agg.isError() || (trace != null && Strings.CS.equals("failed", trace.status()))) {
             asstCell.put("isError", true);
         }
         if (assistantSeconds != null) {
@@ -723,10 +811,7 @@ final class GatewayTrajectoryHandler {
             asstCell.put("startedAt", stepStartedAt);
         }
 
-        boolean usageProvided = stepUsage.inputTokens() > 0
-            || stepUsage.outputTokens() > 0
-            || stepUsage.cacheReadInputTokens() > 0
-            || stepUsage.cacheCreationInputTokens() > 0;
+        Usage stepUsage = agg.stepUsage();
         if (usageProvided) {
             asstCell.put("input", stepUsage.inputTokens());
             asstCell.put("cacheRead", stepUsage.cacheReadInputTokens());
@@ -750,14 +835,23 @@ final class GatewayTrajectoryHandler {
         } else {
             metricsNode.putNull("outputTokens");
         }
+        return asstCell;
+    }
 
-        ObjectNode stepGroup = mapper.createObjectNode();
-        stepGroup.put("kind", "step");
-        stepGroup.put("step", step);
-        ArrayNode cells = stepGroup.putArray("cells");
-        cells.add(asstCell);
-
-        // Compute parallel tool call batches within this step!
+    private static Long appendToolCells(
+            ObjectMapper mapper,
+            long turn,
+            long step,
+            List<ToolUseBlock> toolCalls,
+            Long stepCompletedAt,
+            Map<String, ToolOutcome> outcomesByCallId,
+            Map<String, Long> toolStartByCallId,
+            Map<String, Long> toolEndByCallId,
+            Map<String, TrajectoryTranscriptReader.SubagentSummary> subagents,
+            Map<String, String> activeToolSchemas,
+            int currentAgentDepth,
+            int[] nextRecordIndex,
+            ArrayNode cells) {
         Map<String, ParallelToolMeta> parallelByCallId =
             computeParallelBatches(mapper, turn, step, toolCalls, toolStartByCallId, toolEndByCallId);
 
@@ -775,132 +869,140 @@ final class GatewayTrajectoryHandler {
             if (tEnd != null && (latestGroupEndMs == null || tEnd > latestGroupEndMs)) {
                 latestGroupEndMs = tEnd;
             }
-            Double toolSeconds = (tStart != null && tEnd != null && tEnd >= tStart)
-                ? (tEnd - tStart) / 1000.0
-                : null;
 
-            ObjectNode toolCell = mapper.createObjectNode();
-            toolCell.put("index", nextRecordIndex[0]++);
-            toolCell.put("recordId", "tool\u0000call\u0000" + tub.id());
-            toolCell.put("kind", "tool");
-            toolCell.put("callId", tub.id());
-            toolCell.put("toolName", tub.name());
-            toolCell.put("text", formatToolCallSummary(tub.name(), tub.input()));
-            toolCell.put("inputDetail", tub.input() != null
-                ? truncateDetail(prettyJson(mapper, tub.input())) : "{}");
-            String schemaJson = activeToolSchemas.get(tub.name());
-            if (schemaJson != null) {
-                toolCell.put("schemaDetail", schemaJson);
-            }
-            if (outcome != null && outcome.result() != null) {
-                String outText = extractToolResultText(outcome.result());
-                toolCell.put("result", firstLineSummary(outText, 120));
-                toolCell.put("outputDetail", truncateDetail(outText));
-                if (outcome.result().isError()) {
-                    toolCell.put("isError", true);
-                }
-            }
-            if (toolSeconds != null) {
-                toolCell.put("timeSeconds", toolSeconds);
-            } else {
-                toolCell.putNull("timeSeconds");
-            }
-            if (tStart != null) {
-                toolCell.put("startedAt", tStart);
-            }
+            ObjectNode toolCell = buildToolCell(
+                mapper, tub, outcome, tStart, tEnd,
+                activeToolSchemas.get(tub.name()), parallelByCallId.get(tub.id()), nextRecordIndex);
 
-            // Parallel tool call metadata!
-            ParallelToolMeta pMeta = parallelByCallId.get(tub.id());
-            if (pMeta != null) {
-                toolCell.put("parallelGroupId", pMeta.groupId());
-                toolCell.put("parallelSize", pMeta.size());
-                toolCell.put("parallelIndex", pMeta.index());
-                if (pMeta.batchWallMs() != null) {
-                    toolCell.put("parallelBatchWallMs", pMeta.batchWallMs());
-                }
-                if (pMeta.batchSavedMs() != null && pMeta.batchSavedMs() > 0) {
-                    toolCell.put("parallelBatchSavedMs", pMeta.batchSavedMs());
-                }
-                if (pMeta.siblings() != null) {
-                    toolCell.set("parallelSiblings", pMeta.siblings());
-                }
-            }
-
-            // Subagent (`Agent` / `Task`) linkage + inline subtool rows!
-            TrajectoryTranscriptReader.SubagentSummary subSummary = null;
-            if ((Strings.CS.equals("Agent", tub.name()) || Strings.CS.equals("Task", tub.name()))
-                    && currentAgentDepth < MAX_SUBAGENT_DEPTH) {
-                String subId = extractSubagentId(outcome);
-                if (StringUtils.isNotBlank(subId)) {
-                    subSummary = subagents.get(subId);
-                    toolCell.put("subagentId", subId);
-                    toolCell.put("subagentLabel", formatSubagentLabel(tub.input(), subSummary));
-                    if (subSummary != null) {
-                        toolCell.put("subagentSteps", subSummary.stepCount());
-                        toolCell.put("subagentTools", subSummary.toolCount());
-                        if (StringUtils.isNotBlank(subSummary.model())) {
-                            toolCell.put("subagentModel", subSummary.model());
-                        }
-                    }
-                }
-            }
-
+            TrajectoryTranscriptReader.SubagentSummary subSummary =
+                attachSubagentMetadata(toolCell, tub, outcome, subagents, currentAgentDepth);
             cells.add(toolCell);
 
             if (subSummary != null && !subSummary.subtools().isEmpty()) {
-                for (TrajectoryTranscriptReader.SubtoolPreview sub : subSummary.subtools()) {
-                    ObjectNode subCell = mapper.createObjectNode();
-                    subCell.put("index", nextRecordIndex[0]++);
-                    subCell.put("recordId", "subtool\u0000call\u0000" + sub.callId());
-                    subCell.put("kind", "subtool");
-                    subCell.put("callId", sub.callId());
-                    subCell.put("toolName", sub.toolName());
-                    subCell.put("text", formatToolCallSummary(sub.toolName(), sub.args()));
-                    subCell.put("inputDetail", sub.args() != null
-                        ? truncateDetail(prettyJson(mapper, sub.args())) : "{}");
-                    if (sub.output() != null) {
-                        subCell.put("result", firstLineSummary(sub.output(), 120));
-                        subCell.put("outputDetail", truncateDetail(sub.output()));
-                    }
-                    if (sub.isError()) {
-                        subCell.put("isError", true);
-                    }
-                    if (sub.startedAt() != null && sub.completedAt() != null
-                            && sub.completedAt() >= sub.startedAt()) {
-                        subCell.put("timeSeconds", (sub.completedAt() - sub.startedAt()) / 1000.0);
-                    } else {
-                        subCell.putNull("timeSeconds");
-                    }
-                    if (sub.startedAt() != null) {
-                        subCell.put("startedAt", sub.startedAt());
-                    }
-                    cells.add(subCell);
-                }
+                appendSubtoolCells(mapper, subSummary.subtools(), nextRecordIndex, cells);
             }
         }
+        return latestGroupEndMs;
+    }
 
-        if (sm != null && sm.stepEndMs != null
-                && (latestGroupEndMs == null || sm.stepEndMs > latestGroupEndMs)) {
-            latestGroupEndMs = sm.stepEndMs;
-        }
-        if (stepStartedAt != null && latestGroupEndMs != null && latestGroupEndMs >= stepStartedAt) {
-            stepGroup.put("durationMs", latestGroupEndMs - stepStartedAt);
-        }
-        activeTurnSection.groups.add(stepGroup);
+    private static ObjectNode buildToolCell(
+            ObjectMapper mapper,
+            ToolUseBlock tub,
+            ToolOutcome outcome,
+            Long tStart,
+            Long tEnd,
+            String schemaJson,
+            ParallelToolMeta pMeta,
+            int[] nextRecordIndex) {
+        Double toolSeconds = (tStart != null && tEnd != null && tEnd >= tStart)
+            ? (tEnd - tStart) / 1000.0
+            : null;
 
-        // Build 4-protocol TrajectoryRequestNumber entry!
-        allRequestNumbers.add(buildAssistantRequestNumber(
-            mapper,
-            nextRequestNumber[0]++,
-            turn,
-            step,
-            trace,
-            model,
-            stepStartedAt,
-            stepCompletedAt,
-            isError,
-            usageProvided ? stepUsage : null,
-            runningTotals));
+        ObjectNode toolCell = mapper.createObjectNode();
+        toolCell.put("index", nextRecordIndex[0]++);
+        toolCell.put("recordId", "tool\u0000call\u0000" + tub.id());
+        toolCell.put("kind", "tool");
+        toolCell.put("callId", tub.id());
+        toolCell.put("toolName", tub.name());
+        toolCell.put("text", formatToolCallSummary(tub.name(), tub.input()));
+        toolCell.put("inputDetail", tub.input() != null
+            ? truncateDetail(prettyJson(mapper, tub.input())) : "{}");
+        if (schemaJson != null) {
+            toolCell.put("schemaDetail", schemaJson);
+        }
+        if (outcome != null && outcome.result() != null) {
+            String outText = extractToolResultText(outcome.result());
+            toolCell.put("result", firstLineSummary(outText, 120));
+            toolCell.put("outputDetail", truncateDetail(outText));
+            if (outcome.result().isError()) {
+                toolCell.put("isError", true);
+            }
+        }
+        if (toolSeconds != null) {
+            toolCell.put("timeSeconds", toolSeconds);
+        } else {
+            toolCell.putNull("timeSeconds");
+        }
+        if (tStart != null) {
+            toolCell.put("startedAt", tStart);
+        }
+        if (pMeta != null) {
+            toolCell.put("parallelGroupId", pMeta.groupId());
+            toolCell.put("parallelSize", pMeta.size());
+            toolCell.put("parallelIndex", pMeta.index());
+            if (pMeta.batchWallMs() != null) {
+                toolCell.put("parallelBatchWallMs", pMeta.batchWallMs());
+            }
+            if (pMeta.batchSavedMs() != null && pMeta.batchSavedMs() > 0) {
+                toolCell.put("parallelBatchSavedMs", pMeta.batchSavedMs());
+            }
+            if (pMeta.siblings() != null) {
+                toolCell.set("parallelSiblings", pMeta.siblings());
+            }
+        }
+        return toolCell;
+    }
+
+    private static TrajectoryTranscriptReader.SubagentSummary attachSubagentMetadata(
+            ObjectNode toolCell,
+            ToolUseBlock tub,
+            ToolOutcome outcome,
+            Map<String, TrajectoryTranscriptReader.SubagentSummary> subagents,
+            int currentAgentDepth) {
+        if ((!Strings.CS.equals("Agent", tub.name()) && !Strings.CS.equals("Task", tub.name()))
+                || currentAgentDepth >= MAX_SUBAGENT_DEPTH) {
+            return null;
+        }
+        String subId = extractSubagentId(outcome);
+        if (StringUtils.isBlank(subId)) {
+            return null;
+        }
+        TrajectoryTranscriptReader.SubagentSummary subSummary = subagents.get(subId);
+        toolCell.put("subagentId", subId);
+        toolCell.put("subagentLabel", formatSubagentLabel(tub.input(), subSummary));
+        if (subSummary != null) {
+            toolCell.put("subagentSteps", subSummary.stepCount());
+            toolCell.put("subagentTools", subSummary.toolCount());
+            if (StringUtils.isNotBlank(subSummary.model())) {
+                toolCell.put("subagentModel", subSummary.model());
+            }
+        }
+        return subSummary;
+    }
+
+    private static void appendSubtoolCells(
+            ObjectMapper mapper,
+            List<TrajectoryTranscriptReader.SubtoolPreview> subtools,
+            int[] nextRecordIndex,
+            ArrayNode cells) {
+        for (TrajectoryTranscriptReader.SubtoolPreview sub : subtools) {
+            ObjectNode subCell = mapper.createObjectNode();
+            subCell.put("index", nextRecordIndex[0]++);
+            subCell.put("recordId", "subtool\u0000call\u0000" + sub.callId());
+            subCell.put("kind", "subtool");
+            subCell.put("callId", sub.callId());
+            subCell.put("toolName", sub.toolName());
+            subCell.put("text", formatToolCallSummary(sub.toolName(), sub.args()));
+            subCell.put("inputDetail", sub.args() != null
+                ? truncateDetail(prettyJson(mapper, sub.args())) : "{}");
+            if (sub.output() != null) {
+                subCell.put("result", firstLineSummary(sub.output(), 120));
+                subCell.put("outputDetail", truncateDetail(sub.output()));
+            }
+            if (sub.isError()) {
+                subCell.put("isError", true);
+            }
+            if (sub.startedAt() != null && sub.completedAt() != null
+                    && sub.completedAt() >= sub.startedAt()) {
+                subCell.put("timeSeconds", (sub.completedAt() - sub.startedAt()) / 1000.0);
+            } else {
+                subCell.putNull("timeSeconds");
+            }
+            if (sub.startedAt() != null) {
+                subCell.put("startedAt", sub.startedAt());
+            }
+            cells.add(subCell);
+        }
     }
 
     private static Map<String, ParallelToolMeta> computeParallelBatches(
