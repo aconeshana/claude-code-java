@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   Button,
-  IconApiOutline14, IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
-  IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconFolderOpenOutline16,
-  IconFollowsystemOutline16, IconLightOutline16, IconPlusOutline16, IconRefreshOutline16, IconSettingsOutline16,
+  IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
+  IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconDataOutline16,
+  IconFolderOpenOutline16, IconFollowsystemOutline16, IconGlobeOutline14,
+  IconLightOutline16, IconLinkOutline16, IconPlusOutline16, IconRefreshOutline16,
+  IconSettingsOutline16,
   Input, Menu, Pill, Switch,
 } from '@primitives'
 import {
@@ -83,12 +85,27 @@ import { useWorkspacePrefs } from '../store/workspacePrefs'
 
 type SectionId = 'general' | 'permissions' | 'models' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
 
+/**
+ * Settings navigation rail sections.
+ *
+ * **Icon uniqueness rule**: Every section MUST use a distinct icon — never reuse
+ * an icon already assigned to another section below. Prefer upstream icons from
+ * `@primitives` (or the owning vendored module, e.g. `ContextIcon`) that match
+ * the section's semantics:
+ * - `general`     → `IconSettingsOutline16`  (gear)
+ * - `permissions` → `IconChecklistOutline14` (rule switches/checklist)
+ * - `models`      → `IconDataOutline16`      (upstream `dsh-model-select` Models glyph)
+ * - `lan-gateway` → `IconGlobeOutline14`     (network / multi-protocol LAN relay)
+ * - `cc-connect`  → `IconLinkOutline16`      (external IM bridge / connector link)
+ * - `schedule`    → `IconClockOutline16`     (scheduled tasks clock)
+ * - `context`     → `ContextIcon`            (upstream `@dsh-context` glyph)
+ */
 const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
   { id: 'permissions', label: '权限', icon: <IconChecklistOutline14 className={css.navIcon} size={16} /> },
-  { id: 'models', label: '模型', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
-  { id: 'lan-gateway', label: '局域网网关', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
-  { id: 'cc-connect', label: '外部协作', icon: <IconApiOutline14 className={css.navIcon} size={16} /> },
+  { id: 'models', label: '模型', icon: <IconDataOutline16 className={css.navIcon} size={16} /> },
+  { id: 'lan-gateway', label: '局域网网关', icon: <IconGlobeOutline14 className={css.navIcon} size={16} /> },
+  { id: 'cc-connect', label: '外部协作', icon: <IconLinkOutline16 className={css.navIcon} size={16} /> },
   { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
   { id: 'context', label: '上下文', icon: <ContextIcon className={css.navIcon} size={16} /> },
 ]
@@ -194,9 +211,9 @@ export function SettingsPanel({ open, onClose }: {
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
       <div className={css.panel} role="dialog" aria-modal="true" aria-label={t('panel.title')}>
-        <nav className={css.nav}>
+        <nav className={clsx(css.nav, localCss.navColumn)}>
           <div className={css.navTitle}>{t('panel.title')}</div>
-          <div className={css.navList}>
+          <div className={clsx(css.navList, localCss.navScrollList)}>
             {SECTIONS.map((section) => (
               <button
                 key={section.id}

@@ -112,6 +112,27 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/*
+ * Upstream SettingsRoot.module.css has only a fixed handful of nav items, so
+ * its .nav/.navList do not scroll. Because this port appends the dynamic
+ * project list under .navList, enable vertical scrolling within .panel's
+ * bounded height while keeping each nav cell at its native 40px height.
+ */
+.navColumn {
+  min-height: 0;
+}
+
+.navScrollList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+.navScrollList > * {
+  flex-shrink: 0;
+}
+
 .navGroupHeader {
   display: flex;
   align-items: center;
