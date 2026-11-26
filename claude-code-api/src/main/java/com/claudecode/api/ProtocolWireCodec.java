@@ -248,12 +248,4 @@ public final class ProtocolWireCodec {
     static ApiMessage aggregateEventsToMessage(List<StreamEvent> events, String fallbackModel) {
         return WireCodecSupport.aggregateEventsToMessage(events, fallbackModel);
     }
-
-    static JsonNode camelCaseGeminiBody(JsonNode node) {
-        return GeminiWireCodec.camelCaseGeminiBody(node);
-    }
-
-    static String snakeToCamel(String s) {
-        return GeminiWireCodec.snakeToCamel(s);
-    }
 }

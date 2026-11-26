@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -77,29 +76,7 @@ final class GeminiWireCodec implements ProtocolCodec {
         "responseSchema", "responseJsonSchema", "labels"
     );
 
-    private static JsonNode camelGeminiKeys(JsonNode node) {
-        if (node == null || node.isNull()) return node;
-        if (node.isArray()) {
-            ArrayNode arr = JsonUtils.getMapper().createArrayNode();
-            for (JsonNode item : node) {
-                arr.add(camelGeminiKeys(item));
-            }
-            return arr;
-        }
-        if (!node.isObject()) return node;
-        ObjectNode out = JsonUtils.getMapper().createObjectNode();
-        node.properties().forEach(entry -> {
-            String camel = snakeToCamel(entry.getKey());
-            JsonNode val = GEMINI_CALLER_OWN_KEYS.contains(camel)
-                ? entry.getValue().deepCopy()
-                : camelGeminiKeys(entry.getValue());
-            out.set(camel, val);
-        });
-        return out;
-    }
-
-    private static CreateMessageRequest parseGeminiRequest(ObjectNode rawRoot) {
-        ObjectNode root = (ObjectNode) camelGeminiKeys(rawRoot);
+    private static CreateMessageRequest parseGeminiRequest(ObjectNode root) {
         CreateMessageRequest.Builder b = CreateMessageRequest.builder();
         b.model(GeminiClient.cleanModelPathId(root.path("model").asText("")));
         b.stream(root.path("stream").asBoolean(false));
@@ -354,7 +331,7 @@ final class GeminiWireCodec implements ProtocolCodec {
     }
 
 
-    static JsonNode camelCaseGeminiBody(JsonNode node) {
+    private static JsonNode camelCaseGeminiBody(JsonNode node) {
         if (node == null || node.isNull()) return node;
         if (node.isArray()) {
             ArrayNode arr = JsonUtils.getMapper().createArrayNode();
@@ -363,9 +340,7 @@ final class GeminiWireCodec implements ProtocolCodec {
         }
         if (!node.isObject()) return node;
         ObjectNode out = JsonUtils.getMapper().createObjectNode();
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : node.properties()) {
             String rawKey = entry.getKey();
             String camelKey = Strings.CS.contains(rawKey, "_") ? snakeToCamel(rawKey) : rawKey;
             JsonNode val = GEMINI_CALLER_OWN_KEYS.contains(camelKey)
@@ -379,7 +354,7 @@ final class GeminiWireCodec implements ProtocolCodec {
         return out;
     }
 
-    static String snakeToCamel(String s) {
+    private static String snakeToCamel(String s) {
         String[] parts = s.split("_", -1);
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < parts.length; i++) {

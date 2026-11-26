@@ -20,6 +20,7 @@ import com.claudecode.core.message.DocumentBlock;
 import com.claudecode.core.message.ImageBlock;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.message.ToolResultBlock;
+import com.claudecode.core.message.ToolUseBlock;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -376,6 +377,52 @@ class MagpieGeminiMockServerTest {
         var anthropicMsgs = ProtocolWireCodec.encodeAnthropicMessagesNode(fromChat.messages());
         assertThat(anthropicMsgs.get(0).path("content").get(0).path("type").asText())
             .isEqualTo("text");
+    }
+
+    @Test
+    void snakeCaseGeminiRequestNormalizesProtocolKeysWhilePreservingCallerOwnedFieldsAndExplicitCamelCase() {
+        String rawGemini = """
+            {
+              "model": "models/gemini-2.5-pro",
+              "system_instruction": { "parts": [{ "text": "sys-prompt" }] },
+              "generation_config": {
+                "max_output_tokens": 256,
+                "maxOutputTokens": 1024
+              },
+              "tools": [{
+                "function_declarations": [{
+                  "name": "read_file",
+                  "parameters_json_schema": {
+                    "type": "object",
+                    "properties": { "file_path": { "type": "string" } }
+                  }
+                }]
+              }],
+              "contents": [
+                { "role": "user", "parts": [{ "text": "inspect" }] },
+                {
+                  "role": "model",
+                  "parts": [{
+                    "function_call": {
+                      "id": "call_1",
+                      "name": "read_file",
+                      "args": { "file_path": "/tmp/a.txt", "line_offset": 10 }
+                    }
+                  }]
+                }
+              ]
+            }
+            """;
+        CreateMessageRequest parsed = ProtocolWireCodec.parseRequest(ModelApiProtocol.GEMINI, rawGemini);
+        assertThat(parsed.model()).isEqualTo("gemini-2.5-pro");
+        assertThat(parsed.systemPrompt()).isEqualTo("sys-prompt");
+        assertThat(parsed.maxTokens()).isEqualTo(1024);
+        assertThat(parsed.tools()).hasSize(1);
+        assertThat(parsed.tools().getFirst().inputSchema().path("properties").has("file_path")).isTrue();
+        List<?> modelBlocks = (List<?>) parsed.messages().get(1).content();
+        ToolUseBlock toolUse = (ToolUseBlock) modelBlocks.getFirst();
+        assertThat(toolUse.input().path("file_path").asText()).isEqualTo("/tmp/a.txt");
+        assertThat(toolUse.input().path("line_offset").asInt()).isEqualTo(10);
     }
 
     private static String textOf(ApiMessage msg) {
