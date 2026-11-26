@@ -1141,7 +1141,12 @@ public class InProcessTeammateTask {
      * task (owner = this teammate, status = in_progress) so two teammates don't
      * grab the same one.
      */
-    private String tryClaimNextTask(TodoStore store, String agentName) {
+    private synchronized String tryClaimNextTask(TodoStore store, String agentName) {
+        // Serialize against releaseOwnedTasks() so a teammate that is already stopping
+        // or stopped can never re-claim a task that stop() just released.
+        if (killed.get() || explicitlyKilled || ownedTasksReleased || context.abortController().isAborted()) {
+            return null;
+        }
         try {
             store.reload();
             List<Task> tasks = store.list();
