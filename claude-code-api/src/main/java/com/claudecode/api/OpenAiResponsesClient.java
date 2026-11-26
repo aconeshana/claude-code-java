@@ -607,6 +607,10 @@ public final class OpenAiResponsesClient implements LlmClient {
                 sink.accept(new StreamEvent.ContentBlockStop(index, event));
                 return;
             }
+            if (Strings.CS.equals("message", item.path("type").asText())) {
+                stopText(index, event, sink);
+                return;
+            }
             if (!Strings.CS.equals("function_call", item.path("type").asText())) return;
             textRescue.markNativeToolCall();
             FunctionCallState state = calls.computeIfAbsent(index, _ -> new FunctionCallState());

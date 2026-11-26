@@ -76,6 +76,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -111,6 +112,7 @@ class QueryLoop implements SdkEventSequencedIterator {
     private boolean done = false;
 
     private final ToolRunner toolRunner;
+    private final LoopTraceObserver traceObserver;
     /** Raw prompt when entered via {@code submitMessage(prompt, options)} (the
      *  query wrapper path); {@code null} when entered directly with a fully
      *  assembled {@link QueryParams} (the test/direct path). */
@@ -147,6 +149,7 @@ class QueryLoop implements SdkEventSequencedIterator {
 
     public QueryLoop(DefaultQuerySession engine, QueryParams params, Object prompt, SubmitOptions options) {
         this.toolRunner = params.deps() != null ? params.deps().toolRunner() : ToolRunner.resolve();
+        this.traceObserver = params.deps() != null ? params.deps().traceObserver() : LoopTraceObserver.NOOP;
         this.prompt = prompt;
         this.options = options;
         this.messageQueue = engine.getMessageQueue();
@@ -347,7 +350,7 @@ class QueryLoop implements SdkEventSequencedIterator {
             return null;
         }
         List<String> baseline = baselineSupplier.get();
-        java.util.LinkedHashSet<String> reconstructed = new java.util.LinkedHashSet<>(
+        LinkedHashSet<String> reconstructed = new LinkedHashSet<>(
             baseline != null ? baseline : List.of());
         if (contextMessages != null) {
             for (Message msg : contextMessages) {
@@ -415,6 +418,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         boolean firstTurn = true;
         String turnUserContext;
         Long apiRetryChainStartMs;
+        LoopTraceObserver.StateSnapshot iterationBeforeState;
 
         LoopContext(DefaultQuerySession engine,
                     QueryParams params,
@@ -528,6 +532,7 @@ class QueryLoop implements SdkEventSequencedIterator {
     }
 
     private LoopAction runIteration(LoopContext ctx) {
+        ctx.iterationBeforeState = snapshotState(ctx);
         if (!prepareIteration(ctx)) {
             return LoopAction.TERMINATED;
         }
@@ -589,7 +594,9 @@ class QueryLoop implements SdkEventSequencedIterator {
         if (config.maxBudgetUsd() > 0) {
             double cost = engine.getCostCalculator().calculateCost(engine.getTotalUsage());
             if (cost >= config.maxBudgetUsd()) {
-                emitResult(engine, new Terminal.MaxBudget(cost), null,
+                Terminal terminal = new Terminal.MaxBudget(cost);
+                recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.BudgetExceeded(), terminal);
+                emitResult(engine, terminal, null,
                     ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
                 return false;
             }
@@ -633,7 +640,9 @@ class QueryLoop implements SdkEventSequencedIterator {
             emit(new SDKMessage.Assistant(errorMessage, engine.getTotalUsage()));
             QueryHelpers.recordTranscript(engine, errorMessage);
             QueryHelpers.dispatchStopFailure(engine);
-            emitResult(engine, new Terminal.PromptTooLong(), null,
+            Terminal terminal = new Terminal.PromptTooLong();
+            recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.BlockingLimitReached(), terminal);
+            emitResult(engine, terminal, null,
                 ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
             return false;
         }
@@ -774,7 +783,9 @@ class QueryLoop implements SdkEventSequencedIterator {
             }
             int resultTurns = emitVisibleInterruption(
                 engine, ctx.state.turnCount(), false);
-            emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
+            Terminal terminal = new Terminal.Aborted("aborted_streaming");
+            recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.Aborted(), terminal);
+            emitResult(engine, terminal, null,
                 resultTurns, ctx.lastStopReason, ctx.loopStartTime);
             return new ModelCallOutcome.Terminated();
         }
@@ -812,7 +823,9 @@ class QueryLoop implements SdkEventSequencedIterator {
             recordLlmTrace(engine, traceCollector, traceTurn, traceStep, "assistant",
                 ctx.currentModel, headerSha256, "aborted", null);
             int resultTurns = emitVisibleInterruption(engine, ctx.state.turnCount(), false);
-            emitResult(engine, new Terminal.Aborted("aborted_streaming"), null,
+            Terminal terminal = new Terminal.Aborted("aborted_streaming");
+            recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.Aborted(), terminal);
+            emitResult(engine, terminal, null,
                 resultTurns, ctx.lastStopReason, ctx.loopStartTime);
             return new ModelCallOutcome.Terminated();
         }
@@ -830,7 +843,9 @@ class QueryLoop implements SdkEventSequencedIterator {
         maybeInjectTooLargeApiError(engine, e);
         emit(SDKMessage.error(e));
         QueryHelpers.dispatchStopFailure(engine);
-        emitResult(engine, new Terminal.StreamError(e.getMessage(), e), e,
+        Terminal terminal = new Terminal.StreamError(e.getMessage(), e);
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.StreamError(), terminal);
+        emitResult(engine, terminal, e,
             ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
         return new ModelCallOutcome.Terminated();
     }
@@ -855,7 +870,9 @@ class QueryLoop implements SdkEventSequencedIterator {
             ErrorUtils.redactedForLogging(error));
         maybeInjectTooLargeApiError(engine, error);
         QueryHelpers.dispatchStopFailure(engine);
-        emitResult(engine, new Terminal.StreamError(error.getMessage(), error), error,
+        Terminal terminal = new Terminal.StreamError(error.getMessage(), error);
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.StreamError(), terminal);
+        emitResult(engine, terminal, error,
             ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
         return new ModelCallOutcome.Terminated();
     }
@@ -867,6 +884,8 @@ class QueryLoop implements SdkEventSequencedIterator {
             return null;
         }
         if (ctx.hasAttemptedReactiveCompact) {
+            recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.ReactiveCompactAttempt(false),
+                new Terminal.StreamError("Automatic compaction failed", error));
             emitAutomaticCompactionFailure(ctx.engine, ctx.state, ctx.lastStopReason,
                 ctx.loopStartTime, error);
             return new ModelCallOutcome.Terminated();
@@ -878,8 +897,11 @@ class QueryLoop implements SdkEventSequencedIterator {
             ctx.hasAttemptedReactiveCompact = true;
             ctx.engine.setCompactionOccurred(true);
             ctx.state = ctx.state.withTransition(new Continue.PromptTooLongRecovery());
+            recordTraceNext(ctx, new LoopTraceObserver.EventSnapshot.ReactiveCompactAttempt(true));
             return new ModelCallOutcome.ContinueLoop();
         }
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.ReactiveCompactAttempt(false),
+            new Terminal.StreamError("Automatic compaction failed", error));
         emitAutomaticCompactionFailure(ctx.engine, ctx.state, ctx.lastStopReason,
             ctx.loopStartTime, error);
         return new ModelCallOutcome.Terminated();
@@ -1009,7 +1031,9 @@ class QueryLoop implements SdkEventSequencedIterator {
         }
         QueryHelpers.synthesizeMissingToolResults(ctx.engine, assistantMsg,
             "Budget exceeded at " + FormatUtils.formatCost(cost), this::emit);
-        emitResult(ctx.engine, new Terminal.MaxBudget(cost), null,
+        Terminal terminal = new Terminal.MaxBudget(cost);
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.BudgetExceeded(), terminal);
+        emitResult(ctx.engine, terminal, null,
             ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
         return true;
     }
@@ -1032,31 +1056,44 @@ class QueryLoop implements SdkEventSequencedIterator {
                 emit(new SDKMessage.Attachment("max_turns_reached",
                     "Reached max turns (" + ctx.maxTurns + ")", null));
             }
-            emitResult(engine, new Terminal.Aborted("aborted_tools"), null,
+            Terminal terminal = new Terminal.Aborted("aborted_tools");
+            recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.Aborted(), terminal);
+            emitResult(engine, terminal, null,
                 resultTurns, ctx.lastStopReason, ctx.loopStartTime);
             return LoopAction.TERMINATED;
         }
 
         if (outcome.preventContinuation()) {
-            emitResult(engine, new Terminal.HookStopped(outcome.stopReason()), null,
+            Terminal terminal = new Terminal.HookStopped(outcome.stopReason());
+            recordTraceDone(ctx,
+                new LoopTraceObserver.EventSnapshot.ToolUse(toolUseBlocks.size(), true, false, 0),
+                terminal);
+            emitResult(engine, terminal, null,
                 ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
             return LoopAction.TERMINATED;
         }
 
-        if (outcome.structuredOutput() != null) {
+        boolean producedStructuredOutput = outcome.structuredOutput() != null;
+        if (producedStructuredOutput) {
             ctx.state = ctx.state.withStructuredOutput(outcome.structuredOutput());
         }
 
+        int callsThisQuery = 0;
         // StructuredOutput calls made during this query are capped only
         // while no valid payload has been accepted. The released runtime
         // permits the final allowed attempt itself to succeed.
         if (options.hasJsonSchema()) {
             int currentCalls = MessageConstants.countToolCalls(
                 engine.getMutableMessages(), "StructuredOutput", null);
-            int callsThisQuery = currentCalls - ctx.initialStructuredOutputCalls;
+            callsThisQuery = currentCalls - ctx.initialStructuredOutputCalls;
             if (ctx.state.structuredOutput() == null
                     && callsThisQuery >= ctx.maxStructuredOutputRetries) {
-                emitResult(engine, new Terminal.MaxStructuredOutputRetries(callsThisQuery),
+                Terminal terminal = new Terminal.MaxStructuredOutputRetries(callsThisQuery);
+                recordTraceDone(ctx,
+                    new LoopTraceObserver.EventSnapshot.ToolUse(
+                        toolUseBlocks.size(), false, producedStructuredOutput, callsThisQuery),
+                    terminal);
+                emitResult(engine, terminal,
                     new RuntimeException("Failed to provide valid structured output after "
                         + ctx.maxStructuredOutputRetries + " attempts"),
                     ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime);
@@ -1076,7 +1113,10 @@ class QueryLoop implements SdkEventSequencedIterator {
             .count();
         int nextTurnCount = ctx.state.turnCount() + yieldedUserMessages;
         int nextLoopTurns = ctx.loopTurns + 1;
+        LoopTraceObserver.EventSnapshot toolEvent = new LoopTraceObserver.EventSnapshot.ToolUse(
+            toolUseBlocks.size(), false, producedStructuredOutput, callsThisQuery);
         if (isMaxTurnsExceeded(ctx, nextLoopTurns)) {
+            recordTraceDone(ctx, toolEvent, new Terminal.MaxTurns(nextLoopTurns));
             return LoopAction.TERMINATED;
         }
         ctx.loopTurns = nextLoopTurns;
@@ -1084,6 +1124,7 @@ class QueryLoop implements SdkEventSequencedIterator {
             .withMaxOutputTokensRecoveryCount(0)
             .withMaxOutputTokensOverride(null)
             .withTransition(new Continue.ToolUse(toolUseBlocks.size()));
+        recordTraceNext(ctx, toolEvent);
         ctx.sessionMetrics.endStep();
         return LoopAction.CONTINUE;
     }
@@ -1130,6 +1171,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 .withPendingToolUseSummary(null)
                 .withStopHookActive(null)
                 .withTransition(new Continue.MaxOutputTokensEscalate());
+            recordTraceNext(ctx, new LoopTraceObserver.EventSnapshot.ApiMaxOutputTokens());
             ctx.sessionMetrics.endStep();
             return LoopAction.CONTINUE;
         }
@@ -1150,6 +1192,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 .withPendingToolUseSummary(null)
                 .withStopHookActive(null)
                 .withTransition(new Continue.MaxOutputTokensRecovery(attempt));
+            recordTraceNext(ctx, new LoopTraceObserver.EventSnapshot.ApiMaxOutputTokens());
             ctx.sessionMetrics.endStep();
             return LoopAction.CONTINUE;
         }
@@ -1162,7 +1205,9 @@ class QueryLoop implements SdkEventSequencedIterator {
         QueryHelpers.dispatchStopFailure(engine,
             apiErrorMessage.error() != null
                 ? apiErrorMessage.error() : "max_output_tokens");
-        emitResult(engine, new Terminal.Normal(), null, ctx.state.turnCount(),
+        Terminal terminal = new Terminal.Normal();
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.ApiMaxOutputTokens(), terminal);
+        emitResult(engine, terminal, null, ctx.state.turnCount(),
             ctx.lastStopReason, ctx.loopStartTime);
         return LoopAction.TERMINATED;
     }
@@ -1185,7 +1230,9 @@ class QueryLoop implements SdkEventSequencedIterator {
             stopHooks.consumeGoalTransition()
                 .ifPresent(transition -> persistGoalTransition(engine, transition));
             if (stopOutcome.preventContinuation()) {
-                emitResult(engine, new Terminal.StopHookPrevented(stopOutcome.stopReason()),
+                Terminal terminal = new Terminal.StopHookPrevented(stopOutcome.stopReason());
+                recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.NaturalEndTurn(true, false), terminal);
+                emitResult(engine, terminal,
                     ctx.state.turnCount(), ctx.lastStopReason, ctx.loopStartTime,
                     ctx.state.structuredOutput());
                 return LoopAction.TERMINATED;
@@ -1197,6 +1244,7 @@ class QueryLoop implements SdkEventSequencedIterator {
                 stopHookAdditionalContext = stopOutcome.additionalContext();
             }
         }
+        boolean hookHadBlockingErrors = !stopBlockingErrors.isEmpty();
 
         // StructuredOutput completion enforcement — blocks natural termination
         // until a successful StructuredOutput tool call is recorded.
@@ -1206,7 +1254,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         }
 
         if (!stopBlockingErrors.isEmpty()) {
-            return handleStopHookBlocking(ctx, stopBlockingErrors);
+            return handleStopHookBlocking(ctx, stopBlockingErrors, hookHadBlockingErrors);
         }
         if (stopHookAdditionalContext != null) {
             QueryHelpers.injectHookContext(engine, stopHookAdditionalContext);
@@ -1221,12 +1269,19 @@ class QueryLoop implements SdkEventSequencedIterator {
                 config.autoDreamEngine().maybeRunAutoDream(engine);
             }
         }
+        recordTraceDone(ctx, new LoopTraceObserver.EventSnapshot.NaturalEndTurn(false, false),
+            new Terminal.Normal());
         return LoopAction.COMPLETE_NORMAL;
     }
 
-    private LoopAction handleStopHookBlocking(LoopContext ctx, List<String> stopBlockingErrors) {
+    private LoopAction handleStopHookBlocking(LoopContext ctx,
+                                              List<String> stopBlockingErrors,
+                                              boolean hookHadBlockingErrors) {
+        LoopTraceObserver.EventSnapshot endEvent =
+            new LoopTraceObserver.EventSnapshot.NaturalEndTurn(false, hookHadBlockingErrors);
         int nextLoopTurns = ctx.loopTurns + 1;
         if (isMaxTurnsExceeded(ctx, nextLoopTurns)) {
+            recordTraceDone(ctx, endEvent, new Terminal.MaxTurns(nextLoopTurns));
             return LoopAction.TERMINATED;
         }
         int nextBlockingCount = ctx.stopHookBlockingCount + 1;
@@ -1239,7 +1294,9 @@ class QueryLoop implements SdkEventSequencedIterator {
                     + "For Stop/SubagentStop hooks, check stop_hook_active in"
                     + " the input and return success while it's true. Set"
                     + " CLAUDE_CODE_STOP_HOOK_BLOCK_CAP to raise this limit.")));
-            emitResult(ctx.engine, new Terminal.Normal(), ctx.state.turnCount(),
+            Terminal terminal = new Terminal.Normal();
+            recordTraceDone(ctx, endEvent, terminal);
+            emitResult(ctx.engine, terminal, ctx.state.turnCount(),
                 ctx.lastStopReason, ctx.loopStartTime, ctx.state.structuredOutput());
             return LoopAction.TERMINATED;
         }
@@ -1252,6 +1309,7 @@ class QueryLoop implements SdkEventSequencedIterator {
         ctx.state = ctx.state.withStopHookActive(true)
             .withMaxOutputTokensOverride(null)
             .withTransition(new Continue.StopHookReentry());
+        recordTraceNext(ctx, endEvent);
         ctx.sessionMetrics.endStep();
         return LoopAction.CONTINUE;
     }
@@ -2453,5 +2511,66 @@ class QueryLoop implements SdkEventSequencedIterator {
         emitResult(engine, new Terminal.StreamError(
             surfaced.getMessage(), surfaced), surfaced,
             state.turnCount(), lastStopReason, loopStartTime);
+    }
+
+    private LoopTraceObserver.ConfigSnapshot snapshotConfig(LoopContext ctx) {
+        boolean allowEscalation = ctx.config.featureFlags().isEnabled(FeatureFlag.MAX_OUTPUT_TOKENS_SLOT)
+            && ctx.params.maxOutputTokensOverride() == null
+            && !ctx.config.maxTokensExplicit()
+            && StringUtils.isBlank(SubprocessEnvironment.get("CLAUDE_CODE_MAX_OUTPUT_TOKENS"));
+        return new LoopTraceObserver.ConfigSnapshot(
+            ctx.maxTurns,
+            parseStopHookBlockCap(),
+            MAX_OUTPUT_TOKENS_RECOVERY_LIMIT,
+            allowEscalation,
+            options.hasJsonSchema(),
+            ctx.maxStructuredOutputRetries);
+    }
+
+    private LoopTraceObserver.StateSnapshot snapshotState(LoopContext ctx) {
+        if (!traceObserver.isEnabled()) {
+            return null;
+        }
+        boolean hasSO = ctx.state.structuredOutput() != null
+            || (options.hasJsonSchema()
+                && MessageConstants.hasSuccessfulToolCall(ctx.engine.getMutableMessages(), "StructuredOutput"));
+        int soCalls = options.hasJsonSchema()
+            ? MessageConstants.countToolCalls(ctx.engine.getMutableMessages(), "StructuredOutput", null)
+                - ctx.initialStructuredOutputCalls
+            : 0;
+        return new LoopTraceObserver.StateSnapshot(
+            ctx.loopTurns,
+            ctx.state.maxOutputTokensRecoveryCount(),
+            ctx.state.maxOutputTokensOverride() != null,
+            Boolean.TRUE.equals(ctx.state.stopHookActive()),
+            ctx.stopHookBlockingCount,
+            hasSO,
+            soCalls,
+            ctx.hasAttemptedReactiveCompact,
+            ctx.state.transition());
+    }
+
+    private void recordTraceNext(LoopContext ctx, LoopTraceObserver.EventSnapshot event) {
+        if (!traceObserver.isEnabled() || ctx.iterationBeforeState == null) {
+            return;
+        }
+        traceObserver.onTransition(
+            snapshotConfig(ctx),
+            ctx.iterationBeforeState,
+            event,
+            new LoopTraceObserver.OutcomeSnapshot.Next(snapshotState(ctx), ctx.state.transition()));
+    }
+
+    private void recordTraceDone(LoopContext ctx,
+                                 LoopTraceObserver.EventSnapshot event,
+                                 Terminal terminal) {
+        if (!traceObserver.isEnabled() || ctx.iterationBeforeState == null) {
+            return;
+        }
+        traceObserver.onTransition(
+            snapshotConfig(ctx),
+            ctx.iterationBeforeState,
+            event,
+            new LoopTraceObserver.OutcomeSnapshot.Done(terminal));
     }
 }

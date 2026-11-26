@@ -1,0 +1,64 @@
+name: formal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "formal/**"
+      - "claude-code-runtime/src/main/java/com/claudecode/runtime/query/**"
+      - "claude-code-runtime/src/test/java/com/claudecode/runtime/query/QueryLoopConformanceTest.java"
+      - "claude-code-api/src/main/java/com/claudecode/api/**"
+      - "claude-code-api/src/test/java/com/claudecode/api/ProtocolMatrixAndGrammarConformanceTest.java"
+      - ".github/workflows/formal.yml"
+  pull_request:
+    paths:
+      - "formal/**"
+      - "claude-code-runtime/src/main/java/com/claudecode/runtime/query/**"
+      - "claude-code-runtime/src/test/java/com/claudecode/runtime/query/QueryLoopConformanceTest.java"
+      - "claude-code-api/src/main/java/com/claudecode/api/**"
+      - "claude-code-api/src/test/java/com/claudecode/api/ProtocolMatrixAndGrammarConformanceTest.java"
+      - ".github/workflows/formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: formal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: lean4 proofs & java conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install elan / Lean 4
+        run: |
+          curl https://elan.lean-lang.org/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Lean 4 proofs & build verifiers
+        working-directory: formal
+        run: |
+          lake build
+          if grep -rn '\bsorry\b' AgentLoop/ AgentLoop.lean Protocol/ Protocol.lean; then
+            echo "ERROR: 'sorry' is forbidden in formal/"
+            exit 1
+          fi
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: "temurin"
+          cache: "gradle"
+
+      - name: Run QueryLoop & 4-Protocol Lean Conformance Tests
+        env:
+          FORMAL_REQUIRE_VERIFIER: "true"
+        run: |
+          ./gradlew :claude-code-runtime:test --tests "com.claudecode.runtime.query.QueryLoopConformanceTest" \
+            :claude-code-api:test --tests "com.claudecode.api.ProtocolMatrixAndGrammarConformanceTest"

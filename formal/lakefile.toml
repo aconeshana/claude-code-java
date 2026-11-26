@@ -1,0 +1,17 @@
+name = "agent-loop-formal"
+version = "0.1.0"
+defaultTargets = ["AgentLoop", "Protocol", "trace-verifier", "stream-verifier"]
+
+[[lean_lib]]
+name = "AgentLoop"
+
+[[lean_lib]]
+name = "Protocol"
+
+[[lean_exe]]
+name = "trace-verifier"
+root = "AgentLoop.TraceVerifier"
+
+[[lean_exe]]
+name = "stream-verifier"
+root = "Protocol.StreamVerifier"

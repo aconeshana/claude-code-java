@@ -57,6 +57,13 @@ interface QueryDeps {
     }
 
     /**
+     * Optional read-only observer for formal-verification trace recording (no-op in production).
+     */
+    default LoopTraceObserver traceObserver() {
+        return LoopTraceObserver.NOOP;
+    }
+
+    /**
      * Result of an {@link #autocompact} attempt.
      */
     record AutoCompactResult(MessageCompactor.CompactionResult compactionResult,

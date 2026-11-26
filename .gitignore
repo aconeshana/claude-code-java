@@ -109,3 +109,6 @@ bin/
 # code-orb-master.svg and are deliberately untracked; regenerate rather than commit.
 artwork/icon-180.png
 artwork/icon-512.png
+
+# Lean 4 / Lake build cache (formal/)
+formal/.lake/
