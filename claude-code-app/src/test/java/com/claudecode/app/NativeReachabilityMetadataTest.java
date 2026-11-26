@@ -110,6 +110,27 @@ class NativeReachabilityMetadataTest {
         "claude-code-app/src/main/resources/META-INF/native-image"
             + "/com.claudecode/claude-code-app/reachability-metadata.json";
 
+    private static final String GENERATED_OWNED_METADATA_PATH =
+        "claude-code-app/build/generated/owned-native-metadata/META-INF/native-image"
+            + "/com.claudecode/claude-code-app-owned/reachability-metadata.json";
+
+    private static final Pattern JACKSON_BINDING_ANNOTATION = Pattern.compile(
+        "@(?:JsonValue|JsonCreator|JsonSubTypes|JsonTypeInfo|JsonSerialize|JsonDeserialize)\\b");
+
+    private static final Pattern DIRECT_REFLECTION_CALL = Pattern.compile(
+        "\\b(?:Class\\.forName|Proxy\\.newProxyInstance|ServiceLoader\\.load)\\s*\\(");
+
+    private static final Pattern COMMENTS = Pattern.compile("(?s)/\\*.*?\\*/|//[^\\r\\n]*");
+
+    /**
+     * Audited production files that invoke dynamic reflection APIs directly and carry
+     * matching native-image registration/handling. Any new caller must be reviewed and
+     * explicitly added here.
+     */
+    private static final Set<String> AUDITED_DIRECT_REFLECTION_FILES = Set.of(
+        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/repl/LanternaReplScreen.java",
+        "claude-code-ui/src/main/java/com/claudecode/ui/lanterna/repl/ReplExitController.java");
+
     @Test
     void everyJacksonReachableTypeAllowsReflectiveConstruction() throws IOException {
         Set<String> registered = typesWithBlanketReflectionAccess();
@@ -209,6 +230,125 @@ class NativeReachabilityMetadataTest {
             %s""".formatted("ROOTS", String.join("\n", unreachable)));
     }
 
+    @Test
+    void generatedOwnedMetadataCoversKeyJacksonTypes() throws IOException {
+        Path generated = repositoryRoot().resolve(GENERATED_OWNED_METADATA_PATH);
+        assertTrue(Files.isRegularFile(generated),
+            () -> "Build-generated owned metadata is missing: " + generated);
+        Set<String> generatedFull = typesWithBlanketReflectionAccess(List.of(generated));
+        assertTrue(generatedFull.contains("com.claudecode.services.plugins.marketplace.PluginScope"),
+            "Build-generated owned metadata must automatically register PluginScope with full reflection");
+        assertTrue(generatedFull.contains("com.claudecode.services.plugins.marketplace.InstalledPlugins"),
+            "Build-generated owned metadata must automatically register InstalledPlugins");
+    }
+
+    @Test
+    void everyJacksonAnnotatedSourceTypeAllowsFullReflection() throws IOException {
+        Set<String> registered = typesWithBlanketReflectionAccess();
+        List<String> offenders = new ArrayList<>();
+        Path root = repositoryRoot();
+        for (Path module : moduleSourceRoots(root)) {
+            try (var paths = Files.walk(module)) {
+                for (Path source : paths.filter(Files::isRegularFile)
+                        .filter(path -> Strings.CS.endsWith(path.toString(), ".java"))
+                        .toList()) {
+                    String body = Files.readString(source);
+                    if (!JACKSON_BINDING_ANNOTATION.matcher(body).find()) {
+                        continue;
+                    }
+                    Class<?> topLevel = resolveTopLevelClass(source, body);
+                    if (topLevel == null) {
+                        continue;
+                    }
+                    collectAnnotatedClasses(topLevel, registered, offenders);
+                }
+            }
+        }
+        assertTrue(offenders.isEmpty(), () -> """
+            Jackson-annotated types are missing blanket reflection registration \
+            (allDeclaredConstructors + allPublicMethods):
+
+            %s""".formatted(String.join("\n", offenders)));
+    }
+
+    @Test
+    void everyDirectReflectionCallSiteIsAudited() throws IOException {
+        List<String> offenders = new ArrayList<>();
+        Path root = repositoryRoot();
+        for (Path module : moduleSourceRoots(root)) {
+            try (var paths = Files.walk(module)) {
+                for (Path source : paths.filter(Files::isRegularFile)
+                        .filter(path -> Strings.CS.endsWith(path.toString(), ".java"))
+                        .toList()) {
+                    String relative = root.relativize(source).toString().replace('\\', '/');
+                    if (AUDITED_DIRECT_REFLECTION_FILES.contains(relative)) {
+                        continue;
+                    }
+                    String stripped = COMMENTS.matcher(Files.readString(source)).replaceAll("");
+                    if (DIRECT_REFLECTION_CALL.matcher(stripped).find()) {
+                        offenders.add(relative);
+                    }
+                }
+            }
+        }
+        assertTrue(offenders.isEmpty(), () -> """
+            New direct reflection API call sites (Class.forName / Proxy.newProxyInstance / \
+            ServiceLoader.load) require native-image metadata review before shipping. Audit \
+            their reachability metadata and add to AUDITED_DIRECT_REFLECTION_FILES:
+
+            %s""".formatted(String.join("\n", offenders)));
+    }
+
+    private static Class<?> resolveTopLevelClass(Path source, String body) {
+        String pkg = Pattern.compile("(?m)^package\\s+([\\w.]+);")
+            .matcher(body).results().findFirst()
+            .map(match -> match.group(1)).orElse(null);
+        if (pkg == null) return null;
+        String simple = Strings.CS.removeEnd(source.getFileName().toString(), ".java");
+        try {
+            return Class.forName(pkg + "." + simple);
+        } catch (ClassNotFoundException _) {
+            return null;
+        }
+    }
+
+    private static void collectAnnotatedClasses(
+            Class<?> candidate, Set<String> registered, List<String> offenders) {
+        if (hasJacksonBindingAnnotation(candidate) && !registered.contains(candidate.getName())) {
+            offenders.add(candidate.getName());
+        }
+        for (Class<?> nested : candidate.getDeclaredClasses()) {
+            collectAnnotatedClasses(nested, registered, offenders);
+        }
+    }
+
+    private static boolean hasJacksonBindingAnnotation(Class<?> type) {
+        for (var ann : type.getAnnotations()) {
+            if (isBindingAnnotation(ann.annotationType().getName())) return true;
+        }
+        for (var method : type.getDeclaredMethods()) {
+            for (var ann : method.getAnnotations()) {
+                if (isBindingAnnotation(ann.annotationType().getName())) return true;
+            }
+        }
+        for (var ctor : type.getDeclaredConstructors()) {
+            for (var ann : ctor.getAnnotations()) {
+                if (isBindingAnnotation(ann.annotationType().getName())) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isBindingAnnotation(String name) {
+        return Strings.CS.equalsAny(name,
+            "com.fasterxml.jackson.annotation.JsonValue",
+            "com.fasterxml.jackson.annotation.JsonCreator",
+            "com.fasterxml.jackson.annotation.JsonSubTypes",
+            "com.fasterxml.jackson.annotation.JsonTypeInfo",
+            "com.fasterxml.jackson.databind.annotation.JsonSerialize",
+            "com.fasterxml.jackson.databind.annotation.JsonDeserialize");
+    }
+
     /** One {@code readJson(file, X.class)} / {@code fromJson(text, X.class)} call site. */
     private record DeserializationSite(Path source, int line, String rawType, Class<?> target) {
         String describe() {
@@ -224,7 +364,7 @@ class NativeReachabilityMetadataTest {
      * multi-line {@code readValue(...,\n Something.class)} calls).
      */
     private static final Pattern DESERIALIZE_CALL = Pattern.compile(
-        "\\b(?:readJson|fromJson|readJsonList|treeToValue|readValue)\\s*\\([^;]*?,\\s*([A-Za-z_$][\\w.$]*)\\.class\\s*\\)");
+        "\\b(?:readJson|fromJson|readJsonList|treeToValue|readValue|convertValue)\\s*\\([^;]*?,\\s*([A-Za-z_$][\\w.$]*)\\.class\\s*\\)");
 
     private static List<DeserializationSite> deserializationSites() throws IOException {
         List<DeserializationSite> sites = new ArrayList<>();
@@ -329,8 +469,12 @@ class NativeReachabilityMetadataTest {
      * this guard exists to eliminate.
      */
     private static Set<String> typesWithBlanketReflectionAccess() throws IOException {
+        return typesWithBlanketReflectionAccess(metadataFiles());
+    }
+
+    private static Set<String> typesWithBlanketReflectionAccess(List<Path> files) throws IOException {
         Set<String> registered = new LinkedHashSet<>();
-        for (JsonNode entry : reflectionEntries()) {
+        for (JsonNode entry : reflectionEntries(files)) {
             JsonNode type = entry.get("type");
             if (type != null && type.isTextual()
                 && entry.path("allDeclaredConstructors").asBoolean(false)
@@ -344,7 +488,7 @@ class NativeReachabilityMetadataTest {
     /** Every registered type name, whatever access the entry grants. */
     private static Set<String> registeredTypeNames() throws IOException {
         Set<String> registered = new LinkedHashSet<>();
-        for (JsonNode entry : reflectionEntries()) {
+        for (JsonNode entry : reflectionEntries(metadataFiles())) {
             JsonNode type = entry.get("type");
             if (type != null && type.isTextual()) {
                 registered.add(type.asText());
@@ -353,12 +497,29 @@ class NativeReachabilityMetadataTest {
         return registered;
     }
 
-    private static JsonNode reflectionEntries() throws IOException {
-        JsonNode root;
-        try (var reader = Files.newBufferedReader(repositoryRoot().resolve(METADATA_PATH))) {
-            root = new ObjectMapper().readTree(reader);
+    private static List<Path> metadataFiles() {
+        Path root = repositoryRoot();
+        List<Path> files = new ArrayList<>();
+        files.add(root.resolve(METADATA_PATH));
+        Path generated = root.resolve(GENERATED_OWNED_METADATA_PATH);
+        if (Files.isRegularFile(generated)) {
+            files.add(generated);
         }
-        return root.path("reflection");
+        return files;
+    }
+
+    private static List<JsonNode> reflectionEntries(List<Path> files) throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        List<JsonNode> entries = new ArrayList<>();
+        for (Path file : files) {
+            try (var reader = Files.newBufferedReader(file)) {
+                JsonNode root = mapper.readTree(reader);
+                for (JsonNode entry : root.path("reflection")) {
+                    entries.add(entry);
+                }
+            }
+        }
+        return entries;
     }
 
     /**

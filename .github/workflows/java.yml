@@ -113,6 +113,13 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: webui/pnpm-lock.yaml
 
+      # Layer 3: Fail fast (~15s) if GraalVM's tracing agent observes any runtime
+      # com.claudecode.* reflection access (e.g. a Jackson upgrade calling an
+      # unregistered @JsonValue method) not covered by the reachability metadata.
+      - name: Audit runtime reflection with GraalVM tracing agent
+        run: |
+          ./gradlew :claude-code-app:verifyNativeAgentMetadata
+
       # nativeQuickCompile is the -Ob developer flavour: same entry points and
       # same reflection metadata as the release image, a fraction of the build
       # time. The defects this job guards are behavioural, not optimization-level.
@@ -120,14 +127,11 @@ jobs:
         run: |
           ./gradlew :claude-code-app:nativeQuickCompile
 
-      # `web -d` is the end-to-end exercise of the relaunch path: it reconstructs
-      # a command through CurrentCliCommand.resolve(), forks a detached child with
-      # it, waits for that child to publish ~/.claude/web-gateway.json, and prints
-      # the URL. Every step asserts something a JVM run cannot: before the fix the
-      # first one died in Path.of(null) because a native image reports java.home as
-      # null. `status` then proves the child is a process this one can see, and a
-      # clean `stop` proves the whole lifecycle, so nothing is left listening.
-      - name: Smoke the subprocess-relaunch path
+      # Layer 4: Exercise the real native binary with realistic on-disk fixtures
+      # (installed_plugins.json with PluginScope enums, model.json, settings.json)
+      # across both `web -d` + Gateway HTTP endpoints and CLI non-interactive startup,
+      # then assert zero MissingReflectionRegistrationError entries in the log.
+      - name: Smoke the native binary with realistic fixtures
         shell: bash
         env:
           BIN: claude-code-app/build/native/nativeQuickCompile/poco
@@ -141,8 +145,43 @@ jobs:
           # makes "did this command actually publish?" unambiguous.
           HOME="$SMOKE_HOME"
           export HOME CLAUDE_CONFIG_DIR="$HOME/.claude"
-          rm -rf "$HOME"
-          mkdir -p "$CLAUDE_CONFIG_DIR"
+          rm -rf "$HOME" /tmp/claude-code-java.log
+          mkdir -p "$CLAUDE_CONFIG_DIR/plugins"
+          cat > "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json" <<'EOF'
+          {
+            "version": 2,
+            "plugins": {
+              "smoke-plugin@official": [
+                {
+                  "scope": "user",
+                  "installPath": "/tmp/nonexistent-smoke-plugin",
+                  "version": "1.0.0",
+                  "installedAt": "2026-01-01T00:00:00Z",
+                  "lastUpdated": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "scope": "project",
+                  "projectPath": "/tmp",
+                  "installPath": "/tmp/nonexistent-smoke-plugin",
+                  "version": "1.0.0"
+                }
+              ]
+            }
+          }
+          EOF
+          cat > "$CLAUDE_CONFIG_DIR/model.json" <<'EOF'
+          {
+            "version": 1,
+            "models": [
+              {
+                "modelName": "smoke-model",
+                "protocol": "anthropic",
+                "baseUrl": "http://127.0.0.1:1",
+                "apiKey": "smoke-key"
+              }
+            ]
+          }
+          EOF
           # The token is a live credential for a socket the runner is listening on.
           mask() { sed -E 's/(token=)[^ "&]*/\1<masked>/g'; }
 
@@ -165,6 +204,31 @@ jobs:
           echo "$status"
           grep -qE "claude web is running" <<<"$status" \
             || { echo "web -d reported success but nothing is running:"; echo "$status"; exit 1; }
+
+          # Exercise Gateway JSON serialization endpoints against the live native daemon.
+          read -r base_url token < <(python3 - "$CLAUDE_CONFIG_DIR/web-gateway.json" <<'PY'
+          import json, sys, urllib.parse
+          url = json.load(open(sys.argv[1]))["url"]
+          u = urllib.parse.urlsplit(url)
+          tok = urllib.parse.parse_qs(u.query).get("token", [""])[0]
+          print(f"{u.scheme}://{u.netloc}", tok)
+          PY
+          )
+          for endpoint in /api/sessions /api/settings /api/models /api/projects; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" "${base_url}${endpoint}")"
+            echo "GET ${endpoint} -> HTTP ${code}"
+            [ "$code" = "200" ] || { echo "Gateway endpoint ${endpoint} failed with HTTP ${code}"; exit 1; }
+          done
+
+          # Exercise --init-only so PluginRuntimeLoader -> InstalledPluginsStore.load()
+          # actually deserializes installed_plugins.json inside the real native binary.
+          step "--init-only (plugin + model fixture load)" --init-only
+
+          # Verify zero native reflection errors in the runtime log.
+          if [ -f /tmp/claude-code-java.log ] && grep -E "MissingReflectionRegistrationError|No serializer found" /tmp/claude-code-java.log; then
+            echo "Native reflection error detected in /tmp/claude-code-java.log"
+            exit 1
+          fi
 
       # The gateway is detached by design, so it outlives the step that started
       # it. Stop it explicitly, or the runner keeps a bound port.

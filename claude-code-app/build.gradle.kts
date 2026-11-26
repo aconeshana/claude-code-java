@@ -85,6 +85,7 @@ tasks.configureEach {
 val nativeAssetManifest = rootProject.layout.projectDirectory.file("gradle/native-assets.properties")
 val generatedRipgrepResources = layout.buildDirectory.dir("generated/ripgrep-resources")
 val generatedCcConnectResources = layout.buildDirectory.dir("generated/cc-connect-resources")
+val generatedOwnedNativeMetadata = layout.buildDirectory.dir("generated/owned-native-metadata")
 val detectedDistributionTarget = providers.provider {
     val platform = when {
         System.getProperty("os.name").lowercase().contains("mac") -> "darwin"
@@ -188,10 +189,23 @@ val buildWebui = tasks.register<Exec>("buildWebui") {
     }
 }
 
+val generateOwnedNativeMetadata = tasks.register<GenerateOwnedNativeMetadataTask>("generateOwnedNativeMetadata") {
+    group = "native assets"
+    description = "Generates GraalVM native-image reachability metadata for all Jackson-bound com.claudecode.* types."
+    runtimeClasspath.from(configurations.runtimeClasspath)
+    productionSources.from(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("claude-code-*/src/main/java/**/*.java")
+        }
+    )
+    outputDirectory = generatedOwnedNativeMetadata
+}
+
 sourceSets.main {
     resources.exclude("native/README.md")
     resources.srcDir(vendorRipgrep)
     vendorCcConnect?.let { resources.srcDir(it) }
+    resources.srcDir(generateOwnedNativeMetadata)
     // The vite build emits dist/webui/** (the classpath prefix the gateway's
     // static routes expect). srcDir must take the buildWebui task's dist
     // directory as a provider — a plain srcDir(webuiDir.dir("dist")) would
@@ -254,12 +268,51 @@ tasks.check {
 }
 
 tasks.named<Test>("test") {
+    dependsOn(generateOwnedNativeMetadata)
     inputs.files(moduleArchitectureInputs)
         .withPropertyName("moduleArchitectureInputs")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(nativeReachabilityMetadata)
         .withPropertyName("nativeReachabilityMetadata")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+val nativeAgentTraceOutputDir = layout.buildDirectory.dir("native-agent-trace")
+
+val nativeReflectionAgentTrace = tasks.register<Test>("nativeReflectionAgentTrace") {
+    group = "verification"
+    description = "Runs NativeReflectionProbeTest under GraalVM's native-image-agent to record real runtime reflection."
+    val testSourceSet = sourceSets.named("test").get()
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.runtimeClasspath
+    include("**/NativeReflectionProbeTest.class")
+    filter.isFailOnNoMatchingTests = true
+    maxParallelForks = 1
+    outputs.dir(nativeAgentTraceOutputDir)
+    outputs.upToDateWhen { false }
+    val outDir = nativeAgentTraceOutputDir
+    doFirst {
+        val dir = outDir.get().asFile
+        dir.deleteRecursively()
+        dir.mkdirs()
+        jvmArgs("-agentlib:native-image-agent=config-output-dir=${dir.absolutePath}")
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+    }
+}
+
+tasks.register<VerifyNativeAgentMetadataTask>("verifyNativeAgentMetadata") {
+    group = "verification"
+    description = "Verifies that every com.claudecode.* reflection access recorded by GraalVM's tracing agent is covered by reachability metadata."
+    dependsOn(nativeReflectionAgentTrace, generateOwnedNativeMetadata)
+    agentOutputDir = nativeAgentTraceOutputDir
+    metadataFiles.from(
+        nativeReachabilityMetadata,
+        generateOwnedNativeMetadata.map {
+            it.outputDirectory.file("META-INF/native-image/com.claudecode/claude-code-app-owned/reachability-metadata.json")
+        },
+    )
 }
 
 tasks.assemble {

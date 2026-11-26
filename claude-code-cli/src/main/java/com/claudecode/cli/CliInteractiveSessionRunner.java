@@ -727,6 +727,14 @@ final class CliInteractiveSessionRunner {
             }
         } catch (Exception e) {
             log.error("Lanterna UI failed", e);
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            String detail = root.getMessage();
+            input.errorOutput().println("Error: " + root.getClass().getSimpleName()
+                + (StringUtils.isNotBlank(detail) ? ": " + detail : "")
+                + " (see /tmp/claude-code-java.log)");
             return 1;
         } finally {
             finalizeInteractiveSession(agentSummaryService, hookEngine);
