@@ -8,11 +8,14 @@ import com.claudecode.session.stats.StatsAggregator;
 import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.ui.lanterna.repl.InteractiveSessionPort;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import com.claudecode.core.serialization.JsonUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -21,6 +24,36 @@ import org.apache.commons.lang3.StringUtils;
  * CLI leaf adapter from the UI-owned session boundary to JSONL infrastructure.
  */
 public final class CliInteractiveSessionAdapter implements InteractiveSessionPort {
+    private static final int METADATA_CACHE_MAX_ENTRIES = 16;
+    private static final Map<Path, CachedMetadata> METADATA_CACHE = new ConcurrentHashMap<>();
+
+    private record CachedMetadata(
+        long lastModifiedMillis,
+        long fileSize,
+        SessionStorage.MetadataSnapshot snapshot) {}
+
+    /**
+     * Caches a freshly scanned {@link SessionStorage.MetadataSnapshot} keyed by
+     * transcript path + (mtime, size) so immediate UI follow-ups
+     * ({@code ReplStartupPreparation}, {@code SessionController}) reuse the
+     * single-pass restore result with zero extra disk reads.
+     */
+    static void cacheMetadataSnapshot(Path transcript, SessionStorage.MetadataSnapshot snapshot) {
+        if (transcript == null || snapshot == null) return;
+        Path key = transcript.toAbsolutePath().normalize();
+        try {
+            if (!Files.isRegularFile(key)) return;
+            long mtime = Files.getLastModifiedTime(key).toMillis();
+            long size = Files.size(key);
+            if (METADATA_CACHE.size() >= METADATA_CACHE_MAX_ENTRIES) {
+                METADATA_CACHE.clear();
+            }
+            METADATA_CACHE.put(key, new CachedMetadata(mtime, size, snapshot));
+        } catch (IOException _) {
+            // Best-effort cache; fall back to direct scan.
+        }
+    }
+
     private final StatsAggregator stats;
     private final Predicate<String> builtInCommand;
     /** The gateway's live headless sessions, when the interactive run owns one. */
@@ -98,11 +131,38 @@ public final class CliInteractiveSessionAdapter implements InteractiveSessionPor
     }
 
     @Override public MetadataSnapshot scanMetadata(Path transcript) {
-        var metadata = transcript == null
-            ? SessionStorage.MetadataSnapshot.empty() : new SessionStorage().scanMetadata(transcript);
+        SessionStorage.MetadataSnapshot metadata;
+        if (transcript == null) {
+            metadata = SessionStorage.MetadataSnapshot.empty();
+        } else {
+            Path key = transcript.toAbsolutePath().normalize();
+            SessionStorage.MetadataSnapshot cached = lookupCachedMetadata(key);
+            if (cached != null) {
+                metadata = cached;
+            } else {
+                metadata = new SessionStorage().scanMetadata(key);
+                cacheMetadataSnapshot(key, metadata);
+            }
+        }
         return new MetadataSnapshot(metadata.customTitle().orElse(null),
             metadata.agentName().orElse(null), metadata.agentColor().orElse(null),
             metadata.tag().orElse(null));
+    }
+
+    private static SessionStorage.MetadataSnapshot lookupCachedMetadata(Path key) {
+        CachedMetadata entry = METADATA_CACHE.get(key);
+        if (entry == null) return null;
+        try {
+            if (Files.isRegularFile(key)
+                    && Files.getLastModifiedTime(key).toMillis() == entry.lastModifiedMillis()
+                    && Files.size(key) == entry.fileSize()) {
+                return entry.snapshot();
+            }
+        } catch (IOException _) {
+            // Fall through to re-scan.
+        }
+        METADATA_CACHE.remove(key, entry);
+        return null;
     }
 
     @Override public boolean deleteSession(SessionEntry session, String fallbackCwd) {

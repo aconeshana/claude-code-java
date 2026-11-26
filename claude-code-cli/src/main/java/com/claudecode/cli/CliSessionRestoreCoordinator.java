@@ -183,6 +183,7 @@ final class CliSessionRestoreCoordinator {
         // content replacements, cumulative usage, metadata, slug, file-history
         // snapshots, worktree state, and recorded-uuid seed in one file sweep.
         TranscriptLoader.StartupRestoreBundle bundle = storage.loadForStartupRestore(transcript);
+        CliInteractiveSessionAdapter.cacheMetadataSnapshot(transcript, bundle.metadata());
         List<Message> messages = MessagesDeserializer.deserialize(bundle.messages());
         if (StringUtils.isNotBlank(request.resumeSessionAt())) {
             int selected = -1;
@@ -281,13 +282,18 @@ final class CliSessionRestoreCoordinator {
             engine, transcriptRecorder, permissionGate, settingsReload);
         AtomicReference<SessionCostState.Snapshot> capturedTargetCost =
             new AtomicReference<>();
+        AtomicReference<TranscriptLoader.StartupRestoreBundle> loadedExtras =
+            new AtomicReference<>();
         return new SessionLifecycle(
             engine,
             path -> {
-                // One fused file pass replaces four full-file read+parse sweeps
-                // (messages, replacements, metric events, metric turn ids) —
-                // the dominant resume cost on multi-year transcripts.
+                // One fused file pass replaces all full-file read+parse sweeps
+                // (messages, replacements, metric events, metric turn ids, usage,
+                // metadata, file-history, worktree state, and recorded UUIDs).
                 SessionStorage.RestoreSnapshot snapshot = storage.readRestoreSnapshot(path);
+                loadedExtras.set(snapshot.startupExtras());
+                CliInteractiveSessionAdapter.cacheMetadataSnapshot(
+                    path, snapshot.startupExtras().metadata());
                 return new SessionLifecycle.TranscriptSnapshot(
                     MessagesDeserializer.deserialize(snapshot.messages()),
                     snapshot.contentReplacements(),
@@ -333,7 +339,8 @@ final class CliSessionRestoreCoordinator {
 
                 @Override
                 public void afterSwitch(Path sessionFile, List<Message> messages, String cwd) {
-                    restorer.postSwitch(sessionFile, messages, cwd);
+                    restorer.postSwitch(sessionFile, messages, cwd, true,
+                        loadedExtras.getAndSet(null));
                 }
 
                 @Override

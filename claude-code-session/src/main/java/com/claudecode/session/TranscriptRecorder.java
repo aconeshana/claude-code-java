@@ -978,15 +978,7 @@ public class TranscriptRecorder implements TranscriptSink {
 
     @Override
     public boolean hasPersistedPermissionMode(String sessionId) {
-        Path file = sessionFile(sessionId);
-        if (!Files.isReadable(file)) return false;
-        try {
-            return JsonUtils.readJsonLines(file).stream().anyMatch(node ->
-                Strings.CS.equals("permission-mode", node.path("type").asText())
-                    && node.hasNonNull("permissionMode"));
-        } catch (IOException _) {
-            return false;
-        }
+        return sessionStorage.hasPersistedPermissionMode(sessionFile(sessionId));
     }
 
     @Override

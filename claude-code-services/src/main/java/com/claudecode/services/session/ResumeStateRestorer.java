@@ -120,7 +120,7 @@ public final class ResumeStateRestorer {
                            boolean persistRecoveryTranscript,
                            TranscriptLoader.StartupRestoreBundle preloaded) {
         if (persistRecoveryTranscript) {
-            persistRecoveredMessages(sessionFile, msgs);
+            persistRecoveredMessages(sessionFile, msgs, preloaded);
         }
         restoreCost(sessionFile, preloaded);
         restoreMetadata(sessionFile, preloaded);
@@ -319,13 +319,24 @@ public final class ResumeStateRestorer {
      * Persists only messages that the recovery pipeline synthesized in memory.
      */
     public void persistRecoveredMessages(Path sessionFile, List<Message> msgs) {
+        persistRecoveredMessages(sessionFile, msgs, null);
+    }
+
+    public void persistRecoveredMessages(
+            Path sessionFile,
+            List<Message> msgs,
+            TranscriptLoader.StartupRestoreBundle preloaded) {
         if (sessionFile == null || msgs == null || msgs.isEmpty()) return;
         TranscriptSink sink = engine.execution().getTranscriptSink();
         if (sink == null) return;
         try {
             Set<String> persistedUuids = new HashSet<>();
-            for (Message stored : storage.readMessages(sessionFile)) {
-                if (stored.uuid() != null) persistedUuids.add(stored.uuid());
+            if (preloaded != null) {
+                persistedUuids.addAll(preloaded.allRecordedUuids());
+            } else {
+                for (Message stored : storage.readMessages(sessionFile)) {
+                    if (stored.uuid() != null) persistedUuids.add(stored.uuid());
+                }
             }
             for (Message recovered : msgs) {
                 String uuid = recovered.uuid();
@@ -362,10 +373,6 @@ public final class ResumeStateRestorer {
         String resolved = StringUtils.isBlank(cwd)
             ? System.getProperty("user.dir") : cwd;
         return TrustConfigStore.isTrustAccepted(Path.of(resolved));
-    }
-
-    void restoreCost(Path sessionFile) {
-        restoreCost(sessionFile, null);
     }
 
     void restoreCost(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {
@@ -439,14 +446,6 @@ public final class ResumeStateRestorer {
         } catch (Exception e) {
             log.warn("bashTools restore failed: {}", e.getMessage());
         }
-    }
-
-    /**
-     * Rebuilds the {@code /rewind} "Restore code" checkpoint chain from the transcript's {@code
-     * file-history-snapshot} entries.
-     */
-    void restoreFileHistory(Path sessionFile) {
-        restoreFileHistory(sessionFile, null);
     }
 
     void restoreFileHistory(Path sessionFile, TranscriptLoader.StartupRestoreBundle preloaded) {

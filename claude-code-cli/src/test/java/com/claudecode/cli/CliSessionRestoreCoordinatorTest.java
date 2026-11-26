@@ -17,17 +17,25 @@ import com.claudecode.core.message.MessageContent;
 import com.claudecode.core.message.UserMessage;
 import com.claudecode.runtime.query.DefaultQuerySession;
 import com.claudecode.runtime.query.QuerySessionSpec;
+import com.claudecode.runtime.session.PreparedSessionResume;
+import com.claudecode.runtime.session.SessionLifecycle;
+import com.claudecode.runtime.session.SessionResumeRequest;
+import com.claudecode.session.SessionInfo;
+import com.claudecode.session.SessionManager;
+import com.claudecode.session.SessionStorage;
+import com.claudecode.session.TranscriptReadCounter;
+import com.claudecode.session.TranscriptRecorder;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import com.claudecode.session.SessionInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -322,6 +330,123 @@ class CliSessionRestoreCoordinatorTest {
         assertEquals(ALPHA, tools.sessionId);
         assertEquals("/workspace", tools.workingDirectory);
         assertEquals("agent-1", tools.agentId);
+    }
+
+    @Test
+    void startupRestoreAndUiMetadataFollowUpReadTranscriptOnlyOnce() throws Exception {
+        Path transcript = writeRichTranscript(transcripts.resolve(ALPHA + ".jsonl"), ALPHA);
+        RecordingToolExecutor tools = new RecordingToolExecutor();
+        DefaultQuerySession engine = newTestEngine(tools);
+        TranscriptRecorder recorder = new TranscriptRecorder(
+            new SessionManager(transcripts.toString()), new SessionStorage());
+        CliOutput silent = CliOutput.borrowed(new PrintWriter(new StringWriter(), true));
+        CliSessionRestoreCoordinator.Request request = new CliSessionRestoreCoordinator.Request(
+            engine, transcripts.toString(), ALPHA, false, false, null, false, true,
+            null, null, recorder, silent, silent);
+        CliInteractiveSessionAdapter uiAdapter = new CliInteractiveSessionAdapter();
+
+        try (TranscriptReadCounter.Scope reads = TranscriptReadCounter.track()) {
+            CliSessionRestoreCoordinator.Restoration result =
+                CliSessionRestoreCoordinator.restore(request, new Target.Session(ALPHA, transcript));
+            assertTrue(result.restored());
+
+            // Simulate ReplStartupPreparation.loadSessionMetadata() immediately after restore.
+            var uiMeta = uiAdapter.scanMetadata(transcript);
+            assertEquals("Rich Title", uiMeta.customTitle());
+            assertEquals("v1-tag", uiMeta.tag());
+
+            assertEquals(1, reads.countFor(transcript),
+                () -> "Startup restore + UI metadata follow-up must read transcript once, got: "
+                    + reads.snapshot());
+        }
+        assertEquals(150L, engine.execution().getTotalUsage().inputTokens());
+        assertEquals(45L, engine.execution().getTotalUsage().outputTokens());
+    }
+
+    @Test
+    void interactiveResumeLifecycleAndMetadataFollowUpReadTranscriptOnlyOnce() throws Exception {
+        Path transcript = writeRichTranscript(transcripts.resolve(BETA + ".jsonl"), BETA);
+        RecordingToolExecutor tools = new RecordingToolExecutor();
+        DefaultQuerySession engine = newTestEngine(tools);
+        SessionLifecycle lifecycle = CliSessionRestoreCoordinator.newSessionLifecycle(
+            engine, null, null, null);
+        CliInteractiveSessionAdapter uiAdapter = new CliInteractiveSessionAdapter();
+
+        try (TranscriptReadCounter.Scope reads = TranscriptReadCounter.track()) {
+            PreparedSessionResume prepared = lifecycle.prepare(
+                new SessionResumeRequest(BETA, transcript, transcripts.toString()),
+                transcripts.toString());
+            lifecycle.activate(prepared, _ -> { });
+
+            // Simulate SessionController.refreshAfterResume() scanning metadata right after switch.
+            var uiMeta = uiAdapter.scanMetadata(transcript);
+            assertEquals("Rich Title", uiMeta.customTitle());
+            assertEquals("v1-tag", uiMeta.tag());
+
+            assertEquals(1, reads.countFor(transcript),
+                () -> "Interactive /resume switch + UI metadata follow-up must read transcript once, got: "
+                    + reads.snapshot());
+        }
+        assertEquals(150L, engine.execution().getTotalUsage().inputTokens());
+        assertEquals(45L, engine.execution().getTotalUsage().outputTokens());
+    }
+
+    @Test
+    void metadataCacheInvalidatesWhenTranscriptChangesOnDisk() throws Exception {
+        Path transcript = writeRichTranscript(transcripts.resolve("cache-invalidation.jsonl"), ALPHA);
+        CliInteractiveSessionAdapter uiAdapter = new CliInteractiveSessionAdapter();
+
+        try (TranscriptReadCounter.Scope reads = TranscriptReadCounter.track()) {
+            assertEquals("Rich Title", uiAdapter.scanMetadata(transcript).customTitle());
+            assertEquals("Rich Title", uiAdapter.scanMetadata(transcript).customTitle());
+            assertEquals(1, reads.countFor(transcript), "Second read on unchanged file should hit cache");
+
+            Files.writeString(transcript,
+                "{\"type\":\"custom-title\",\"sessionId\":\"" + ALPHA + "\",\"customTitle\":\"Updated Title\"}\n",
+                StandardOpenOption.APPEND);
+            assertEquals("Updated Title", uiAdapter.scanMetadata(transcript).customTitle());
+            assertEquals(2, reads.countFor(transcript), "Appended file must invalidate cache and re-scan");
+        }
+    }
+
+    private DefaultQuerySession newTestEngine(RecordingToolExecutor tools) {
+        StreamingClient client = new StreamingClient() {
+            @Override public Iterator<StreamingEvent> createStream(StreamRequest request) {
+                return Collections.emptyIterator();
+            }
+
+            @Override public String getModel() {
+                return "test-model";
+            }
+        };
+        return new DefaultQuerySession(QuerySessionSpec.builder()
+            .llmClient(client)
+            .toolExecutor(tools)
+            .workingDirectory(transcripts.toString())
+            .build());
+    }
+
+    private static Path writeRichTranscript(Path transcript, String sessionId) throws Exception {
+        String content = String.join("\n",
+            "{\"type\":\"user\",\"uuid\":\"u-1\",\"sessionId\":\"" + sessionId
+                + "\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}",
+            "{\"type\":\"assistant\",\"uuid\":\"a-1\",\"parentUuid\":\"u-1\",\"sessionId\":\"" + sessionId
+                + "\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"slug\":\"plan-slug\","
+                + "\"message\":{\"model\":\"claude-sonnet\",\"role\":\"assistant\","
+                + "\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"stop_reason\":\"end_turn\","
+                + "\"usage\":{\"input_tokens\":150,\"output_tokens\":45,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}",
+            "{\"type\":\"content-replacement\",\"sessionId\":\"" + sessionId
+                + "\",\"replacements\":[{\"kind\":\"tool-result\",\"toolUseId\":\"tu-1\",\"replacement\":\"[replaced]\"}]}",
+            "{\"type\":\"file-history-snapshot\",\"messageId\":\"u-1\","
+                + "\"snapshot\":{\"messageId\":\"u-1\",\"trackedFileBackups\":{},\"timestamp\":\"2026-01-01T00:00:00Z\"},\"isSnapshotUpdate\":false}",
+            "{\"type\":\"mode\",\"sessionId\":\"" + sessionId + "\",\"mode\":\"normal\"}",
+            "{\"type\":\"permission-mode\",\"sessionId\":\"" + sessionId + "\",\"permissionMode\":\"default\"}",
+            "{\"type\":\"custom-title\",\"sessionId\":\"" + sessionId + "\",\"customTitle\":\"Rich Title\"}",
+            "{\"type\":\"tag\",\"sessionId\":\"" + sessionId + "\",\"tag\":\"v1-tag\"}",
+            "{\"type\":\"last-prompt\",\"sessionId\":\"" + sessionId + "\",\"lastPrompt\":\"hello\",\"leafUuid\":\"a-1\"}"
+        ) + "\n";
+        Files.writeString(transcript, content);
+        return transcript;
     }
 
     private static final class RecordingToolExecutor implements ToolExecutor {

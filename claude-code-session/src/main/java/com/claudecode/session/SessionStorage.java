@@ -3,6 +3,7 @@ package com.claudecode.session;
 import com.claudecode.core.config.VersionInfo;
 import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.error.ErrorUtils;
+import com.claudecode.core.io.ByteArrays;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
@@ -44,6 +45,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -655,12 +657,20 @@ public class SessionStorage {
     /** Returns the last persisted session slug, if this transcript has one. */
     public Optional<String> readSessionSlug(Path sessionFile) {
         if (sessionFile == null || !Files.exists(sessionFile)) return Optional.empty();
+        TranscriptReadCounter.record(sessionFile);
         String slug = null;
-        try {
-            for (JsonNode line : JsonUtils.readJsonLines(sessionFile)) {
-                if (line.hasNonNull("slug") && !StringUtils.isBlank(line.path("slug").asText())) {
-                    slug = line.path("slug").asText();
-                }
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"slug\"")) continue;
+                try {
+                    JsonNode line = mapper.readTree(raw);
+                    if (line.hasNonNull("slug") && StringUtils.isNotBlank(line.path("slug").asText())) {
+                        slug = line.path("slug").asText();
+                    }
+                } catch (JsonProcessingException _) { /* skip malformed */ }
             }
         } catch (IOException e) {
             log.warn("Failed to read session slug from {} [failureType={}]",
@@ -718,16 +728,24 @@ public class SessionStorage {
 
     public List<FileHistorySnapshotEntry> scanFileHistorySnapshots(Path sessionFile) {
         if (!Files.exists(sessionFile)) return List.of();
+        TranscriptReadCounter.record(sessionFile);
         List<FileHistorySnapshotEntry> entries = new ArrayList<>();
-        try {
-            for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) {
-                if (!Strings.CS.equals("file-history-snapshot", node.path("type").asText())) continue;
-                String messageId = node.hasNonNull("messageId") ? node.get("messageId").asText() : null;
-                JsonNode snapshot = node.get("snapshot");
-                boolean isUpdate = node.path("isSnapshotUpdate").asBoolean(false);
-                if (messageId != null && snapshot != null) {
-                    entries.add(new FileHistorySnapshotEntry(messageId, snapshot, isUpdate));
-                }
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"file-history-snapshot\"")) continue;
+                try {
+                    JsonNode node = mapper.readTree(raw);
+                    if (!Strings.CS.equals("file-history-snapshot", node.path("type").asText())) continue;
+                    String messageId = node.hasNonNull("messageId") ? node.get("messageId").asText() : null;
+                    JsonNode snapshot = node.get("snapshot");
+                    boolean isUpdate = node.path("isSnapshotUpdate").asBoolean(false);
+                    if (messageId != null && snapshot != null) {
+                        entries.add(new FileHistorySnapshotEntry(messageId, snapshot, isUpdate));
+                    }
+                } catch (JsonProcessingException _) { /* skip malformed */ }
             }
         } catch (IOException e) {
             log.warn("scanFileHistorySnapshots failed for {} [failureType={}]",
@@ -764,13 +782,21 @@ public class SessionStorage {
      */
     public WorktreeStateEntry scanWorktreeState(Path sessionFile) {
         if (!Files.exists(sessionFile)) return null;
+        TranscriptReadCounter.record(sessionFile);
         WorktreeStateEntry last = null;
-        try {
-            for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) {
-                if (!Strings.CS.equals("worktree-state", node.path("type").asText())) continue;
-                String sid = node.hasNonNull("sessionId") ? node.get("sessionId").asText() : null;
-                JsonNode ws = node.get("worktreeSession");
-                last = new WorktreeStateEntry(sid, (ws == null || ws.isNull()) ? null : ws);
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"worktree-state\"")) continue;
+                try {
+                    JsonNode node = mapper.readTree(raw);
+                    if (!Strings.CS.equals("worktree-state", node.path("type").asText())) continue;
+                    String sid = node.hasNonNull("sessionId") ? node.get("sessionId").asText() : null;
+                    JsonNode ws = node.get("worktreeSession");
+                    last = new WorktreeStateEntry(sid, (ws == null || ws.isNull()) ? null : ws);
+                } catch (JsonProcessingException _) { /* skip malformed */ }
             }
         } catch (IOException e) {
             log.warn("scanWorktreeState failed for {} [failureType={}]",
@@ -846,13 +872,54 @@ public class SessionStorage {
      * Entries near the tail win — the writer appends every mutation and never
      * rewrites, so last-seen is authoritative.
      */
+    private static boolean mayContainMetadata(String line) {
+        return Strings.CS.containsAny(line,
+            "\"mode\"", "\"permission-mode\"", "\"permissionMode\"",
+            "\"custom-title\"", "\"agent-name\"", "\"agent-color\"",
+            "\"tag\"", "\"last-prompt\"");
+    }
+
+    public boolean hasPersistedPermissionMode(Path sessionFile) {
+        if (sessionFile == null || !Files.isReadable(sessionFile)) return false;
+        TranscriptReadCounter.record(sessionFile);
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"permission-mode\"")) continue;
+                try {
+                    JsonNode node = mapper.readTree(raw);
+                    if (Strings.CS.equals("permission-mode", node.path("type").asText())
+                            && node.hasNonNull("permissionMode")) {
+                        return true;
+                    }
+                } catch (JsonProcessingException _) { /* skip malformed */ }
+            }
+        } catch (IOException _) {
+            return false;
+        }
+        return false;
+    }
+
     public MetadataSnapshot scanMetadata(Path sessionFile) {
         if (!Files.exists(sessionFile)) return MetadataSnapshot.empty();
+        TranscriptReadCounter.record(sessionFile);
         String mode = null, permissionMode = null, customTitle = null;
         String agentName = null, agentColor = null, tag = null;
         String lastPrompt = null, leafUuid = null;
-        try {
-            for (JsonNode node : JsonUtils.readJsonLines(sessionFile)) {
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!mayContainMetadata(raw)) continue;
+                JsonNode node;
+                try {
+                    node = mapper.readTree(raw);
+                } catch (JsonProcessingException _) {
+                    continue;
+                }
                 String type = node.hasNonNull("type") ? node.get("type").asText() : null;
                 if (type == null) continue;
                 String rowPermissionMode = textField(node, "permissionMode");
@@ -893,14 +960,6 @@ public class SessionStorage {
             Optional.ofNullable(tag),
             Optional.ofNullable(lastPrompt),
             Optional.ofNullable(leafUuid));
-    }
-
-    /**
-     * The file {@link #readSessionMetrics} prefers over the transcript when it
-     * exists, so a reader caching the fold can tell when its input changed.
-     */
-    public static Path metricsSidecarOf(Path sessionFile) {
-        return SessionMetricsFiles.sidecar(sessionFile);
     }
 
     /** Reads only Java HUD metric rows; malformed or future-schema rows are ignored. */
@@ -949,16 +1008,26 @@ public class SessionStorage {
      */
     public Usage sumAssistantUsage(Path sessionFile) {
         if (!Files.exists(sessionFile)) return Usage.EMPTY;
+        TranscriptReadCounter.record(sessionFile);
         long input = 0, output = 0, cacheCreate = 0, cacheRead = 0;
-        try {
-            for (JsonNode root : JsonUtils.readJsonLines(sessionFile)) {
-                if (!Strings.CS.equals("assistant", root.path("type").asText())) continue;
-                JsonNode usage = root.path("message").path("usage");
-                if (usage.isMissingNode() || usage.isNull()) continue;
-                input       += usage.path("input_tokens").asLong(0);
-                output      += usage.path("output_tokens").asLong(0);
-                cacheCreate += usage.path("cache_creation_input_tokens").asLong(0);
-                cacheRead   += usage.path("cache_read_input_tokens").asLong(0);
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"assistant\"") || !Strings.CS.contains(raw, "\"usage\"")) {
+                    continue;
+                }
+                try {
+                    JsonNode root = mapper.readTree(raw);
+                    if (!Strings.CS.equals("assistant", root.path("type").asText())) continue;
+                    JsonNode usage = root.path("message").path("usage");
+                    if (usage.isMissingNode() || usage.isNull()) continue;
+                    input       += usage.path("input_tokens").asLong(0);
+                    output      += usage.path("output_tokens").asLong(0);
+                    cacheCreate += usage.path("cache_creation_input_tokens").asLong(0);
+                    cacheRead   += usage.path("cache_read_input_tokens").asLong(0);
+                } catch (JsonProcessingException _) { /* skip malformed */ }
             }
         } catch (IOException e) {
             log.warn("sumAssistantUsage failed for {} [failureType={}]",
@@ -989,11 +1058,22 @@ public class SessionStorage {
      */
     public RestoreSnapshot readRestoreSnapshot(Path sessionFile) {
         if (sessionFile == null || !Files.exists(sessionFile)) {
-            return new RestoreSnapshot(List.of(), List.of(), List.of(), List.of());
+            return new RestoreSnapshot(List.of(), List.of(), List.of(), List.of(),
+                TranscriptLoader.StartupRestoreBundle.empty());
         }
+        TranscriptReadCounter.record(sessionFile);
         List<Message> messages = new ArrayList<>();
         List<ToolResultBudget.Replacement> replacements = new ArrayList<>();
         List<SessionMetricsEvent> metrics = new ArrayList<>();
+        List<FileHistorySnapshotEntry> fileHistorySnapshots = new ArrayList<>();
+        WorktreeStateEntry worktreeState = null;
+        Set<String> allRecordedUuids = new HashSet<>();
+        String lastChainUuid = null;
+        String lastAssistantUuid = null;
+        long inputTokens = 0, outputTokens = 0, cacheCreateTokens = 0, cacheReadTokens = 0;
+        String metaMode = null, metaPermissionMode = null, metaCustomTitle = null;
+        String metaAgentName = null, metaAgentColor = null, metaTag = null;
+        String metaLastPrompt = null, metaLeafUuid = null, slug = null;
         // The rows the mid-turn-injection check reads; only rows carrying a uuid.
         MetricTurnIndex turnIndex = new MetricTurnIndex();
         // With the sidecar enabled the metric rows live beside, not inside, the
@@ -1013,16 +1093,89 @@ public class SessionStorage {
                 String line = raw.trim();
                 if (line.isEmpty()) continue;
                 String type = rowType(line);
-                if (type == null) continue;
+                if (type == null) {
+                    // Metadata rows ignored by rowType() may still carry mode/tag/file-history/worktree/slug.
+                    if (mayContainMetadata(line)
+                            || Strings.CS.containsAny(line,
+                                "\"file-history-snapshot\"", "\"worktree-state\"", "\"slug\"")) {
+                        try {
+                            JsonNode metaNode = mapper.readTree(line);
+                            if (metaNode.hasNonNull("slug") && StringUtils.isNotBlank(metaNode.path("slug").asText())) {
+                                slug = metaNode.path("slug").asText();
+                            }
+                            String rowPerm = textField(metaNode, "permissionMode");
+                            if (rowPerm != null) metaPermissionMode = rowPerm;
+                            String metaType = metaNode.path("type").asText("");
+                            switch (metaType) {
+                                case "mode" -> metaMode = textField(metaNode, "mode");
+                                case "permission-mode" -> metaPermissionMode = textField(metaNode, "permissionMode");
+                                case "custom-title" -> metaCustomTitle = textField(metaNode, "customTitle");
+                                case "agent-name" -> metaAgentName = textField(metaNode, "agentName");
+                                case "agent-color" -> metaAgentColor = textField(metaNode, "agentColor");
+                                case "tag" -> metaTag = textField(metaNode, "tag");
+                                case "last-prompt" -> {
+                                    String prompt = textField(metaNode, "lastPrompt");
+                                    if (prompt != null) metaLastPrompt = prompt;
+                                    String candidate = textField(metaNode, "leafUuid");
+                                    if (candidate != null) metaLeafUuid = candidate;
+                                }
+                                case "file-history-snapshot" -> {
+                                    String messageId = textField(metaNode, "messageId");
+                                    JsonNode snap = metaNode.get("snapshot");
+                                    boolean isUpdate = metaNode.path("isSnapshotUpdate").asBoolean(false);
+                                    if (messageId != null && snap != null) {
+                                        fileHistorySnapshots.add(new FileHistorySnapshotEntry(messageId, snap, isUpdate));
+                                    }
+                                }
+                                case "worktree-state" -> {
+                                    String sid = textField(metaNode, "sessionId");
+                                    JsonNode ws = metaNode.get("worktreeSession");
+                                    worktreeState = new WorktreeStateEntry(
+                                        sid, (ws == null || ws.isNull()) ? null : ws);
+                                }
+                                default -> { /* ignored */ }
+                            }
+                        } catch (JsonProcessingException _) { /* skip malformed */ }
+                    }
+                    continue;
+                }
                 switch (type) {
                     case "user", "assistant", "system", "attachment", "progress",
                          "hook_result", "tool_use_summary", "tombstone", "grouped_tool_use" -> {
                         try {
-                            messages.add(readTranscriptMessage(line));
+                            Message msg = readTranscriptMessage(line);
+                            messages.add(msg);
+                            String u = msg.uuid();
+                            if (u != null) {
+                                allRecordedUuids.add(u);
+                                if (!Strings.CS.equals("progress", type) && !Strings.CS.equals("tombstone", type)) {
+                                    lastChainUuid = u;
+                                }
+                                if (Strings.CS.equals("assistant", type)) {
+                                    lastAssistantUuid = u;
+                                }
+                            }
+                            if (msg instanceof AssistantMessage am && am.message() != null && am.message().usage() != null) {
+                                Usage uval = am.message().usage();
+                                inputTokens += uval.inputTokens();
+                                outputTokens += uval.outputTokens();
+                                cacheCreateTokens += uval.cacheCreationInputTokens();
+                                cacheReadTokens += uval.cacheReadInputTokens();
+                            }
                         } catch (JsonProcessingException e) {
                             log.warn("Skipping malformed line {} in {} [failureType={}]",
                                 lineNumber, sessionFile, e.getClass().getName(),
                                 ErrorUtils.redactedForLogging(e));
+                        }
+                        if (Strings.CS.containsAny(line, "\"slug\"", "\"permissionMode\"")) {
+                            try {
+                                JsonNode extraNode = mapper.readTree(line);
+                                if (extraNode.hasNonNull("slug") && StringUtils.isNotBlank(extraNode.path("slug").asText())) {
+                                    slug = extraNode.path("slug").asText();
+                                }
+                                String rowPerm = textField(extraNode, "permissionMode");
+                                if (rowPerm != null) metaPermissionMode = rowPerm;
+                            } catch (JsonProcessingException _) { /* skip malformed */ }
                         }
                         indexRowUuid(line, turnIndex);
                     }
@@ -1044,9 +1197,23 @@ public class SessionStorage {
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read session file: " + sessionFile, e);
         }
+        MetadataSnapshot metadataSnapshot = new MetadataSnapshot(
+            Optional.ofNullable(metaMode),
+            Optional.ofNullable(metaPermissionMode),
+            Optional.ofNullable(metaCustomTitle),
+            Optional.ofNullable(metaAgentName),
+            Optional.ofNullable(metaAgentColor),
+            Optional.ofNullable(metaTag),
+            Optional.ofNullable(metaLastPrompt),
+            Optional.ofNullable(metaLeafUuid));
+        TranscriptLoader.StartupRestoreBundle extras = new TranscriptLoader.StartupRestoreBundle(
+            messages, replacements,
+            new Usage(inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens),
+            metadataSnapshot, Optional.ofNullable(slug), fileHistorySnapshots,
+            worktreeState, allRecordedUuids, lastChainUuid, lastAssistantUuid);
         return new RestoreSnapshot(List.copyOf(messages), List.copyOf(replacements),
             metricsInSidecar ? readSessionMetrics(sessionFile) : List.copyOf(metrics),
-            turnIndex.turnIds());
+            turnIndex.turnIds(), extras);
     }
 
     /**
@@ -1185,13 +1352,25 @@ public class SessionStorage {
         List<Message> messages,
         List<ToolResultBudget.Replacement> contentReplacements,
         List<SessionMetricsEvent> sessionMetrics,
-        List<String> metricTurnIds
+        List<String> metricTurnIds,
+        TranscriptLoader.StartupRestoreBundle startupExtras
     ) {
         public RestoreSnapshot {
             messages = List.copyOf(messages);
             contentReplacements = List.copyOf(contentReplacements);
             sessionMetrics = List.copyOf(sessionMetrics);
             metricTurnIds = List.copyOf(metricTurnIds);
+            startupExtras = startupExtras == null
+                ? TranscriptLoader.StartupRestoreBundle.empty() : startupExtras;
+        }
+
+        public RestoreSnapshot(
+                List<Message> messages,
+                List<ToolResultBudget.Replacement> contentReplacements,
+                List<SessionMetricsEvent> sessionMetrics,
+                List<String> metricTurnIds) {
+            this(messages, contentReplacements, sessionMetrics, metricTurnIds,
+                TranscriptLoader.StartupRestoreBundle.empty());
         }
     }
 
@@ -1207,6 +1386,7 @@ public class SessionStorage {
         if (!Files.exists(sessionFile)) {
             return List.of();
         }
+        TranscriptReadCounter.record(sessionFile);
         List<String> lines;
         try {
             lines = Files.readAllLines(sessionFile, StandardCharsets.UTF_8);
@@ -1282,12 +1462,12 @@ public class SessionStorage {
                 }
                 byte[] needle = ("\"uuid\":\"" + targetUuid + "\"")
                     .getBytes(StandardCharsets.US_ASCII);
-                int match = lastIndexOf(tail, needle);
+                int match = ByteArrays.lastIndexOf(tail, needle);
                 if (match >= 0) {
-                    int previousNewline = lastIndexOf(tail, (byte) '\n', match);
+                    int previousNewline = ByteArrays.lastIndexOf(tail, (byte) '\n', match);
                     if (previousNewline >= 0 || start == 0) {
                         int lineStart = previousNewline + 1;
-                        int nextNewline = indexOf(tail, (byte) '\n', match + needle.length);
+                        int nextNewline = ByteArrays.indexOf(tail, (byte) '\n', match + needle.length);
                         int lineEnd = nextNewline >= 0 ? nextNewline + 1 : tail.length;
                         int afterLength = tail.length - lineEnd;
                         channel.position(start + lineStart);
@@ -1363,29 +1543,6 @@ public class SessionStorage {
         }
     }
 
-    private static int lastIndexOf(byte[] haystack, byte[] needle) {
-        for (int i = haystack.length - needle.length; i >= 0; i--) {
-            int j = 0;
-            while (j < needle.length && haystack[i + j] == needle[j]) j++;
-            if (j == needle.length) return i;
-        }
-        return -1;
-    }
-
-    private static int lastIndexOf(byte[] bytes, byte value, int before) {
-        for (int i = Math.min(before - 1, bytes.length - 1); i >= 0; i--) {
-            if (bytes[i] == value) return i;
-        }
-        return -1;
-    }
-
-    private static int indexOf(byte[] bytes, byte value, int from) {
-        for (int i = Math.max(0, from); i < bytes.length; i++) {
-            if (bytes[i] == value) return i;
-        }
-        return -1;
-    }
-
     /**
      * Reads message-level tool-result replacement decisions from a transcript.
      * These metadata rows are intentionally kept separate from {@link
@@ -1395,9 +1552,14 @@ public class SessionStorage {
      */
     public List<ToolResultBudget.Replacement> readContentReplacements(Path sessionFile) {
         if (sessionFile == null || !Files.exists(sessionFile)) return List.of();
+        TranscriptReadCounter.record(sessionFile);
         List<ToolResultBudget.Replacement> result = new ArrayList<>();
-        try {
-            for (String raw : Files.readAllLines(sessionFile, StandardCharsets.UTF_8)) {
+        try (var reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String raw;
+            boolean first = true;
+            while ((raw = reader.readLine()) != null) {
+                if (first) { raw = JsonUtils.stripBom(raw); first = false; }
+                if (!Strings.CS.contains(raw, "\"content-replacement\"")) continue;
                 String line = raw.trim();
                 if (line.isEmpty()) continue;
                 JsonNode root;
@@ -1418,7 +1580,7 @@ public class SessionStorage {
                     }
                     String id = item.path("toolUseId").asText("");
                     JsonNode replacement = item.get("replacement");
-                    if (!StringUtils.isBlank(id) && replacement != null && replacement.isTextual()) {
+                    if (StringUtils.isNotBlank(id) && replacement != null && replacement.isTextual()) {
                         result.add(new ToolResultBudget.Replacement(id, replacement.textValue()));
                     }
                 }

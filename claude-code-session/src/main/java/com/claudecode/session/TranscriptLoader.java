@@ -78,6 +78,7 @@ public final class TranscriptLoader {
     }
 
     private void readIntoMutable(Path file, boolean keepAllLeaves, MutableTranscript data) {
+        TranscriptReadCounter.record(file);
         try (BufferedReader reader = keepAllLeaves
                 ? Files.newBufferedReader(file, StandardCharsets.UTF_8)
                 : new BufferedReader(new InputStreamReader(new ByteArrayInputStream(
