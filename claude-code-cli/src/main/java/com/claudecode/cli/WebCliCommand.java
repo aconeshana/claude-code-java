@@ -19,6 +19,7 @@ import com.claudecode.runtime.sessionhost.SessionHostSession;
 import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
+import com.claudecode.services.plugins.marketplace.PluginMarketplaceAdapter;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
@@ -148,12 +149,27 @@ public class WebCliCommand implements Callable<Integer> {
                 WebHeadlessSessions.create(mcpRuntime, resources, interactions, err);
             String cwd = System.getProperty("user.dir");
             CustomModelJsonStore modelCatalog = new CustomModelJsonStore();
+            CliPluginRuntimeView pluginRuntime = headless.pluginRuntime();
             try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd);
                  CliCcConnectManager ccConnectManager = new CliCcConnectManager(cwd);
                  CliWebRuntimeControl runtimeControl = new CliWebRuntimeControl(
-                     cronDaemon, modelCatalog, ccConnectManager::reloadConfig)) {
+                     cronDaemon, modelCatalog, () -> {
+                         ccConnectManager.reloadConfig();
+                         if (pluginRuntime != null) {
+                             pluginRuntime.refresh();
+                         }
+                     })) {
                 cronDaemon.start();
                 CommandRegistry commandRegistry = webCommands();
+                if (pluginRuntime != null) {
+                    pluginRuntime.attachCommandRegistry(commandRegistry);
+                    pluginRuntime.reloadSkills();
+                }
+                var pluginMarketplace = PluginMarketplaceAdapter.standard(cwd,
+                    () -> pluginRuntime != null
+                        ? pluginRuntime.currentSnapshot().errors() : List.of(),
+                    () -> pluginRuntime != null
+                        ? pluginRuntime.currentSnapshot().mcpServers() : List.of());
                 GatewaySessionMessagesPort sessionMessages = headless.messagesPort(cwd);
                 CliGatewayRuntime runtime = new CliGatewayRuntime(
                     emptyRegistry(), new GatewaySessionCatalogPort() {}, headless,
@@ -183,6 +199,7 @@ public class WebCliCommand implements Callable<Integer> {
                     headless::toolRegistry));
             runtime.setRuntimeControl(runtimeControl);
             runtime.setCcConnect(ccConnectManager);
+            runtime.setPlugins(CliGatewayPorts.plugins(pluginMarketplace, pluginRuntime));
             CountDownLatch stopped = new CountDownLatch(1);
             Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().unstarted(() -> {
                 ccConnectManager.close();

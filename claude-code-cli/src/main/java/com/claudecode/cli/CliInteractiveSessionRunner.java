@@ -448,6 +448,7 @@ final class CliInteractiveSessionRunner {
                     ? pluginRuntime.currentSnapshot().errors() : List.of(), () ->
                 pluginRuntime != null
                     ? pluginRuntime.currentSnapshot().mcpServers() : List.of());
+            gatewayRuntime.setPlugins(CliGatewayPorts.plugins(pluginMarketplace, pluginRuntime));
             var mcpManagement = new CliMcpManagementAdapter(
                 Path.of(interactiveCwd), mcpRuntime::clientRuntime,
                 toolRegistry, cmdRegistry, pluginMarketplace);

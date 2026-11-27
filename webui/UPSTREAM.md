@@ -890,6 +890,16 @@ here rather than silently improvised:
   `/api/session/context` model catalogue the composer's model seat reads
   ("跟随会话" = no override). A product-scope deviation with no upstream
   counterpart.
+- **Plugins: Claude Code marketplace/plugin lifecycle inside Settings, not
+  dsh's Cordis npm bundle page.** Upstream's `ui-plugin-manager` +
+  `ui-plugin-market` manage Cordis npm bundles built by `pnpm` in a host
+  profile. Our backend (`PluginMarketplacePort` over `~/.claude/plugins`)
+  follows Claude Code's Git/URL/directory marketplace + `.claude-plugin`
+  manifest model instead. `PluginsSection.tsx` mounts under `SettingsPanel.tsx`
+  with the vendored `IconCordisPluginOutline14` nav glyph and reuses the
+  already-vendored `@primitives` (`Button`, `Input`, `Switch`, `Pill`, `Menu`)
+  plus `PermissionRow.module.css` (`SettingsRow`/`MenuSelect`) and
+  `ModelsSection.module.css` card rows over `/api/plugins/**`.
 - **Trigger placement: sidebar footer, not a header icon pair.** The settings
   panel is opened from `Sidebar.tsx`'s footer, reusing
   `SettingsRoot.module.css`'s own `triggerRow`/`trigger`/`triggerLabel`

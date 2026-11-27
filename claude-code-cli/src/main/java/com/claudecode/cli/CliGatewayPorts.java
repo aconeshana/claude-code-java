@@ -1,9 +1,12 @@
 package com.claudecode.cli;
 
 import com.claudecode.commands.CommandRegistry;
+import com.claudecode.commands.plugins.PluginRuntimePort;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.gateway.GatewayCommandsPort;
 import com.claudecode.gateway.GatewayFileSuggestionsPort;
+import com.claudecode.gateway.GatewayPluginsPort;
+import com.claudecode.runtime.plugins.PluginMarketplacePort;
 import com.claudecode.tools.files.WorkspaceFileSearch;
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.tools.skills.SkillLoader;
@@ -89,6 +92,35 @@ final class CliGatewayPorts {
                         "skill"));
                 }
                 return List.copyOf(out);
+            }
+        };
+    }
+
+    static GatewayPluginsPort plugins(
+            PluginMarketplacePort marketplace, CliPluginRuntimeView runtime) {
+        return new GatewayPluginsPort() {
+            @Override
+            public PluginMarketplacePort marketplace() {
+                return marketplace;
+            }
+
+            @Override
+            public RuntimeSummary summary() {
+                if (runtime == null) {
+                    int errors = marketplace == null ? 0 : marketplace.errors().size();
+                    return new RuntimeSummary(0, 0, 0, 0, errors);
+                }
+                PluginRuntimePort.Summary s = runtime.summary();
+                return new RuntimeSummary(
+                    s.commandCount(), s.agentCount(), s.skillCount(), s.mcpCount(), s.errorCount());
+            }
+
+            @Override
+            public RuntimeSummary refreshRuntime() {
+                if (runtime != null) {
+                    runtime.refresh();
+                }
+                return summary();
             }
         };
     }

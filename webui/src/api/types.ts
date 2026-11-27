@@ -1078,6 +1078,90 @@ export interface ProjectCustomizations {
   readonly mcp_servers: readonly ProjectMcpServerInfo[]
 }
 
+// ---------------------------------------------------------------------------
+// Plugins & Marketplaces (/api/plugins/**)
+// ---------------------------------------------------------------------------
+
+export type PluginInstallScope = 'user' | 'project' | 'local'
+
+export interface PluginRuntimeSummary {
+  readonly command_count: number
+  readonly agent_count: number
+  readonly skill_count: number
+  readonly mcp_count: number
+  readonly error_count: number
+}
+
+export interface PluginConfigSchemaField {
+  readonly type: string
+  readonly title: string
+  readonly description: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly default?: unknown
+}
+
+export interface PluginInstallationEntry {
+  readonly scope: string
+  readonly project_path: string
+  readonly install_path: string
+  readonly version: string
+}
+
+export interface InstalledPluginItem {
+  readonly plugin_id: string
+  readonly name: string
+  readonly marketplace: string
+  readonly enabled: boolean
+  readonly description: string
+  readonly version: string
+  readonly author: string
+  readonly homepage: string
+  readonly repository: string
+  readonly installations: readonly PluginInstallationEntry[]
+  readonly user_config: Readonly<Record<string, PluginConfigSchemaField>>
+  readonly options: Readonly<Record<string, unknown>>
+}
+
+export interface MarketplaceCatalogPlugin {
+  readonly name: string
+  readonly plugin_id: string
+  readonly marketplace: string
+  readonly description: string
+  readonly version: string
+  readonly author: string
+  readonly category: string
+  readonly homepage: string
+  readonly repository: string
+  readonly tags: readonly string[]
+}
+
+export interface PluginMarketplaceItem {
+  readonly name: string
+  readonly source: string
+  readonly install_location: string
+  readonly last_updated: string
+  readonly auto_update: boolean
+  readonly plugins: readonly MarketplaceCatalogPlugin[]
+}
+
+export interface PluginErrorItem {
+  readonly source: string
+  readonly message: string
+  readonly guidance: string
+  readonly action: string
+  readonly target: string
+}
+
+export interface PluginsSnapshot {
+  readonly supported: boolean
+  readonly summary: PluginRuntimeSummary
+  readonly installed: readonly InstalledPluginItem[]
+  readonly marketplaces: readonly PluginMarketplaceItem[]
+  readonly errors: readonly PluginErrorItem[]
+}
+
+
 
 
 

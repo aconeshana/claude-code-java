@@ -39,6 +39,132 @@ public final class PluginValidator {
 
     private PluginValidator() {}
 
+    /**
+     * Auto-detecting entry point used by {@code claude plugin validate <path>}: dispatches to
+     * marketplace validation when pointing at {@code marketplace.json} or a directory containing
+     * {@code .claude-plugin/marketplace.json} (without {@code .claude-plugin/plugin.json}), and
+     * falls back to plugin validation otherwise.
+     */
+    public static ValidationResult validate(Path path) {
+        Path normalized = path.toAbsolutePath().normalize();
+        if (Files.isDirectory(normalized)) {
+            Path pluginJson = normalized.resolve(".claude-plugin").resolve("plugin.json");
+            Path marketplaceJson = normalized.resolve(".claude-plugin").resolve("marketplace.json");
+            if (!Files.exists(pluginJson) && Files.exists(marketplaceJson)) {
+                return validateMarketplace(normalized);
+            }
+            return validatePlugin(normalized);
+        }
+        Path fileName = normalized.getFileName();
+        if (fileName != null && Strings.CS.equals(fileName.toString(), "marketplace.json")) {
+            return validateMarketplaceManifest(normalized);
+        }
+        return validatePluginManifest(normalized);
+    }
+
+    /** Validates a {@code marketplace.json} manifest file. */
+    public static ValidationResult validateMarketplaceManifest(Path filePath) {
+        List<ValidationError> errors = new ArrayList<>();
+        List<ValidationWarning> warnings = new ArrayList<>();
+        Path absolutePath = filePath.toAbsolutePath().normalize();
+
+        if (!Files.exists(absolutePath)) {
+            errors.add(new ValidationError("file", "File not found: " + absolutePath, "ENOENT"));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+        if (Files.isDirectory(absolutePath)) {
+            errors.add(new ValidationError("file", "Path is not a file: " + absolutePath, "EISDIR"));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+
+        JsonNode parsed;
+        try {
+            parsed = JsonUtils.getMapper().readTree(Files.readString(absolutePath));
+        } catch (IOException e) {
+            errors.add(new ValidationError("json", "Invalid JSON syntax: " + e.getMessage(), null));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+        if (parsed == null || !parsed.isObject()) {
+            errors.add(new ValidationError("json", "Invalid JSON syntax: manifest must be a JSON object", null));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+
+        MarketplaceManifest manifest;
+        try {
+            manifest = JsonUtils.getMapper().treeToValue(parsed, MarketplaceManifest.class);
+        } catch (IOException e) {
+            errors.add(new ValidationError("root", "Marketplace manifest validation failed: " + e.getMessage(), null));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+
+        validateName(manifest.name(), errors, warnings);
+        if (manifest.plugins() == null) {
+            errors.add(new ValidationError("plugins", "Marketplace manifest must declare a plugins array", null));
+            return marketplaceResult(errors, warnings, absolutePath);
+        }
+        for (int i = 0; i < manifest.plugins().size(); i++) {
+            MarketplacePluginEntry entry = manifest.plugins().get(i);
+            String prefix = "plugins[" + i + "]";
+            if (StringUtils.isEmpty(entry.name())) {
+                errors.add(new ValidationError(prefix + ".name", "Plugin entry name cannot be empty", null));
+            } else {
+                validateName(entry.name(), errors, warnings);
+            }
+            if (entry.source() == null) {
+                errors.add(new ValidationError(prefix + ".source", "Plugin entry source is required", null));
+            } else if (entry.source() instanceof PluginSource.RelativePath rp
+                && Strings.CS.contains(rp.path(), "..")) {
+                errors.add(new ValidationError(prefix + ".source",
+                    "Path contains \"..\" which could be a path traversal attempt: " + rp.path(), null));
+            }
+        }
+        return marketplaceResult(errors, warnings, absolutePath);
+    }
+
+    /** Validates a marketplace directory and any local relative-path plugin directories inside it. */
+    public static ValidationResult validateMarketplace(Path marketplaceDir) {
+        Path manifestPath = marketplaceDir.resolve(".claude-plugin").resolve("marketplace.json");
+        ValidationResult manifestResult = validateMarketplaceManifest(manifestPath);
+        if (!manifestResult.success()) {
+            return manifestResult;
+        }
+        List<ValidationError> errors = new ArrayList<>(manifestResult.errors());
+        List<ValidationWarning> warnings = new ArrayList<>(manifestResult.warnings());
+
+        MarketplaceManifest manifest;
+        try {
+            manifest = JsonUtils.getMapper().readValue(manifestPath.toFile(), MarketplaceManifest.class);
+        } catch (IOException e) {
+            errors.add(new ValidationError("json", "Invalid JSON syntax: " + e.getMessage(), null));
+            return marketplaceResult(errors, warnings, manifestResult.filePath());
+        }
+
+        if (manifest.plugins() != null) {
+            for (int i = 0; i < manifest.plugins().size(); i++) {
+                MarketplacePluginEntry entry = manifest.plugins().get(i);
+                if (entry.source() instanceof PluginSource.RelativePath rp
+                    && !Strings.CS.contains(rp.path(), "..")) {
+                    Path pluginDir = marketplaceDir.resolve(rp.path()).normalize();
+                    if (!Files.isDirectory(pluginDir)) {
+                        errors.add(new ValidationError("plugins[" + i + "].source",
+                            "Plugin directory not found: " + pluginDir, "ENOENT"));
+                    } else if (Files.exists(pluginDir.resolve(".claude-plugin").resolve("plugin.json"))) {
+                        ValidationResult subResult = validatePlugin(pluginDir);
+                        for (ValidationError err : subResult.errors()) {
+                            errors.add(new ValidationError(
+                                entry.name() + "." + err.path(), err.message(), err.code()));
+                        }
+                        for (ValidationWarning warn : subResult.warnings()) {
+                            warnings.add(new ValidationWarning(
+                                entry.name() + "." + warn.path(), warn.message()));
+                        }
+                    }
+                }
+            }
+        }
+        return marketplaceResult(errors, warnings, manifestResult.filePath());
+    }
+
     /** Validates a  manifest file. */
     public static ValidationResult validatePluginManifest(Path filePath) {
         List<ValidationError> errors = new ArrayList<>();
@@ -227,5 +353,12 @@ public final class PluginValidator {
                                            List<ValidationWarning> warnings, Path filePath) {
         return new ValidationResult(errors.isEmpty(), List.copyOf(errors),
             List.copyOf(warnings), filePath, "plugin");
+    }
+
+    private static ValidationResult marketplaceResult(List<ValidationError> errors,
+                                                      List<ValidationWarning> warnings,
+                                                      Path filePath) {
+        return new ValidationResult(errors.isEmpty(), List.copyOf(errors),
+            List.copyOf(warnings), filePath, "marketplace");
     }
 }

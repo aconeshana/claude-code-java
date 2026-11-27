@@ -988,6 +988,274 @@ paths:
             application/json:
               schema: { type: object }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/plugins:
+    get:
+      tags: [Runtime]
+      summary: Read installed plugins, registered marketplaces, catalog entries, and runtime summary
+      responses:
+        '200':
+          description: Current plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/plugins/reload:
+    post:
+      tags: [Runtime]
+      summary: Reload enabled plugins into the live runtime in place
+      responses:
+        '200':
+          description: Refreshed plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/plugins/marketplaces/add:
+    post:
+      tags: [Runtime]
+      summary: Register and cache a plugin marketplace (owner/repo, URL, or local path)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source: { type: string }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Marketplace add failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/marketplaces/update:
+    post:
+      tags: [Runtime]
+      summary: Refresh one or all registered plugin marketplaces and update installed plugin versions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Marketplace update failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/marketplaces/remove:
+    post:
+      tags: [Runtime]
+      summary: Remove a registered plugin marketplace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Marketplace remove failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/marketplaces/auto-update:
+    post:
+      tags: [Runtime]
+      summary: Toggle automatic update preference for a registered marketplace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, auto_update]
+              properties:
+                name: { type: string }
+                auto_update: { type: boolean }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/plugins/install:
+    post:
+      tags: [Runtime]
+      summary: Install and enable a plugin from a registered marketplace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plugin_name, marketplace_name]
+              properties:
+                plugin_name: { type: string }
+                marketplace_name: { type: string }
+                scope: { type: string, enum: [user, project, local] }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Plugin install failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/toggle:
+    post:
+      tags: [Runtime]
+      summary: Enable or disable an installed plugin at the specified scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plugin_id, enabled]
+              properties:
+                plugin_id: { type: string }
+                enabled: { type: boolean }
+                scope: { type: string, enum: [user, project, local] }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Plugin toggle failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/update:
+    post:
+      tags: [Runtime]
+      summary: Update an installed plugin to the latest marketplace version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plugin_id]
+              properties:
+                plugin_id: { type: string }
+                scope: { type: string, enum: [user, project, local] }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Plugin update failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/uninstall:
+    post:
+      tags: [Runtime]
+      summary: Uninstall an installed plugin at the specified scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plugin_id]
+              properties:
+                plugin_id: { type: string }
+                scope: { type: string, enum: [user, project, local] }
+                delete_data: { type: boolean }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Plugin uninstall failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/plugins/options:
+    post:
+      tags: [Runtime]
+      summary: Save userConfig option values for an installed plugin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plugin_id, values]
+              properties:
+                plugin_id: { type: string }
+                values: { type: object }
+      responses:
+        '200':
+          description: Updated plugin manager snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Saving plugin options failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /api/directories:
     get:
       tags: [Workspace]

@@ -610,9 +610,7 @@ public final class PluginMarketplaceAdapter implements PluginMarketplacePort {
 
     @Override
     public ValidationResult validate(Path path) {
-        PluginValidator.ValidationResult result = Files.isDirectory(path)
-            ? PluginValidator.validatePlugin(path)
-            : PluginValidator.validatePluginManifest(path);
+        PluginValidator.ValidationResult result = PluginValidator.validate(path);
         return new ValidationResult(
             result.success(),
             result.errors().stream()

@@ -59,6 +59,7 @@ final class GatewayRouter {
     private final LanModelProxyHandler lanModelProxy;
     private final GatewayLanAdminHandler lanAdminApi;
     private final GatewayCcConnectHandler ccConnectApi;
+    private final GatewayPluginsHandler pluginsApi;
     private final GatewayContextTimelineHandler contextTimelineApi;
     private final String localMachineHostName;
     private final GatewaySessionListingProjection sessionListing;
@@ -98,6 +99,7 @@ final class GatewayRouter {
             LanModelProxyHandler lanModelProxy,
             GatewayLanAdminHandler lanAdminApi,
             GatewayCcConnectHandler ccConnectApi,
+            GatewayPluginsHandler pluginsApi,
             GatewayContextTimelineHandler contextTimelineApi,
             String localMachineHostName,
             GatewaySessionListingProjection sessionListing) {
@@ -135,6 +137,7 @@ final class GatewayRouter {
         this.lanModelProxy = lanModelProxy;
         this.lanAdminApi = lanAdminApi;
         this.ccConnectApi = ccConnectApi;
+        this.pluginsApi = pluginsApi;
         this.contextTimelineApi = contextTimelineApi;
         this.localMachineHostName = localMachineHostName;
         this.sessionListing = sessionListing;
@@ -836,6 +839,61 @@ final class GatewayRouter {
         if (post && Strings.CS.equals("/api/cc-connect/setup/cancel", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
             serve(exchange, () -> ccConnectApi.handleCancelSetup(exchange));
+            return;
+        }
+        if (get && Strings.CS.equals("/api/plugins", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> pluginsApi.handleGetSnapshot(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/reload", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleReload(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/marketplaces/add", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleAddMarketplace(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/marketplaces/update", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleUpdateMarketplace(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/marketplaces/remove", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleRemoveMarketplace(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/marketplaces/auto-update", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serve(exchange, () -> pluginsApi.handleSetAutoUpdate(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/install", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleInstall(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/toggle", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleToggle(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/update", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleUpdatePlugin(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/uninstall", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleUninstall(exchange));
+            return;
+        }
+        if (post && Strings.CS.equals("/api/plugins/options", targetPath)) {
+            if (rejectIfUnauthenticated(auth, exchange)) return;
+            serveAsync(exchange, () -> pluginsApi.handleSaveOptions(exchange));
             return;
         }
         try (exchange) {

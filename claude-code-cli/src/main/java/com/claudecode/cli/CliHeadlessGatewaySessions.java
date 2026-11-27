@@ -43,6 +43,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     private final CliHeadlessSessionFactory factory;
     private final String mainCwd;
     private final GatewayLanProxyPort lanProxyPort;
+    private final CliPluginRuntimeView pluginRuntime;
     private final ConcurrentMap<String, Entry> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -70,10 +71,23 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
             CliHeadlessSessionFactory factory,
             String mainCwd,
             GatewayLanProxyPort lanProxyPort) {
+        this(factory, mainCwd, lanProxyPort, null);
+    }
+
+    CliHeadlessGatewaySessions(
+            CliHeadlessSessionFactory factory,
+            String mainCwd,
+            GatewayLanProxyPort lanProxyPort,
+            CliPluginRuntimeView pluginRuntime) {
         this.factory = factory;
         this.mainCwd = mainCwd;
         this.lanProxyPort = lanProxyPort != null
             ? lanProxyPort : CliLanProxyAdapter.catalogOnly(new CustomModelJsonStore());
+        this.pluginRuntime = pluginRuntime;
+    }
+
+    CliPluginRuntimeView pluginRuntime() {
+        return pluginRuntime;
     }
 
     GatewayLanProxyPort lanProxyPort() {

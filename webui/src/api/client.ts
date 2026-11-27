@@ -1,4 +1,4 @@
-import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type RenameSessionResponse, type RespondRequest, type RewindExecuteResponse, type RewindMode, type RewindPreviewResponse, type ScheduleListing, type SessionCapabilitiesResponse, type SessionCapabilityToggleRequest, type SessionCapabilityToggleResponse, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
+import { ApiError, type AgentPromptResponse, type AgentStopResponse, type AgentTranscriptSnapshot, type ArchiveSessionResponse, type BatchSaveModelsResponse, type CatalogProject, type CloseSessionResponse, type CommandsListing, type DeleteSessionResponse, type DiscoverModelsResponse, type FileSuggestionsListing, type FlatSessionCatalog, type ForkSessionResponse, type MessagesSnapshot, type ModelProtocol, type ModelsListing, type OpenSessionResponse, type PermissionBehaviorKind, type PluginInstallScope, type PluginsSnapshot, type RenameSessionResponse, type RespondRequest, type RewindExecuteResponse, type RewindMode, type RewindPreviewResponse, type ScheduleListing, type SessionCapabilitiesResponse, type SessionCapabilityToggleRequest, type SessionCapabilityToggleResponse, type SessionCancelResponse, type SessionCatalog, type SessionContext, type SessionContextSelectResponse, type SessionPermissionModeResponse, type SessionTaskBoard, type SettingsSnapshot, type SettingsTier, type ShellOutputDetail, type ShellsListing, type ShellStopResponse, type SpinnerVerbsListing, type SudoRespondRequest, type UserContentBlock } from './types'
 import { currentToken } from './token'
 
 /**
@@ -1056,6 +1056,91 @@ export function fetchSessionCapabilities(sessionId?: string | null): Promise<Ses
 export function toggleSessionCapability(body: SessionCapabilityToggleRequest): Promise<SessionCapabilityToggleResponse> {
   return requestJson('POST', '/api/session/capabilities', body)
 }
+
+// ---------------------------------------------------------------------------
+// Plugins & Marketplaces (/api/plugins/**)
+// ---------------------------------------------------------------------------
+
+export function fetchPluginsSnapshot(): Promise<PluginsSnapshot> {
+  return requestJson('GET', '/api/plugins')
+}
+
+export function reloadPluginsRuntime(): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/reload', {})
+}
+
+export function addPluginMarketplace(source: string): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/marketplaces/add', { source })
+}
+
+export function updatePluginMarketplace(name?: string): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/marketplaces/update', name != null && name !== '' ? { name } : {})
+}
+
+export function removePluginMarketplace(name: string): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/marketplaces/remove', { name })
+}
+
+export function setPluginMarketplaceAutoUpdate(name: string, autoUpdate: boolean): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/marketplaces/auto-update', { name, auto_update: autoUpdate })
+}
+
+export function installMarketplacePlugin(input: {
+  readonly pluginName: string
+  readonly marketplaceName: string
+  readonly scope?: PluginInstallScope
+}): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/install', {
+    plugin_name: input.pluginName,
+    marketplace_name: input.marketplaceName,
+    ...(input.scope == null ? {} : { scope: input.scope }),
+  })
+}
+
+export function toggleInstalledPlugin(input: {
+  readonly pluginId: string
+  readonly enabled: boolean
+  readonly scope?: PluginInstallScope
+}): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/toggle', {
+    plugin_id: input.pluginId,
+    enabled: input.enabled,
+    ...(input.scope == null ? {} : { scope: input.scope }),
+  })
+}
+
+export function updateInstalledPlugin(input: {
+  readonly pluginId: string
+  readonly scope?: PluginInstallScope
+}): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/update', {
+    plugin_id: input.pluginId,
+    ...(input.scope == null ? {} : { scope: input.scope }),
+  })
+}
+
+export function uninstallInstalledPlugin(input: {
+  readonly pluginId: string
+  readonly scope?: PluginInstallScope
+  readonly deleteData?: boolean
+}): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/uninstall', {
+    plugin_id: input.pluginId,
+    ...(input.scope == null ? {} : { scope: input.scope }),
+    ...(input.deleteData == null ? {} : { delete_data: input.deleteData }),
+  })
+}
+
+export function saveInstalledPluginOptions(input: {
+  readonly pluginId: string
+  readonly values: Readonly<Record<string, unknown>>
+}): Promise<PluginsSnapshot> {
+  return requestJson('POST', '/api/plugins/options', {
+    plugin_id: input.pluginId,
+    values: input.values,
+  })
+}
+
 
 
 

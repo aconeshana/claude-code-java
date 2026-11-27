@@ -106,6 +106,7 @@ public final class GatewayServer implements AutoCloseable {
     private final LanModelProxyHandler lanModelProxy;
     private final GatewayLanAdminHandler lanAdminApi;
     private final GatewayCcConnectHandler ccConnectApi;
+    private final GatewayPluginsHandler pluginsApi;
     private final MacAwakeGuard awakeGuard = new MacAwakeGuard();
     private final ContextTimelineLedger contextTimeline;
     private final GatewayContextTimelineHandler contextTimelineApi;
@@ -168,6 +169,7 @@ public final class GatewayServer implements AutoCloseable {
         private LanGatewayConfigStore lanConfigStore = LanGatewayConfigStore.inMemory();
         private GatewayLanProxyPort lanProxy = new GatewayLanProxyPort() {};
         private GatewayCcConnectPort ccConnect = new GatewayCcConnectPort() {};
+        private GatewayPluginsPort plugins = new GatewayPluginsPort() {};
         private WebWorkerDirectory webWorkers;
         private boolean remoteSessionState;
         private RemoteSessionContextPort.MetricsFold remoteMetrics =
@@ -322,6 +324,11 @@ public final class GatewayServer implements AutoCloseable {
 
         public Builder ccConnect(GatewayCcConnectPort value) {
             this.ccConnect = Objects.requireNonNull(value, "ccConnect");
+            return this;
+        }
+
+        public Builder plugins(GatewayPluginsPort value) {
+            this.plugins = Objects.requireNonNull(value, "plugins");
             return this;
         }
 
@@ -540,6 +547,7 @@ public final class GatewayServer implements AutoCloseable {
             this::rebindLanSharing,
             this::withBindLock);
         this.ccConnectApi = new GatewayCcConnectHandler(bindCcConnectPort(builder.ccConnect));
+        this.pluginsApi = new GatewayPluginsHandler(builder.plugins);
         this.sessionActionsApi = new GatewaySessionActionsHandler(actions);
         // The turn-completion delta folds read the same durable metrics the
         // session-context endpoint serves — one projection, two consumers.
@@ -597,6 +605,7 @@ public final class GatewayServer implements AutoCloseable {
             lanModelProxy,
             lanAdminApi,
             ccConnectApi,
+            pluginsApi,
             contextTimelineApi,
             localMachineHostName,
             new GatewaySessionListingProjection(catalog, registry, headless, mirror, sessionActions, remoteWorkers));

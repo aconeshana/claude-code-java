@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import {
   Button,
   IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
-  IconClockOutline16, IconCloseOutline16, IconDarkOutline16, IconDataOutline16,
+  IconClockOutline16, IconCloseOutline16, IconCordisPluginOutline14, IconDarkOutline16, IconDataOutline16,
   IconFolderOpenOutline16, IconFollowsystemOutline16, IconGlobeOutline14,
   IconLightOutline16, IconLinkOutline16, IconPlusOutline16, IconRefreshOutline16,
   IconSettingsOutline16,
@@ -49,7 +49,9 @@ import { ContextIcon } from '@dsh-context/client/icon'
 import { LanGatewaySection } from './LanGatewaySection'
 import { CcConnectSection } from './CcConnectSection'
 import { ModelsSection } from './ModelsSection'
+import { PluginsSection } from './PluginsSection'
 import { ScheduleSection } from './SchedulePanel'
+import { usePlugins } from '../store/plugins'
 import { ProjectSettingsSection } from './ProjectSettingsSection'
 import { CreateProjectModal } from './CreateProjectModal'
 import { projectDisplayName, useProjects } from '../store/projects'
@@ -83,7 +85,7 @@ import { useWorkspacePrefs } from '../store/workspacePrefs'
  * reminders remain with the Schedule tools", its README).
  */
 
-type SectionId = 'general' | 'permissions' | 'models' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
+type SectionId = 'general' | 'permissions' | 'models' | 'plugins' | 'lan-gateway' | 'cc-connect' | 'schedule' | 'context'
 
 /**
  * Settings navigation rail sections.
@@ -95,6 +97,7 @@ type SectionId = 'general' | 'permissions' | 'models' | 'lan-gateway' | 'cc-conn
  * - `general`     → `IconSettingsOutline16`  (gear)
  * - `permissions` → `IconChecklistOutline14` (rule switches/checklist)
  * - `models`      → `IconDataOutline16`      (upstream `dsh-model-select` Models glyph)
+ * - `plugins`     → `IconCordisPluginOutline14` (upstream plugin glyph)
  * - `lan-gateway` → `IconGlobeOutline14`     (network / multi-protocol LAN relay)
  * - `cc-connect`  → `IconLinkOutline16`      (external IM bridge / connector link)
  * - `schedule`    → `IconClockOutline16`     (scheduled tasks clock)
@@ -104,6 +107,7 @@ const SECTIONS: readonly { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <IconSettingsOutline16 className={css.navIcon} size={16} /> },
   { id: 'permissions', label: '权限', icon: <IconChecklistOutline14 className={css.navIcon} size={16} /> },
   { id: 'models', label: '模型', icon: <IconDataOutline16 className={css.navIcon} size={16} /> },
+  { id: 'plugins', label: '插件', icon: <IconCordisPluginOutline14 className={css.navIcon} size={16} /> },
   { id: 'lan-gateway', label: '局域网网关', icon: <IconGlobeOutline14 className={css.navIcon} size={16} /> },
   { id: 'cc-connect', label: '外部协作', icon: <IconLinkOutline16 className={css.navIcon} size={16} /> },
   { id: 'schedule', label: '定时任务', icon: <IconClockOutline16 className={css.navIcon} size={16} /> },
@@ -194,6 +198,7 @@ export function SettingsPanel({ open, onClose }: {
       case 'general': return t('nav.general')
       case 'permissions': return t('nav.permissions')
       case 'models': return t('nav.models')
+      case 'plugins': return t('nav.plugins')
       case 'lan-gateway': return t('nav.lanGateway')
       case 'cc-connect': return t('nav.ccConnect')
       case 'schedule': return t('nav.schedule')
@@ -341,6 +346,7 @@ export function SettingsPanel({ open, onClose }: {
                   void refresh()
                   void useSessions.getState().refresh()
                   void useModels.getState().refresh()
+                  void usePlugins.getState().refresh()
                   void useSchedule.getState().refresh()
                   void useComposerCommands.getState().refresh()
                 }} />
@@ -402,6 +408,12 @@ export function SettingsPanel({ open, onClose }: {
             {activeProjectPath == null && activeSection === 'models' && (
               <div className={sectionCss.section}>
                 <ModelsSection />
+              </div>
+            )}
+
+            {activeProjectPath == null && activeSection === 'plugins' && (
+              <div className={sectionCss.section}>
+                <PluginsSection />
               </div>
             )}
 
