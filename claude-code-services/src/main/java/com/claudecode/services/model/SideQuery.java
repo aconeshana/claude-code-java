@@ -376,18 +376,18 @@ public final class SideQuery {
                         stopSequence = delta.delta().stopSequence();
                         stopDetails = delta.delta().stopDetails();
                     }
-                } else if (event instanceof StreamEvent.ContentBlockStart start) {
-                    blocks.put(start.index(), new StreamingBlock(start.contentBlock()));
-                } else if (event instanceof StreamEvent.ContentBlockDelta delta) {
-                    blocks.computeIfAbsent(delta.index(), _ -> StreamingBlock.forDelta(delta.delta()))
-                        .append(delta.delta());
-                } else if (event instanceof StreamEvent.Error error) {
-                    if (error.exception() instanceof ApiStreamException streamFailure
+                } else if (event instanceof StreamEvent.ContentBlockStart(var index, var contentBlock, _)) {
+                    blocks.put(index, new StreamingBlock(contentBlock));
+                } else if (event instanceof StreamEvent.ContentBlockDelta(var index, var delta, _)) {
+                    blocks.computeIfAbsent(index, _ -> StreamingBlock.forDelta(delta))
+                        .append(delta);
+                } else if (event instanceof StreamEvent.Error(var exception, _)) {
+                    if (exception instanceof ApiStreamException streamFailure
                             && streamFailure.reason() == ApiStreamException.Reason.ABORTED
                             && !timedOut.get()) {
                         throw new AbortException("Request aborted");
                     }
-                    throw error.exception();
+                    throw exception;
                 }
             }
             if (timedOut.get()) {

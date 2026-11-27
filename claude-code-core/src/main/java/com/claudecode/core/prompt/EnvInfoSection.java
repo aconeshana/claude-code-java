@@ -7,6 +7,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.process.SubprocessEnvironment;
 import java.nio.file.Path;
@@ -23,11 +24,12 @@ public final class EnvInfoSection {
     // ── OS / shell probing ─────────────────────────────────────────────────
 
     public static String platform() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac") || Strings.CS.contains(os, "darwin")) return "darwin";
-        if (Strings.CS.contains(os, "win")) return "win32";
-        if (Strings.CS.contains(os, "linux")) return "linux";
-        return os;
+        return switch (Platform.detectCurrent()) {
+            case DARWIN -> "darwin";
+            case WIN32 -> "win32";
+            case LINUX -> "linux";
+            case OTHER -> Platform.currentOsName().toLowerCase(Locale.ROOT);
+        };
     }
 
     /**
@@ -38,7 +40,10 @@ public final class EnvInfoSection {
             case "darwin" -> "Darwin";
             case "linux" -> "Linux";
             case "win32" -> "Windows_NT";
-            default -> System.getProperty("os.name", "unknown");
+            default -> {
+                String os = Platform.currentOsName();
+                yield os.isEmpty() ? "unknown" : os;
+            }
         };
     }
 
@@ -46,7 +51,8 @@ public final class EnvInfoSection {
     public static String getUnameSR() {
         String release = kernelRelease();
         if (Strings.CS.equals("win32", platform())) {
-            return System.getProperty("os.name", "Windows") + " " + release;
+            String winName = Platform.currentOsName();
+            return (winName.isEmpty() ? "Windows" : winName) + " " + release;
         }
         return osType() + " " + release;
     }

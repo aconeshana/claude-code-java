@@ -3,7 +3,6 @@ package com.claudecode.services.config;
 import com.claudecode.services.config.SettingsSchema.FieldError;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -44,9 +43,7 @@ final class HooksSchemaValidator {
             err(errors, path, expectedMsg("record", hooks));
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> events = hooks.fields();
-        while (events.hasNext()) {
-            Map.Entry<String, JsonNode> event = events.next();
+        for (Map.Entry<String, JsonNode> event : hooks.properties()) {
             String eventPath = path + "." + event.getKey();
             if (!HOOK_EVENTS.contains(event.getKey())) {
                 err(errors, eventPath, "Invalid key in record");
@@ -118,9 +115,7 @@ final class HooksSchemaValidator {
                     if (!headers.isObject()) {
                         err(errors, path + ".headers", expectedMsg("record", headers));
                     } else {
-                        Iterator<Map.Entry<String, JsonNode>> fields = headers.fields();
-                        while (fields.hasNext()) {
-                            Map.Entry<String, JsonNode> field = fields.next();
+                        for (Map.Entry<String, JsonNode> field : headers.properties()) {
                             if (!field.getValue().isTextual()) {
                                 err(errors, path + ".headers." + field.getKey(),
                                     expectedMsg("string", field.getValue()));

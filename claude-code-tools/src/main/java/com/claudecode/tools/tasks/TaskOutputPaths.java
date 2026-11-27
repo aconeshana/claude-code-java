@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import com.claudecode.core.engine.SessionIdentity;
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.session.SessionManager;
 import com.claudecode.core.state.CwdState;
@@ -100,7 +101,7 @@ public final class TaskOutputPaths {
         Path override = claudeTempDirOverride;
         if (override != null) return override;
 
-        boolean windows = Strings.CI.contains(System.getProperty("os.name", ""), "win");
+        boolean windows = Platform.IS_WINDOWS;
         String configuredTmp = SubprocessEnvironment.get("CLAUDE_CODE_TMPDIR");
         Path base = StringUtils.isNotBlank(configuredTmp)
             ? Path.of(configuredTmp)

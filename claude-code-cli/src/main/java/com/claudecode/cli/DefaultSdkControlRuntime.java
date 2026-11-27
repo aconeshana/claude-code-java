@@ -288,7 +288,7 @@ final class DefaultSdkControlRuntime implements SdkControlRuntime {
             throw new IllegalArgumentException("hooks must be an object");
         }
         Map<HookEvent, List<HookMatcher>> configured = new EnumMap<>(HookEvent.class);
-        hooks.fields().forEachRemaining(eventEntry -> {
+        hooks.properties().forEach(eventEntry -> {
             HookEvent event = HookEvent.fromConfigKey(eventEntry.getKey());
             if (event == null || !eventEntry.getValue().isArray()) return;
             List<HookMatcher> matchers = new ArrayList<>();
@@ -326,7 +326,7 @@ final class DefaultSdkControlRuntime implements SdkControlRuntime {
         if (mcpRuntime == null) throw new IllegalStateException("MCP runtime is unavailable");
         Map<String, McpServerConfig> configs = new LinkedHashMap<>();
         ObjectNode parseErrors = JsonUtils.getMapper().createObjectNode();
-        servers.fields().forEachRemaining(entry -> {
+        servers.properties().forEach(entry -> {
             try {
                 configs.put(entry.getKey(), parseMcpServer(entry.getKey(), entry.getValue()));
             } catch (RuntimeException error) {
@@ -502,7 +502,7 @@ final class DefaultSdkControlRuntime implements SdkControlRuntime {
             throw new IllegalArgumentException("Environment variables must be an object");
         }
         Map<String, String> updates = new LinkedHashMap<>();
-        variables.fields().forEachRemaining(entry -> {
+        variables.properties().forEach(entry -> {
             if (entry.getValue().isTextual()) updates.put(entry.getKey(), entry.getValue().asText());
         });
         SubprocessEnvironment.updateRuntime(updates);
@@ -529,7 +529,7 @@ final class DefaultSdkControlRuntime implements SdkControlRuntime {
     private static Map<String, String> stringMap(JsonNode node) {
         Map<String, String> result = new LinkedHashMap<>();
         if (node != null && node.isObject()) {
-            node.fields().forEachRemaining(entry -> result.put(entry.getKey(), entry.getValue().asText()));
+            node.properties().forEach(entry -> result.put(entry.getKey(), entry.getValue().asText()));
         }
         return result;
     }

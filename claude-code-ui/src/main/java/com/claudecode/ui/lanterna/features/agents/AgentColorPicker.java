@@ -2,6 +2,7 @@ package com.claudecode.ui.lanterna.features.agents;
 
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.core.text.StringUtils;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.commands.impl.config.ColorCommand;
 import com.googlecode.lanterna.SGR;
@@ -154,13 +155,9 @@ final class AgentColorPicker extends Panel {
     String selectedColor() { return options.get(selectedIdx); }
     String optionLabel(int index) {
         String option = options.get(index);
-        return option == null ? "Automatic color" : capitalize(option);
+        return option == null ? "Automatic color" : StringUtils.capitalize(option);
     }
     String previewText() { return "Preview:  @" + agentNamePreview + " "; }
-
-    private static String capitalize(String value) {
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
-    }
 
     // ──────────────────────────────────────────────────────────────────────────
 

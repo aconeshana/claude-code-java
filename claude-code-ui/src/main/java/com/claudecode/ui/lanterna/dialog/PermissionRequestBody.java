@@ -223,7 +223,7 @@ sealed interface PermissionRequestBody {
     private static String mcpArgs(JsonNode input) {
         if (input == null || !input.isObject() || input.isEmpty()) return "";
         List<String> fields = new ArrayList<>();
-        input.fields().forEachRemaining(entry -> {
+        input.properties().forEach(entry -> {
             String rendered = entry.getValue() == null ? "null" : entry.getValue().toString();
             fields.add(entry.getKey() + ": " + rendered);
         });

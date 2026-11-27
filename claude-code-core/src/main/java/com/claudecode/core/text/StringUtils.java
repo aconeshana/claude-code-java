@@ -62,6 +62,38 @@ public final class StringUtils {
         return input.replace('\u3000', ' ');
     }
 
+    /**
+     * Whether {@code value} is an ECMAScript {@code \s} (WhiteSpace / LineTerminator) code unit,
+     * matching {@code String.prototype.trim()} semantics in JavaScript.
+     */
+    public static boolean isJavaScriptWhitespace(char value) {
+        return switch (value) {
+            case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020,
+                 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F,
+                 0x3000, 0xFEFF -> true;
+            default -> value >= 0x2000 && value <= 0x200A;
+        };
+    }
+
+    /** Trims leading and trailing ECMAScript {@code \s} characters, matching JS {@code .trim()}. */
+    public static String stripJavaScriptWhitespace(String value) {
+        if (org.apache.commons.lang3.StringUtils.isEmpty(value)) return value;
+        int start = 0;
+        int end = value.length();
+        while (start < end && isJavaScriptWhitespace(value.charAt(start))) start++;
+        while (end > start && isJavaScriptWhitespace(value.charAt(end - 1))) end--;
+        return value.substring(start, end);
+    }
+
+    /** Returns {@code true} if {@code value} contains at least one non-ECMAScript-whitespace char. */
+    public static boolean isJavaScriptNonBlank(String value) {
+        if (org.apache.commons.lang3.StringUtils.isEmpty(value)) return false;
+        int start = 0;
+        int end = value.length();
+        while (start < end && isJavaScriptWhitespace(value.charAt(start))) start++;
+        return start < end;
+    }
+
     /** Joins strings without allowing the accumulated value to exceed {@code maxSize}. */
     public static String safeJoinLines(List<String> lines, String delimiter, int maxSize) {
         String marker = "...[truncated]";

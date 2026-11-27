@@ -30,7 +30,7 @@ public final class HeatmapRenderer {
 
     public static Heatmap render(List<InteractiveSessionPort.DailyActivity> dailyActivity, int terminalWidth, ZoneId zone) {
         int dayLabelWidth = 4;
-        int width = Math.min(52, Math.max(10, terminalWidth - dayLabelWidth));
+        int width = Math.clamp(terminalWidth - dayLabelWidth, 10, 52);
 
         Map<String, InteractiveSessionPort.DailyActivity> activityMap = new HashMap<>();
         for (InteractiveSessionPort.DailyActivity a : dailyActivity) activityMap.put(a.date(), a);

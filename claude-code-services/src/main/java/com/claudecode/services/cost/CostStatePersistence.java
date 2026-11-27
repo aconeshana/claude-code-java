@@ -149,9 +149,7 @@ public final class CostStatePersistence {
     private static Map<String, Usage> usageMap(JsonNode models) throws Exception {
         Map<String, Usage> result = new LinkedHashMap<>();
         if (models == null || !models.isObject()) return result;
-        var fields = models.fields();
-        while (fields.hasNext()) {
-            var field = fields.next();
+        for (var field : models.properties()) {
             JsonNode value = field.getValue();
             if (value.has("inputTokens") || value.has("costUSD")) {
                 result.put(field.getKey(), new Usage(
@@ -172,9 +170,7 @@ public final class CostStatePersistence {
     private static Map<String, Double> costMap(JsonNode models) {
         Map<String, Double> result = new LinkedHashMap<>();
         if (models == null || !models.isObject()) return result;
-        var fields = models.fields();
-        while (fields.hasNext()) {
-            var field = fields.next();
+        for (var field : models.properties()) {
             if (field.getValue().has("costUSD")) {
                 result.put(field.getKey(), field.getValue().path("costUSD").asDouble(0.0));
             }

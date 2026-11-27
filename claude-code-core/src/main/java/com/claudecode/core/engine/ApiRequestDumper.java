@@ -8,14 +8,13 @@ import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -93,7 +92,7 @@ public final class ApiRequestDumper {
                 ObjectNode initData = body.deepCopy();
                 initData.remove("messages");
                 String initDataStr = JsonUtils.getMapper().writeValueAsString(initData);
-                String initDataHash = sha256(initDataStr);
+                String initDataHash = HashUtils.hashContent(initDataStr);
                 state.lastInitFingerprint = fingerprint;
                 if (!state.initialized) {
                     state.initialized = true;
@@ -122,7 +121,7 @@ public final class ApiRequestDumper {
             // so replays are stable across insignificant input whitespace.
             String requestData = JsonUtils.getMapper().writeValueAsString(body);
             int sequence = ++state.requestSequence;
-            out.append(requestEntry(timestamp, sequence, requestData, sha256(requestData)));
+            out.append(requestEntry(timestamp, sequence, requestData, HashUtils.hashContent(requestData)));
             FileUtils.writeString(dumpDir.resolve(sessionId + ".jsonl"), out.toString(),
                 StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
@@ -164,11 +163,6 @@ public final class ApiRequestDumper {
             }
         }
         return body.path("model").asText("") + "|" + toolNames + "|" + sysLen;
-    }
-
-    private static String sha256(String s) throws Exception {
-        return HexFormat.of().formatHex(
-            MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8)));
     }
 
 }

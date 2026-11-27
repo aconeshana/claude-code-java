@@ -1,5 +1,6 @@
 package com.claudecode.lsp;
 
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.BufferedReader;
@@ -534,9 +535,9 @@ public class ProcessLspServerInstance implements LspServerInstance {
     @Override
     public List<Diagnostic> getDiagnostics(Path filePath) {
         if (!isRunning()) {
-            return Collections.emptyList();
+            return List.of();
         }
-        return diagnosticsCache.getOrDefault(filePath.toUri().toString(), Collections.emptyList());
+        return diagnosticsCache.getOrDefault(filePath.toUri().toString(), List.of());
     }
 
     @Override
@@ -795,7 +796,7 @@ public class ProcessLspServerInstance implements LspServerInstance {
 
     private static String errorMessage(Throwable e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
+        return ErrorUtils.message(cause);
     }
 
     // ========== gitignore filtering (G1) ==========

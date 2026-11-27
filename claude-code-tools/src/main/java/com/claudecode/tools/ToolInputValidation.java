@@ -8,7 +8,6 @@ import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.tools.validation.SchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -63,8 +62,7 @@ final class ToolInputValidation {
             // (or an additionalProperties sub-schema, which also permits extra keys).
             JsonNode additional = schema.get("additionalProperties");
             boolean strict = additional == null || (additional.isBoolean() && !additional.asBoolean());
-            for (Iterator<Map.Entry<String, JsonNode>> it = input.fields(); it.hasNext(); ) {
-                Map.Entry<String, JsonNode> field = it.next();
+            for (Map.Entry<String, JsonNode> field : input.properties()) {
                 String name = field.getKey();
                 JsonNode value = field.getValue();
                 JsonNode propSchema = properties.get(name);

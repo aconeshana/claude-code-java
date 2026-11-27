@@ -513,7 +513,6 @@ class TaskSystemTest {
 
         ToolExecutionContext context = testContext();
         var invocation = tool.callWithResult(input, context);
-        String text = invocation.rawResult();
         var mapped = invocation.mappedResult();
         assertNotNull(mapped);
         var payload = (JsonNode) mapped.toolUseResult();
@@ -537,7 +536,6 @@ class TaskSystemTest {
                 input.put("taskId", task.id());
                 input.put("status", "completed");
                 var invocation = tool.callWithResult(input, context);
-                String text = invocation.rawResult();
                 var mapped = invocation.mappedResult();
                 assertNotNull(mapped);
                 assertFalse(Strings.CS.contains(

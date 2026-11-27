@@ -4,6 +4,7 @@ import com.claudecode.core.config.VersionInfo;
 import com.claudecode.core.engine.ToolResultBudget;
 import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.io.ByteArrays;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.AttachmentMessage;
@@ -31,15 +32,8 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.FileSystemException;
-import java.nio.file.FileSystemLoopException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Instant;
@@ -116,7 +110,7 @@ public class SessionStorage {
         try {
             raw = Files.readString(metadataFile, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            if (isFsInaccessible(e)) return Optional.empty();
+            if (ErrorUtils.isFsInaccessible(e)) return Optional.empty();
             throw new UncheckedIOException("Failed to read agent metadata: " + metadataFile, e);
         }
         try {
@@ -144,21 +138,6 @@ public class SessionStorage {
             ? name.substring(0, name.length() - ".jsonl".length()) + ".meta.json"
             : name;
         return transcriptFile.resolveSibling(metadataName);
-    }
-
-    private static boolean isFsInaccessible(IOException error) {
-        if (error instanceof NoSuchFileException
-                || error instanceof AccessDeniedException
-                || error instanceof NotDirectoryException
-                || error instanceof FileSystemLoopException) {
-            return true;
-        }
-        if (error instanceof FileSystemException fileSystemError) {
-            String reason = fileSystemError.getReason();
-            return reason != null && (Strings.CI.contains(reason, "permission denied")
-                || Strings.CI.contains(reason, "operation not permitted"));
-        }
-        return false;
     }
 
     // ── Write path ──────────────────────────────────────────────────────────
@@ -922,23 +901,23 @@ public class SessionStorage {
                 }
                 String type = node.hasNonNull("type") ? node.get("type").asText() : null;
                 if (type == null) continue;
-                String rowPermissionMode = textField(node, "permissionMode");
+                String rowPermissionMode = JsonUtils.textOrNull(node, "permissionMode");
                 if (rowPermissionMode != null) {
                     // Headless SDK transcripts carry the mode on each user
                     // message rather than in a permission-mode metadata row.
                     permissionMode = rowPermissionMode;
                 }
                 switch (type) {
-                    case "mode"           -> mode           = textField(node, "mode");
-                    case "permission-mode" -> permissionMode = textField(node, "permissionMode");
-                    case "custom-title"   -> customTitle    = textField(node, "customTitle");
-                    case "agent-name"     -> agentName      = textField(node, "agentName");
-                    case "agent-color"    -> agentColor     = textField(node, "agentColor");
-                    case "tag"            -> tag            = textField(node, "tag");
+                    case "mode"           -> mode           = JsonUtils.textOrNull(node, "mode");
+                    case "permission-mode" -> permissionMode = JsonUtils.textOrNull(node, "permissionMode");
+                    case "custom-title"   -> customTitle    = JsonUtils.textOrNull(node, "customTitle");
+                    case "agent-name"     -> agentName      = JsonUtils.textOrNull(node, "agentName");
+                    case "agent-color"    -> agentColor     = JsonUtils.textOrNull(node, "agentColor");
+                    case "tag"            -> tag            = JsonUtils.textOrNull(node, "tag");
                     case "last-prompt"    -> {
-                        String prompt = textField(node, "lastPrompt");
+                        String prompt = JsonUtils.textOrNull(node, "lastPrompt");
                         if (prompt != null) lastPrompt = prompt;
-                        String candidate = textField(node, "leafUuid");
+                        String candidate = JsonUtils.textOrNull(node, "leafUuid");
                         if (candidate != null) leafUuid = candidate;
                     }
                     default -> {
@@ -995,10 +974,6 @@ public class SessionStorage {
             return List.of();
         }
         return index.turnIds();
-    }
-
-    private static String textField(JsonNode node, String field) {
-        return node.hasNonNull(field) ? node.get(field).asText() : null;
     }
 
     // ── Assistant usage aggregate (for cost restore) ─────────────────────
@@ -1103,24 +1078,24 @@ public class SessionStorage {
                             if (metaNode.hasNonNull("slug") && StringUtils.isNotBlank(metaNode.path("slug").asText())) {
                                 slug = metaNode.path("slug").asText();
                             }
-                            String rowPerm = textField(metaNode, "permissionMode");
+                            String rowPerm = JsonUtils.textOrNull(metaNode, "permissionMode");
                             if (rowPerm != null) metaPermissionMode = rowPerm;
                             String metaType = metaNode.path("type").asText("");
                             switch (metaType) {
-                                case "mode" -> metaMode = textField(metaNode, "mode");
-                                case "permission-mode" -> metaPermissionMode = textField(metaNode, "permissionMode");
-                                case "custom-title" -> metaCustomTitle = textField(metaNode, "customTitle");
-                                case "agent-name" -> metaAgentName = textField(metaNode, "agentName");
-                                case "agent-color" -> metaAgentColor = textField(metaNode, "agentColor");
-                                case "tag" -> metaTag = textField(metaNode, "tag");
+                                case "mode" -> metaMode = JsonUtils.textOrNull(metaNode, "mode");
+                                case "permission-mode" -> metaPermissionMode = JsonUtils.textOrNull(metaNode, "permissionMode");
+                                case "custom-title" -> metaCustomTitle = JsonUtils.textOrNull(metaNode, "customTitle");
+                                case "agent-name" -> metaAgentName = JsonUtils.textOrNull(metaNode, "agentName");
+                                case "agent-color" -> metaAgentColor = JsonUtils.textOrNull(metaNode, "agentColor");
+                                case "tag" -> metaTag = JsonUtils.textOrNull(metaNode, "tag");
                                 case "last-prompt" -> {
-                                    String prompt = textField(metaNode, "lastPrompt");
+                                    String prompt = JsonUtils.textOrNull(metaNode, "lastPrompt");
                                     if (prompt != null) metaLastPrompt = prompt;
-                                    String candidate = textField(metaNode, "leafUuid");
+                                    String candidate = JsonUtils.textOrNull(metaNode, "leafUuid");
                                     if (candidate != null) metaLeafUuid = candidate;
                                 }
                                 case "file-history-snapshot" -> {
-                                    String messageId = textField(metaNode, "messageId");
+                                    String messageId = JsonUtils.textOrNull(metaNode, "messageId");
                                     JsonNode snap = metaNode.get("snapshot");
                                     boolean isUpdate = metaNode.path("isSnapshotUpdate").asBoolean(false);
                                     if (messageId != null && snap != null) {
@@ -1128,7 +1103,7 @@ public class SessionStorage {
                                     }
                                 }
                                 case "worktree-state" -> {
-                                    String sid = textField(metaNode, "sessionId");
+                                    String sid = JsonUtils.textOrNull(metaNode, "sessionId");
                                     JsonNode ws = metaNode.get("worktreeSession");
                                     worktreeState = new WorktreeStateEntry(
                                         sid, (ws == null || ws.isNull()) ? null : ws);
@@ -1173,7 +1148,7 @@ public class SessionStorage {
                                 if (extraNode.hasNonNull("slug") && StringUtils.isNotBlank(extraNode.path("slug").asText())) {
                                     slug = extraNode.path("slug").asText();
                                 }
-                                String rowPerm = textField(extraNode, "permissionMode");
+                                String rowPerm = JsonUtils.textOrNull(extraNode, "permissionMode");
                                 if (rowPerm != null) metaPermissionMode = rowPerm;
                             } catch (JsonProcessingException _) { /* skip malformed */ }
                         }
@@ -1497,40 +1472,40 @@ public class SessionStorage {
     }
 
     private void rewriteWithoutUuid(Path sessionFile, String targetUuid) throws IOException {
-        Path parent = sessionFile.toAbsolutePath().normalize().getParent();
-        if (parent == null) return;
-        Path replacement = Files.createTempFile(parent, ".transcript-tombstone-", ".jsonl");
-        boolean removed = false;
-        try {
+        if (sessionFile.toAbsolutePath().normalize().getParent() == null
+                || !containsRowWithUuid(sessionFile, targetUuid)) {
+            return;
+        }
+        FileUtils.atomicReplace(sessionFile, replacement -> {
             try (BufferedReader reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8);
                  BufferedWriter writer = Files.newBufferedWriter(replacement, StandardCharsets.UTF_8,
                      StandardOpenOption.TRUNCATE_EXISTING)) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (rowHasUuid(line, targetUuid)) {
-                        removed = true;
                         continue;
                     }
                     writer.write(line);
                     writer.newLine();
                 }
             }
-            if (!removed) return;
             try {
                 Files.setPosixFilePermissions(replacement,
                     Files.getPosixFilePermissions(sessionFile));
             } catch (UnsupportedOperationException _) {
                 // Non-POSIX filesystems retain their native ACL behavior.
             }
-            try {
-                Files.move(replacement, sessionFile,
-                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(replacement, sessionFile, StandardCopyOption.REPLACE_EXISTING);
+        });
+    }
+
+    private boolean containsRowWithUuid(Path sessionFile, String targetUuid) throws IOException {
+        try (BufferedReader reader = Files.newBufferedReader(sessionFile, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (rowHasUuid(line, targetUuid)) return true;
             }
-        } finally {
-            Files.deleteIfExists(replacement);
         }
+        return false;
     }
 
     private boolean rowHasUuid(String line, String targetUuid) {

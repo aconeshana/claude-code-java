@@ -1,5 +1,6 @@
 package com.claudecode.tools;
 
+import com.claudecode.core.text.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -140,37 +141,19 @@ final class ToolInputCoercion {
 
     private static boolean nonBlankText(JsonNode value) {
         return value != null && value.isTextual()
-            && !stripJavaScriptWhitespace(value.asText()).isEmpty();
+            && !StringUtils.stripJavaScriptWhitespace(value.asText()).isEmpty();
     }
 
     private static String taskSubject(String description) {
-        int newline = description.indexOf('\n');
-        String firstLine = newline < 0 ? description : description.substring(0, newline);
-        String trimmed = stripJavaScriptWhitespace(firstLine);
+        String firstLine = StringUtils.firstLineOf(description);
+        String trimmed = StringUtils.stripJavaScriptWhitespace(firstLine);
         int codePoints = trimmed.codePointCount(0, trimmed.length());
         if (codePoints <= 80) return trimmed;
         int end = trimmed.offsetByCodePoints(0, 80);
         String prefix = trimmed.substring(0, end);
         int lastSpace = prefix.lastIndexOf(' ');
-        return stripJavaScriptWhitespace(
+        return StringUtils.stripJavaScriptWhitespace(
             lastSpace > 40 ? prefix.substring(0, lastSpace) : prefix);
-    }
-
-    private static String stripJavaScriptWhitespace(String value) {
-        int start = 0;
-        int end = value.length();
-        while (start < end && isJavaScriptWhitespace(value.charAt(start))) start++;
-        while (end > start && isJavaScriptWhitespace(value.charAt(end - 1))) end--;
-        return value.substring(start, end);
-    }
-
-    private static boolean isJavaScriptWhitespace(char value) {
-        return switch (value) {
-            case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020,
-                 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F,
-                 0x3000, 0xFEFF -> true;
-            default -> value >= 0x2000 && value <= 0x200A;
-        };
     }
 
     private static void coerceRecursive(ObjectNode object, Set<String> booleans, Set<String> numbers) {

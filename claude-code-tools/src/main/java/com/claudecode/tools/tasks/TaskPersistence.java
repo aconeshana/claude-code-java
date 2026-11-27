@@ -85,7 +85,7 @@ final class TaskPersistence {
 
     static double readHighWaterMark(Path tasksDir) {
         try {
-            String content = stripJavaScriptWhitespace(Files.readString(
+            String content = com.claudecode.core.text.StringUtils.stripJavaScriptWhitespace(Files.readString(
                 tasksDir.resolve(HIGH_WATER_MARK_FILE), StandardCharsets.UTF_8));
             return parseIntOrZero(content);
         } catch (IOException _) {
@@ -323,7 +323,10 @@ final class TaskPersistence {
     static double parseIntOrZero(String value) {
         if (value == null) return 0;
         int index = 0;
-        while (index < value.length() && isJavaScriptWhitespace(value.charAt(index))) index++;
+        while (index < value.length()
+                && com.claudecode.core.text.StringUtils.isJavaScriptWhitespace(value.charAt(index))) {
+            index++;
+        }
         int numberStart = index;
         if (index < value.length() && (value.charAt(index) == '+' || value.charAt(index) == '-')) {
             index++;
@@ -387,7 +390,7 @@ final class TaskPersistence {
 
     private static Double parseJavaScriptNumber(String id) {
         if (id == null) return 0.0d;
-        String value = stripJavaScriptWhitespace(id);
+        String value = com.claudecode.core.text.StringUtils.stripJavaScriptWhitespace(id);
         if (value.isEmpty()) return 0.0d;
         if (JAVASCRIPT_HEX_NUMBER.matcher(value).matches()) {
             return new BigInteger(value.substring(2), 16).doubleValue();
@@ -407,24 +410,7 @@ final class TaskPersistence {
         }
     }
 
-    private static String stripJavaScriptWhitespace(String value) {
-        int start = 0;
-        int end = value.length();
-        while (start < end && isJavaScriptWhitespace(value.charAt(start))) start++;
-        while (end > start && isJavaScriptWhitespace(value.charAt(end - 1))) end--;
-        return value.substring(start, end);
-    }
-
     private static boolean isJavaScriptTruthyString(String value) {
         return StringUtils.isNotEmpty(value);
-    }
-
-    private static boolean isJavaScriptWhitespace(char value) {
-        return switch (value) {
-            case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020,
-                 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F,
-                 0x3000, 0xFEFF -> true;
-            default -> value >= 0x2000 && value <= 0x200A;
-        };
     }
 }

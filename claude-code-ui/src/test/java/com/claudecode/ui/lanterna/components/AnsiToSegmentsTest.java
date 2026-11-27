@@ -78,7 +78,7 @@ class AnsiToSegmentsTest {
             "no control chars should leak into segments");
         // The link text renders yellow (SGR 33) and keeps the URL.
         assertTrue(segs.stream().anyMatch(s -> Strings.CS.contains(s.text(), "PROJ")
-            && TextColor.ANSI.YELLOW.equals(s.color())
+            && TextColor.ANSI.YELLOW == s.color()
             && Strings.CS.equals("http://x", s.hyperlinkUrl())),
             "PROJ should be a yellow hyperlink segment");
     }

@@ -300,9 +300,7 @@ public class McpClientManager implements McpClientRuntime, AutoCloseable {
             JsonNode metaNode = params.get("meta");
             if (metaNode != null && metaNode.isObject()) {
                 meta = new LinkedHashMap<>();
-                Iterator<Map.Entry<String, JsonNode>> fields = metaNode.fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> e = fields.next();
+                for (Map.Entry<String, JsonNode> e : metaNode.properties()) {
                     if (e.getValue().isTextual()) {
                         meta.put(e.getKey(), e.getValue().textValue());
                     }
@@ -537,9 +535,7 @@ public class McpClientManager implements McpClientRuntime, AutoCloseable {
                 } else if (argsNode != null && argsNode.isObject()) {
                     // Some servers use the map form: {name: {description, required}}.
                     // Preserve declaration order via JsonNode field iteration.
-                    Iterator<Map.Entry<String, JsonNode>> it = argsNode.fields();
-                    while (it.hasNext()) {
-                        Map.Entry<String, JsonNode> e = it.next();
+                    for (Map.Entry<String, JsonNode> e : argsNode.properties()) {
                         args.add(new McpPromptInfo.PromptArgument(
                             e.getKey(),
                             e.getValue().path("description").asText(null),

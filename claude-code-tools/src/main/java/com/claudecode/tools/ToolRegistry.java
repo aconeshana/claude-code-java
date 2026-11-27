@@ -601,11 +601,11 @@ public class ToolRegistry implements ToolExecutor {
             if (tool.requiresUserInteraction() && result.decision() instanceof PermissionDecision.Allow) {
                 result = new PermissionDecisionResult(PermissionDecision.ask(), result.reason());
             }
-            if (result.decision() instanceof PermissionDecision.Deny deny) {
+            if (result.decision() instanceof PermissionDecision.Deny(var message, _)) {
 
 
-                String denial = StringUtils.isNotBlank(deny.message())
-                    ? deny.message()
+                String denial = StringUtils.isNotBlank(message)
+                    ? message
                     : result.reason() instanceof DecisionReason.Mode(PermissionMode mode1)
                         && mode1 == PermissionMode.DONT_ASK
                         ? MessageConstants.dontAskRejectMessage(canonicalName)

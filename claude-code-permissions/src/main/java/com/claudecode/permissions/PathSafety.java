@@ -1,5 +1,6 @@
 package com.claudecode.permissions;
 
+import com.claudecode.core.platform.Platform;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
@@ -46,11 +47,10 @@ public final class PathSafety {
     }
 
     static String getPlatform() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains( os, "win")) return "windows";
+        if (Platform.IS_WINDOWS) return "windows";
         String wsl = System.getenv("WSL_DISTRO_NAME");
         String release = System.getProperty("os.version", "").toLowerCase(Locale.ROOT);
-        if ((StringUtils.isNotBlank(wsl)) ||Strings.CS.contains( release, "microsoft")) return "wsl";
+        if (StringUtils.isNotBlank(wsl) || Strings.CS.contains(release, "microsoft")) return "wsl";
         return "unix";
     }
 

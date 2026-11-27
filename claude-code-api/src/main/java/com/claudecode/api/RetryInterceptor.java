@@ -138,7 +138,7 @@ public class RetryInterceptor implements Interceptor {
         return Duration.ofMillis(delayMs);
     }
 
-    private static Long parseRetryAfterSeconds(String headerValue) {
+    static Long parseRetryAfterSeconds(String headerValue) {
         if (StringUtils.isBlank(headerValue)) {
             return null;
         }

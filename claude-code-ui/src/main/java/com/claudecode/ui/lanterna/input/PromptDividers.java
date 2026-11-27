@@ -102,7 +102,7 @@ final class PromptDividers {
             : sessionColor != null ? sessionColor : LanternaTheme.promptBorder();
         if (StringUtils.isNotBlank(historyLabel)) {
             String badge = " " + historyLabel + " ";
-            int left = Math.min(2, Math.max(0, width - badge.length()));
+            int left = Math.clamp(width - badge.length(), 0, 2);
             int trailing = Math.max(0, width - left - badge.length());
             topLeft.setText("─".repeat(left));
             topBadge.setText(badge);

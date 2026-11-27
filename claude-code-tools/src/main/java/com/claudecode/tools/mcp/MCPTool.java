@@ -128,7 +128,7 @@ public class MCPTool extends Tool<JsonNode, ToolResult> {
     public Object toAutoClassifierInput(JsonNode input) {
         if (input != null && input.isObject() && !input.isEmpty()) {
             List<String> parts = new ArrayList<>();
-            input.fields().forEachRemaining(entry -> parts.add(
+            input.properties().forEach(entry -> parts.add(
                 entry.getKey() + "=" + classifierString(entry.getValue())));
             return String.join(" ", parts);
         }

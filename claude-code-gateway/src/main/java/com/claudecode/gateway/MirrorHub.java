@@ -593,10 +593,10 @@ public final class MirrorHub {
 
     private void onMessage(String sessionId, SDKMessage msg) {
         recordFirstOutput(sessionId, msg);
-        if (msg instanceof SDKMessage.StreamRequestStart start) {
+        if (msg instanceof SDKMessage.StreamRequestStart(_, var messageCount)) {
             // The head of a model request carries the running message count, which is the only
             // live reading this process gets of a session it merely follows.
-            messageCounts.put(sessionId, start.messageCount());
+            messageCounts.put(sessionId, messageCount);
         }
         if (msg instanceof SDKMessage.Assistant assistant
                 && StringUtils.isNotBlank(assistant.model())) {
@@ -790,9 +790,8 @@ public final class MirrorHub {
      */
     private static String toolArgsSummary(JsonNode input) {
         if (input == null || !input.isObject()) return "";
-        Iterator<Map.Entry<String, JsonNode>> fields = input.fields();
-        while (fields.hasNext()) {
-            JsonNode value = fields.next().getValue();
+        for (var field : input.properties()) {
+            JsonNode value = field.getValue();
             if (value != null && value.isTextual()) {
                 String text = value.asText().replace('\n', ' ').strip();
                 if (!text.isEmpty()) {

@@ -62,7 +62,7 @@ final class GatewayDirectoryPickerHandler {
             target = home;
         } else {
             try {
-                target = expandTilde(rawPath.trim(), home).toAbsolutePath().normalize();
+                target = resolveInputPath(rawPath.trim(), home).toAbsolutePath().normalize();
             } catch (InvalidPathException _) {
                 respondJson(exchange, 400, errorBody("invalid_path",
                     "Invalid directory path: " + rawPath));
@@ -166,7 +166,7 @@ final class GatewayDirectoryPickerHandler {
         Path parent;
         Path created;
         try {
-            parent = expandTilde(parentRaw.trim(), home).toAbsolutePath().normalize();
+            parent = resolveInputPath(parentRaw.trim(), home).toAbsolutePath().normalize();
             created = parent.resolve(name).normalize();
         } catch (InvalidPathException _) {
             respondJson(exchange, 400, errorBody("invalid_path", "Invalid path: " + parentRaw));
@@ -219,7 +219,7 @@ final class GatewayDirectoryPickerHandler {
         return Path.of(userHome).toAbsolutePath().normalize();
     }
 
-    private static Path expandTilde(String raw, Path home) {
+    private static Path resolveInputPath(String raw, Path home) {
         if (Strings.CS.equals("~", raw)) return home;
         if (Strings.CS.startsWith(raw, "~/") || Strings.CS.startsWith(raw, "~\\")) {
             return home.resolve(raw.substring(2));

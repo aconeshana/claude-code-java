@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.components;
 
+import com.claudecode.core.io.IoUtils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -266,11 +267,11 @@ public final class SpinnerStateMachine {
         stallSpinnerShown = false;
         ScheduledFuture<?> probe = STALL_PROBE.scheduleWithFixedDelay(this::checkTextStall,
             textStallPollMs, textStallPollMs, TimeUnit.MILLISECONDS);
-        cancel(stallProbe.getAndSet(probe));
+        IoUtils.cancelQuietly(stallProbe.getAndSet(probe));
     }
 
     private void disarmTextStallProbe() {
-        cancel(stallProbe.getAndSet(null));
+        IoUtils.cancelQuietly(stallProbe.getAndSet(null));
         stallSpinnerShown = false;
     }
 
@@ -289,10 +290,6 @@ public final class SpinnerStateMachine {
             if (!spinner.isTurnClockActive()) return;
             if (!spinner.isSpinning()) spinner.start(spinner.getCurrentVerb());
         });
-    }
-
-    private static void cancel(ScheduledFuture<?> probe) {
-        if (probe != null) probe.cancel(false);
     }
 
     /** Consume the pending thinking window, returning its elapsed ms (0 if none). */

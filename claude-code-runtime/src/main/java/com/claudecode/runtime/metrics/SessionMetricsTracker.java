@@ -5,6 +5,7 @@ import com.claudecode.core.engine.TranscriptSink;
 import com.claudecode.core.message.Usage;
 import com.claudecode.core.metrics.SessionMetricsEvent;
 import com.claudecode.core.metrics.SessionMetricsSnapshot;
+import com.claudecode.core.util.MathUtils;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -220,19 +221,19 @@ public final class SessionMetricsTracker {
         // still streaming there is no message time yet and the clock stands in
         // for it; once the message lands the value freezes even though the step
         // stays open for its tool calls — exactly what closeStep will record.
-        long liveLlmMs = add(llmMs,
+        long liveLlmMs = MathUtils.saturatedAdd(llmMs,
             elapsed(step.startTime, step.messageTime != null ? step.messageTime : now));
 
         long liveToolMs = toolMs;
         for (Long started : openTools.values()) {
-            liveToolMs = add(liveToolMs, elapsed(started, now));
+            liveToolMs = MathUtils.saturatedAdd(liveToolMs, elapsed(started, now));
         }
 
         long liveTtftMs = ttftMs;
         long liveTtftSteps = ttftSteps;
         if (step.firstTokenTime != null) {
-            liveTtftMs = add(ttftMs, elapsed(step.startTime, step.firstTokenTime));
-            liveTtftSteps = add(ttftSteps, 1);
+            liveTtftMs = MathUtils.saturatedAdd(ttftMs, elapsed(step.startTime, step.firstTokenTime));
+            liveTtftSteps = MathUtils.saturatedAdd(ttftSteps, 1);
         }
 
         long liveDecodeMs = decodeMs;
@@ -242,20 +243,20 @@ public final class SessionMetricsTracker {
         long liveCacheWrite = cacheWriteTokens;
         long liveCacheRead = cacheReadTokens;
         if (step.usage != null) {
-            liveUncachedInput = add(liveUncachedInput, step.usage.uncachedInputTokens());
-            liveOutput = add(liveOutput, step.usage.outputTokens());
-            liveCacheWrite = add(liveCacheWrite, step.usage.cacheWriteTokens());
-            liveCacheRead = add(liveCacheRead, step.usage.cacheReadTokens());
+            liveUncachedInput = MathUtils.saturatedAdd(liveUncachedInput, step.usage.uncachedInputTokens());
+            liveOutput = MathUtils.saturatedAdd(liveOutput, step.usage.outputTokens());
+            liveCacheWrite = MathUtils.saturatedAdd(liveCacheWrite, step.usage.cacheWriteTokens());
+            liveCacheRead = MathUtils.saturatedAdd(liveCacheRead, step.usage.cacheReadTokens());
             if (step.firstTokenTime != null && step.messageTime != null) {
-                liveDecodeMs = add(liveDecodeMs, elapsed(step.firstTokenTime, step.messageTime));
-                liveDecodeTokens = add(liveDecodeTokens, step.usage.outputTokens());
+                liveDecodeMs = MathUtils.saturatedAdd(liveDecodeMs, elapsed(step.firstTokenTime, step.messageTime));
+                liveDecodeTokens = MathUtils.saturatedAdd(liveDecodeTokens, step.usage.outputTokens());
             }
         }
 
         long liveTurns = countedTurns.contains(currentTurn)
             ? countedTurns.size() : countedTurns.size() + 1L;
 
-        return new SessionMetricsSnapshot(true, liveTurns, add(steps, 1),
+        return new SessionMetricsSnapshot(true, liveTurns, MathUtils.saturatedAdd(steps, 1),
             liveLlmMs, liveToolMs, liveTtftMs, liveTtftSteps,
             liveDecodeMs, liveDecodeTokens,
             liveUncachedInput, liveOutput, liveCacheWrite, liveCacheRead);
@@ -310,7 +311,7 @@ public final class SessionMetricsTracker {
             case TOOL_CALL -> openTools.putIfAbsent(event.callId(), event.time());
             case TOOL_RESULT -> {
                 Long start = openTools.remove(event.callId());
-                if (start != null) toolMs = add(toolMs, elapsed(start, event.time()));
+                if (start != null) toolMs = MathUtils.saturatedAdd(toolMs, elapsed(start, event.time()));
             }
             case STEP_END -> closeStep(event);
             case TURN_END -> {
@@ -324,23 +325,23 @@ public final class SessionMetricsTracker {
     private void closeStep(SessionMetricsEvent event) {
         OpenStep step = openStep;
         if (step == null) return;
-        steps = add(steps, 1);
+        steps = MathUtils.saturatedAdd(steps, 1);
         countedTurns.add(event.turn());
         if (step.messageTime != null) {
-            llmMs = add(llmMs, elapsed(step.startTime, step.messageTime));
+            llmMs = MathUtils.saturatedAdd(llmMs, elapsed(step.startTime, step.messageTime));
         }
         if (step.firstTokenTime != null) {
-            ttftMs = add(ttftMs, elapsed(step.startTime, step.firstTokenTime));
-            ttftSteps = add(ttftSteps, 1);
+            ttftMs = MathUtils.saturatedAdd(ttftMs, elapsed(step.startTime, step.firstTokenTime));
+            ttftSteps = MathUtils.saturatedAdd(ttftSteps, 1);
         }
         if (step.usage != null) {
-            uncachedInputTokens = add(uncachedInputTokens, step.usage.uncachedInputTokens());
-            outputTokens = add(outputTokens, step.usage.outputTokens());
-            cacheWriteTokens = add(cacheWriteTokens, step.usage.cacheWriteTokens());
-            cacheReadTokens = add(cacheReadTokens, step.usage.cacheReadTokens());
+            uncachedInputTokens = MathUtils.saturatedAdd(uncachedInputTokens, step.usage.uncachedInputTokens());
+            outputTokens = MathUtils.saturatedAdd(outputTokens, step.usage.outputTokens());
+            cacheWriteTokens = MathUtils.saturatedAdd(cacheWriteTokens, step.usage.cacheWriteTokens());
+            cacheReadTokens = MathUtils.saturatedAdd(cacheReadTokens, step.usage.cacheReadTokens());
             if (step.firstTokenTime != null && step.messageTime != null) {
-                decodeMs = add(decodeMs, elapsed(step.firstTokenTime, step.messageTime));
-                decodeTokens = add(decodeTokens, step.usage.outputTokens());
+                decodeMs = MathUtils.saturatedAdd(decodeMs, elapsed(step.firstTokenTime, step.messageTime));
+                decodeTokens = MathUtils.saturatedAdd(decodeTokens, step.usage.outputTokens());
             }
         }
         openTools.clear();
@@ -364,14 +365,6 @@ public final class SessionMetricsTracker {
 
     private static long elapsed(long start, long end) {
         return Math.max(0, end - start);
-    }
-
-    private static long add(long left, long right) {
-        try {
-            return Math.addExact(left, right);
-        } catch (ArithmeticException _) {
-            return Long.MAX_VALUE;
-        }
     }
 
     private static final class OpenStep {

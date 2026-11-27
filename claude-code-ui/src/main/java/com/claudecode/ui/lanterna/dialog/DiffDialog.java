@@ -130,8 +130,8 @@ public final class DiffDialog extends Panel implements InlineOverlay {
             deliver.set(false);
             return;
         }
-        if (resolved instanceof ContextKeybindingDispatcher.Result.Action action) {
-            dispatchAction(action.value());
+        if (resolved instanceof ContextKeybindingDispatcher.Result.Action(var value)) {
+            dispatchAction(value);
             deliver.set(false);
             return;
         }

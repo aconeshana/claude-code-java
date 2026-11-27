@@ -1,5 +1,6 @@
 package com.claudecode.services.config;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.process.ProcessResult;
@@ -13,7 +14,6 @@ import java.nio.file.Path;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,7 +89,7 @@ final class MdmSettingsStore {
 
     private static String cacheEnvironmentKey() {
         return String.join("\u0000",
-            System.getProperty("os.name", ""),
+            Platform.OS_NAME,
             System.getProperty("user.name", ""),
             System.getProperty("user.home", ""),
             Objects.toString(SubprocessEnvironment.get("USER_TYPE"), ""),
@@ -108,8 +108,7 @@ final class MdmSettingsStore {
     }
 
     private static ReadResult readAdminSettingsUncached() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac")) {
+        if (Platform.IS_DARWIN) {
             String username = System.getProperty("user.name", "");
             List<PlistSource> paths = StringUtils.isBlank(username)
                 ? List.of(new PlistSource(
@@ -145,7 +144,7 @@ final class MdmSettingsStore {
                     return parsed.settings().isEmpty() ? emptyResult() : parsed;
                 }
             }
-        } else if (Strings.CS.contains(os, "win")) {
+        } else if (Platform.IS_WINDOWS) {
             ReadResult settings = readRegistry(
                 "HKLM\\SOFTWARE\\Policies\\ClaudeCode");
 
@@ -157,8 +156,7 @@ final class MdmSettingsStore {
     }
 
     private static ReadResult readUserSettingsUncached() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (!Strings.CS.contains(os, "win")) return emptyResult();
+        if (!Platform.IS_WINDOWS) return emptyResult();
         return readRegistry("HKCU\\SOFTWARE\\Policies\\ClaudeCode");
     }
 

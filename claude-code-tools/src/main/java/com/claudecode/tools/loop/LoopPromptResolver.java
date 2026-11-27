@@ -124,7 +124,7 @@ public final class LoopPromptResolver {
             try {
                 String content = Files.readString(path).trim();
                 if (content.isEmpty()) continue;
-                return new LoopFile(path, truncate(content));
+                return new LoopFile(path, capLoopFileContent(content));
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to read loop file: " + path, e);
             }
@@ -207,7 +207,7 @@ public final class LoopPromptResolver {
             + "ends after this tick." + DYNAMIC_MONITOR_REMINDER;
     }
 
-    private static String truncate(String content) {
+    private static String capLoopFileContent(String content) {
         if (content.length() <= MAX_LOOP_FILE_CHARS) return content;
         int newline = content.lastIndexOf('\n', MAX_LOOP_FILE_CHARS);
         int end = newline > 0 ? newline : MAX_LOOP_FILE_CHARS;

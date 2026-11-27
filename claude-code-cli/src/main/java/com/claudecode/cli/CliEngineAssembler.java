@@ -239,8 +239,6 @@ final class CliEngineAssembler {
 
             // Build engine config.
 
-            final Integer cliMaxTokensOverride = maxTokens;
-
             final FeatureFlagRegistry featureFlags = FeatureFlagRegistry.builder()
                 .enable(FeatureFlag.DEFERRED_TOOLS_DELTA)
                 .enableIf(FeatureFlag.AGENT_LISTING_DELTA,
@@ -254,9 +252,9 @@ final class CliEngineAssembler {
                 .build();
             ToIntFunction<String> maxTokensResolver = selectedModel -> {
                 String requestModel = ModelNames.parseUserSpecifiedModel(selectedModel);
-                if (cliMaxTokensOverride != null) {
+                if (maxTokens != null) {
                     return (int) ModelOutputTokens.resolveMaxOutputTokens(
-                        requestModel, cliMaxTokensOverride, featureFlags, true);
+                        requestModel, maxTokens, featureFlags, true);
                 }
                 return (int) ModelOutputTokens.getMaxOutputTokensForModel(requestModel, featureFlags);
             };
@@ -265,7 +263,6 @@ final class CliEngineAssembler {
             // Dynamic system-prompt inputs — gathered fresh per query so settings edits (language /
             // outputStyle) and late MCP connections are reflected on the next turn.
             final var promptSkillLoader = skillToolProvider.getSkillLoader();
-            final PermissionGate promptGate = permissionGate;
             // Auto-memory dir — resolved+created once at startup, which makes
             // the selected profile's memory section promise that "This
             // directory already exists". Null on failure → section omitted.
@@ -302,8 +299,8 @@ final class CliEngineAssembler {
                 } catch (Throwable _) { }
                 List<String> addDirs = List.of();
                 try {
-                    if (promptGate.currentContext() != null) {
-                        addDirs = promptGate.currentContext().additionalDirs().keySet().stream()
+                    if (permissionGate.currentContext() != null) {
+                        addDirs = permissionGate.currentContext().additionalDirs().keySet().stream()
                             .map(Path::toString).toList();
                     }
                 } catch (Throwable _) { }
@@ -441,7 +438,7 @@ final class CliEngineAssembler {
                 .appendSystemPrompt(appendSystemPrompt)
                 .maxTokens(effectiveMaxTokens)
                 .maxTokensResolver(maxTokensResolver)
-                .maxTokensExplicit(cliMaxTokensOverride != null)
+                .maxTokensExplicit(maxTokens != null)
                 .featureFlags(featureFlags)
                 .maxTurns(maxTurns)
                 .maxBudgetUsd(effectiveMaxBudgetUsd)
@@ -739,7 +736,6 @@ final class CliEngineAssembler {
             // live tool registry, base system prompt (no CLAUDE.md — memory
             // files are counted per-file), the claudeMdSupplier's scan
             // pipeline, skill loader, agent loader, microcompact.
-            final LlmClient contextUsageLlmClient = llmClient;
             var contextAnalyzer = new ContextUsageAnalyzer(
                 new ContextUsageAnalyzer.Sources(
                     // The defer tag must match what this model would actually
@@ -778,15 +774,15 @@ final class CliEngineAssembler {
                     AgentDefinitionLoader::getActive,
                     () -> compactService,
                     compactService::isAutoCompactEnabled,
-                    contextUsageLlmClient != null
+                    llmClient != null
                         ? (candidateModel, messages, tools) ->
                             LlmClientAdapter.countTokens(
-                                contextUsageLlmClient, candidateModel, messages, tools)
+                                llmClient, candidateModel, messages, tools)
                         : null,
-                    contextUsageLlmClient != null
+                    llmClient != null
                         ? (candidateModel, messages, tools) ->
                             LlmClientAdapter.countTokensFallback(
-                                contextUsageLlmClient, candidateModel, messages, tools,
+                                llmClient, candidateModel, messages, tools,
                                 engine.conversation().getSessionId())
                         : null,
                     cwd,

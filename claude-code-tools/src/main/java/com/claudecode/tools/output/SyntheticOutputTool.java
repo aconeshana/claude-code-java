@@ -2,6 +2,7 @@ package com.claudecode.tools.output;
 
 import com.claudecode.core.engine.StructuredToolOutput;
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.permissions.PermissionDecision;
 import com.claudecode.permissions.ToolPermissionContext;
 import com.claudecode.tools.AnnotatedTool;
@@ -9,7 +10,6 @@ import com.claudecode.tools.BuiltInTool;
 import com.claudecode.tools.ToolTexts;
 import com.claudecode.tools.validation.SchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -100,7 +100,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
         try {
             return new CreateResult.Ok(new SyntheticOutputTool(jsonSchema));
         } catch (Exception e) {
-            return new CreateResult.Err(e.getMessage() != null ? e.getMessage() : String.valueOf(e));
+            return new CreateResult.Err(ErrorUtils.message(e));
         }
     }
 
@@ -137,9 +137,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
             if (!props.isObject()) {
                 return path + ".properties: must be an object";
             }
-            Iterator<Map.Entry<String, JsonNode>> pit = props.fields();
-            while (pit.hasNext()) {
-                Map.Entry<String, JsonNode> e = pit.next();
+            for (Map.Entry<String, JsonNode> e : props.properties()) {
                 String err = schemaWellFormedError(e.getValue(), path + ".properties." + e.getKey());
                 if (err != null) {
                     return err;
@@ -198,9 +196,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
         }
         JsonNode defs = schema.get("definitions");
         if (defs != null && defs.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> dit = defs.fields();
-            while (dit.hasNext()) {
-                Map.Entry<String, JsonNode> e = dit.next();
+            for (Map.Entry<String, JsonNode> e : defs.properties()) {
                 String err = schemaWellFormedError(e.getValue(), path + ".definitions." + e.getKey());
                 if (err != null) {
                     return err;
@@ -245,9 +241,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
         // definitions.foo.pattern escapes pattern validation.
         JsonNode defs = schema.get("definitions");
         if (defs != null && defs.isObject()) {
-            var dit = defs.fields();
-            while (dit.hasNext()) {
-                var e = dit.next();
+            for (var e : defs.properties()) {
                 String err = invalidPatternError(e.getValue(), path + ".definitions." + e.getKey());
                 if (err != null) {
                     return err;
@@ -258,9 +252,7 @@ public class SyntheticOutputTool extends AnnotatedTool<JsonNode, Object> {
         // schemaWellFormedError, which iterates props.fields).
         JsonNode props = schema.get("properties");
         if (props != null && props.isObject()) {
-            var pit = props.fields();
-            while (pit.hasNext()) {
-                var e = pit.next();
+            for (var e : props.properties()) {
                 String err = invalidPatternError(e.getValue(), path + ".properties." + e.getKey());
                 if (err != null) {
                     return err;

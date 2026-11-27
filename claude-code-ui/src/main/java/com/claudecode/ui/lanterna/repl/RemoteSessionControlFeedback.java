@@ -36,8 +36,7 @@ final class RemoteSessionControlFeedback {
         String normalizedChannel = channel == null ? "" : channel.trim().toLowerCase(Locale.ROOT);
         if (!StringUtils.isBlank(normalizedChannel)) {
             message.append(" (via ")
-                .append(Character.toUpperCase(normalizedChannel.charAt(0)))
-                .append(normalizedChannel.substring(1))
+                .append(com.claudecode.core.text.StringUtils.capitalize(normalizedChannel))
                 .append(')');
         }
         return message;

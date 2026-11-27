@@ -440,7 +440,7 @@ final class ToolResultRenderer {
             new MessagePanel.Segment(BLACK_CIRCLE, LanternaTheme.permission()),
             new MessagePanel.Segment("User answered Claude's questions:",
                 TextColor.ANSI.DEFAULT)));
-        output.path("answers").fields().forEachRemaining(entry -> panel.appendMixed(List.of(
+        output.path("answers").properties().forEach(entry -> panel.appendMixed(List.of(
             new MessagePanel.Segment(INDENT_PREFIX + "· " + entry.getKey() + " → "
                 + entry.getValue().asText(), LanternaTheme.welcomeDim()))));
     }
@@ -639,8 +639,7 @@ final class ToolResultRenderer {
         }
         JsonNode parsed = JsonUtils.safeParseJson(content);
         if (parsed == null || !parsed.isObject() || parsed.isEmpty()) return false;
-        List<Map.Entry<String, JsonNode>> entries = new ArrayList<>();
-        parsed.fields().forEachRemaining(entries::add);
+        List<Map.Entry<String, JsonNode>> entries = new ArrayList<>(parsed.properties());
         if (entries.size() <= 4) {
             Map.Entry<String, JsonNode> dominant = null;
             List<String> extras = new ArrayList<>();

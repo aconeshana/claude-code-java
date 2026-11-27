@@ -446,6 +446,22 @@ public final class FileUtils {
     }
 
     /**
+     * Positionally reads into {@code buffer} starting at {@code position} without mutating
+     * {@code channel}'s file pointer, throwing on premature EOF.
+     */
+    public static void readFully(FileChannel channel, ByteBuffer buffer, long position)
+            throws IOException {
+        long at = position;
+        while (buffer.hasRemaining()) {
+            int read = channel.read(buffer, at);
+            if (read < 0) {
+                throw new IOException("Premature EOF while reading at offset " + at);
+            }
+            at += read;
+        }
+    }
+
+    /**
      * Best-effort POSIX {@code 0600}. Non-POSIX filesystems and permission failures are logged at
      * debug level and otherwise ignored so callers keep their existing portable fallback behavior.
      */

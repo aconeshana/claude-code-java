@@ -533,8 +533,7 @@ public class MarkdownRenderer {
          */
         static String detectLanguageFromContent(String code) {
             if (StringUtils.isEmpty(code)) return null;
-            int eol = code.indexOf('\n');
-            String firstLine = (eol < 0 ? code : code.substring(0, eol)).strip();
+            String firstLine = com.claudecode.core.text.StringUtils.firstLineOf(code).strip();
             if (firstLine.isEmpty()) return null;
 
             if (firstLine.charAt(0) == '﻿') firstLine = firstLine.substring(1);

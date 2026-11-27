@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
@@ -34,7 +34,7 @@ final class GatewaySessionActionsHandler {
     }
 
     void handleRename(HttpExchange exchange, String sessionId) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String title = text(request, "title");
         if (StringUtils.isBlank(title)) {
@@ -61,7 +61,7 @@ final class GatewaySessionActionsHandler {
     }
 
     void handleFork(HttpExchange exchange, String sessionId) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String title = text(request, "title");
         String upToMessageId = text(request, "up_to_message_id");

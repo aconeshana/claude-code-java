@@ -119,28 +119,32 @@ public final class AvoidBoxedBooleanExpressionsSafely extends Recipe {
                 }
 
                 private boolean enclosingConditionGuaranteesNonNull(J.Identifier identifier) {
-                    Cursor ancestor = getCursor().getParent();
+                    J lastJava = null;
+                    Cursor ancestor = getCursor();
                     while (ancestor != null) {
-                        Cursor parent = ancestor.getParent();
-                        Cursor javaParent = nearestJavaParent(ancestor);
-                        if (ancestor.getValue() instanceof J.Block
-                                && javaParent != null
-                                && javaParent.getValue() instanceof J.If enclosing
-                                && guaranteesNonNull(
-                                    enclosing.getIfCondition().getTree(), identifier)) {
-                            return true;
+                        if (ancestor.getValue() instanceof J current) {
+                            if (lastJava instanceof J.Block
+                                    && current instanceof J.If enclosing
+                                    && lastJava == enclosing.getThenPart()
+                                    && guaranteesNonNull(
+                                        enclosing.getIfCondition().getTree(), identifier)) {
+                                return true;
+                            }
+                            if (lastJava != null && current instanceof J.Ternary ternary) {
+                                if (lastJava == ternary.getTruePart()
+                                        && guaranteesNonNull(ternary.getCondition(), identifier)) {
+                                    return true;
+                                }
+                                if (lastJava == ternary.getFalsePart()
+                                        && guaranteesNull(ternary.getCondition(), identifier)) {
+                                    return true;
+                                }
+                            }
+                            lastJava = current;
                         }
-                        ancestor = parent;
+                        ancestor = ancestor.getParent();
                     }
                     return false;
-                }
-
-                private Cursor nearestJavaParent(Cursor cursor) {
-                    Cursor parent = cursor.getParent();
-                    while (parent != null && !(parent.getValue() instanceof J)) {
-                        parent = parent.getParent();
-                    }
-                    return parent;
                 }
 
                 private boolean guaranteesNonNull(
@@ -151,6 +155,18 @@ public final class AvoidBoxedBooleanExpressionsSafely extends Recipe {
                             || guaranteesNonNull(binary.getRight(), identifier);
                     }
                     if (binary.getOperator() != J.Binary.Type.NotEqual) return false;
+                    return isIdentifier(binary.getLeft(), identifier) && isNull(binary.getRight())
+                        || isNull(binary.getLeft()) && isIdentifier(binary.getRight(), identifier);
+                }
+
+                private boolean guaranteesNull(
+                        Expression condition, J.Identifier identifier) {
+                    if (!(condition instanceof J.Binary binary)) return false;
+                    if (binary.getOperator() == J.Binary.Type.Or) {
+                        return guaranteesNull(binary.getLeft(), identifier)
+                            || guaranteesNull(binary.getRight(), identifier);
+                    }
+                    if (binary.getOperator() != J.Binary.Type.Equal) return false;
                     return isIdentifier(binary.getLeft(), identifier) && isNull(binary.getRight())
                         || isNull(binary.getLeft()) && isIdentifier(binary.getRight(), identifier);
                 }

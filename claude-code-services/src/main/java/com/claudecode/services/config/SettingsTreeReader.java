@@ -234,8 +234,8 @@ final class SettingsTreeReader {
                     PermissionRuleValidation.Result result =
                         PermissionRuleValidation.validatePermissionRule(rule.asText());
                     if (result.valid()) continue;
-                    StringBuilder message = new StringBuilder(
-                        "Invalid permission rule \"" + rule.asText() + "\" was skipped");
+                    StringBuilder message = new StringBuilder("Invalid permission rule \"")
+                        .append(rule.asText()).append("\" was skipped");
                     if (result.error() != null) message.append(": ").append(result.error());
                     if (result.suggestion() != null) message.append(". ").append(result.suggestion());
                     out.add(new SettingsValidationError(file, "permissions." + key, message.toString()));
@@ -252,7 +252,7 @@ final class SettingsTreeReader {
         JsonNode env = settings.get("env");
         if (env == null || !env.isObject()) return;
         ObjectNode normalized = JsonUtils.getMapper().createObjectNode();
-        env.fields().forEachRemaining(entry ->
+        env.properties().forEach(entry ->
             normalized.put(entry.getKey(), javascriptString(entry.getValue(), false)));
         settings.set("env", normalized);
     }

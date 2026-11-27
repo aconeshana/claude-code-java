@@ -21,6 +21,7 @@ import static com.claudecode.ui.lanterna.components.StyledText.line;
 import static com.claudecode.core.text.StringUtils.plural;
 import static com.claudecode.ui.lanterna.components.StyledText.seg;
 import com.claudecode.ui.lanterna.components.StyledText;
+import com.claudecode.ui.lanterna.input.VimKeyStrokes;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 /**
@@ -235,11 +236,11 @@ final class PluginMarketplacesTab {
             }
             return;
         }
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             selectedIndex = Math.max(0, selectedIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             selectedIndex = Math.min(totalRows - 1, selectedIndex + 1);
             return;
         }
@@ -281,11 +282,11 @@ final class PluginMarketplacesTab {
             return;
         }
         List<MenuOption> menu = detailsMenuOptions(selectedMarketplace);
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             detailsMenuIndex = Math.max(0, detailsMenuIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             detailsMenuIndex = Math.min(menu.size() - 1, detailsMenuIndex + 1);
             return;
         }
@@ -621,18 +622,6 @@ final class PluginMarketplacesTab {
             bold("n", LanternaTheme.inputText()),
             seg(" to cancel", LanternaTheme.inputText())));
         return lines;
-    }
-
-    private static boolean isUp(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_UP
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'k' && !key.isCtrlDown() && !key.isAltDown());
-    }
-
-    private static boolean isDown(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_DOWN
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'j' && !key.isCtrlDown() && !key.isAltDown());
     }
 
     // ── test accessors ────────────────────────────────────────────────────────

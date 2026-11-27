@@ -7,6 +7,7 @@ import java.util.concurrent.*;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 
@@ -99,7 +100,7 @@ public final class McpServerHealth {
                     return check(manager, config).status();
                 } finally {
                     permits.release();
-                    closeQuietly(manager);
+                    IoUtils.closeQuietly(manager);
                 }
             }, task -> Thread.ofVirtual().name("mcp-health-" + config.name()).start(task)));
         }
@@ -124,7 +125,7 @@ public final class McpServerHealth {
         } catch (RuntimeException _) {
             return status(ERROR);
         } finally {
-            closeQuietly(manager);
+            IoUtils.closeQuietly(manager);
         }
     }
 
@@ -143,14 +144,6 @@ public final class McpServerHealth {
         String message = failure.getMessage();
         String raw = StringUtils.isNotBlank(message) ? message : failure.toString();
         return raw.replaceAll("\\s+", " ").trim();
-    }
-
-    private static void closeQuietly(McpClientManager manager) {
-        try {
-            manager.close();
-        } catch (Exception _) {
-            // Probe teardown must never mask the status we came for.
-        }
     }
 
     /**

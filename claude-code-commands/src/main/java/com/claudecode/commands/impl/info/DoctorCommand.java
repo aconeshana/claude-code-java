@@ -6,7 +6,9 @@ import com.claudecode.commands.AnnotatedCommand;
 import com.claudecode.commands.metadata.SlashCommand;
 import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.CommandResult;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
+import com.claudecode.core.text.FormatUtils;
 import com.claudecode.runtime.doctor.DoctorReport;
 import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
@@ -15,7 +17,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -52,7 +53,7 @@ public class DoctorCommand implements AnnotatedCommand {
         sb.append("Java Vendor: ").append(System.getProperty("java.vendor")).append("\n");
         sb.append("Java Home: ").append(System.getProperty("java.home")).append("\n\n");
 
-        sb.append("OS: ").append(System.getProperty("os.name")).append(" ");
+        sb.append("OS: ").append(Platform.OS_NAME).append(" ");
         sb.append(System.getProperty("os.version")).append(" ");
         sb.append(System.getProperty("os.arch")).append("\n\n");
 
@@ -173,41 +174,36 @@ public class DoctorCommand implements AnnotatedCommand {
             List<DoctorReport.FileSize> files = ctx.claudeMd().largeFiles();
             long threshold = ctx.claudeMd().thresholdChars();
             String header = files.size() == 1
-                ? "Large CLAUDE.md file detected (" + fmt(files.getFirst().chars())
-                    + " chars > " + fmt(threshold) + ")"
-                : files.size() + " large CLAUDE.md files detected (each > " + fmt(threshold) + " chars)";
+                ? "Large CLAUDE.md file detected (" + FormatUtils.formatGroupedNumber(files.getFirst().chars())
+                    + " chars > " + FormatUtils.formatGroupedNumber(threshold) + ")"
+                : files.size() + " large CLAUDE.md files detected (each > " + FormatUtils.formatGroupedNumber(threshold) + " chars)";
             sb.append("  ").append(header).append(":\n");
             for (DoctorReport.FileSize f : files) {
-                sb.append("    ").append(f.path()).append(": ").append(fmt(f.chars())).append(" chars\n");
+                sb.append("    ").append(f.path()).append(": ").append(FormatUtils.formatGroupedNumber(f.chars())).append(" chars\n");
             }
         }
         if (ctx.agents() != null) {
-            sb.append("  Large agent descriptions (~").append(fmt(ctx.agents().totalTokens()))
-              .append(" tokens > ").append(fmt(ctx.agents().thresholdTokens())).append("):\n");
+            sb.append("  Large agent descriptions (~").append(FormatUtils.formatGroupedNumber(ctx.agents().totalTokens()))
+              .append(" tokens > ").append(FormatUtils.formatGroupedNumber(ctx.agents().thresholdTokens())).append("):\n");
             for (DoctorReport.AgentTokens a : ctx.agents().topAgents()) {
-                sb.append("    ").append(a.name()).append(": ~").append(fmt(a.tokens())).append(" tokens\n");
+                sb.append("    ").append(a.name()).append(": ~").append(FormatUtils.formatGroupedNumber(a.tokens())).append(" tokens\n");
             }
             if (ctx.agents().moreCount() > 0) {
                 sb.append("    (").append(ctx.agents().moreCount()).append(" more custom agents)\n");
             }
         }
         if (ctx.mcpTools() != null) {
-            sb.append("  Large MCP tools context (~").append(fmt(ctx.mcpTools().totalTokens()))
-              .append(" tokens estimated > ").append(fmt(ctx.mcpTools().thresholdTokens())).append("):\n");
+            sb.append("  Large MCP tools context (~").append(FormatUtils.formatGroupedNumber(ctx.mcpTools().totalTokens()))
+              .append(" tokens estimated > ").append(FormatUtils.formatGroupedNumber(ctx.mcpTools().thresholdTokens())).append("):\n");
             for (DoctorReport.ServerTokens s : ctx.mcpTools().byServer()) {
                 sb.append("    ").append(s.serverName()).append(": ").append(s.toolCount())
-                  .append(" tools (~").append(fmt(s.tokens())).append(" tokens)\n");
+                  .append(" tools (~").append(FormatUtils.formatGroupedNumber(s.tokens())).append(" tokens)\n");
             }
             if (ctx.mcpTools().moreCount() > 0) {
                 sb.append("    (").append(ctx.mcpTools().moreCount()).append(" more servers)\n");
             }
         }
         sb.append("\n");
-    }
-
-
-    private static String fmt(long n) {
-        return String.format(Locale.US, "%,d", n);
     }
 
     private void checkGit(StringBuilder sb, String workingDir) {

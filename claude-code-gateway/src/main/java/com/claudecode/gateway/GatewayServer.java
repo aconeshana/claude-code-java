@@ -69,9 +69,7 @@ public final class GatewayServer implements AutoCloseable {
 
     private final Config config;
     private final GatewayAuthFilter auth;
-    private final SessionHostRegistry registry;
     private final MirrorHub mirror;
-    private final GatewayHeadlessSessions headless;
     private final MessagesHandler messages;
     private final ChatHandler chat;
     private final ResponsesHandler responses;
@@ -79,8 +77,6 @@ public final class GatewayServer implements AutoCloseable {
     private final GatewaySessionActionsHandler sessionActionsApi;
     private final GatewayRewindHandler rewindApi;
     private final GatewaySessionCatalogPort catalog;
-    /** The transcript-backed session actions, when the standalone wiring installed them. */
-    private final TranscriptSessionActions sessionActions;
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewaySudoRespondHandler sudoApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
@@ -361,8 +357,6 @@ public final class GatewayServer implements AutoCloseable {
         GatewayWorkspaceFilePort workspaceFile = builder.workspaceFile;
         this.config = config;
         this.auth = new GatewayAuthFilter(token);
-        this.registry = registry;
-        this.headless = headless;
         this.mirror = new MirrorHub(registry);
         this.remoteWorkers = builder.webWorkers != null
             ? new RemoteWorkerPool(builder.webWorkers, mirror)
@@ -436,6 +430,16 @@ public final class GatewayServer implements AutoCloseable {
                 return remoteWorkers.submit(sessionId, submission)
                     .map(accepted -> accepted.thenApply(_ -> null));
             }
+
+            @Override public boolean cancelLocal(String sessionId) {
+                return cancel.cancel(sessionId);
+            }
+
+            @Override public Optional<CompletableFuture<Void>> cancelRemote(String sessionId) {
+                if (remoteWorkers == null) return Optional.empty();
+                return remoteWorkers.cancelTurn(sessionId)
+                    .map(reply -> reply.thenApply(_ -> null));
+            }
         };
         this.messages = new MessagesHandler(resolver, inFlight);
         this.chat = new ChatHandler(resolver, inFlight);
@@ -470,10 +474,6 @@ public final class GatewayServer implements AutoCloseable {
         }
         this.rewindApi = new GatewayRewindHandler(headless, this.remoteWorkers, inFlight::isInFlight);
         this.catalog = Objects.requireNonNull(catalog, "catalog");
-        // Set by the wiring above when it installs the transcript reader; the
-        // listing asks it whether a live handle's transcript is still there, a
-        // fact neither the handle nor the catalog can answer.
-        this.sessionActions = sessionActions;
         // The shared interaction coordinator (when wired) makes the gateway a
         // remote observer of every pending permission ask: asks project into
         // the mirror stream and the respond endpoint answers them first-come.
@@ -514,7 +514,13 @@ public final class GatewayServer implements AutoCloseable {
                 ? TranscriptSessionActions.configurationHomeOf(builder.webWorkers)
                 : null);
         this.settingsApi = new GatewaySettingsHandler(settings);
-        this.projectsApi = new GatewayProjectsHandler(builder.projects);
+        this.projectsApi = new GatewayProjectsHandler(
+            builder.projects,
+            this.catalog,
+            actions,
+            headless,
+            mirror,
+            contextTimeline);
         this.scheduleApi = new GatewayScheduleHandler(schedule);
         this.runtimeControlApi = new GatewayRuntimeControlHandler(builder.runtimeControl);
         this.modelsApi = new GatewayModelsHandler(models);
@@ -580,7 +586,6 @@ public final class GatewayServer implements AutoCloseable {
             sessionsApi,
             sessionActionsApi,
             rewindApi,
-            catalog,
             permissionsApi,
             sudoApi,
             messagesSnapshotApi,

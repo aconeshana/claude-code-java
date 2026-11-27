@@ -2,6 +2,7 @@ package com.claudecode.session;
 
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -9,10 +10,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -157,11 +156,7 @@ public final class SessionForkService {
     }
 
     private static void writeAtomically(Path target, String content) throws IOException {
-        Path parent = target.toAbsolutePath().normalize().getParent();
-        if (parent == null) throw new IOException("Fork transcript has no parent directory: " + target);
-        Files.createDirectories(parent);
-        Path temporary = Files.createTempFile(parent, ".branch-", ".jsonl.tmp");
-        try {
+        FileUtils.atomicReplace(target, temporary -> {
             Files.writeString(temporary, content, StandardCharsets.UTF_8);
             try {
                 Files.setPosixFilePermissions(temporary, Set.of(
@@ -169,14 +164,7 @@ public final class SessionForkService {
             } catch (UnsupportedOperationException _) {
                 // Windows/non-POSIX filesystems do not expose Unix modes.
             }
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        });
     }
 
     public record ForkResult(int messageCount, int contentReplacementCount) {}

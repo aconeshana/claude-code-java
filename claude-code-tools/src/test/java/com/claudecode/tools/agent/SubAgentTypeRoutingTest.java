@@ -33,14 +33,6 @@ class SubAgentTypeRoutingTest {
     @Test
     void exploreAgent_getsCaptured197DenyList() {
 
-        var client = new StreamingClient() {
-            @Override
-            public Iterator<StreamingClient.StreamingEvent>
-                    createStream(StreamingClient.StreamRequest r) {
-                return Collections.emptyIterator();
-            }
-            @Override public String getModel() { return "test"; }
-        };
         var fakeFactory = new SubAgentFactory() {
             SubAgentRequest captured;
             @Override public SubAgentResult runSubAgent(SubAgentRequest r) {

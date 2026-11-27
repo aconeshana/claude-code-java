@@ -2,25 +2,22 @@ package com.claudecode.core.metrics;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -86,7 +83,7 @@ public final class TrajectoryHeaderCache {
         try {
             ObjectNode canonical = buildCanonicalPayload(normalizedSystem, normalizedTools);
             byte[] canonicalBytes = JsonUtils.getMapper().writeValueAsBytes(canonical);
-            String sha256 = sha256Hex(canonicalBytes);
+            String sha256 = HashUtils.sha256Hex(canonicalBytes);
             long now = clock.getAsLong();
             maybeEvictExpired(now);
 
@@ -103,19 +100,10 @@ public final class TrajectoryHeaderCache {
 
             canonical.put("sha256", sha256);
             canonical.put("createdAt", now);
-            Path temp = Files.createTempFile(cacheDir, sha256.substring(0, 12) + "-", ".tmp");
-            try {
+            FileUtils.atomicReplace(target, temp -> {
                 Files.writeString(temp, canonical.toString(), StandardCharsets.UTF_8);
                 Files.setLastModifiedTime(temp, FileTime.fromMillis(now));
-                try {
-                    Files.move(temp, target,
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException _) {
-                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            } finally {
-                Files.deleteIfExists(temp);
-            }
+            });
             return sha256;
         } catch (IOException _) {
             return null;
@@ -227,15 +215,6 @@ public final class TrajectoryHeaderCache {
             Files.setPosixFilePermissions(dir, OWNER_DIR_PERMS);
         } catch (UnsupportedOperationException _) {
             // Non-POSIX filesystem (e.g. Windows NTFS).
-        }
-    }
-
-    private static String sha256Hex(byte[] bytes) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
 

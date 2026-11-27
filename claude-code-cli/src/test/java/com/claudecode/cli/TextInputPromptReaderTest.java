@@ -36,7 +36,7 @@ class TextInputPromptReaderTest {
     @Test
     void inheritedOpenPipeTimesOutWhenNoByteEverArrives() throws Exception {
         try (PipedInputStream idlePipe = new PipedInputStream();
-             PipedOutputStream producer = new PipedOutputStream(idlePipe)) {
+             PipedOutputStream _ = new PipedOutputStream(idlePipe)) {
             TextInputPromptReader.Result result = TextInputPromptReader.resolve(
                 "ARGV", idlePipe, false, Duration.ofMillis(20));
 

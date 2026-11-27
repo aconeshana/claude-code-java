@@ -229,7 +229,7 @@ final class StopConditionEvaluator {
             List<Message> messages, String model, double fraction) {
         if (messages == null || messages.isEmpty()) return List.of();
         long budget = (long) Math.floor(goal.contextWindow(model) * fraction);
-        List<Message> retained = truncate(messages, model, budget);
+        List<Message> retained = trimMessagesToBudget(messages, model, budget);
         List<StreamingClient.StreamRequest.RequestMessage> wire = new ArrayList<>();
         int omitted = messages.size() - retained.size();
         if (omitted > 0) {
@@ -253,7 +253,7 @@ final class StopConditionEvaluator {
         return List.copyOf(result);
     }
 
-    private static List<Message> truncate(List<Message> messages, String model, long budget) {
+    private static List<Message> trimMessagesToBudget(List<Message> messages, String model, long budget) {
         if (latestAssistantUsage(messages, model) <= budget) return List.copyOf(messages);
         List<List<Message>> groups = groupAssistantResponses(messages);
         long tokens = 0L;

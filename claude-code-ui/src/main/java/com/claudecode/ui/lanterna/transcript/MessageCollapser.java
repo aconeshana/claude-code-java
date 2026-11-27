@@ -320,7 +320,7 @@ public class MessageCollapser {
         }
         if (parts.isEmpty()) return "";
         String joined = String.join(", ", parts);
-        String first = Character.toUpperCase(joined.charAt(0)) + joined.substring(1);
+        String first = StringUtils.capitalize(joined);
         return first + "… " + KeybindingHints.expand(keybindingsStore);
     }
 
@@ -1142,8 +1142,7 @@ public class MessageCollapser {
 
     /** 236's {@code je}: only the leading segment is capitalized, whichever segment that is. */
     private static String capitalizeIf(boolean first, String verb) {
-        return first && !verb.isEmpty()
-            ? Character.toUpperCase(verb.charAt(0)) + verb.substring(1) : verb;
+        return first ? StringUtils.capitalize(verb) : verb;
     }
 
     /**

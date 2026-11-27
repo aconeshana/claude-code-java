@@ -83,7 +83,7 @@ public final class PokemonCardRenderer {
 
     private static void appendHeader(MessagePanel panel, PokemonProfile profile,
                                      int width, TextColor accent) {
-        String rarity = profile.stars() + "  " + title(profile.rarity());
+        String rarity = profile.stars() + "  " + profile.rarity().title();
         String right = "POKÉMON";
         int innerWidth = width - 4;
         int gap = Math.max(1, innerWidth - FormatUtils.displayWidth(rarity)
@@ -145,11 +145,6 @@ public final class PokemonCardRenderer {
             case EPIC -> LanternaTheme.acceptPurple();
             case LEGENDARY -> LanternaTheme.autoYellow();
         };
-    }
-
-    private static String title(PokemonProfile.Rarity rarity) {
-        String lower = rarity.name().toLowerCase(Locale.ROOT);
-        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
 
     private static MessagePanel.Segment defaultBackground(String text) {

@@ -81,12 +81,11 @@ public final class SemverUtils {
         String normalized = token.toLowerCase(Locale.ROOT);
         if (Strings.CS.contains(normalized, "x") || Strings.CS.contains(normalized, "*")) {
             String[] parts = normalized.replace('*', 'x').split("\\.");
-            Version actual = value;
             if (parts.length > 0 && !Strings.CS.equals("x", parts[0])
-                    && actual.major != integer(parts[0])) return false;
+                    && value.major != integer(parts[0])) return false;
             if (parts.length > 1 && !Strings.CS.equals("x", parts[1])
-                    && actual.minor != integer(parts[1])) return false;
-            return parts.length <= 2 || Strings.CS.equals("x", parts[2]) || actual.patch == integer(parts[2]);
+                    && value.minor != integer(parts[1])) return false;
+            return parts.length <= 2 || Strings.CS.equals("x", parts[2]) || value.patch == integer(parts[2]);
         }
         return value.compareTo(parse(token)) == 0;
     }

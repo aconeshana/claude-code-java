@@ -119,7 +119,7 @@ public class TaskUpdateTool extends AnnotatedTool<JsonNode, String> {
             for (String alias : List.of("id", "task_id")) {
                 JsonNode value = input.get(alias);
                 if (value != null && value.isTextual()
-                        && isJavaScriptNonBlank(value.textValue())) {
+                        && com.claudecode.core.text.StringUtils.isJavaScriptNonBlank(value.textValue())) {
                     id = value.textValue();
                     break;
                 }
@@ -131,23 +131,6 @@ public class TaskUpdateTool extends AnnotatedTool<JsonNode, String> {
         String subject = input.path("subject").asText("");
         if (!subject.isEmpty()) parts.add(subject);
         return String.join(" ", parts);
-    }
-
-    private static boolean isJavaScriptNonBlank(String value) {
-        int start = 0;
-        int end = value.length();
-        while (start < end && isJavaScriptWhitespace(value.charAt(start))) start++;
-        while (end > start && isJavaScriptWhitespace(value.charAt(end - 1))) end--;
-        return start < end;
-    }
-
-    private static boolean isJavaScriptWhitespace(char value) {
-        return switch (value) {
-            case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020,
-                 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F,
-                 0x3000, 0xFEFF -> true;
-            default -> value >= 0x2000 && value <= 0x200A;
-        };
     }
 
     @Override
@@ -403,7 +386,7 @@ public class TaskUpdateTool extends AnnotatedTool<JsonNode, String> {
 
     private static Map<String, Object> mergeMetadata(Map<String, Object> existing, JsonNode patch) {
         Map<String, Object> merged = new LinkedHashMap<>(existing);
-        patch.fields().forEachRemaining(entry -> {
+        patch.properties().forEach(entry -> {
             if (entry.getValue().isNull()) {
                 merged.remove(entry.getKey());
             } else {

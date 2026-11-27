@@ -112,10 +112,10 @@ public final class PluginValidator {
             }
             if (entry.source() == null) {
                 errors.add(new ValidationError(prefix + ".source", "Plugin entry source is required", null));
-            } else if (entry.source() instanceof PluginSource.RelativePath rp
-                && Strings.CS.contains(rp.path(), "..")) {
+            } else if (entry.source() instanceof PluginSource.RelativePath(var path)
+                && Strings.CS.contains(path, "..")) {
                 errors.add(new ValidationError(prefix + ".source",
-                    "Path contains \"..\" which could be a path traversal attempt: " + rp.path(), null));
+                    "Path contains \"..\" which could be a path traversal attempt: " + path, null));
             }
         }
         return marketplaceResult(errors, warnings, absolutePath);
@@ -142,9 +142,9 @@ public final class PluginValidator {
         if (manifest.plugins() != null) {
             for (int i = 0; i < manifest.plugins().size(); i++) {
                 MarketplacePluginEntry entry = manifest.plugins().get(i);
-                if (entry.source() instanceof PluginSource.RelativePath rp
-                    && !Strings.CS.contains(rp.path(), "..")) {
-                    Path pluginDir = marketplaceDir.resolve(rp.path()).normalize();
+                if (entry.source() instanceof PluginSource.RelativePath(var path)
+                    && !Strings.CS.contains(path, "..")) {
+                    Path pluginDir = marketplaceDir.resolve(path).normalize();
                     if (!Files.isDirectory(pluginDir)) {
                         errors.add(new ValidationError("plugins[" + i + "].source",
                             "Plugin directory not found: " + pluginDir, "ENOENT"));

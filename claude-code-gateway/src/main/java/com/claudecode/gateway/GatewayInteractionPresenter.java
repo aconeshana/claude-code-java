@@ -63,14 +63,14 @@ final class GatewayInteractionPresenter implements InteractionPresenter<
         payload.put("tool", context.toolName());
         if (context.toolUseId() != null) payload.put("tool_use_id", context.toolUseId());
         if (context.input() != null) payload.set("input", context.input());
-        putIfNotBlank(payload, "decision_reason_type", context.decisionReasonType());
-        putIfNotBlank(payload, "decision_reason_detail", context.decisionReasonDetail());
-        putIfNotBlank(payload, "suggestion_rule_content", context.suggestionRuleContent());
-        putIfNotBlank(payload, "suggestion_label", context.suggestionLabel());
-        putIfNotBlank(payload, "destructive_warning", context.destructiveWarning());
-        putIfNotBlank(payload, "blocked_path", context.blockedPath());
-        putIfNotBlank(payload, "custom_message", context.customMessage());
-        putIfNotBlank(payload, "tool_description", context.toolDescription());
+        JsonUtils.putIfNotBlank(payload, "decision_reason_type", context.decisionReasonType());
+        JsonUtils.putIfNotBlank(payload, "decision_reason_detail", context.decisionReasonDetail());
+        JsonUtils.putIfNotBlank(payload, "suggestion_rule_content", context.suggestionRuleContent());
+        JsonUtils.putIfNotBlank(payload, "suggestion_label", context.suggestionLabel());
+        JsonUtils.putIfNotBlank(payload, "destructive_warning", context.destructiveWarning());
+        JsonUtils.putIfNotBlank(payload, "blocked_path", context.blockedPath());
+        JsonUtils.putIfNotBlank(payload, "custom_message", context.customMessage());
+        JsonUtils.putIfNotBlank(payload, "tool_description", context.toolDescription());
         putQuestions(payload, context.input());
         mirror.publishPermissionAsked(request.descriptor().sessionId(), payload);
     }
@@ -120,9 +120,5 @@ final class GatewayInteractionPresenter implements InteractionPresenter<
             payload.put("feedback", resolution.result().feedback());
         }
         mirror.publishPermissionResolved(resolution.descriptor().sessionId(), payload);
-    }
-
-    private static void putIfNotBlank(ObjectNode payload, String field, String value) {
-        if (StringUtils.isNotBlank(value)) payload.put(field, value);
     }
 }

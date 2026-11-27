@@ -129,19 +129,14 @@ public final class AgentGenerator {
             }
         }
 
-        String identifier = textOrNull(node, "identifier");
-        String whenToUse = textOrNull(node, "whenToUse");
-        String systemPrompt = textOrNull(node, "systemPrompt");
+        String identifier = JsonUtils.textOrNull(node, "identifier");
+        String whenToUse = JsonUtils.textOrNull(node, "whenToUse");
+        String systemPrompt = JsonUtils.textOrNull(node, "systemPrompt");
         if (StringUtils.isBlank(identifier)
                 || whenToUse == null || StringUtils.isBlank(whenToUse)
                 || systemPrompt == null || StringUtils.isBlank(systemPrompt)) {
             throw new AgentGenerationException("Invalid agent configuration generated");
         }
         return new GeneratedAgent(identifier, whenToUse, systemPrompt);
-    }
-
-    private static String textOrNull(JsonNode node, String field) {
-        JsonNode v = node.get(field);
-        return (v == null || v.isNull()) ? null : v.asText();
     }
 }

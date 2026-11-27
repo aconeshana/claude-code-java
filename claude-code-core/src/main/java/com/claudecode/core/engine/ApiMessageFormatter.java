@@ -101,23 +101,23 @@ public final class ApiMessageFormatter {
                     // prompt-cache bytes after compaction/resume.
                     List<Map<String, Object>> contentArray = new ArrayList<>();
                     for (ContentBlock block : am.message().content()) {
-                        if (block instanceof TextBlock tb && tb.text() != null) {
+                        if (block instanceof TextBlock(var text) && text != null) {
                             Map<String, Object> textMap = new LinkedHashMap<>();
                             textMap.put("type", "text");
-                            textMap.put("text", tb.text());
+                            textMap.put("text", text);
                             contentArray.add(textMap);
-                        } else if (block instanceof ThinkingBlock th && includeThinking) {
+                        } else if (block instanceof ThinkingBlock(var thinking, var signature) && includeThinking) {
                             Map<String, Object> thMap = new LinkedHashMap<>();
                             thMap.put("type", "thinking");
-                            thMap.put("thinking", th.thinking() != null ? th.thinking() : "");
-                            if (StringUtils.isNotEmpty(th.signature())) {
-                                thMap.put("signature", th.signature());
+                            thMap.put("thinking", thinking != null ? thinking : "");
+                            if (StringUtils.isNotEmpty(signature)) {
+                                thMap.put("signature", signature);
                             }
                             contentArray.add(thMap);
-                        } else if (block instanceof RedactedThinkingBlock redacted && includeThinking) {
+                        } else if (block instanceof RedactedThinkingBlock(var data) && includeThinking) {
                             Map<String, Object> redactedMap = new LinkedHashMap<>();
                             redactedMap.put("type", "redacted_thinking");
-                            redactedMap.put("data", redacted.data());
+                            redactedMap.put("data", data);
                             contentArray.add(redactedMap);
                         } else if (block instanceof ToolUseBlock tub) {
                             Map<String, Object> tuMap = new LinkedHashMap<>();
@@ -129,24 +129,24 @@ public final class ApiMessageFormatter {
                                 tuMap.put("caller", tub.caller());
                             }
                             contentArray.add(tuMap);
-                        } else if (block instanceof ServerToolUseBlock serverTool) {
+                        } else if (block instanceof ServerToolUseBlock(var id, var name, var input)) {
                             Map<String, Object> serverMap = new LinkedHashMap<>();
                             serverMap.put("type", "server_tool_use");
-                            serverMap.put("id", serverTool.id());
-                            serverMap.put("name", serverTool.name());
-                            serverMap.put("input", serverTool.input());
+                            serverMap.put("id", id);
+                            serverMap.put("name", name);
+                            serverMap.put("input", input);
                             contentArray.add(serverMap);
-                        } else if (block instanceof WebSearchToolResultBlock searchResult) {
+                        } else if (block instanceof WebSearchToolResultBlock(var toolUseId, var content, var errorCode)) {
                             Map<String, Object> resultMap = new LinkedHashMap<>();
                             resultMap.put("type", "web_search_tool_result");
-                            resultMap.put("tool_use_id", searchResult.toolUseId());
-                            if (searchResult.errorCode() != null) {
+                            resultMap.put("tool_use_id", toolUseId);
+                            if (errorCode != null) {
                                 resultMap.put("content", Map.of(
                                     "type", "web_search_tool_result_error",
-                                    "error_code", searchResult.errorCode()));
+                                    "error_code", errorCode));
                             } else {
                                 List<Map<String, Object>> hits = new ArrayList<>();
-                                for (WebSearchToolResultBlock.Hit hit : searchResult.content()) {
+                                for (WebSearchToolResultBlock.Hit hit : content) {
                                     Map<String, Object> hitMap = new LinkedHashMap<>();
                                     hitMap.put("type", "web_search_result");
                                     hitMap.put("title", hit.title());
@@ -228,28 +228,28 @@ public final class ApiMessageFormatter {
                             if (hasNonText || preserveContentBlocks) {
                                 List<Map<String, Object>> innerArray = new ArrayList<>();
                                 for (ContentBlock inner : tr.content()) {
-                                    if (inner instanceof TextBlock itb && itb.text() != null) {
+                                    if (inner instanceof TextBlock(var text) && text != null) {
                                         Map<String, Object> textMap = new LinkedHashMap<>();
                                         textMap.put("type", "text");
-                                        textMap.put("text", itb.text());
+                                        textMap.put("text", text);
                                         innerArray.add(textMap);
-                                    } else if (inner instanceof ToolReferenceBlock trb) {
+                                    } else if (inner instanceof ToolReferenceBlock(var toolName)) {
                                         Map<String, Object> refMap = new LinkedHashMap<>();
                                         refMap.put("type", "tool_reference");
-                                        refMap.put("tool_name", trb.toolName());
+                                        refMap.put("tool_name", toolName);
                                         innerArray.add(refMap);
-                                    } else if (inner instanceof ImageBlock ib && ib.source() != null) {
+                                    } else if (inner instanceof ImageBlock(var source) && source != null) {
                                         // matches the plain-user-message image handling
                                         // (below): the model receives the actual image
                                         // base64, not a [Image #N] text placeholder.
                                         Map<String, Object> imgMap = new LinkedHashMap<>();
                                         imgMap.put("type", "image");
-                                        imgMap.put("source", ib.source());
+                                        imgMap.put("source", source);
                                         innerArray.add(imgMap);
-                                    } else if (inner instanceof DocumentBlock db && db.source() != null) {
+                                    } else if (inner instanceof DocumentBlock(var source) && source != null) {
                                         Map<String, Object> docMap = new LinkedHashMap<>();
                                         docMap.put("type", "document");
-                                        docMap.put("source", db.source());
+                                        docMap.put("source", source);
                                         innerArray.add(docMap);
                                     }
                                 }
@@ -268,10 +268,10 @@ public final class ApiMessageFormatter {
                             trMap.put("is_error", tr.isError());
                         }
                         contentArray.add(trMap);
-                    } else if (block instanceof TextBlock tb && tb.text() != null) {
+                    } else if (block instanceof TextBlock(var text) && text != null) {
                         Map<String, Object> textMap = new LinkedHashMap<>();
                         textMap.put("type", "text");
-                        textMap.put("text", tb.text());
+                        textMap.put("text", text);
                         contentArray.add(textMap);
                     }
                 }
@@ -288,20 +288,20 @@ public final class ApiMessageFormatter {
                     // so the API receives the actual base64 media block.
                     List<Map<String, Object>> contentArray = new ArrayList<>();
                     for (ContentBlock block : um.message().blocks()) {
-                        if (block instanceof TextBlock tb && tb.text() != null) {
+                        if (block instanceof TextBlock(var text) && text != null) {
                             Map<String, Object> textMap = new LinkedHashMap<>();
                             textMap.put("type", "text");
-                            textMap.put("text", tb.text());
+                            textMap.put("text", text);
                             contentArray.add(textMap);
-                        } else if (block instanceof ImageBlock ib && ib.source() != null) {
+                        } else if (block instanceof ImageBlock(var source) && source != null) {
                             Map<String, Object> imgMap = new LinkedHashMap<>();
                             imgMap.put("type", "image");
-                            imgMap.put("source", ib.source());
+                            imgMap.put("source", source);
                             contentArray.add(imgMap);
-                        } else if (block instanceof DocumentBlock db && db.source() != null) {
+                        } else if (block instanceof DocumentBlock(var source) && source != null) {
                             Map<String, Object> docMap = new LinkedHashMap<>();
                             docMap.put("type", "document");
-                            docMap.put("source", db.source());
+                            docMap.put("source", source);
                             contentArray.add(docMap);
                         }
                     }

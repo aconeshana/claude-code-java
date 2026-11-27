@@ -54,8 +54,7 @@ public enum HookEvent {
         StringBuilder sb = new StringBuilder();
         for (String p : parts) {
             if (!p.isEmpty()) {
-                sb.append(Character.toUpperCase(p.charAt(0)));
-                sb.append(p.substring(1).toLowerCase(Locale.ROOT));
+                sb.append(com.claudecode.core.text.StringUtils.capitalize(p.toLowerCase(Locale.ROOT)));
             }
         }
         return sb.toString();

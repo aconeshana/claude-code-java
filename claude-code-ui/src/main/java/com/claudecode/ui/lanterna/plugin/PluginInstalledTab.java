@@ -39,6 +39,7 @@ import com.claudecode.ui.lanterna.components.StyledText;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.components.LanternaDraw;
 import com.claudecode.ui.lanterna.input.SearchInput;
+import com.claudecode.ui.lanterna.input.VimKeyStrokes;
 import com.claudecode.core.config.ClaudePaths;
 
 /**
@@ -396,7 +397,7 @@ final class PluginInstalledTab {
             }
             return;
         }
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             if (pagination.selectedIndex() == 0) {
                 isSearchMode = true;
             } else {
@@ -404,7 +405,7 @@ final class PluginInstalledTab {
             }
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             pagination.moveBy(1);
             return;
         }
@@ -515,11 +516,11 @@ final class PluginInstalledTab {
             return;
         }
         List<MenuItem> menu = detailsMenu();
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             detailsMenuIndex = Math.max(0, detailsMenuIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             detailsMenuIndex = Math.min(menu.size() - 1, detailsMenuIndex + 1);
             return;
         }
@@ -618,11 +619,11 @@ final class PluginInstalledTab {
             return;
         }
         List<String> menu = mcpMenu();
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             mcpMenuIndex = Math.max(0, mcpMenuIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             mcpMenuIndex = Math.min(menu.size() - 1, mcpMenuIndex + 1);
             return;
         }
@@ -651,9 +652,9 @@ final class PluginInstalledTab {
             mode = Mode.MCP_DETAILS;
             return;
         }
-        if (isUp(key) && !mcpTools.isEmpty()) {
+        if (VimKeyStrokes.isUp(key) && !mcpTools.isEmpty()) {
             mcpToolIndex = Math.max(0, mcpToolIndex - 1);
-        } else if (isDown(key) && !mcpTools.isEmpty()) {
+        } else if (VimKeyStrokes.isDown(key) && !mcpTools.isEmpty()) {
             mcpToolIndex = Math.min(mcpTools.size() - 1, mcpToolIndex + 1);
         } else if (key.getKeyType() == KeyType.ENTER && !mcpTools.isEmpty()) {
             selectedMcpTool = mcpTools.get(mcpToolIndex);
@@ -1689,7 +1690,7 @@ final class PluginInstalledTab {
             }
             lines.add(blank());
             lines.add(boldLine("Parameters:", LanternaTheme.inputText()));
-            properties.fields().forEachRemaining(entry -> {
+            properties.properties().forEach(entry -> {
                 JsonNode value = entry.getValue();
                 String suffix = required.contains(entry.getKey()) ? " (required)" : "";
                 lines.add(line("• " + entry.getKey() + suffix + ": "
@@ -1737,18 +1738,6 @@ final class PluginInstalledTab {
                 || error.source() != null && Strings.CS.startsWith(error.source(), item.name() + "@")
                 || item.pluginId().equals(error.target()))
             .toList();
-    }
-
-    private static boolean isUp(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_UP
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'k' && !key.isCtrlDown() && !key.isAltDown());
-    }
-
-    private static boolean isDown(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_DOWN
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'j' && !key.isCtrlDown() && !key.isAltDown());
     }
 
     // ── test accessors ────────────────────────────────────────────────────────

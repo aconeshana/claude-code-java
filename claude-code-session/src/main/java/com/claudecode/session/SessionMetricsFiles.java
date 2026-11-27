@@ -1,8 +1,8 @@
 package com.claudecode.session;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.config.EnvUtils;
 import java.nio.file.Path;
-import java.util.Locale;
 import org.apache.commons.lang3.Strings;
 
 /** Storage-location kill switch; event/projection contracts are unchanged. */
@@ -13,12 +13,7 @@ final class SessionMetricsFiles {
     private SessionMetricsFiles() {}
 
     static boolean useSidecar() {
-        String value = System.getenv(SIDECAR_ENV);
-        if (value == null) return false;
-        return switch (value.trim().toLowerCase(Locale.ROOT)) {
-            case "1", "true", "yes", "on" -> true;
-            default -> false;
-        };
+        return EnvUtils.isEnvTruthy(System.getenv(SIDECAR_ENV));
     }
 
     static Path sidecar(Path transcript) {

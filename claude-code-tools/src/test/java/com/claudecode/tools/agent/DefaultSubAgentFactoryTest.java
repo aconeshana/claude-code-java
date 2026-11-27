@@ -44,7 +44,6 @@ import com.claudecode.tools.worktree.WorktreeService;
 import com.claudecode.tools.worktree.WorktreeSession;
 import com.claudecode.tools.skills.Skill;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -1392,7 +1391,7 @@ class DefaultSubAgentFactoryTest {
         SessionManager manager = new SessionManager(claudeHome, "/tmp/project");
         Path transcript = manager.getAgentTranscriptPath(sessionId, agentId);
         Files.createDirectories(transcript.getParent());
-        ObjectNode persisted = (ObjectNode) JsonUtils.getMapper().valueToTree(
+        ObjectNode persisted = JsonUtils.getMapper().valueToTree(
             new UserMessage("prior", MessageContent.ofText("original audit")));
         persisted.putNull("parentUuid");
         persisted.put("isSidechain", true);

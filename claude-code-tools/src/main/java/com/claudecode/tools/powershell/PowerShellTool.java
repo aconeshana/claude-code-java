@@ -301,8 +301,8 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
             return imageResult;
         }
 
-        String out = truncate(rawStdout, MAX_RESULT_CHARS);
-        String err = truncate(stderr.toString(), MAX_RESULT_CHARS);
+        String out = truncateToolOutput(rawStdout, MAX_RESULT_CHARS);
+        String err = truncateToolOutput(stderr.toString(), MAX_RESULT_CHARS);
 
         // F7: persist large output to disk (matches BashTool's large-output path).
         long rawTotal = rawStdout.length() + stderr.length();
@@ -408,7 +408,7 @@ public class PowerShellTool extends AnnotatedTool<JsonNode, Object> {
     }
 
 
-    private static String truncate(String s, int max) {
+    private static String truncateToolOutput(String s, int max) {
         if (s.length() <= max) return s;
         return s.substring(0, max) + "\n... [output truncated, " + s.length() + " chars total] ...";
     }

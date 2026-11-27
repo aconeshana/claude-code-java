@@ -3,6 +3,7 @@ package com.claudecode.core.imagestore;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.io.ByteArrays;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.core.util.HashUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -12,10 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Locale;
 import javax.imageio.ImageIO;
 
@@ -213,15 +211,14 @@ public final class ImageResizer {
             return null;
         }
         try {
-            String actualSha = HexFormat.of().formatHex(
-                MessageDigest.getInstance("SHA-256").digest(imageBuffer));
+            String actualSha = HashUtils.sha256Hex(imageBuffer);
             if (!Strings.CI.equals(expectedSha.strip(), actualSha)) return null;
             byte[] frozen = Files.readAllBytes(Path.of(fixturePath));
             if (frozen.length == 0) return null;
             PastedDims dimensions = constrainedDimensions(
                 dimensionsFromSupportedHeader(imageBuffer));
             return new ResizeResult(frozen, detectMediaType(frozen, "jpeg"), dimensions);
-        } catch (IOException | NoSuchAlgorithmException | RuntimeException _) {
+        } catch (IOException | RuntimeException _) {
             return null;
         }
     }

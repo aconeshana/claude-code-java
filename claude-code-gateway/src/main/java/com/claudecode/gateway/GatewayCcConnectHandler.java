@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
@@ -38,7 +38,7 @@ final class GatewayCcConnectHandler {
     }
 
     void handleAttach(HttpExchange exchange) throws IOException {
-        JsonNode body = readJson(exchange);
+        JsonNode body = readRequestJson(exchange);
         if (body == null) return;
         long pid = body.path("pid").asLong(0L);
         String sessionId = body.path("session_id").asText("").trim();
@@ -60,7 +60,7 @@ final class GatewayCcConnectHandler {
     }
 
     void handleDetach(HttpExchange exchange) throws IOException {
-        JsonNode body = readJson(exchange);
+        JsonNode body = readRequestJson(exchange);
         if (body == null) return;
         long pid = body.path("pid").asLong(0L);
         String sessionId = body.path("session_id").asText("").trim();
@@ -98,7 +98,7 @@ final class GatewayCcConnectHandler {
     }
 
     void handleSetup(HttpExchange exchange) throws IOException {
-        JsonNode body = readJson(exchange);
+        JsonNode body = readRequestJson(exchange);
         if (body == null) return;
         String mode = body.path("mode").asText("").trim();
         if (StringUtils.isBlank(mode)) {

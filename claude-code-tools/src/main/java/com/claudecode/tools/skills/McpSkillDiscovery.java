@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.util.FrontmatterParser;
+import com.claudecode.core.util.HashUtils;
 import com.claudecode.mcp.McpConnectionView;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,11 +13,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -91,7 +89,7 @@ public final class McpSkillDiscovery {
             McpConnectionView connection, String indexName, String url, String declaredDigest) {
         String markdown = readText(connection, url);
         if (markdown == null || markdown.length() > MAX_INDEX_CHARS) return null;
-        String actualDigest = sha256(markdown.getBytes(StandardCharsets.UTF_8));
+        String actualDigest = HashUtils.sha256Hex(markdown.getBytes(StandardCharsets.UTF_8));
         String expected = normalizeDigest(declaredDigest);
         if (expected != null && !expected.equals(actualDigest)) {
             LOG.warn("MCP skill '{}' digest mismatch from '{}'", indexName,
@@ -150,7 +148,7 @@ public final class McpSkillDiscovery {
             String server, String name, String url, String markdown,
             String cacheKey, String declaredDigest) throws IOException {
         String slug = normalizeSegment(server) + "--" + sanitizeFileSegment(name)
-            + "--" + sha256((server + "\0" + url).getBytes(StandardCharsets.UTF_8))
+            + "--" + HashUtils.sha256Hex((server + "\0" + url).getBytes(StandardCharsets.UTF_8))
                 .substring(0, 8);
         Path slugDir = cacheRoot.resolve(slug);
         Path keyDir = slugDir.resolve(cacheKey);
@@ -230,13 +228,5 @@ public final class McpSkillDiscovery {
         String normalized = digest.trim().toLowerCase(Locale.ROOT);
         if (Strings.CS.startsWith(normalized, "sha256:")) normalized = normalized.substring(7);
         return normalized.matches("[0-9a-f]{64}") ? normalized : null;
-    }
-
-    private static String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

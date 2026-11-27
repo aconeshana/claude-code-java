@@ -183,11 +183,11 @@ public final class TmTokenizer {
     private static void collectExternalIncludes(JsonNode node, Set<String> dependencies) {
         if (node == null) return;
         if (node.isObject()) {
-            node.fields().forEachRemaining(field -> {
+            node.properties().forEach(field -> {
                 if (Strings.CS.equals("include", field.getKey()) && field.getValue().isTextual()) {
                     String include = field.getValue().asText();
                     if (!include.isEmpty() && include.charAt(0) != '#'
-                            && include.charAt(0) != '$') {
+                        && include.charAt(0) != '$') {
                         int repositoryFragment = include.indexOf('#');
                         dependencies.add(repositoryFragment < 0
                             ? include : include.substring(0, repositoryFragment));
@@ -213,7 +213,7 @@ public final class TmTokenizer {
                 LOG.warn("Grammar index missing 'languages' object.");
                 return;
             }
-            languages.fields().forEachRemaining(e -> {
+            languages.properties().forEach(e -> {
                 JsonNode v = e.getValue();
                 String file = v.path("file").asText(null);
                 String scope = v.path("scope").asText(null);

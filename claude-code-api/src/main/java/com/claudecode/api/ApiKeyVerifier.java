@@ -4,15 +4,11 @@ import com.claudecode.core.model.ModelNames;
 import com.claudecode.core.process.SubprocessEnvironment;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 
 public final class ApiKeyVerifier {
-
-    private static final Logger log = LoggerFactory.getLogger(ApiKeyVerifier.class);
 
     private static final long VERIFY_TIMEOUT_MS = 30_000;
 

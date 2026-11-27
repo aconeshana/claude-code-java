@@ -115,7 +115,6 @@ class SystemPromptSnapshotTest {
         int diffAt = 0;
         while (diffAt < minLen && expected.charAt(diffAt) == actual.charAt(diffAt)) diffAt++;
         int contextStart = Math.max(0, diffAt - 60);
-        int contextEnd = Math.min(minLen, diffAt + 60);
         String expectedCtx = expected.substring(contextStart, Math.min(expected.length(), diffAt + 60));
         String actualCtx = actual.substring(contextStart, Math.min(actual.length(), diffAt + 60));
         fail(String.format("Snapshot mismatch in %s at char %d"

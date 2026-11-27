@@ -123,12 +123,12 @@ public final class GoalTracker {
 
         int iterations = current.iterations() + 1;
         HookResult result = HookOutcomes.baseResult(execution.result());
-        if (result instanceof HookResult.ConditionNotMet notMet) {
+        if (result instanceof HookResult.ConditionNotMet(_, var reason)) {
             activeGoal = new HookDispatcher.ActiveGoal(current.condition(), iterations,
-                current.setAtMillis(), current.tokensAtStart(), notMet.reason());
+                current.setAtMillis(), current.tokensAtStart(), reason);
             transition.set(new HookDispatcher.GoalTransition(
                 HookDispatcher.GoalTransitionKind.PENDING, current.condition(),
-                notMet.reason(), iterations, 0L, 0L));
+                reason, iterations, 0L, 0L));
             return;
         }
         if (result instanceof HookResult.ConditionMet(String reason)) {

@@ -91,9 +91,7 @@ public final class PluginSettingsStore {
 
     private static void mergeEnabledPlugins(Map<String, Boolean> target, JsonNode node) {
         if (node == null || !node.isObject()) return;
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             if (field.getValue().isBoolean()) target.put(field.getKey(), field.getValue().asBoolean());
         }
     }

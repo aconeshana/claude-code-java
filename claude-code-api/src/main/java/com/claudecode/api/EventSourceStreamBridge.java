@@ -1,6 +1,7 @@
 package com.claudecode.api;
 
 import com.claudecode.core.error.ErrorUtils;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.message.ApiErrorFriendlyText;
 import com.claudecode.http.CancellationRegistrar;
 import okhttp3.OkHttpClient;
@@ -9,7 +10,6 @@ import okhttp3.Response;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
-import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -364,12 +364,8 @@ final class EventSourceStreamBridge {
         }
 
         private void cancelWatchdog() {
-            cancel(warningTask.getAndSet(null));
-            cancel(timeoutTask.getAndSet(null));
-        }
-
-        private static void cancel(ScheduledFuture<?> future) {
-            if (future != null) future.cancel(false);
+            IoUtils.cancelQuietly(warningTask.getAndSet(null));
+            IoUtils.cancelQuietly(timeoutTask.getAndSet(null));
         }
 
         private void closeRegistration() {
@@ -403,7 +399,7 @@ final class EventSourceStreamBridge {
             } catch (Exception _) {
                 body = "";
             }
-            Long retryAfterSeconds = parseRetryAfterSeconds(response.header("Retry-After"));
+            Long retryAfterSeconds = RetryInterceptor.parseRetryAfterSeconds(response.header("Retry-After"));
             String promptTooLongMessage = PromptTooLongException.extractFromResponseBody(body);
             if (promptTooLongMessage != null) {
                 return new PromptTooLongException(
@@ -416,17 +412,6 @@ final class EventSourceStreamBridge {
         String message = t != null ? t.getMessage() : "Unknown streaming failure";
         String friendlyMessage = ApiErrorFriendlyText.connectionFriendlyMessage(message);
         return new ApiException("Failed to send request: " + message, 0, t, friendlyMessage);
-    }
-
-    private static Long parseRetryAfterSeconds(String headerValue) {
-        if (StringUtils.isBlank(headerValue)) {
-            return null;
-        }
-        try {
-            return Long.parseLong(headerValue.trim());
-        } catch (NumberFormatException _) {
-            return null;
-        }
     }
 
     private static final class QueueIterator implements Iterator<StreamEvent>, AutoCloseable {

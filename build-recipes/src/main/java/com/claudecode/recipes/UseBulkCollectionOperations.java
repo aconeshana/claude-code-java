@@ -17,6 +17,8 @@ public final class UseBulkCollectionOperations extends Recipe {
 
     private static final MethodMatcher COLLECTION_ADD =
         new MethodMatcher("java.util.Collection add(..)", true);
+    private static final MethodMatcher ITERABLE_FOR_EACH =
+        new MethodMatcher("java.lang.Iterable forEach(java.util.function.Consumer)", true);
     private static final MethodMatcher MAP_FOR_EACH =
         new MethodMatcher("java.util.Map forEach(..)", true);
     private static final MethodMatcher MAP_PUT =
@@ -84,21 +86,36 @@ public final class UseBulkCollectionOperations extends Recipe {
           public J visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
             J.MethodInvocation visited =
                 (J.MethodInvocation) super.visitMethodInvocation(method, ctx);
-            if (!MAP_FOR_EACH.matches(visited)
-                || !(visited.getSelect() instanceof J.Identifier source)
-                || visited.getArguments().size() != 1
-                || !(visited.getArguments().getFirst() instanceof J.MemberReference reference)
-                || !(reference.getContaining() instanceof J.Identifier target)
-                || reference.getMethodType() == null || !MAP_PUT.matches(reference)
-                || sameIdentifier(source, target)) {
-              return visited;
+            if (MAP_FOR_EACH.matches(visited)
+                && visited.getSelect() instanceof J.Identifier source
+                && visited.getArguments().size() == 1
+                && visited.getArguments().getFirst() instanceof J.MemberReference reference
+                && reference.getContaining() instanceof J.Identifier target
+                && reference.getMethodType() != null && MAP_PUT.matches(reference)
+                && !sameIdentifier(source, target)) {
+              String replacement = target.printTrimmed(getCursor()) + ".putAll("
+                  + source.printTrimmed(getCursor()) + ")";
+              return JavaTemplate.builder(replacement)
+                  .contextSensitive()
+                  .build()
+                  .apply(updateCursor(visited), visited.getCoordinates().replace());
             }
-            String replacement = target.printTrimmed(getCursor()) + ".putAll("
-                + source.printTrimmed(getCursor()) + ")";
-            return JavaTemplate.builder(replacement)
-                .contextSensitive()
-                .build()
-                .apply(updateCursor(visited), visited.getCoordinates().replace());
+            if (ITERABLE_FOR_EACH.matches(visited)
+                && visited.getSelect() != null
+                && TypeUtils.isAssignableTo("java.util.Collection", visited.getSelect().getType())
+                && visited.getArguments().size() == 1
+                && visited.getArguments().getFirst() instanceof J.MemberReference reference
+                && reference.getContaining() instanceof J.Identifier target
+                && reference.getMethodType() != null && COLLECTION_ADD.matches(reference)
+                && !sameIdentifier(target, visited.getSelect())) {
+              String replacement = target.printTrimmed(getCursor()) + ".addAll(#{any(java.util.Collection)})";
+              return JavaTemplate.builder(replacement)
+                  .contextSensitive()
+                  .build()
+                  .apply(updateCursor(visited), visited.getCoordinates().replace(),
+                      visited.getSelect());
+            }
+            return visited;
           }
 
           private J.MethodInvocation soleMethodInvocation(Statement body) {

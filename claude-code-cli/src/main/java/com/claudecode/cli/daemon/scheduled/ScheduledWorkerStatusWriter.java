@@ -1,12 +1,10 @@
 package com.claudecode.cli.daemon.scheduled;
 
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -33,9 +31,6 @@ final class ScheduledWorkerStatusWriter {
     }
 
     synchronized void write(ScheduledWorkerSnapshot snapshot) throws IOException {
-        Path parent = target.getParent();
-        if (parent == null) throw new IOException("status path has no parent: " + target);
-        Files.createDirectories(parent);
         ObjectNode root = JsonUtils.getMapper().createObjectNode();
         root.put("pid", pid.getAsLong());
         String token = processStart.get();
@@ -45,17 +40,7 @@ final class ScheduledWorkerStatusWriter {
         root.put("queued", snapshot.queued());
         ObjectNode fired = root.putObject("lastFiredAt");
         snapshot.lastFiredAt().forEach(fired::put);
-        Path temporary = Files.createTempFile(parent, target.getFileName().toString(), ".tmp");
-        try {
-            JsonUtils.getMapper().writeValue(temporary.toFile(), root);
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        FileUtils.atomicReplace(target,
+            temporary -> JsonUtils.getMapper().writeValue(temporary.toFile(), root));
     }
 }

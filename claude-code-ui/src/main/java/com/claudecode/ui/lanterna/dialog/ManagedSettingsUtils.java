@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,7 +148,7 @@ public final class ManagedSettingsUtils {
      */
     public     static JsonNode loadManagedSettingsFrom(Path dir) {
         ObjectMapper mapper = JsonUtils.getMapper();
-        JsonNode base = readJson(mapper, dir.resolve("managed-settings.json"));
+        JsonNode base = readJsonOrNull(mapper, dir.resolve("managed-settings.json"));
         ObjectNode merged = (base != null && base.isObject())
             ? (ObjectNode) base.deepCopy()
             : mapper.createObjectNode();
@@ -160,7 +159,7 @@ public final class ManagedSettingsUtils {
                         && Strings.CS.endsWith(p.getFileName().toString(), ".json"))
                     .sorted()
                     .forEach(p -> {
-                        JsonNode drop = readJson(mapper, p);
+                        JsonNode drop = readJsonOrNull(mapper, p);
                         if (drop != null && drop.isObject()) {
                             mergeInto(merged, (ObjectNode) drop);
                         }
@@ -174,9 +173,7 @@ public final class ManagedSettingsUtils {
 
     /** Recursively merges {@code src} into {@code dst} (object fields combined, scalars overwritten). */
     private static void mergeInto(ObjectNode dst, ObjectNode src) {
-        Iterator<Map.Entry<String, JsonNode>> it = src.fields();
-        while (it.hasNext()) {
-            Map.Entry<String, JsonNode> e = it.next();
+        for (Map.Entry<String, JsonNode> e : src.properties()) {
             String key = e.getKey();
             JsonNode sv = e.getValue();
             JsonNode dv = dst.get(key);
@@ -188,7 +185,7 @@ public final class ManagedSettingsUtils {
         }
     }
 
-    private static JsonNode readJson(ObjectMapper mapper, Path p) {
+    private static JsonNode readJsonOrNull(ObjectMapper mapper, Path p) {
         if (!Files.isRegularFile(p)) {
             return null;
         }
@@ -217,9 +214,7 @@ public final class ManagedSettingsUtils {
         if (settings != null && settings.isObject()) {
             JsonNode envNode = settings.get("env");
             if (envNode != null && envNode.isObject()) {
-                Iterator<Map.Entry<String, JsonNode>> it = envNode.fields();
-                while (it.hasNext()) {
-                    Map.Entry<String, JsonNode> e = it.next();
+                for (Map.Entry<String, JsonNode> e : envNode.properties()) {
                     JsonNode v = e.getValue();
                     if (v != null && v.isTextual() && !v.asText().isEmpty()
                             && !SAFE_ENV_VARS.contains(e.getKey().toUpperCase(Locale.ROOT))) {

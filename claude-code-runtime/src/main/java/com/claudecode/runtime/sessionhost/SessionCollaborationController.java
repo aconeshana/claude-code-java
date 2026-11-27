@@ -1,6 +1,7 @@
 package com.claudecode.runtime.sessionhost;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.text.StringUtils;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,7 +29,7 @@ public final class SessionCollaborationController {
         public boolean enabled() { return !channel.isEmpty(); }
         public String displayValue() {
             if (!enabled()) return "Off";
-            return Character.toUpperCase(channel.charAt(0)) + channel.substring(1);
+            return StringUtils.capitalize(channel);
         }
     }
 

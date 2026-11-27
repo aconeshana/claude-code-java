@@ -137,8 +137,9 @@ public final class UltracodeKeyword {
         int i = index + 1;
         if (i < text.length() && text.charAt(i) == '/') i++;
         if (i >= text.length() || !isNameStart(text.charAt(i))) return -1;
-        i++;
-        while (i < text.length() && isNameChar(text.charAt(i))) i++;
+        do {
+            i++;
+        } while (i < text.length() && isNameChar(text.charAt(i)));
         if (i >= text.length()) return -1;
         char after = text.charAt(i);
         if (after != '>' && after != '/' && after != ' ' && after != '\t') return -1;

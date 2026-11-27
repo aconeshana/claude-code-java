@@ -24,7 +24,7 @@ final class SettingsMerger {
             : JsonNodeFactory.instance.objectNode();
         if (override == null || !override.isObject()) return result;
 
-        override.fields().forEachRemaining(entry -> {
+        override.properties().forEach(entry -> {
             JsonNode baseValue = result.get(entry.getKey());
             JsonNode overrideValue = entry.getValue();
             result.set(entry.getKey(), mergeValue(baseValue, overrideValue));
@@ -47,7 +47,7 @@ final class SettingsMerger {
 
     private static ArrayNode mergeArrayWithObject(ArrayNode base, ObjectNode override) {
         ArrayNode result = base.deepCopy();
-        override.fields().forEachRemaining(entry -> {
+        override.properties().forEach(entry -> {
             int index = arrayIndex(entry.getKey());
             if (index < 0) return;
             while (result.size() <= index) result.addNull();

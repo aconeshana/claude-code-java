@@ -137,7 +137,7 @@ final class SmokePlan {
 
     private static Map<String, String> map(JsonNode node) {
         Map<String, String> values = new LinkedHashMap<>();
-        node.fields().forEachRemaining(field -> values.put(field.getKey(), field.getValue().asText()));
+        node.properties().forEach(field -> values.put(field.getKey(), field.getValue().asText()));
         return Map.copyOf(values);
     }
 

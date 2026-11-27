@@ -15,6 +15,7 @@ java {
 
 dependencies {
     implementation(enforcedPlatform(libs.jackson.bom))
+    implementation(libs.jackson.databind)
     implementation(platform(libs.rewrite.bom))
     implementation(libs.rewrite.java)
     implementation(libs.rewrite.migrate.java)

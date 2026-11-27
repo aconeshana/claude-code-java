@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
@@ -333,5 +334,17 @@ public final class JsonUtils {
                 ? MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value)
                 : MAPPER.writeValueAsString(value);
         FileUtils.writeString(path, json);
+    }
+
+    /** Returns {@code node.get(field).asText()} when present and non-null, else {@code null}. */
+    public static String textOrNull(JsonNode node, String field) {
+        return node != null && node.hasNonNull(field) ? node.get(field).asText() : null;
+    }
+
+    /** Sets {@code field} on {@code target} only when {@code value} is non-blank. */
+    public static void putIfNotBlank(ObjectNode target, String field, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            target.put(field, value);
+        }
     }
 }

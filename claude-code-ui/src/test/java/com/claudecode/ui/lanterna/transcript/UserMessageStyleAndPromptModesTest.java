@@ -62,7 +62,7 @@ class UserMessageStyleAndPromptModesTest {
         // Inner block has 10 newlines minus head/tail counts.
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 10; i++) {
-            sb.append("a".repeat(1500)).append('\n');
+            sb.repeat('a', 1500).append('\n');
         }
         String out = UserMessageStyle.truncateForDisplay(sb.toString());
         // Just assert the format is correct — exact hidden count depends on

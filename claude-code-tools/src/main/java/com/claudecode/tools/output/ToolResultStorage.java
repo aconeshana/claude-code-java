@@ -10,6 +10,8 @@ import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.TextBlock;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.text.FormatUtils;
+import com.claudecode.core.util.HashUtils;
 import com.claudecode.session.SessionManager;
 import com.claudecode.tools.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,11 +21,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
@@ -104,9 +102,9 @@ public final class ToolResultStorage {
             String preview = preview(content, PREVIEW_SIZE_BYTES);
             boolean hasMore = !preview.equals(content);
             String message = PERSISTED_OUTPUT_TAG + "\n"
-                + "Output too large (" + formatFileSize(content.length())
+                + "Output too large (" + FormatUtils.formatFileSize(content.length())
                 + "). Full output saved to: " + outputPath + "\n\n"
-                + "Preview (first " + formatFileSize(PREVIEW_SIZE_BYTES) + "):\n"
+                + "Preview (first " + FormatUtils.formatFileSize(PREVIEW_SIZE_BYTES) + "):\n"
                 + preview + (hasMore ? "\n...\n" : "\n")
                 + PERSISTED_OUTPUT_CLOSING_TAG;
             return withContent(result, List.of(new TextBlock(message)));
@@ -187,19 +185,10 @@ public final class ToolResultStorage {
         String readable = value.replaceAll("[^A-Za-z0-9._-]", "_")
             .replaceFirst("^[._-]+", "");
         if (StringUtils.isBlank(readable)) readable = "tool-result";
-        String hash = sha256(value).substring(0, HASH_HEX_LENGTH);
+        String hash = HashUtils.hashContent(value).substring(0, HASH_HEX_LENGTH);
         int readableLimit = Math.max(1, maxStem - hash.length() - 1);
         if (readable.length() > readableLimit) readable = readable.substring(0, readableLimit);
         return readable + "-" + hash;
-    }
-
-    private static String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 unavailable", impossible);
-        }
     }
 
     static String preview(String content, int maxBytes) {
@@ -208,20 +197,6 @@ public final class ToolResultStorage {
         int newline = truncated.lastIndexOf('\n');
         if (newline > maxBytes / 2) return truncated.substring(0, newline);
         return truncated;
-    }
-
-    static String formatFileSize(int bytes) {
-        double kb = bytes / 1024.0;
-        if (kb < 1) return bytes + " bytes";
-        if (kb < 1024) return trim(kb) + "KB";
-        double mb = kb / 1024.0;
-        if (mb < 1024) return trim(mb) + "MB";
-        return trim(mb / 1024.0) + "GB";
-    }
-
-    private static String trim(double value) {
-        String text = String.format(Locale.ROOT, "%.1f", value);
-        return Strings.CS.endsWith( text, ".0") ? text.substring(0, text.length() - 2) : text;
     }
 
     private static boolean isEffectivelyEmpty(List<ContentBlock> blocks) {
@@ -273,9 +248,9 @@ public final class ToolResultStorage {
             String preview = preview(content, PREVIEW_SIZE_BYTES);
             boolean hasMore = !preview.equals(content);
             String message = PERSISTED_OUTPUT_TAG + "\n"
-                + "Output too large (" + formatFileSize(content.length())
+                + "Output too large (" + FormatUtils.formatFileSize(content.length())
                 + "). Full output saved to: " + path + "\n\n"
-                + "Preview (first " + formatFileSize(PREVIEW_SIZE_BYTES) + "):\n"
+                + "Preview (first " + FormatUtils.formatFileSize(PREVIEW_SIZE_BYTES) + "):\n"
                 + preview + (hasMore ? "\n...\n" : "\n")
                 + PERSISTED_OUTPUT_CLOSING_TAG;
             return Optional.of(message);

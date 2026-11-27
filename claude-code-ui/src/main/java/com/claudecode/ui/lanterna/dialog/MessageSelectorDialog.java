@@ -7,6 +7,7 @@ import com.claudecode.commands.XmlConstants;
 import com.claudecode.core.diff.FileChangeResult;
 import com.claudecode.core.diff.StructuredPatchHunk;
 import com.claudecode.core.engine.FileHistoryManager;
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.message.ContentBlock;
 import com.claudecode.core.message.HumanTurns;
 import com.claudecode.core.message.Message;
@@ -471,7 +472,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
             String args = XmlTagUtils.extractTag(text, XmlConstants.COMMAND_ARGS_TAG).orElse("");
             return "/" + command + " " + args;
         }
-        return truncateToRow ? truncate(text, rowWidth) : text;
+        return truncateToRow ? clipPreviewLine(text, rowWidth) : text;
     }
 
     /** Matches 2.1.197's text extraction: join every text block and ignore non-text blocks. */
@@ -771,14 +772,13 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
     }
 
     private static String fileLabel(List<String> filesChanged) {
-        if (filesChanged.size() == 1) return baseName(filesChanged.getFirst());
-        if (filesChanged.size() == 2) return baseName(filesChanged.getFirst()) + " and " + baseName(filesChanged.get(1));
-        return baseName(filesChanged.getFirst()) + " and " + (filesChanged.size() - 1) + " other files";
-    }
-
-    private static String baseName(String path) {
-        int idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        return idx >= 0 ? path.substring(idx + 1) : path;
+        if (filesChanged.size() == 1) return PathUtils.basename(filesChanged.getFirst());
+        if (filesChanged.size() == 2) {
+            return PathUtils.basename(filesChanged.getFirst())
+                + " and " + PathUtils.basename(filesChanged.get(1));
+        }
+        return PathUtils.basename(filesChanged.getFirst())
+            + " and " + (filesChanged.size() - 1) + " other files";
     }
 
     @Override
@@ -1372,7 +1372,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
 
 
     // true); keep the UI-local InlineOverlay clip at this rendering boundary.
-    private static String truncate(String s, int maxColumns) {
+    private static String clipPreviewLine(String s, int maxColumns) {
         return FormatUtils.truncateSingleLine(s.strip(), Math.max(0, maxColumns));
     }
 
@@ -1495,7 +1495,7 @@ public final class MessageSelectorDialog extends Panel implements InlineOverlay 
                 return;
             }
             String changed = stats.filesChanged().size() == 1
-                ? baseName(stats.filesChanged().getFirst())
+                ? PathUtils.basename(stats.filesChanged().getFirst())
                 : stats.filesChanged().size() + " files changed";
             drawDiffStats(g, LEFT_PAD + 2, row, changed + " ", stats, "",
                 selected ? LanternaTheme.statusFg() : LanternaTheme.welcomeDim());

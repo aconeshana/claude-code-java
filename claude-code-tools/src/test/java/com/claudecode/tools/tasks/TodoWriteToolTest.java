@@ -147,7 +147,6 @@ class TodoWriteToolTest {
         ObjectNode input = completedTodos(2);
         ToolExecutionContext context = mainCtx("structured-todos");
         var invocation = tool.callWithResult(input, context);
-        String text = invocation.rawResult();
         var mapped = invocation.mappedResult();
         assertNotNull(mapped.toolUseResult());
         var payload = (JsonNode) mapped.toolUseResult();

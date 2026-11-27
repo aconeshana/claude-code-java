@@ -231,9 +231,7 @@ class BundledSkills197Test {
             variants = MAPPER.readTree(input).path("variants");
         }
 
-        var fields = variants.fields();
-        while (fields.hasNext()) {
-            var entry = fields.next();
+        for (var entry : variants.properties()) {
             String variant = entry.getKey();
             JsonNode baseline = entry.getValue();
             Path project = tempDir.resolve(variant);

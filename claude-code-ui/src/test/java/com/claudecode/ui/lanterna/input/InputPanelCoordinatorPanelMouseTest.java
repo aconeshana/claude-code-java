@@ -137,7 +137,7 @@ class InputPanelCoordinatorPanelMouseTest {
     @Test
     void clickingAgentRowEntersThatAgentsTranscript() {
         Fixture f = fixture();
-        TaskState agent = runningAgent(f.registry(), "explore");
+        runningAgent(f.registry(), "explore");
         f.panel().refreshCoordinatorPanel();
         TerminalPosition point = atContentRow(1); // first agent row
 

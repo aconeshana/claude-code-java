@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.transcript;
 
+import com.claudecode.core.text.StringUtils;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 import java.util.ArrayList;
@@ -60,18 +61,10 @@ public final class UserMessageStyle {
 
         String head = text.substring(0, TRUNCATE_HEAD_CHARS);
         String tail = text.substring(text.length() - TRUNCATE_TAIL_CHARS);
-        int headNewlines = countChar(text, '\n', 0, TRUNCATE_HEAD_CHARS);
-        int tailNewlines = countChar(tail, '\n', 0, tail.length());
-        int totalNewlines = countChar(text, '\n', 0, text.length());
+        int headNewlines = StringUtils.countChar(head, '\n');
+        int tailNewlines = StringUtils.countChar(tail, '\n');
+        int totalNewlines = StringUtils.countChar(text, '\n');
         int hiddenLines = totalNewlines - headNewlines - tailNewlines;
         return head + "\n… +" + hiddenLines + " lines …\n" + tail;
-    }
-
-    private static int countChar(String s, char target, int from, int to) {
-        int count = 0;
-        for (int i = from; i < to; i++) {
-            if (s.charAt(i) == target) count++;
-        }
-        return count;
     }
 }

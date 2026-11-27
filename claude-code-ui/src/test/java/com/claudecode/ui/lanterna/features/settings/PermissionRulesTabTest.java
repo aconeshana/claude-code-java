@@ -122,7 +122,6 @@ class PermissionRulesTabTest {
     }
 
     private static final KeyStroke UP = new KeyStroke(KeyType.ARROW_UP);
-    private static final KeyStroke DOWN = new KeyStroke(KeyType.ARROW_DOWN);
     private static final KeyStroke ENTER = new KeyStroke(KeyType.ENTER);
     private static final KeyStroke ESC = new KeyStroke(KeyType.ESCAPE);
 

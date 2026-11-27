@@ -91,8 +91,8 @@ final class ConfirmationPrompt {
             deliver.set(false);
             return;
         }
-        if (result instanceof ContextKeybindingDispatcher.Result.Action action
-                && dispatchSelectAction(action.value())) {
+        if (result instanceof ContextKeybindingDispatcher.Result.Action(var value)
+                && dispatchSelectAction(value)) {
             deliver.set(false);
             return;
         }

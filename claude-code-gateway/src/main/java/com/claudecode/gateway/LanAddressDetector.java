@@ -1,6 +1,7 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.platform.Platform;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -57,8 +58,7 @@ public final class LanAddressDetector {
         } catch (Exception _) {
             // Best effort.
         }
-        boolean isMac = Strings.CI.contains(System.getProperty("os.name", ""), "mac");
-        return classifyAddresses(addresses, hostName, isMac, port);
+        return classifyAddresses(addresses, hostName, Platform.IS_DARWIN, port);
     }
 
     static List<DetectedEndpoint> classifyAddresses(

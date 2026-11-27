@@ -102,7 +102,7 @@ class TaskStoreTest {
     @Test
     void inMemoryFactory_doesNotTouchFilesystem(@TempDir Path baseDir) {
         TaskStore store = TaskStore.inMemory();
-        TaskState t = store.create(TaskType.LOCAL_AGENT, "ephemeral");
+        store.create(TaskType.LOCAL_AGENT, "ephemeral");
         assertEquals(1, store.size());
         // No files written anywhere under baseDir.
         try (var stream = Files.list(baseDir)) {

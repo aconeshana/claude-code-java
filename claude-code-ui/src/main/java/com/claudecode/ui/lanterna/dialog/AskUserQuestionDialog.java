@@ -205,7 +205,7 @@ public final class AskUserQuestionDialog extends Panel implements InlineOverlay 
         this.questions = List.copyOf(qs);
         this.displayQuestions = QuestionSanitizer.sanitize(this.questions);
         List<QuestionState> fresh = new ArrayList<>(qs.size());
-        for (int index = 0; index < qs.size(); index++) fresh.add(new QuestionState());
+        for (QuestionPresenter.Question _ : qs) fresh.add(new QuestionState());
         this.states = fresh;
         this.answers.clear();
         this.current = 0;

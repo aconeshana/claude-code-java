@@ -141,8 +141,8 @@ class TimeBasedMicrocompactTest {
                 for (ContentBlock block : um.message().blocks()) {
                     if (block instanceof ToolResultBlock tr && toolUseId.equals(tr.toolUseId())
                             && tr.content() != null && !tr.content().isEmpty()
-                            && tr.content().getFirst() instanceof TextBlock tb) {
-                        return tb.text();
+                            && tr.content().getFirst() instanceof TextBlock(var text)) {
+                        return text;
                     }
                 }
             }

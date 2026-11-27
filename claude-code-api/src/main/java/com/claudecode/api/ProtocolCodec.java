@@ -1,5 +1,6 @@
 package com.claudecode.api;
 
+import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Set;
@@ -28,7 +29,7 @@ interface ProtocolCodec {
     ProtocolWireCodec.StreamProjector newStreamProjector(String fallbackModel);
 
     default String encodeCountTokensResponse(long inputTokens) {
-        ObjectNode out = com.claudecode.core.serialization.JsonUtils.getMapper().createObjectNode();
+        ObjectNode out = JsonUtils.getMapper().createObjectNode();
         out.put("input_tokens", inputTokens);
         return out.toString();
     }

@@ -149,8 +149,8 @@ public final class OutputStylePickerDialog extends Panel implements InlineOverla
             deliver.set(false);
             return;
         }
-        if (resolved instanceof ContextKeybindingDispatcher.Result.Action action) {
-            dispatchSelectAction(action.value());
+        if (resolved instanceof ContextKeybindingDispatcher.Result.Action(var value)) {
+            dispatchSelectAction(value);
             deliver.set(false);
             return;
         }

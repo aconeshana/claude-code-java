@@ -111,7 +111,9 @@ public final class GoalDialog extends Panel implements InlineOverlay {
         next.add(Row.title("✶ Goal active", LanternaTheme.claude()));
         next.add(Row.dim("running " + FormatUtils.formatDuration(duration, true, true)
             + (goal.iterations() > 0
-                ? " · " + goal.iterations() + " " + plural(goal.iterations(), "turn") : "")
+                ? " · " + goal.iterations() + " "
+                    + com.claudecode.core.text.StringUtils.plural(goal.iterations(), "turn")
+                : "")
             + " · " + FormatUtils.formatTokens(tokens) + " tokens"));
         next.add(Row.dim("Goal"));
         next.add(Row.text(goal.condition()));
@@ -131,7 +133,7 @@ public final class GoalDialog extends Panel implements InlineOverlay {
         List<Row> next = new ArrayList<>();
         next.add(Row.title("Goal achieved", LanternaTheme.toolSuccess()));
         next.add(Row.dim(FormatUtils.formatDuration(duration, true, true)
-            + " · " + turns + " " + plural(turns, "turn")
+            + " · " + turns + " " + com.claudecode.core.text.StringUtils.plural(turns, "turn")
             + " · " + FormatUtils.formatTokens(tokens) + " tokens"));
         next.add(Row.dim("Goal"));
         next.add(Row.text(status.condition()));
@@ -197,10 +199,6 @@ public final class GoalDialog extends Panel implements InlineOverlay {
 
     synchronized List<String> lineTexts() {
         return rows.stream().map(Row::text).toList();
-    }
-
-    private static String plural(int count, String singular) {
-        return count == 1 ? singular : singular + "s";
     }
 
     private void cancelRefresh() {

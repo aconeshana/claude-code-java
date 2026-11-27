@@ -14,8 +14,37 @@
     must not be discarded.</description>
   <rule ref="category/java/codestyle.xml/UnnecessaryImport"/>
   <rule ref="category/java/codestyle.xml/UnnecessaryFullyQualifiedName"/>
+  <rule ref="category/java/codestyle.xml/IdenticalCatchBranches"/>
+  <rule ref="category/java/codestyle.xml/UnnecessaryReturn"/>
   <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+  <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+  <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
   <rule ref="category/java/bestpractices.xml/UnusedFormalParameter"/>
+  <rule ref="category/java/bestpractices.xml/PrimitiveWrapperInstantiation"/>
+  <rule ref="category/java/bestpractices.xml/ExhaustiveSwitchHasDefault"/>
+  <rule ref="category/java/bestpractices.xml/ForLoopCanBeForeach"/>
+  <!-- Intentionally NOT enabled: UseTryWithResources flags intentional finally ordering
+       (e.g., GatewayRouter.serveAsync must send 500 in catch before closing HttpExchange,
+       and CliWebCronDaemon/SdkControlBroker/McpServerHealth intentionally use closeQuietly). -->
+  <!-- <rule ref="category/java/bestpractices.xml/UseTryWithResources"/> -->
+  <rule ref="category/java/errorprone.xml/InvalidLogMessageFormat"/>
+  <rule ref="category/java/errorprone.xml/BrokenNullCheck"/>
+  <rule ref="category/java/errorprone.xml/EqualsNull"/>
+  <rule ref="category/java/errorprone.xml/OverrideBothEqualsAndHashcode"/>
+  <rule ref="category/java/errorprone.xml/UnconditionalIfStatement"/>
+  <rule ref="category/java/errorprone.xml/CheckSkipResult"/>
+  <rule ref="category/java/errorprone.xml/ImplicitSwitchFallThrough"/>
+  <rule ref="category/java/errorprone.xml/NonCaseLabelInSwitch"/>
+  <rule ref="category/java/multithreading.xml/DoubleCheckedLocking"/>
+  <rule ref="category/java/multithreading.xml/NonThreadSafeSingleton"/>
+  <rule ref="category/java/multithreading.xml/UnsynchronizedStaticFormatter"/>
+  <rule ref="category/java/multithreading.xml/UseNotifyAllInsteadOfNotify"/>
+  <rule ref="category/java/performance.xml/AvoidArrayLoops"/>
+  <rule ref="category/java/performance.xml/StringInstantiation"/>
+  <rule ref="category/java/performance.xml/StringToString"/>
+  <rule ref="category/java/performance.xml/UseIndexOfChar"/>
+  <rule ref="category/java/performance.xml/UselessStringValueOf"/>
+  <rule ref="category/java/performance.xml/InefficientStringBuffering"/>
   <rule name="UnusedPrivateNestedType"
         language="java"
         class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
@@ -383,6 +412,211 @@
               and ArgumentList/VariableAccess/@Name
                   = ancestor::LambdaExpression[1]/LambdaParameterList/LambdaParameter/VariableId/@Name
             ]
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="AvoidDeprecatedJsonNodeFields"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="JsonNode.fields() is deprecated; use properties() instead">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            pmd-java:matchesSig('com.fasterxml.jackson.databind.JsonNode#fields()')
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UsePlatformConstants"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use Platform.CURRENT / IS_DARWIN / IS_WINDOWS / IS_LINUX (or Platform.OS_NAME) instead of querying System.getProperty(&quot;os.name&quot;) inline">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'getProperty'
+            and (pmd-java:matchesSig('java.lang.System#getProperty(java.lang.String)')
+                 or pmd-java:matchesSig('java.lang.System#getProperty(java.lang.String,java.lang.String)'))
+            and ArgumentList/*[1][self::StringLiteral and @Image = '"os.name"']
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'Platform'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseHashUtilsSha256"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use HashUtils (hashContent / sha256Hex / sha256) instead of calling MessageDigest.getInstance(&quot;SHA-256&quot;) inline">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'getInstance'
+            and pmd-java:matchesSig('java.security.MessageDigest#getInstance(java.lang.String)')
+            and ArgumentList/*[1][self::StringLiteral and @Image = '"SHA-256"']
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'HashUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseProcessUtilsIsRunning"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use ProcessUtils.isProcessRunning(pid) instead of inline ProcessHandle.of(pid).map(ProcessHandle::isAlive)">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'map'
+            and MethodCall[pmd-java:matchesSig('java.lang.ProcessHandle#of(long)')]
+            and ArgumentList/MethodReference[@MethodName = 'isAlive']
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'ProcessUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseFileUtilsAtomicReplace"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use FileUtils.atomicReplace(target, writer) instead of hand-rolling temp-file + ATOMIC_MOVE replacement">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'move'
+            and ArgumentList//FieldAccess[@Name = 'ATOMIC_MOVE']
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'FileUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseStringUtilsCapitalize"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use com.claudecode.core.text.StringUtils.capitalize(s) instead of inline Character.toUpperCase(s.charAt(0)) + s.substring(1)">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //MethodCall[
+            @MethodName = 'toUpperCase'
+            and pmd-java:matchesSig('java.lang.Character#toUpperCase(char)')
+            and ArgumentList/MethodCall[
+              @MethodName = 'charAt'
+              and ArgumentList/NumericLiteral[@ValueAsInt = 0]
+              and VariableAccess[
+                let $v := @Name
+                return ancestor::*[
+                  self::InfixExpression or self::ReturnStatement
+                  or self::VariableDeclarator or self::ExpressionStatement
+                ][1]//MethodCall[
+                  @MethodName = 'substring'
+                  and VariableAccess/@Name = $v
+                  and ArgumentList[count(*) = 1 and NumericLiteral[@ValueAsInt = 1]]
+                ]
+              ]
+            ]
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'StringUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseStringUtilsFirstLineOf"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use com.claudecode.core.text.StringUtils.firstLineOf(s) instead of inline indexOf('\n') + substring(0, nl)">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //Block[
+            let $blk := .
+            return LocalVariableDeclaration/VariableDeclarator[
+              let $nl := VariableId/@Name,
+                  $src := MethodCall[
+                    @MethodName = 'indexOf'
+                    and ArgumentList[count(*) = 1 and CharLiteral[@Image = "'\n'"]]
+                  ]/VariableAccess/@Name
+              return exists($src)
+                and count($blk//MethodCall[@MethodName = 'substring' and VariableAccess/@Name = $src]) = 1
+                and $blk//ConditionalExpression[
+                  ancestor::Block[1] is $blk
+                  and InfixExpression[VariableAccess/@Name = $nl]
+                  and .//MethodCall[
+                    @MethodName = 'substring'
+                    and VariableAccess/@Name = $src
+                    and ArgumentList[
+                      count(*) = 2
+                      and *[1][self::NumericLiteral and @ValueAsInt = 0]
+                      and *[2][self::VariableAccess and @Name = $nl]
+                    ]
+                  ]
+                ]
+            ]
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'StringUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'FormatUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
+          ]
+        ]]></value>
+      </property>
+    </properties>
+  </rule>
+  <rule name="UseErrorUtilsMessage"
+        language="java"
+        class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"
+        message="Use ErrorUtils.message(throwable) instead of inline getMessage() != null ? getMessage() : toString()">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value><![CDATA[
+          //ConditionalExpression[
+            InfixExpression[
+              @Operator = '!='
+              and NullLiteral
+              and MethodCall[@MethodName = 'getMessage' and ArgumentList[count(*) = 0]]
+            ]
+            and *[2][self::MethodCall and @MethodName = 'getMessage']
+            and *[3][
+              (self::MethodCall and @MethodName = 'toString' and ArgumentList[count(*) = 0])
+              or (self::MethodCall and @MethodName = 'valueOf'
+                  and pmd-java:matchesSig('java.lang.String#valueOf(java.lang.Object)'))
+            ]
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration) and @SimpleName = 'ErrorUtils'])
+            and not(ancestor::*[(self::ClassDeclaration or self::RecordDeclaration or self::EnumDeclaration)
+              and (ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')
+                   or ends-with(@SimpleName, 'Properties') or ends-with(@SimpleName, 'Smoke'))])
           ]
         ]]></value>
       </property>

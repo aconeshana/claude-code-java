@@ -2,11 +2,10 @@ package com.claudecode.mcp.oauth;
 
 import com.claudecode.mcp.McpServerConfig;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.TreeMap;
 
@@ -34,14 +33,9 @@ public final class ServerKey {
             throw new IllegalStateException("Impossible: json serialisation of a fresh ObjectNode", e);
         }
 
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                .digest(json.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(32);
-            for (byte b : hash) hex.append(String.format(Locale.ROOT, "%02x", b));
-            return config.name() + "|" + hex.substring(0, 16);
-        } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        byte[] hash = HashUtils.sha256Bytes(json);
+        StringBuilder hex = new StringBuilder(64);
+        for (byte b : hash) hex.append(String.format(Locale.ROOT, "%02x", b));
+        return config.name() + "|" + hex.substring(0, 16);
     }
 }

@@ -24,7 +24,7 @@ public final class OSC52Helper {
     @FunctionalInterface
     interface NativeCommandRunner { boolean run(String[] command, byte[] input); }
 
-    static Platform platform = () -> System.getProperty("os.name", "");
+    static Platform platform = () -> com.claudecode.core.platform.Platform.OS_NAME;
     static Environment environment = System::getenv;
     static NativeCommandRunner nativeCommandRunner = OSC52Helper::runNativeCommand;
     static WindowsClipboard windowsClipboard = WindowsUnicodeClipboard::setText;

@@ -15,7 +15,7 @@ public final class MessageNormalizer {
         if (blocks == null) return "";
         StringJoiner sj = new StringJoiner(separator);
         for (ContentBlock b : blocks) {
-            if (b instanceof TextBlock tb && tb.text() != null) sj.add(tb.text());
+            if (b instanceof TextBlock(var text) && text != null) sj.add(text);
         }
         return sj.toString();
     }

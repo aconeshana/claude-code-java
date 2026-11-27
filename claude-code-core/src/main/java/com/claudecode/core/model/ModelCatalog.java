@@ -46,7 +46,6 @@ public final class ModelCatalog {
     public static final Family FABLE;
 
     private static final int CATALOG_VERSION;
-    private static final List<Family> FAMILIES;
     private static final List<Family> PICKER_FAMILIES;
     private static final Map<String, Family> FAMILIES_BY_ALIAS;
     private static volatile Function<String, String> modelOverrideLookup = _ -> null;
@@ -54,7 +53,6 @@ public final class ModelCatalog {
     static {
         LoadedCatalog loaded = loadCatalog();
         CATALOG_VERSION = loaded.version();
-        FAMILIES = loaded.families();
         PICKER_FAMILIES = loaded.pickerFamilies();
         FAMILIES_BY_ALIAS = loaded.byAlias();
         OPUS = requireFamily("opus");
@@ -186,7 +184,7 @@ public final class ModelCatalog {
         String configured = envLookup.apply(family.descriptionEnvironmentVariable());
         if (StringUtils.isNotBlank(configured)) return configured;
         return StringUtils.isNotBlank(envLookup.apply(family.environmentVariable()))
-            ? "Custom " + capitalize(family.alias()) + " model" : family.description();
+            ? "Custom " + com.claudecode.core.text.StringUtils.capitalize(family.alias()) + " model" : family.description();
     }
 
     private static LoadedCatalog loadCatalog() {
@@ -256,10 +254,6 @@ public final class ModelCatalog {
             throw new IllegalStateException("model-catalog.json field must be non-blank: " + field);
         }
         return value.asText().trim();
-    }
-
-    private static String capitalize(String value) {
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     private record LoadedCatalog(int version, List<Family> families,

@@ -3,6 +3,7 @@ package com.claudecode.runtime.sessionlink;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
 import com.claudecode.runtime.interaction.InteractionEndpoint;
@@ -15,20 +16,7 @@ import com.claudecode.runtime.interaction.InteractionResolution;
 import com.claudecode.runtime.interaction.InteractionSupport;
 import com.claudecode.runtime.interaction.InteractionUnsupported;
 import com.claudecode.runtime.interaction.SudoPasswordInteraction;
-import com.claudecode.runtime.sessionhost.SessionHostInfo;
-import com.claudecode.runtime.sessionhost.SessionHostCompactResult;
-import com.claudecode.runtime.sessionhost.SessionHostEffortState;
-import com.claudecode.runtime.sessionhost.SessionHostModelOption;
-import com.claudecode.runtime.sessionhost.SessionHostModelState;
-import com.claudecode.runtime.sessionhost.SessionHostPermissionMode;
-import com.claudecode.runtime.sessionhost.SessionHostPermissionState;
-import com.claudecode.runtime.sessionhost.SessionHostRegistry;
-import com.claudecode.runtime.sessionhost.SessionHostSession;
-import com.claudecode.runtime.sessionhost.SessionHostSessionView;
-import com.claudecode.runtime.sessionhost.SessionHostSubmission;
-import com.claudecode.runtime.sessionhost.SessionHostSubmissionLedger;
-import com.claudecode.runtime.sessionhost.SessionOpenRequest;
-import com.claudecode.runtime.sessionhost.SessionCollaborationController;
+import com.claudecode.runtime.sessionhost.*;
 import com.claudecode.runtime.turn.SessionEventHub;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
@@ -418,7 +406,7 @@ public final class SessionLinkServer implements AutoCloseable {
         }
         for (Connection connection : connections) connection.close();
         connections.clear();
-        for (AutoCloseable registration : interactionRegistrations) closeQuietly(registration);
+        for (AutoCloseable registration : interactionRegistrations) IoUtils.closeQuietly(registration);
         interactionRegistrations.clear();
         if (boundEndpoint instanceof SessionLinkEndpoint.UnixDomain(Path socketPath)) {
             try { Files.deleteIfExists(socketPath); } catch (IOException _) {}
@@ -579,7 +567,7 @@ public final class SessionLinkServer implements AutoCloseable {
                 long activationGeneration) {
             ObjectNode eventPayload = infoPayload(info);
             eventPayload.put("origin", origin);
-            putOptional(eventPayload, "activation_id", activationId);
+            JsonUtils.putIfNotBlank(eventPayload, "activation_id", activationId);
             eventPayload.put("activation_generation", activationGeneration);
             sendEvent(SessionLinkFrame.event(
                 "session.activated", info.id(), eventPayload));
@@ -659,7 +647,7 @@ public final class SessionLinkServer implements AutoCloseable {
             }
             ObjectNode response = object();
             response.put("session_id", session.info().id());
-            putOptional(response, "activation_id", activation.activationId());
+            JsonUtils.putIfNotBlank(response, "activation_id", activation.activationId());
             response.put("activation_generation", activation.activationGeneration());
             sendResponse(request, response);
             announcePending(session.info().id());
@@ -735,7 +723,7 @@ public final class SessionLinkServer implements AutoCloseable {
         private void detachSession(SessionLinkFrame request) throws IOException {
             payload(request, Set.of());
             AttachedSessionView attachment = requireAttachment(request);
-            closeQuietly(attachedSessions.remove(attachment.sessionId()));
+            IoUtils.closeQuietly(attachedSessions.remove(attachment.sessionId()));
             sendResponse(request, object());
         }
 
@@ -772,14 +760,14 @@ public final class SessionLinkServer implements AutoCloseable {
             AttachedSessionView attachment = requireAttachment(request);
             ObjectNode body = payload(request, Set.of("message_id", "mode"));
             String messageId = requiredText(body, "message_id");
-            var mode = com.claudecode.runtime.sessionhost.SessionHostRewindController.RewindMode
+            var mode = SessionHostRewindController.RewindMode
                 .parse(requiredText(body, "mode"));
             var result = attachment.activeView().rewinds().execute(messageId, mode);
             sendResponse(request, rewindResultPayload(result));
         }
 
         private static ObjectNode rewindPreviewPayload(
-                com.claudecode.runtime.sessionhost.SessionHostRewindController.Preview preview) {
+                SessionHostRewindController.Preview preview) {
             ObjectNode out = object();
             out.put("can_rewind_conversation", preview.canRewindConversation());
             out.put("can_rewind_code", preview.canRewindCode());
@@ -805,7 +793,7 @@ public final class SessionLinkServer implements AutoCloseable {
         }
 
         private static ObjectNode rewindResultPayload(
-                com.claudecode.runtime.sessionhost.SessionHostRewindController.Result result) {
+                SessionHostRewindController.Result result) {
             ObjectNode out = object();
             out.put("rewound_conversation", result.rewoundConversation());
             out.put("rewound_code", result.rewoundCode());
@@ -1013,7 +1001,7 @@ public final class SessionLinkServer implements AutoCloseable {
             AttachedSession candidate = new AttachedSession(session);
             AttachedSession retained = attachedSessions.compute(sessionId, (_, current) -> {
                 if (current != null && current.observes(session)) return current;
-                closeQuietly(current);
+                IoUtils.closeQuietly(current);
                 return candidate;
             });
             if (retained != candidate) candidate.close();
@@ -1098,7 +1086,7 @@ public final class SessionLinkServer implements AutoCloseable {
             @Override
             public void close() {
                 if (!attachmentClosed.compareAndSet(false, true)) return;
-                closeQuietly(eventSubscription);
+                IoUtils.closeQuietly(eventSubscription);
             }
         }
 
@@ -1144,10 +1132,10 @@ public final class SessionLinkServer implements AutoCloseable {
         @Override
         public void close() {
             if (!connectionClosed.compareAndSet(false, true)) return;
-            closeQuietly(lifecycleSubscription);
-            closeQuietly(collaborationSubscription);
+            IoUtils.closeQuietly(lifecycleSubscription);
+            IoUtils.closeQuietly(collaborationSubscription);
             for (AttachedSession attachment : attachedSessions.values()) {
-                closeQuietly(attachment);
+                IoUtils.closeQuietly(attachment);
             }
             attachedSessions.clear();
             outbound.close();
@@ -1180,16 +1168,16 @@ public final class SessionLinkServer implements AutoCloseable {
         }
         ArrayNode questions = questions(context.input());
         if (!questions.isEmpty()) payload.set("questions", questions);
-        putOptional(payload, "decision_reason_type", context.decisionReasonType());
-        putOptional(payload, "decision_reason_detail", context.decisionReasonDetail());
-        putOptional(payload, "suggestion_rule_content", context.suggestionRuleContent());
-        putOptional(payload, "suggestion_label", context.suggestionLabel());
-        putOptional(payload, "worker_id", context.workerId());
-        putOptional(payload, "worker_color", context.workerColor());
-        putOptional(payload, "destructive_warning", context.destructiveWarning());
-        putOptional(payload, "blocked_path", context.blockedPath());
-        putOptional(payload, "custom_message", context.customMessage());
-        putOptional(payload, "tool_description", context.toolDescription());
+        JsonUtils.putIfNotBlank(payload, "decision_reason_type", context.decisionReasonType());
+        JsonUtils.putIfNotBlank(payload, "decision_reason_detail", context.decisionReasonDetail());
+        JsonUtils.putIfNotBlank(payload, "suggestion_rule_content", context.suggestionRuleContent());
+        JsonUtils.putIfNotBlank(payload, "suggestion_label", context.suggestionLabel());
+        JsonUtils.putIfNotBlank(payload, "worker_id", context.workerId());
+        JsonUtils.putIfNotBlank(payload, "worker_color", context.workerColor());
+        JsonUtils.putIfNotBlank(payload, "destructive_warning", context.destructiveWarning());
+        JsonUtils.putIfNotBlank(payload, "blocked_path", context.blockedPath());
+        JsonUtils.putIfNotBlank(payload, "custom_message", context.customMessage());
+        JsonUtils.putIfNotBlank(payload, "tool_description", context.toolDescription());
         return SessionLinkFrame.event(
             "interaction.requested", request.descriptor().sessionId(), payload);
     }
@@ -1205,8 +1193,8 @@ public final class SessionLinkServer implements AutoCloseable {
         SudoPasswordInteraction.Request payload = request.payload();
         ObjectNode body = object();
         body.put("request_id", request.descriptor().id());
-        putOptional(body, "executable", payload.executable());
-        putOptional(body, "command", payload.command());
+        JsonUtils.putIfNotBlank(body, "executable", payload.executable());
+        JsonUtils.putIfNotBlank(body, "command", payload.command());
         return SessionLinkFrame.event("interaction.requested", request.descriptor().sessionId(),
             withKind(body, InteractionKind.SUDO_PASSWORD));
     }
@@ -1371,9 +1359,9 @@ public final class SessionLinkServer implements AutoCloseable {
         for (SessionHostModelOption option : state.models()) {
             ObjectNode mapped = models.addObject();
             mapped.put("name", option.name());
-            putOptional(mapped, "label", option.label());
-            putOptional(mapped, "description", option.description());
-            putOptional(mapped, "alias", option.alias());
+            JsonUtils.putIfNotBlank(mapped, "label", option.label());
+            JsonUtils.putIfNotBlank(mapped, "description", option.description());
+            JsonUtils.putIfNotBlank(mapped, "alias", option.alias());
             if (option.defaultOption()) mapped.put("default", true);
         }
         return payload;
@@ -1450,10 +1438,6 @@ public final class SessionLinkServer implements AutoCloseable {
         return value.trim();
     }
 
-    private static void putOptional(ObjectNode target, String field, String value) {
-        if (StringUtils.isNotBlank(value)) target.put(field, value);
-    }
-
     private static ObjectNode object() {
         return JsonUtils.getMapper().createObjectNode();
     }
@@ -1461,10 +1445,5 @@ public final class SessionLinkServer implements AutoCloseable {
     private static String safeMessage(Throwable failure) {
         String message = failure.getMessage();
         return StringUtils.isBlank(message) ? "host operation failed" : message;
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable == null) return;
-        try { closeable.close(); } catch (Exception _) {}
     }
 }

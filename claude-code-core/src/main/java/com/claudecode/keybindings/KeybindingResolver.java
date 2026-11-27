@@ -242,7 +242,7 @@ public record KeybindingResolver(List<ParsedBinding> bindings) {
             JsonNode ctx = block.get("context");
             JsonNode binds = block.get("bindings");
             if (ctx == null || !ctx.isTextual() || binds == null || !binds.isObject()) continue;
-            binds.fields().forEachRemaining(e -> {
+            binds.properties().forEach(e -> {
                 JsonNode v = e.getValue();
                 String action = (v == null || v.isNull()) ? null : v.asText();
                 out.add(new ParsedBinding(

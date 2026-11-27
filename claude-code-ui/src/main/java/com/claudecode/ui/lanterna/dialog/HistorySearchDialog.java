@@ -148,8 +148,8 @@ public final class HistorySearchDialog extends BasicWindow {
         if (key instanceof MouseAction mouse && handleMouse(mouse)) return true;
         ContextKeybindingDispatcher.Result binding = keybindings.resolve("HistorySearch", key);
         if (binding instanceof ContextKeybindingDispatcher.Result.Consumed) return true;
-        if (binding instanceof ContextKeybindingDispatcher.Result.Action action
-                && Strings.CS.equals(action.value(), "historySearch:cycleScope")) {
+        if (binding instanceof ContextKeybindingDispatcher.Result.Action(var value)
+                && Strings.CS.equals(value, "historySearch:cycleScope")) {
             cycleScope();
             return true;
         }

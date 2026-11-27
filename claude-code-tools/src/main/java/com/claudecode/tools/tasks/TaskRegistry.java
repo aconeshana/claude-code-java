@@ -1,6 +1,7 @@
 package com.claudecode.tools.tasks;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.queue.MessageQueueManager;
 import com.claudecode.tools.workflows.WorkflowRun;
 import com.claudecode.tools.workflows.WorkflowTask;
@@ -200,27 +201,21 @@ public final class TaskRegistry {
 
     /** Test hook: replace the global singleton (e.g. with an in-memory store). */
     public static void setGlobalForTest(TaskRegistry registry) {
-        closeQuietly(GLOBAL);
+        teardownRegistry(GLOBAL);
         GLOBAL = registry;
     }
 
     /** Test hook: drop the global singleton so the next {@link #global} rebuilds it. */
     public static void resetGlobalForTest() {
-        closeQuietly(GLOBAL);
+        teardownRegistry(GLOBAL);
         GLOBAL = null;
     }
 
-    private static void closeQuietly(TaskRegistry registry) {
+    private static void teardownRegistry(TaskRegistry registry) {
         if (registry == null) return;
         AutoCloseable subscription = registry.completionSubscription;
         registry.completionSubscription = null;
-        if (subscription != null) {
-            try {
-                subscription.close();
-            } catch (Exception _) {
-                // Test/session teardown is best-effort.
-            }
-        }
+        IoUtils.closeQuietly(subscription);
         registry.messageQueue = null;
     }
 

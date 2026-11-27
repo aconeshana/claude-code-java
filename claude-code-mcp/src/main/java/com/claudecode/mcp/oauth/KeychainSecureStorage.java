@@ -7,6 +7,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -162,7 +162,7 @@ public final class KeychainSecureStorage implements SecureStorage {
         if (StringUtils.isNotBlank(override)) {
 
             // rather than the raw environment variable bytes.
-            dirHash = "-" + sha256Hex(ClaudePaths.CLAUDE_HOME.toString()).substring(0, 8);
+            dirHash = "-" + HashUtils.hashContent(ClaudePaths.CLAUDE_HOME.toString()).substring(0, 8);
         }
         return base + credentials + dirHash;
     }
@@ -172,15 +172,6 @@ public final class KeychainSecureStorage implements SecureStorage {
         if (StringUtils.isNotBlank(u)) return u;
         u = System.getProperty("user.name");
         return (StringUtils.isNotBlank(u)) ? u : "claude-code-user";
-    }
-
-    private static String sha256Hex(String s) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
-            return toHex(hash);
-        } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
     }
 
     private static String toHex(byte[] bytes) {

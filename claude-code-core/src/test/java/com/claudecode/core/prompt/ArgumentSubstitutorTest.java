@@ -2,7 +2,6 @@ package com.claudecode.core.prompt;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,17 +15,17 @@ class ArgumentSubstitutorTest {
 
     @Test
     void parseArguments_nullReturnsEmpty() {
-        assertEquals(Collections.emptyList(), ArgumentSubstitutor.parseArguments(null));
+        assertEquals(List.of(), ArgumentSubstitutor.parseArguments(null));
     }
 
     @Test
     void parseArguments_emptyStringReturnsEmpty() {
-        assertEquals(Collections.emptyList(), ArgumentSubstitutor.parseArguments(""));
+        assertEquals(List.of(), ArgumentSubstitutor.parseArguments(""));
     }
 
     @Test
     void parseArguments_blankStringReturnsEmpty() {
-        assertEquals(Collections.emptyList(), ArgumentSubstitutor.parseArguments("   "));
+        assertEquals(List.of(), ArgumentSubstitutor.parseArguments("   "));
     }
 
     @Test
@@ -80,7 +79,7 @@ class ArgumentSubstitutorTest {
 
     @Test
     void parseArgumentNames_nullReturnsEmpty() {
-        assertEquals(Collections.emptyList(), ArgumentSubstitutor.parseArgumentNames(null));
+        assertEquals(List.of(), ArgumentSubstitutor.parseArgumentNames(null));
     }
 
     @Test
@@ -117,7 +116,7 @@ class ArgumentSubstitutorTest {
     @Test
     void parseArgumentNames_unknownTypeReturnsEmpty() {
         // Non-string, non-list object should return empty
-        assertEquals(Collections.emptyList(), ArgumentSubstitutor.parseArgumentNames(42));
+        assertEquals(List.of(), ArgumentSubstitutor.parseArgumentNames(42));
     }
 
     // =========================================================================
@@ -128,13 +127,13 @@ class ArgumentSubstitutorTest {
     void generateProgressiveArgumentHint_noArgNames_returnsEmpty() {
         assertEquals(Optional.empty(),
                 ArgumentSubstitutor.generateProgressiveArgumentHint(
-                        Collections.emptyList(), Collections.emptyList()));
+                    List.of(), List.of()));
     }
 
     @Test
     void generateProgressiveArgumentHint_noneTyped_showsAll() {
         Optional<String> hint = ArgumentSubstitutor.generateProgressiveArgumentHint(
-                List.of("a", "b", "c"), Collections.emptyList());
+                List.of("a", "b", "c"), List.of());
         assertEquals(Optional.of("[a] [b] [c]"), hint);
     }
 
@@ -168,7 +167,7 @@ class ArgumentSubstitutorTest {
         String content = "hello $ARGUMENTS world";
         assertEquals(content,
                 ArgumentSubstitutor.substitute(content, null,
-                        Collections.emptyList(), true));
+                    List.of(), true));
     }
 
     // =========================================================================
@@ -179,7 +178,7 @@ class ArgumentSubstitutorTest {
     void substitute_bareArguments_replacedWithRawArgs() {
         String result = ArgumentSubstitutor.substitute(
                 "run with $ARGUMENTS now", "alpha beta",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("run with alpha beta now", result);
     }
 
@@ -187,7 +186,7 @@ class ArgumentSubstitutorTest {
     void substitute_emptyRawArgs_bareArgumentsReplacedWithEmpty() {
         String result = ArgumentSubstitutor.substitute(
                 "run $ARGUMENTS end", "",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("run  end", result);
     }
 
@@ -199,7 +198,7 @@ class ArgumentSubstitutorTest {
     void substitute_indexedArguments_replacedByIndex() {
         String result = ArgumentSubstitutor.substitute(
                 "first=$ARGUMENTS[0] second=$ARGUMENTS[1]", "alpha beta",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("first=alpha second=beta", result);
     }
 
@@ -207,7 +206,7 @@ class ArgumentSubstitutorTest {
     void substitute_indexedArguments_outOfRange_replacedWithEmpty() {
         String result = ArgumentSubstitutor.substitute(
                 "$ARGUMENTS[5]", "alpha",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("", result);
     }
 
@@ -220,7 +219,7 @@ class ArgumentSubstitutorTest {
 
         String result = ArgumentSubstitutor.substitute(
                 "$0 and $1", "foo bar",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("foo and bar", result);
     }
 
@@ -228,7 +227,7 @@ class ArgumentSubstitutorTest {
     void substitute_positionalShorthand_outOfRange_empty() {
         String result = ArgumentSubstitutor.substitute(
                 "$3", "foo bar",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("", result);
     }
 
@@ -273,7 +272,7 @@ class ArgumentSubstitutorTest {
     void substitute_appendIfNoPlaceholder_true_noPlaceholderInContent() {
         String result = ArgumentSubstitutor.substitute(
                 "just content", "extra args",
-                Collections.emptyList(), true);
+            List.of(), true);
         assertEquals("just content\n\nARGUMENTS: extra args", result);
     }
 
@@ -281,7 +280,7 @@ class ArgumentSubstitutorTest {
     void substitute_appendIfNoPlaceholder_false_noPlaceholderInContent() {
         String result = ArgumentSubstitutor.substitute(
                 "just content", "extra args",
-                Collections.emptyList(), false);
+            List.of(), false);
         assertEquals("just content", result);
     }
 
@@ -290,7 +289,7 @@ class ArgumentSubstitutorTest {
         // Empty rawArgs should NOT trigger append even when flag is true
         String result = ArgumentSubstitutor.substitute(
                 "just content", "",
-                Collections.emptyList(), true);
+            List.of(), true);
         assertEquals("just content", result);
     }
 
@@ -299,7 +298,7 @@ class ArgumentSubstitutorTest {
         // When a placeholder exists and is replaced, content changes -> no append
         String result = ArgumentSubstitutor.substitute(
                 "Hello $ARGUMENTS", "world",
-                Collections.emptyList(), true);
+            List.of(), true);
         assertEquals("Hello world", result);
     }
 
@@ -322,7 +321,7 @@ class ArgumentSubstitutorTest {
         // Empty string triggers expansion (not skipped like null)
         String result = ArgumentSubstitutor.substitute(
                 "prefix $ARGUMENTS suffix", "",
-                Collections.emptyList(), true);
+            List.of(), true);
         // $ARGUMENTS replaced with "" -> content changed -> no append
         assertEquals("prefix  suffix", result);
     }

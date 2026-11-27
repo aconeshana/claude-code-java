@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
 
@@ -28,7 +28,7 @@ final class GatewayRuntimeControlHandler {
     }
 
     void handleSetKeepalive(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         if (!request.has("enabled") || !request.get("enabled").isBoolean()) {
             respondJson(exchange, 400, errorBody("invalid_request", "enabled boolean is required"));

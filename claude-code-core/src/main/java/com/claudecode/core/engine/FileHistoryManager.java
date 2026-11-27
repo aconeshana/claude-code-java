@@ -3,18 +3,18 @@ package com.claudecode.core.engine;
 import com.claudecode.core.diff.DiffHunks;
 import com.claudecode.core.diff.StructuredPatchHunk;
 import com.claudecode.core.io.FileUtils;
+import com.claudecode.core.io.PathUtils;
+import com.claudecode.core.util.HashUtils;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFileAttributeView;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -187,7 +187,7 @@ public final class FileHistoryManager {
         if (listener == null) {
             return;
         }
-        String ext = extensionOf(absoluteFilePath);
+        String ext = PathUtils.extensionOrNull(Path.of(absoluteFilePath));
         if (ext == null) {
             return;
         }
@@ -204,16 +204,6 @@ public final class FileHistoryManager {
             log.warn("FileHistory: new-extension listener failed for {}: {}",
                 absoluteFilePath, e.getMessage());
         }
-    }
-
-    private static String extensionOf(String absoluteFilePath) {
-        String fileName = Path.of(absoluteFilePath).getFileName() == null
-            ? "" : Path.of(absoluteFilePath).getFileName().toString();
-        int dot = fileName.lastIndexOf('.');
-        if (dot <= 0 || dot == fileName.length() - 1) {
-            return null;
-        }
-        return fileName.substring(dot).toLowerCase(Locale.ROOT);
     }
 
     /** Adds a snapshot for {@code messageId}, backing up any changed tracked files. */
@@ -667,15 +657,7 @@ public final class FileHistoryManager {
     }
 
     private static String backupFileName(String absoluteFilePath, int version) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(absoluteFilePath.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.substring(0, 16) + "@v" + version;
-        } catch (Exception e) {
-            throw new UncheckedIOException(new IOException("SHA-256 unavailable", e));
-        }
+        return HashUtils.hashContent(absoluteFilePath).substring(0, 16) + "@v" + version;
     }
 
     /** Creates a backup of {@code absoluteFilePath} at {@code version}. Null backup if the source is missing. */

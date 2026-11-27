@@ -2,7 +2,9 @@ package com.claudecode.ui.lanterna.repl;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.text.FormatUtils;
+import com.claudecode.core.util.MathUtils;
 
 import com.claudecode.core.constants.Figures;
 import com.claudecode.runtime.query.QuerySession;
@@ -510,10 +512,9 @@ public final class LanternaSessionSink implements SessionSink {
         }
 
         // Record for Ctrl+O replay + dispatch through the collapser (Read/Search fold).
-        final SDKMessage m = msg;
         boolean finalAssistantDelta = msg instanceof SDKMessage.Assistant;
         streamDeltaBatcher.runAfterPending(finalAssistantDelta, () -> {
-            dispatchOnUi(m);
+            dispatchOnUi(msg);
             if (finalAssistantDelta) resetMessageDisplayMessage();
         });
     }
@@ -564,7 +565,7 @@ public final class LanternaSessionSink implements SessionSink {
         if (!userCancel) {
             streamDeltaBatcher.runAfterPending(() -> {
                 spinnerComponent.stop();
-                String errMsg = error.getMessage() != null ? error.getMessage() : error.toString();
+                String errMsg = ErrorUtils.message(error);
                 if (errMsg.length() > MAX_API_ERROR_CHARS) {
                     errMsg = FormatUtils.truncate(errMsg, MAX_API_ERROR_CHARS);
                 }
@@ -765,8 +766,10 @@ public final class LanternaSessionSink implements SessionSink {
 
     static long totalUsageTokens(Usage usage) {
         if (usage == null) return 0L;
-        return saturatedAdd(saturatedAdd(usage.inputTokens(), usage.outputTokens()),
-            saturatedAdd(usage.cacheCreationInputTokens(), usage.cacheReadInputTokens()));
+        return MathUtils.saturatedAdd(
+            MathUtils.saturatedAdd(usage.inputTokens(), usage.outputTokens()),
+            MathUtils.saturatedAdd(
+                usage.cacheCreationInputTokens(), usage.cacheReadInputTokens()));
     }
 
     static final class TurnPokemonExperienceLedger {
@@ -792,13 +795,13 @@ public final class LanternaSessionSink implements SessionSink {
             long tokens = totalUsageTokens(usage);
             if (tokens <= 0) return 0L;
             creditedAssistantIds.add(assistantId);
-            creditedTokens = saturatedAdd(creditedTokens, tokens);
+            creditedTokens = MathUtils.saturatedAdd(creditedTokens, tokens);
             return tokens;
         }
 
         synchronized long creditTurnRemainder(long completedTurnUsage) {
             long remainder = Math.max(0L, completedTurnUsage - creditedTokens);
-            creditedTokens = saturatedAdd(creditedTokens, remainder);
+            creditedTokens = MathUtils.saturatedAdd(creditedTokens, remainder);
             return remainder;
         }
 
@@ -819,11 +822,6 @@ public final class LanternaSessionSink implements SessionSink {
     private static boolean isHumanInput(UserInput input) {
         return input != null && !input.isMeta()
             && !Strings.CS.equals("task-notification", input.querySource());
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
-        return left + right;
     }
 
     /**
@@ -1132,8 +1130,8 @@ public final class LanternaSessionSink implements SessionSink {
             Message message = messages.get(index);
             if (message instanceof UserMessage user && !user.isMeta()
                     && user.toolUseResult() == null
-                    && (MessageOrigin.USER.equals(user.origin())
-                        || MessageOrigin.AUTO_CONTINUATION.equals(user.origin()))) {
+                    && (MessageOrigin.USER == user.origin()
+                        || MessageOrigin.AUTO_CONTINUATION == user.origin())) {
                 break;
             }
             if (message instanceof AssistantMessage assistant

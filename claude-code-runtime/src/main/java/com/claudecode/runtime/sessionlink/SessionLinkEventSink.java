@@ -20,7 +20,6 @@ import com.claudecode.runtime.turn.TurnOutcome;
 import com.claudecode.runtime.turn.UserInput;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,8 +53,8 @@ public final class SessionLinkEventSink implements SessionSink {
         payload.put("display_text", input.displayText());
         payload.put("permission_mode", input.permissionMode());
         payload.put("origin", input.inputOrigin());
-        putOptional(payload, "model_override", input.modelOverride());
-        putOptional(payload, "effort_override", input.effortOverride());
+        JsonUtils.putIfNotBlank(payload, "model_override", input.modelOverride());
+        JsonUtils.putIfNotBlank(payload, "effort_override", input.effortOverride());
         publish("turn.started", payload);
     }
 
@@ -156,9 +155,8 @@ public final class SessionLinkEventSink implements SessionSink {
     /** The first textual argument of a tool call, truncated to one line. */
     private static String argsSummary(JsonNode input) {
         if (input == null || !input.isObject()) return "";
-        Iterator<Map.Entry<String, JsonNode>> fields = input.fields();
-        while (fields.hasNext()) {
-            JsonNode value = fields.next().getValue();
+        for (var field : input.properties()) {
+            JsonNode value = field.getValue();
             if (value != null && value.isTextual()) {
                 String text = value.asText().replace('\n', ' ').strip();
                 if (!text.isEmpty()) {
@@ -279,15 +277,11 @@ public final class SessionLinkEventSink implements SessionSink {
         return JsonUtils.getMapper().createObjectNode();
     }
 
-    private static void putOptional(ObjectNode target, String field, String value) {
-        if (StringUtils.isNotBlank(value)) target.put(field, value);
-    }
-
     private static String textOf(List<ContentBlock> blocks) {
         if (blocks == null || blocks.isEmpty()) return "";
         StringBuilder result = new StringBuilder();
         for (ContentBlock block : blocks) {
-            if (block instanceof TextBlock text) result.append(text.text());
+            if (block instanceof TextBlock(var text)) result.append(text);
         }
         return result.toString();
     }

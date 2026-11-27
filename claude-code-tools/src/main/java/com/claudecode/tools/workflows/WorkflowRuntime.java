@@ -827,7 +827,7 @@ public final class WorkflowRuntime {
 
     private static int defaultConcurrency() {
         int cpus = Runtime.getRuntime().availableProcessors();
-        return Math.max(2, Math.min(16, cpus - 2));
+        return Math.clamp(cpus - 2, 2, 16);
     }
 
     private static final class ExecutionState {

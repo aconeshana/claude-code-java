@@ -4,6 +4,7 @@ import com.claudecode.commands.CommandContext;
 import com.claudecode.commands.impl.git.BranchCommand;
 import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.ToolExecutionContext;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.message.AssistantContent;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.Message;
@@ -148,7 +149,7 @@ public final class BtwFeature implements ReplCommandUiBridge.Btw, ReplFeature {
         } catch (Exception exception) {
             gui.getGUIThread().invokeLater(() -> {
                 dialog.hide();
-                sink.line("  Failed to fork: " + rootMessage(exception),
+                sink.line("  Failed to fork: " + ErrorUtils.rootCauseMessage(exception),
                     LanternaTheme.toolError());
             });
         }
@@ -192,14 +193,8 @@ public final class BtwFeature implements ReplCommandUiBridge.Btw, ReplFeature {
             gui.getGUIThread().invokeLater(() -> {
                 dialog.hide();
                 sink.line("  Failed to branch /btw response: "
-                    + rootMessage(exception), LanternaTheme.toolError());
+                    + ErrorUtils.rootCauseMessage(exception), LanternaTheme.toolError());
             });
         }
-    }
-
-    private static String rootMessage(Throwable failure) {
-        Throwable cause = failure;
-        while (cause.getCause() != null) cause = cause.getCause();
-        return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
     }
 }

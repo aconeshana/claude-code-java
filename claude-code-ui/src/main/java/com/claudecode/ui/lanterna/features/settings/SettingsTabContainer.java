@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.features.settings;
 import com.claudecode.commands.StatusProperty;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.model.CustomModelConfig;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.outputstyle.OutputStyleCatalog;
 import com.claudecode.ui.lanterna.dialog.ModelPickerDialog;
@@ -35,7 +36,6 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Shared tabbed panel behind {@code /config}, {@code /status}, and {@code /usage} — sits above
@@ -75,12 +75,12 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
     SettingsTabContainer(IntSupplier terminalRowsSupplier, OutputStyleCatalog outputStyles) {
         this(new ConfigPanel(
             () -> contentHeightForTerminalRows(terminalRowsSupplier.getAsInt()), outputStyles),
-            isWindowsPlatform(), null);
+            Platform.IS_WINDOWS, null);
     }
 
     SettingsTabContainer(int terminalRows, OutputStyleCatalog outputStyles, Path cwd) {
         this(new ConfigPanel(() -> contentHeightForTerminalRows(terminalRows), outputStyles, cwd),
-            isWindowsPlatform(), null);
+            Platform.IS_WINDOWS, null);
     }
 
     /** Test seam for the Windows complete-refresh workaround. */
@@ -322,10 +322,6 @@ public final class SettingsTabContainer extends Panel implements InlineOverlay {
         syncTabVisibility();
         invalidate();
         requestWindowsCompleteRefresh();
-    }
-
-    private static boolean isWindowsPlatform() {
-        return Strings.CI.contains(System.getProperty("os.name", ""), "win");
     }
 
     private void requestWindowsCompleteRefresh() {

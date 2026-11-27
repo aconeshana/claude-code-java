@@ -1,8 +1,7 @@
 package com.claudecode.mcp.oauth;
 
+import com.claudecode.core.util.HashUtils;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -32,14 +31,8 @@ public record PkcePair(String verifier, String challenge) {
      * challenge shape mandated by RFC 7636 §4.2.
      */
     public static String s256Challenge(String verifier) {
-        try {
-            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            byte[] hash = sha256.digest(verifier.getBytes(StandardCharsets.US_ASCII));
-            return base64UrlNoPadding(hash);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is a mandatory JCA algorithm — if it's missing, the JVM is broken.
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        byte[] hash = HashUtils.sha256Bytes(verifier.getBytes(StandardCharsets.US_ASCII));
+        return base64UrlNoPadding(hash);
     }
 
     private static String base64UrlNoPadding(byte[] bytes) {

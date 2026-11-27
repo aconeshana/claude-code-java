@@ -122,7 +122,7 @@ public class TodoWriteTool extends AnnotatedTool<JsonNode, String> {
         // scopes its own todo list), falling back to the session id.
         String todoKey = context.agentId() != null ? context.agentId() : context.sessionId();
         List<TodoItem> oldTodos = List.copyOf(
-            TODO_STORE.getOrDefault(todoKey, Collections.emptyList()));
+            TODO_STORE.getOrDefault(todoKey, List.of()));
 
 
         List<TodoItem> newTodos = new ArrayList<>();
@@ -142,7 +142,7 @@ public class TodoWriteTool extends AnnotatedTool<JsonNode, String> {
 
 
         boolean allDone = newTodos.stream().allMatch(t -> Strings.CS.equals("completed", t.status()));
-        TODO_STORE.put(todoKey, allDone ? Collections.emptyList() : newTodos);
+        TODO_STORE.put(todoKey, allDone ? List.of() : newTodos);
 
         ObjectNode payload = mapper().createObjectNode();
         payload.set("oldTodos", todoItems(oldTodos));
@@ -172,7 +172,7 @@ public class TodoWriteTool extends AnnotatedTool<JsonNode, String> {
     /** Returns the current todo list for a session (read by UI components). */
     public static List<TodoItem> getTodos(String sessionId) {
         return Collections.unmodifiableList(
-            TODO_STORE.getOrDefault(sessionId != null ? sessionId : "", Collections.emptyList()));
+            TODO_STORE.getOrDefault(sessionId != null ? sessionId : "", List.of()));
     }
 
 

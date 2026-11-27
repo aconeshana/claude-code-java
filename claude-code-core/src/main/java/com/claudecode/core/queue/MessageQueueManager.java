@@ -88,8 +88,8 @@ public final class MessageQueueManager {
             sdkEvents.poll();
         }
         sdkEvents.add(new SequencedSdkEvent(++sdkEventSequence, event));
-        if (event instanceof SDKMessage.TaskUpdated updated) {
-            pendingTerminalAssistantTaskIds.remove(updated.taskId());
+        if (event instanceof SDKMessage.TaskUpdated(var taskId, _)) {
+            pendingTerminalAssistantTaskIds.remove(taskId);
             notifyAll();
         }
     }

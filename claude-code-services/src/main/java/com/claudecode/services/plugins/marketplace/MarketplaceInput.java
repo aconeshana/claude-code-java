@@ -1,5 +1,6 @@
 package com.claudecode.services.plugins.marketplace;
 
+import com.claudecode.core.platform.Platform;
 import org.apache.commons.lang3.Strings;
 
 import java.net.URI;
@@ -125,8 +126,7 @@ public final class MarketplaceInput {
     }
 
     private static boolean isLocalPathInput(String trimmed) {
-        boolean isWindows = Strings.CI.contains(System.getProperty("os.name", ""), "win");
-        boolean isWindowsPath = isWindows
+        boolean isWindowsPath = Platform.IS_WINDOWS
             && (Strings.CS.startsWith(trimmed, ".\\") || Strings.CS.startsWith(trimmed, "..\\")
                 || WINDOWS_DRIVE.matcher(trimmed).matches());
         return Strings.CS.startsWith(trimmed, "./") || Strings.CS.startsWith(trimmed, "../")

@@ -171,7 +171,7 @@ class PluginMarketplacesTabTest {
 
     @Test
     void applyPendingUpdate_refreshesAndClosesWithMessage() {
-        PluginMarketplacesTab tab = openedTab(withMarketplace(), "marketplace");
+        openedTab(withMarketplace(), "marketplace");
         send(DOWN);
         send(new KeyStroke('u', false, false));
         send(ENTER); // apply
@@ -245,7 +245,7 @@ class PluginMarketplacesTabTest {
 
     @Test
     void detailsBrowsePlugins_divertsToDiscoverTargetingMarketplace() {
-        PluginMarketplacesTab tab = openedTab(withMarketplace(), "marketplace");
+        openedTab(withMarketplace(), "marketplace");
         send(DOWN);
         send(ENTER); // details
         send(ENTER); // Browse plugins

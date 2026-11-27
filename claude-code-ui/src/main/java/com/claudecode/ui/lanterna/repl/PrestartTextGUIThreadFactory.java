@@ -142,7 +142,7 @@ final class PrestartTextGUIThreadFactory implements TextGUIThreadFactory {
 
         @Override
         public void waitForStop(long timeout, TimeUnit unit) throws InterruptedException {
-            if (stopped.await(timeout, unit)) return;
+            stopped.await(timeout, unit);
         }
 
         @Override

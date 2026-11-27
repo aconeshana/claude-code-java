@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.repl;
 
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.ui.lanterna.components.SpinnerComponent;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
@@ -228,18 +229,9 @@ final class TaskBoardFeature {
 
     private void closeTaskBoardSubscriptions() {
         cancelTaskBoardCompletionRefresh();
-        closeQuietly(taskBoardSubscription);
-        closeQuietly(taskBoardIntentSubscription);
+        IoUtils.closeQuietly(taskBoardSubscription);
+        IoUtils.closeQuietly(taskBoardIntentSubscription);
         taskBoardSubscription = null;
         taskBoardIntentSubscription = null;
-    }
-
-    private static void closeQuietly(AutoCloseable subscription) {
-        if (subscription == null) return;
-        try {
-            subscription.close();
-        } catch (Exception _) {
-            // UI teardown is best effort.
-        }
     }
 }

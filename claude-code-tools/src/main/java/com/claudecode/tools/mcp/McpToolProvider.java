@@ -777,12 +777,10 @@ public class McpToolProvider implements ManagedMcpRuntime, WaitForMcpServersTool
             try {
                 CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new))
                     .get(waitTimeoutMs, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException _) {
-                // Expected: unresolved names are reported in stillPending below.
+            } catch (TimeoutException | ExecutionException _) {
+                // Expected on timeout; attempts normalize failures into ServerState.
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
-            } catch (ExecutionException _) {
-                // Attempts normalize failures into ServerState, so this is defensive only.
             }
         }
 

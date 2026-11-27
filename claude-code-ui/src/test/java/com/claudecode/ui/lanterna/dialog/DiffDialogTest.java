@@ -121,7 +121,6 @@ class DiffDialogTest {
             List.of(), () -> {});
         press(dialog, KeyType.ENTER);
         // No files → no detail view; Esc closes directly (still list mode).
-        AtomicBoolean closed = new AtomicBoolean();
         assertTrue(dialog.isActive());
     }
 

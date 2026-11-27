@@ -138,6 +138,11 @@ public final class FormatUtils {
         return formatter.format(n).toLowerCase(Locale.ROOT);
     }
 
+    /** Formats {@code n} with US comma thousands separators (e.g. {@code 1,234,567}). */
+    public static String formatGroupedNumber(long n) {
+        return String.format(Locale.US, "%,d", n);
+    }
+
     /**
      * Formats a byte count as a human-readable file size string.
      */

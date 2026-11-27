@@ -41,6 +41,10 @@ public final class SettingsPaths {
         return Path.of(fallbackCwd).toAbsolutePath().normalize();
     }
 
+    public static String currentSessionProjectRoot() {
+        return sessionProjectRoot(System.getProperty("user.dir")).toString();
+    }
+
     /** {@code getSettingsFilePathForSource('projectSettings')} for this session. */
     public static Path sessionProjectSettingsPath(String fallbackCwd) {
         return projectSettingsPath(sessionProjectRoot(fallbackCwd).toString());

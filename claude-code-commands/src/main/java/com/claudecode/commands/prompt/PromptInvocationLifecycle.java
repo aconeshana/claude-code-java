@@ -27,7 +27,7 @@ public final class PromptInvocationLifecycle {
 
         if (!invocation.suppressSkillAttribution()
                 && invokedSkills != null && commandName != null && !StringUtils.isBlank(commandName)) {
-            String source = firstNonBlank(invocation.source(), invocation.loadedFrom());
+            String source = StringUtils.firstNonBlank(invocation.source(), invocation.loadedFrom());
             String logicalPath = source == null ? commandName : source + ":" + commandName;
             invokedSkills.record(commandName, logicalPath, invocation.textContent());
         }
@@ -37,7 +37,7 @@ public final class PromptInvocationLifecycle {
             invocation.isMcp() ? "mcp_prompt" : "slash_command",
             commandName,
             commandArgsFromInput(originalPrompt),
-            firstNonBlank(invocation.source(), invocation.loadedFrom()),
+            StringUtils.firstNonBlank(invocation.source(), invocation.loadedFrom()),
             originalPrompt);
     }
 
@@ -68,11 +68,5 @@ public final class PromptInvocationLifecycle {
         String value = input.trim();
         int separator = value.indexOf(' ');
         return separator < 0 ? "" : value.substring(separator + 1).trim();
-    }
-
-    private static String firstNonBlank(String first, String second) {
-        if (StringUtils.isNotBlank(first)) return first;
-        if (StringUtils.isNotBlank(second)) return second;
-        return null;
     }
 }

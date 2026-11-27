@@ -1,12 +1,10 @@
 package com.claudecode.core.prompt;
 
+import com.claudecode.core.util.HashUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -103,14 +101,7 @@ public final class UnrestrictedPrompt {
      * @return lowercase hex digest prefix of {@link #contractBlock()}.
      */
     public static String fingerprint() {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(CONTRACT_BLOCK.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash).substring(0, 16);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is required of every conforming JRE; absence is not a recoverable state.
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        return HashUtils.hashContent(CONTRACT_BLOCK).substring(0, 16);
     }
 
     /** The exact bytes of one section as deployed. Test-facing; production uses {@link #contractBlock()}. */

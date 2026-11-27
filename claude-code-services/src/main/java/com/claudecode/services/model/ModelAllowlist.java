@@ -115,9 +115,7 @@ public final class ModelAllowlist {
     private static String resolveOverriddenModel(String model) {
         JsonNode overrides = RuntimeSettings.loadEffectiveSetting("modelOverrides");
         if (overrides == null || !overrides.isObject()) return model;
-        var fields = overrides.fields();
-        while (fields.hasNext()) {
-            var entry = fields.next();
+        for (var entry : overrides.properties()) {
             if (entry.getValue().isTextual() && entry.getValue().asText().equals(model)) {
                 return entry.getKey();
             }

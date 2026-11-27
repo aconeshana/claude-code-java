@@ -180,7 +180,7 @@ public final class CustomModelDialog extends Panel implements InlineOverlay {
 
     /** Cycle order: (unset: assume multimodal) → yes → no → (unset). ← reverses. */
     private Boolean cycleMultimodal(boolean forward) {
-        int current = multimodal == null ? 0 : Boolean.TRUE.equals(multimodal) ? 1 : 2;
+        int current = multimodal == null ? 0 : multimodal ? 1 : 2;
         int next = Math.floorMod(current + (forward ? 1 : -1), 3);
         return switch (next) {
             case 1 -> Boolean.TRUE;

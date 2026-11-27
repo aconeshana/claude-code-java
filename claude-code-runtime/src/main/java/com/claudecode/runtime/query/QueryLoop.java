@@ -355,9 +355,9 @@ class QueryLoop implements SdkEventSequencedIterator {
         if (contextMessages != null) {
             for (Message msg : contextMessages) {
                 if (msg instanceof AttachmentMessage am
-                        && am.payload() instanceof DeferredToolsDeltaAttachment delta) {
-                    if (delta.addedNames() != null) reconstructed.addAll(delta.addedNames());
-                    if (delta.removedNames() != null) delta.removedNames().forEach(reconstructed::remove);
+                        && am.payload() instanceof DeferredToolsDeltaAttachment(var addedNames, _, var removedNames)) {
+                    if (addedNames != null) reconstructed.addAll(addedNames);
+                    if (removedNames != null) removedNames.forEach(reconstructed::remove);
                 }
             }
         }

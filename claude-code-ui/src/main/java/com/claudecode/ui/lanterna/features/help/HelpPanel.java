@@ -4,6 +4,7 @@ import com.claudecode.keybindings.DefaultBindings;
 import com.claudecode.keybindings.KeybindingResolver;
 import com.claudecode.keybindings.KeystrokeParser;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.ui.lanterna.dialog.CopyPickerDialog;
 import com.claudecode.ui.lanterna.input.InputPanel;
@@ -70,6 +71,10 @@ public final class HelpPanel extends Panel implements InlineOverlay {
                 "chat:modelPicker", "Chat", "alt+p"));
             String stash = releasedDisplay(binding(resolver,
                 "chat:stash", "Chat", "ctrl+s"));
+            String sendNow = releasedDisplay(binding(resolver,
+                "chat:sendNow", "Chat", "ctrl+enter"));
+            String queueSubmit = releasedDisplay(binding(resolver,
+                "chat:queueSubmit", "Chat", "ctrl+x enter"));
             String externalEditor = releasedDisplay(binding(resolver,
                 "chat:externalEditor", "Chat", "ctrl+x ctrl+e"));
             String dismiss = binding(resolver,
@@ -90,6 +95,8 @@ public final class HelpPanel extends Panel implements InlineOverlay {
                 undo + " to undo",
                 imagePaste + " to paste images",
                 modelPicker + " to switch model",
+                sendNow + " to interrupt & send now",
+                queueSubmit + " to queue without interrupting",
                 stash + " to stash prompt",
                 externalEditor + " to edit in $EDITOR"));
             if (customizationEnabled) common3.add("/keybindings to customize");
@@ -152,7 +159,6 @@ public final class HelpPanel extends Panel implements InlineOverlay {
     private int selectedIdx;
     private int visibleFrom;
 
-    private String version = "";
     private List<CommandEntry> builtinCommands = List.of();
     private List<CommandEntry> customCommands = List.of();
     private ShortcutLabels shortcutLabels = defaultShortcutLabels();
@@ -214,7 +220,6 @@ public final class HelpPanel extends Panel implements InlineOverlay {
                                   ShortcutLabels shortcutLabels,
                                   KeybindingResolver keybindingResolver,
                                   Runnable onClose) {
-        this.version = version != null ? version : "";
         this.builtinCommands = List.copyOf(builtinCommands);
         this.customCommands = List.copyOf(customCommands);
         this.shortcutLabels = shortcutLabels != null

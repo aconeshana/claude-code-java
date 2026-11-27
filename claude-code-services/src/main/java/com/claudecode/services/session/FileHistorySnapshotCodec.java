@@ -57,7 +57,7 @@ public final class FileHistorySnapshotCodec {
         Map<String, FileHistoryManager.Backup> backups = new LinkedHashMap<>();
         JsonNode backupsNode = node.get("trackedFileBackups");
         if (backupsNode != null && backupsNode.isObject()) {
-            backupsNode.fields().forEachRemaining(entry -> {
+            backupsNode.properties().forEach(entry -> {
                 JsonNode b = entry.getValue();
                 String backupFileName = b.hasNonNull("backupFileName") ? b.get("backupFileName").asText() : null;
                 int version = b.path("version").asInt(1);

@@ -1,10 +1,10 @@
 package com.claudecode.permissions;
 
+import com.claudecode.core.io.PathUtils;
 import org.apache.commons.lang3.Strings;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,16 +43,7 @@ public final class PathValidation {
      * creating a TOCTOU gap).
      */
     public static String expandTilde(String path) {
-        if (path == null) {
-            return null;
-        }
-        boolean windows =Strings.CS.contains( System.getProperty("os.name", "")
-            .toLowerCase(Locale.ROOT), "win");
-        if (Strings.CS.equals( path, "~") ||Strings.CS.startsWith( path, "~/")
-            || (windows &&Strings.CS.startsWith( path, "~\\"))) {
-            return System.getProperty("user.home") + path.substring(1);
-        }
-        return path;
+        return PathUtils.expandTilde(path);
     }
 
     /**

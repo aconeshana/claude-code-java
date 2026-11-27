@@ -48,7 +48,7 @@ public class ReloadPluginsCommand implements AnnotatedCommand {
             n(r.hookCount(), "hook"),
             n(r.mcpCount(), "plugin MCP server"),
             n(r.lspCount(), "plugin LSP server"));
-        StringBuilder msg = new StringBuilder("Reloaded: " + String.join(" · ", parts));
+        StringBuilder msg = new StringBuilder("Reloaded: ").append(String.join(" · ", parts));
 
         if (r.errorCount() > 0) {
             msg.append('\n')

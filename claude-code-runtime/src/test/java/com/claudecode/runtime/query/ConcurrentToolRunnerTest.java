@@ -475,7 +475,7 @@ class ConcurrentToolRunnerTest {
     private static String textOf(ToolResultBlock trb) {
         StringBuilder sb = new StringBuilder();
         for (ContentBlock b : trb.content()) {
-            if (b instanceof TextBlock tb) sb.append(tb.text());
+            if (b instanceof TextBlock(var text)) sb.append(text);
         }
         return sb.toString();
     }

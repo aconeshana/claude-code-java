@@ -7,6 +7,7 @@ import com.claudecode.services.http.ServiceHttpClient;
 import com.claudecode.services.plugins.marketplace.UserConfigOption;
 import com.claudecode.services.plugins.marketplace.UserConfigValidator;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.platform.SystemDirectories;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -264,7 +265,7 @@ public final class McpbBundleLoader {
         LinkedHashMap<String, UserConfigOption> result = new LinkedHashMap<>();
         JsonNode schema = manifest.get("user_config");
         if (schema == null || !schema.isObject()) return result;
-        schema.fields().forEachRemaining(field -> result.put(field.getKey(),
+        schema.properties().forEach(field -> result.put(field.getKey(),
             JsonUtils.getMapper().convertValue(field.getValue(), UserConfigOption.class)));
         return result;
     }
@@ -272,7 +273,7 @@ public final class McpbBundleLoader {
     private static ObjectNode generateConfig(JsonNode manifest, Path extractedPath,
                                              Map<String, Object> supplied,
                                              Map<String, UserConfigOption> schema) {
-        ObjectNode base = (ObjectNode) manifest.path("server").path("mcp_config").deepCopy();
+        ObjectNode base = manifest.path("server").path("mcp_config").deepCopy();
         JsonNode overrides = base.get("platform_overrides");
         JsonNode platform = overrides == null ? null : overrides.get(platformKey());
         if (platform != null && platform.isObject()) {
@@ -393,7 +394,7 @@ public final class McpbBundleLoader {
         }
         if (node.isObject()) {
             ObjectNode out = JsonUtils.getMapper().createObjectNode();
-            node.fields().forEachRemaining(field ->
+            node.properties().forEach(field ->
                 out.set(field.getKey(), replaceVariables(field.getValue(), variables)));
             return out;
         }
@@ -433,9 +434,8 @@ public final class McpbBundleLoader {
     }
 
     private static String platformKey() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac")) return "darwin";
-        if (Strings.CS.contains(os, "win")) return "win32";
+        if (Platform.IS_DARWIN) return "darwin";
+        if (Platform.IS_WINDOWS) return "win32";
         return "linux";
     }
 

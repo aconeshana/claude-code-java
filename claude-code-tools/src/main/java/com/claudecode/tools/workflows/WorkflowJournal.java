@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -13,9 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,17 +91,10 @@ public final class WorkflowJournal {
 
     public static String key(String previousKey, String prompt, JsonNode options) {
         String canonical = canonicalOptions(options);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update((previousKey == null ? "" : previousKey).getBytes(StandardCharsets.UTF_8));
-            digest.update((byte) 0);
-            digest.update((prompt == null ? "" : prompt).getBytes(StandardCharsets.UTF_8));
-            digest.update((byte) 0);
-            digest.update(canonical.getBytes(StandardCharsets.UTF_8));
-            return "v2:" + HexFormat.of().formatHex(digest.digest());
-        } catch (Exception e) {
-            throw new WorkflowRuntimeException("Failed to compute workflow journal key", e);
-        }
+        String payload = (previousKey == null ? "" : previousKey)
+            + '\0' + (prompt == null ? "" : prompt)
+            + '\0' + canonical;
+        return "v2:" + HashUtils.hashContent(payload);
     }
 
     private void append(ObjectNode entry) {

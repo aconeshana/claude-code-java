@@ -74,7 +74,7 @@ public final class PokemonCommand implements AnnotatedCommand {
 
     private static String describe(PokemonProfile profile) {
         return profile.displayName() + " · "
-            + title(profile.rarity()) + " " + profile.stars()
+            + profile.rarity().title() + " " + profile.stars()
             + (profile.shiny() ? " · shiny" : "")
             + " · Lv " + PokemonEvolution.progress(profile).level()
             + "\n" + stats(profile);
@@ -84,10 +84,5 @@ public final class PokemonCommand implements AnnotatedCommand {
         return profile.stats().entrySet().stream()
             .map(entry -> entry.getKey().name() + " " + entry.getValue())
             .collect(Collectors.joining(" · "));
-    }
-
-    private static String title(PokemonProfile.Rarity rarity) {
-        String lower = rarity.name().toLowerCase(Locale.ROOT);
-        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
 }

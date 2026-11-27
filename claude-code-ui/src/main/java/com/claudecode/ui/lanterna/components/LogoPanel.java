@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.components;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.core.pokemon.PokemonRoller;
 import com.claudecode.core.pokemon.PokemonRoster;
@@ -20,7 +21,6 @@ import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Renders the borderless condensed welcome block shown on startup and after {@code /clear}.
@@ -190,7 +190,7 @@ public final class LogoPanel {
         List<List<MessagePanel.Segment>> rows = new ArrayList<>(5);
         rows.add(titleSegments(available));
         rows.add(List.of(new MessagePanel.Segment(
-            truncate(modelBilling, available), LanternaTheme.welcomeDim())));
+            FormatUtils.truncate(modelBilling, available), LanternaTheme.welcomeDim())));
         rows.add(List.of(new MessagePanel.Segment(cwd, LanternaTheme.welcomeDim())));
         if (pokemon != null) rows.add(pokemonTip(available));
         if (webUrl != null) rows.add(webEntrySegments(available));
@@ -209,7 +209,7 @@ public final class LogoPanel {
         // One combined truncation: the " (/web)" suffix hint must survive
         // narrow widths, so budget for it before truncating the origin.
         int originBudget = Math.max(1, available - " (/web)".length());
-        String shown = truncate("Web UI: " + origin, originBudget);
+        String shown = FormatUtils.truncate("Web UI: " + origin, originBudget);
         List<MessagePanel.Segment> segments = new ArrayList<>(2);
         segments.add(new MessagePanel.Segment(shown, LanternaTheme.welcomeDim()));
         segments.add(new MessagePanel.Segment(" (/web)", LanternaTheme.welcomeDim()));
@@ -231,14 +231,14 @@ public final class LogoPanel {
     private List<MessagePanel.Segment> pokemonTip(int available) {
         PokemonProfile current = pokemon;
         PokemonEvolution.Progress progress = PokemonEvolution.progress(current);
-        String identity = current.displayName() + " · " + title(current.rarity())
+        String identity = current.displayName() + " · " + current.rarity().title()
             + " " + current.stars() + (current.shiny() ? " · shiny" : "")
             + " · Lv " + progress.level() + " ";
-        int barWidth = Math.max(4, Math.min(14,
-            available - FormatUtils.displayWidth(identity) - 7));
+        int barWidth = Math.clamp(available - FormatUtils.displayWidth(identity) - 7, 4, 14);
         ProgressBar bar = progressBar(progress, barWidth);
         String percent = " " + progressPercent(progress);
-        String prefix = truncate(identity, Math.max(1, available - barWidth - percent.length()));
+        String prefix = FormatUtils.truncate(
+            identity, Math.max(1, available - barWidth - percent.length()));
         List<MessagePanel.Segment> segments = new ArrayList<>(4);
         segments.add(new MessagePanel.Segment(prefix, rarityColor(current.rarity())));
         segments.addAll(progressSegments(rarityColor(current.rarity()),
@@ -415,11 +415,6 @@ public final class LogoPanel {
         };
     }
 
-    private static String title(PokemonProfile.Rarity rarity) {
-        String lower = rarity.name().toLowerCase(Locale.ROOT);
-        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
-    }
-
     private static void appendSpriteRow(List<MessagePanel.Segment> output, RenderSprite sprite, int rowIndex) {
         if (rowIndex < 0 || rowIndex >= sprite.height()) {
             output.add(new MessagePanel.Segment(" ".repeat(sprite.width()), TextColor.ANSI.DEFAULT));
@@ -442,12 +437,13 @@ public final class LogoPanel {
                 new MessagePanel.Segment(version, LanternaTheme.welcomeDim()));
         }
         if (available <= FormatUtils.displayWidth(name)) {
-            return List.of(new MessagePanel.Segment(truncate(name, available),
+            return List.of(new MessagePanel.Segment(FormatUtils.truncate(name, available),
                 LanternaTheme.inputText(), null, null, Set.of(SGR.BOLD)));
         }
         return List.of(
             new MessagePanel.Segment(name, LanternaTheme.inputText(), null, null, Set.of(SGR.BOLD)),
-            new MessagePanel.Segment(truncate(version, available - FormatUtils.displayWidth(name)),
+            new MessagePanel.Segment(
+                FormatUtils.truncate(version, available - FormatUtils.displayWidth(name)),
                 LanternaTheme.welcomeDim()));
     }
 
@@ -503,20 +499,13 @@ public final class LogoPanel {
         }
     }
 
-    private static String truncate(String value, int width) {
-        return FormatUtils.displayWidth(value) <= width ? value : FormatUtils.truncate(value, width);
-    }
-
     public static String appVersion() {
         String version = LogoPanel.class.getPackage().getImplementationVersion();
         return StringUtils.isNotBlank(version) ? version : "0.1.0";
     }
 
     private static String shortenCwd(String path, int width) {
-        String home = System.getProperty("user.home", "");
-        if (!home.isEmpty() && Strings.CS.startsWith(path, home)) {
-            path = "~" + path.substring(home.length());
-        }
+        path = PathUtils.abbreviateTilde(path);
         if (FormatUtils.displayWidth(path) <= width) return path;
         String normalized = path.replace('\\', '/');
         int slash = normalized.lastIndexOf('/');

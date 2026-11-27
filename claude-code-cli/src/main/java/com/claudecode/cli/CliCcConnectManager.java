@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.process.ProcessUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.gateway.GatewayCcConnectPort;
 import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
@@ -450,7 +451,7 @@ final class CliCcConnectManager implements GatewayCcConnectPort, AutoCloseable {
     }
 
     private static boolean isProcessAlive(long pid) {
-        return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+        return ProcessUtils.isProcessRunning(pid);
     }
 
     private Optional<LiveWorker> findWorker(long pid, String sessionId) {

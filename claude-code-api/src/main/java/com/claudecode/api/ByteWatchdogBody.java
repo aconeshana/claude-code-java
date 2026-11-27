@@ -1,5 +1,6 @@
 package com.claudecode.api;
 
+import com.claudecode.core.io.IoUtils;
 import okhttp3.MediaType;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
@@ -108,10 +109,9 @@ final class ByteWatchdogBody extends ResponseBody {
     private void rearm() {
         if (bodyClosed) return;
         lastByteNanos = System.nanoTime();
-        long delay = idleMillis;
         ScheduledFuture<?> previous = timer.getAndSet(
-            TIMER.schedule(this::onIdleElapsed, delay, TimeUnit.MILLISECONDS));
-        cancel(previous);
+            TIMER.schedule(this::onIdleElapsed, idleMillis, TimeUnit.MILLISECONDS));
+        IoUtils.cancelQuietly(previous);
     }
 
     private void onIdleElapsed() {
@@ -139,11 +139,7 @@ final class ByteWatchdogBody extends ResponseBody {
 
     private void stop() {
         bodyClosed = true;
-        cancel(timer.getAndSet(null));
-    }
-
-    private static void cancel(ScheduledFuture<?> future) {
-        if (future != null) future.cancel(false);
+        IoUtils.cancelQuietly(timer.getAndSet(null));
     }
 
     /** Surfaces the latched abort in place of whatever the interrupted socket read reported. */

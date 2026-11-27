@@ -1,7 +1,6 @@
 package com.claudecode.ui.lanterna.theme;
 
-import java.util.Locale;
-
+import com.claudecode.core.platform.Platform;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -79,13 +78,12 @@ public final class SystemTheme {
      * Bounded to 500ms per call so we don't block the UI thread.
      */
     static Mode detectFromPlatform() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         try {
-            if (Strings.CS.contains(os, "mac")) {
+            if (Platform.IS_DARWIN) {
                 String out = runCommand(new String[]{"defaults", "read", "-g", "AppleInterfaceStyle"});
                 return (out != null && Strings.CI.equals(out.trim(), "Dark")) ? Mode.DARK : Mode.LIGHT;
             }
-            if (Strings.CS.contains(os, "linux")) {
+            if (Platform.IS_LINUX) {
                 // GNOME 42+
                 String out = runCommand(new String[]{"gsettings", "get", "org.gnome.desktop.interface", "color-scheme"});
                 if (out != null) {
@@ -97,7 +95,7 @@ public final class SystemTheme {
                 if (out != null && Strings.CI.contains(out, "dark")) return Mode.DARK;
                 return null;
             }
-            if (Strings.CS.contains(os, "win")) {
+            if (Platform.IS_WINDOWS) {
                 String out = runCommand(new String[]{
                     "reg", "query",
                     "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",

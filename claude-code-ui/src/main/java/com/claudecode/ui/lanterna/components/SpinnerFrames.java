@@ -5,8 +5,8 @@ import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.ui.lanterna.features.settings.UiSettings;
 
@@ -102,8 +102,7 @@ public final class SpinnerFrames {
     public static List<String> charactersForCurrentTerminal() {
         String term = System.getenv("TERM");
         if (term != null && Strings.CS.equals(term, "xterm-ghostty")) return CHARACTERS_GHOSTTY;
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac") || Strings.CS.contains(os, "darwin")) return CHARACTERS_DARWIN;
+        if (Platform.IS_DARWIN) return CHARACTERS_DARWIN;
         return CHARACTERS_OTHER;
     }
 

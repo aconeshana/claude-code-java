@@ -1,5 +1,6 @@
 package com.claudecode.runtime.hooks;
 
+import com.claudecode.core.text.StringUtils;
 import java.util.*;
 
 /**
@@ -73,8 +74,7 @@ public record HookConfigurationSnapshot(
             StringBuilder out = new StringBuilder();
             for (String part : name().split("_")) {
                 if (!part.isEmpty()) {
-                    out.append(Character.toUpperCase(part.charAt(0)))
-                        .append(part.substring(1).toLowerCase(Locale.ROOT));
+                    out.append(StringUtils.capitalize(part.toLowerCase(Locale.ROOT)));
                 }
             }
             return out.toString();

@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
@@ -59,7 +59,7 @@ final class GatewayScheduleHandler {
 
     /** Handles one {@code POST} (create) exchange. */
     void handlePost(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String cron = text(request, "cron");
         String prompt = text(request, "prompt");
@@ -98,7 +98,7 @@ final class GatewayScheduleHandler {
             respondJson(exchange, 400, errorBody("invalid_request", "task id is required"));
             return;
         }
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String cron = text(request, "cron");
         String prompt = text(request, "prompt");

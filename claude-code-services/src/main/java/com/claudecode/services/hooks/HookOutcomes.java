@@ -34,8 +34,8 @@ final class HookOutcomes {
         List<HookDispatcher.HookSpecificOutput> specificOutputs = new ArrayList<>();
         for (HookResult r : results) {
             r = baseResult(r);
-            if (r instanceof HookResult.Block block) {
-                blocking.add(block.reason());
+            if (r instanceof HookResult.Block(var reason, _)) {
+                blocking.add(reason);
             } else if (r instanceof HookResult.ConditionNotMet(String condition, String reason)) {
                 blocking.add("[" + condition + "]: " + reason);
             } else if (r instanceof HookResult.Allow(Optional<String> additionalContext)

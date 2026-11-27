@@ -12,6 +12,7 @@ import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.engine.CompactProgressEvent;
 import com.claudecode.core.engine.HookDispatcher;
 import com.claudecode.core.engine.MessageCompactor;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.message.*;
 import com.claudecode.core.process.SubprocessEnvironment;
 
@@ -232,7 +233,7 @@ public class CompactCommand implements AnnotatedCommand {
 
             return CommandResult.displayOnly(displayText);
         } catch (Exception e) {
-            String message = e.getMessage() != null ? e.getMessage() : e.toString();
+            String message = ErrorUtils.message(e);
             if (cancelled.get() || Thread.currentThread().isInterrupted()
                     || e instanceof CancellationException) {
                 return CommandResult.localError("Compaction canceled.");

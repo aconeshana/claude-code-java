@@ -101,24 +101,17 @@ public final class TaskListPanel extends AbstractComponent<TaskListPanel> {
                 int columns,
                 int left,
                 TaskBoardProjection.Row item) {
-            String icon;
-            TextColor iconColor;
             boolean unicodeIcons = supportsUnicodeTaskIcons();
-            switch (item.status()) {
-                case COMPLETED -> {
-                    icon = unicodeIcons ? "✔" : "√";
-                    iconColor = LanternaTheme.toolSuccess();
-                }
-                case IN_PROGRESS -> {
-                    icon = unicodeIcons ? "◼" : "■";
-                    iconColor = LanternaTheme.claude();
-                }
-                case PENDING -> {
-                    icon = unicodeIcons ? "◻" : "□";
-                    iconColor = LanternaTheme.inputText();
-                }
-                default -> throw new IllegalStateException("Unknown task status: " + item.status());
-            }
+            String icon = switch (item.status()) {
+                case COMPLETED -> unicodeIcons ? "✔" : "√";
+                case IN_PROGRESS -> unicodeIcons ? "◼" : "■";
+                case PENDING -> unicodeIcons ? "◻" : "□";
+            };
+            TextColor iconColor = switch (item.status()) {
+                case COMPLETED -> LanternaTheme.toolSuccess();
+                case IN_PROGRESS -> LanternaTheme.claude();
+                case PENDING -> LanternaTheme.inputText();
+            };
             graphics.setForegroundColor(iconColor);
             graphics.disableModifiers(SGR.BOLD, SGR.CROSSED_OUT);
             graphics.putString(left, row, icon + " ");

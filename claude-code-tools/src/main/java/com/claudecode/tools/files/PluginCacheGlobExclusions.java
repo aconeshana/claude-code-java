@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.io.PathUtils;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.config.ClaudePaths;
 import org.slf4j.Logger;
@@ -139,7 +140,7 @@ public final class PluginCacheGlobExclusions {
 
     private static Path normalizeForCompare(Path p) {
         Path n = p.toAbsolutePath().normalize();
-        if (Strings.CI.contains(System.getProperty("os.name"), "win")) {
+        if (Platform.IS_WINDOWS) {
             return Path.of(n.toString().toLowerCase(Locale.ROOT));
         }
         return n;

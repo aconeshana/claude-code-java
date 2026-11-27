@@ -11,6 +11,7 @@ import com.claudecode.permissions.UnreachableRuleDetector;
 import com.claudecode.services.claudemd.MemoryFileInfo;
 import com.claudecode.services.claudemd.MemoryFileScanner;
 import com.claudecode.core.message.TokenEstimator;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.config.EnvValidation;
 import com.claudecode.core.config.VersionInfo;
@@ -114,9 +115,9 @@ public final class DoctorDiagnosticsCollector {
         return new DiagnosticReport.RuntimeInfo(
             System.getProperty("java.version"),
             System.getProperty("java.vendor"),
-            System.getProperty("os.name"),
+            Platform.OS_NAME,
             System.getProperty("os.version"),
-            System.getProperty("os.arch"),
+            Platform.OS_ARCH,
             cwd,
             resolveAppVersion());
     }

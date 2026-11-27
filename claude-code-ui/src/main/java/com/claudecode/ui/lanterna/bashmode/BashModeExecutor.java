@@ -2,6 +2,8 @@ package com.claudecode.ui.lanterna.bashmode;
 
 import com.claudecode.commands.XmlConstants;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.error.ErrorUtils;
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.process.DetachedSession;
 import com.claudecode.core.process.ProcessTreeTerminator;
 import com.claudecode.runtime.query.QuerySession;
@@ -320,7 +322,6 @@ public final class BashModeExecutor {
             run.interrupted, didTimeOut, failure);
         final boolean anyOutput = !stdout.isEmpty() || !stderr.isEmpty();
         final boolean didInterrupt = run.interrupted;
-        final String finalCwdResetWarning = cwdResetWarning;
         gui.getGUIThread().invokeLater(() -> {
             if (run.displayWithdrawn) {
                 // 236 appends only the input and the interruption to an idle transcript; a
@@ -342,8 +343,8 @@ public final class BashModeExecutor {
 
                 messagePanel.appendLine("    (No output)", LanternaTheme.welcomeDim());
             }
-            if (finalCwdResetWarning != null) {
-                messagePanel.appendLine("    " + finalCwdResetWarning,
+            if (cwdResetWarning != null) {
+                messagePanel.appendLine("    " + cwdResetWarning,
                     LanternaTheme.welcomeDim());
             }
         });
@@ -375,7 +376,7 @@ public final class BashModeExecutor {
         } catch (IOException | IllegalArgumentException failure) {
             appendHistoryEntries(run, command, "", "", false, false, failure);
             gui.getGUIThread().invokeLater(() -> messagePanel.appendLine(
-                "  ⎿  Failed to preview image: " + failureMessage(failure),
+                "  ⎿  Failed to preview image: " + ErrorUtils.message(failure),
                 LanternaTheme.toolError()));
         }
     }
@@ -390,7 +391,7 @@ public final class BashModeExecutor {
         if (tokens.size() > 1 && word(tokens.getFirst(), "command")) index++;
         if (index >= tokens.size() || !(tokens.get(index) instanceof ShellQuoteParse.Word(
             String value
-        )) || !Strings.CS.equals("imgcat", basename(value))) {
+        )) || !Strings.CS.equals("imgcat", PathUtils.basename(value))) {
             throw new IllegalArgumentException("Expected: imgcat <image-path>");
         }
         index++;
@@ -416,15 +417,6 @@ public final class BashModeExecutor {
             && Strings.CS.equals(expected, value1);
     }
 
-    private static String basename(String executable) {
-        int slash = Math.max(executable.lastIndexOf('/'), executable.lastIndexOf('\\'));
-        return slash >= 0 ? executable.substring(slash + 1) : executable;
-    }
-
-    private static String failureMessage(Throwable failure) {
-        return failure.getMessage() != null ? failure.getMessage() : failure.toString();
-    }
-
 
     private void streamOutput(Run run, InputStream stream, StringBuilder sink, TextColor color) {
         try (BufferedReader br = new BufferedReader(
@@ -435,9 +427,8 @@ public final class BashModeExecutor {
                 String formatted = ShellOutputFormatter.linkifyUrls(
                     ShellOutputFormatter.tryFormatJson(line));
                 for (String subLine : formatted.split("\n", -1)) {
-                    final String out = subLine;
                     gui.getGUIThread().invokeLater(() -> {
-                        if (!run.displayWithdrawn) messagePanel.appendLine("    " + out, color);
+                        if (!run.displayWithdrawn) messagePanel.appendLine("    " + subLine, color);
                     });
                 }
             }
@@ -479,7 +470,7 @@ public final class BashModeExecutor {
             return List.of(caveatMessage, input, MessageFactory.createUserInterruptionMessage(false));
         }
         if (failure != null) {
-            String msg = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+            String msg = ErrorUtils.message(failure);
             return List.of(caveatMessage, input, MessageFactory.createUserMessage(
                 "<bash-stderr>Command failed: " + XmlEscaper.escapeText(msg) + "</bash-stderr>"));
         }

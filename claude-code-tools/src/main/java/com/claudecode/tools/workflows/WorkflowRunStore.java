@@ -71,12 +71,12 @@ public final class WorkflowRunStore {
         try {
             if (runFile == null || !Files.isRegularFile(runFile)) return Optional.empty();
             JsonNode node = JsonUtils.parseTree(Files.readString(runFile));
-            String runId = text(node, "runId");
-            String taskId = text(node, "taskId");
-            String script = text(node, "script");
-            String scriptPath = text(node, "scriptPath");
-            String status = text(node, "status");
-            String timestamp = text(node, "timestamp");
+            String runId = JsonUtils.textOrNull(node, "runId");
+            String taskId = JsonUtils.textOrNull(node, "taskId");
+            String script = JsonUtils.textOrNull(node, "script");
+            String scriptPath = JsonUtils.textOrNull(node, "scriptPath");
+            String status = JsonUtils.textOrNull(node, "status");
+            String timestamp = JsonUtils.textOrNull(node, "timestamp");
             if (runId == null || taskId == null || script == null || scriptPath == null
                     || status == null || StringUtils.isBlank(status)
                     || timestamp == null || StringUtils.isBlank(timestamp)) {
@@ -85,8 +85,8 @@ public final class WorkflowRunStore {
             Path sessionDir = runFile.getParent().getParent();
             WorkflowRun run = WorkflowRun.builder(runId, taskId,
                     TaskStatus.valueOf(status.toUpperCase(Locale.ROOT)))
-                .workflowName(text(node, "workflowName"))
-                .summary(text(node, "summary"))
+                .workflowName(JsonUtils.textOrNull(node, "workflowName"))
+                .summary(JsonUtils.textOrNull(node, "summary"))
                 .script(script)
                 .scriptPath(Path.of(scriptPath))
                 .transcriptDir(sessionDir.resolve("subagents").resolve("workflows").resolve(runId))
@@ -102,23 +102,19 @@ public final class WorkflowRunStore {
                 .timestamp(Instant.parse(timestamp))
                 .startTime(node.path("startTime").asLong())
                 .endTime(node.hasNonNull("endTime") ? node.get("endTime").asLong() : null)
-                .defaultModel(text(node, "defaultModel"))
+                .defaultModel(JsonUtils.textOrNull(node, "defaultModel"))
                 .workflowProgress(nodes(node.path("workflowProgress")))
-                .error(text(node, "error"))
+                .error(JsonUtils.textOrNull(node, "error"))
                 .agentCache(cache(node.path("agentCache")))
                 .args(node.get("args"))
                 .phases(phases(node.path("phases")))
-                .title(text(node, "title"))
+                .title(JsonUtils.textOrNull(node, "title"))
                 .build();
             runs.put(runId, run);
             return Optional.of(run);
         } catch (Exception _) {
             return Optional.empty();
         }
-    }
-
-    private static String text(JsonNode node, String field) {
-        return node.hasNonNull(field) ? node.get(field).asText() : null;
     }
 
     private static List<String> strings(JsonNode values) {
@@ -137,8 +133,8 @@ public final class WorkflowRunStore {
         if (!values.isArray()) return List.of();
         return StreamSupport.stream(values.spliterator(), false)
             .filter(JsonNode::isObject)
-            .map(value -> new WorkflowPhase(text(value, "title"),
-                text(value, "detail"), text(value, "model")))
+            .map(value -> new WorkflowPhase(JsonUtils.textOrNull(value, "title"),
+                JsonUtils.textOrNull(value, "detail"), JsonUtils.textOrNull(value, "model")))
             .filter(phase -> phase.title() != null)
             .toList();
     }

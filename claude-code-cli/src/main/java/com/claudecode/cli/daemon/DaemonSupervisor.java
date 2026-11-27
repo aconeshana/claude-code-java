@@ -75,7 +75,7 @@ final class DaemonSupervisor implements AutoCloseable {
     }
 
     static long backoffMillis(int consecutiveCrashes, double random) {
-        int exponent = Math.max(0, Math.min(30, consecutiveCrashes));
+        int exponent = Math.clamp(consecutiveCrashes, 0, 30);
         long base = exponent >= 19 ? MAX_BACKOFF_MS
             : Math.min(1_000L << exponent, MAX_BACKOFF_MS);
         double bounded = Math.max(0d, Math.min(1d, random));

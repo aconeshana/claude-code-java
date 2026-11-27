@@ -246,8 +246,7 @@ public class LocalShellTask {
         }
         pb.redirectErrorStream(true);
 
-        Path output = outputPath;
-        Files.createDirectories(output.getParent());
+        Files.createDirectories(outputPath.getParent());
 
         process = DetachedSession.apply(pb).start();
         try {
@@ -261,7 +260,7 @@ public class LocalShellTask {
 
 
         startProgressTicker();
-        Thread.ofVirtual().name("bg-shell-" + getTaskId()).start(() -> runAndAwait(output));
+        Thread.ofVirtual().name("bg-shell-" + getTaskId()).start(() -> runAndAwait(outputPath));
         startStallWatchdog();
     }
 

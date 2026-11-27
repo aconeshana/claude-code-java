@@ -8,8 +8,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -61,9 +59,7 @@ class TextMateGrammarIntegrityTest {
     private static void collectLocalIncludes(JsonNode node, Set<String> includes) {
         if (node == null) return;
         if (node.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                var field = fields.next();
+            for (var field : node.properties()) {
                 if (Strings.CS.equals("include", field.getKey()) && field.getValue().isTextual()) {
                     String include = field.getValue().asText();
                     if (Strings.CS.startsWith(include, "#")) includes.add(include.substring(1));

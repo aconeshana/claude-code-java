@@ -1,6 +1,7 @@
 package com.claudecode.sdk;
 
 import com.claudecode.core.engine.AbortController;
+import com.claudecode.core.util.CollectionUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.nio.file.Path;
@@ -95,15 +96,15 @@ public final class QueryOptions {
         public Builder maxBudgetUsd(Double v) { value.maxBudgetUsd = v; return this; }
         public Builder taskBudget(Integer v) { value.taskBudget = v; return this; }
         public Builder agent(String v) { value.agent = v; return this; }
-        public Builder betas(List<String> v) { value.betas = copy(v); return this; }
+        public Builder betas(List<String> v) { value.betas = CollectionUtils.immutableList(v); return this; }
         public Builder outputSchema(JsonNode v) { value.outputSchema = v; return this; }
         public Builder debug(boolean v) { value.debug = v; return this; }
         public Builder debugFile(Path v) { value.debugFile = v; return this; }
         public Builder permissionMode(String v) { value.permissionMode = v; return this; }
         public Builder allowDangerouslySkipPermissions(boolean v) { value.allowDangerouslySkipPermissions = v; return this; }
         public Builder permissionPromptToolName(String v) { value.permissionPromptToolName = v; return this; }
-        public Builder allowedTools(List<String> v) { value.allowedTools = copy(v); return this; }
-        public Builder disallowedTools(List<String> v) { value.disallowedTools = copy(v); return this; }
+        public Builder allowedTools(List<String> v) { value.allowedTools = CollectionUtils.immutableList(v); return this; }
+        public Builder disallowedTools(List<String> v) { value.disallowedTools = CollectionUtils.immutableList(v); return this; }
         public Builder tools(List<String> v) { value.tools = v == null ? null : List.copyOf(v); return this; }
         public Builder mcpServers(Map<String, Object> v) { value.mcpServers = map(v); return this; }
         public Builder strictMcpConfig(boolean v) { value.strictMcpConfig = v; return this; }
@@ -115,17 +116,17 @@ public final class QueryOptions {
         public Builder persistSession(boolean v) { value.persistSession = v; return this; }
         public Builder includePartialMessages(boolean v) { value.includePartialMessages = v; return this; }
         public Builder includeHookEvents(boolean v) { value.includeHookEvents = v; return this; }
-        public Builder additionalDirectories(List<Path> v) { value.additionalDirectories = copy(v); return this; }
-        public Builder plugins(List<Path> v) { value.plugins = copy(v); return this; }
-        public Builder pluginsNoMcp(List<Path> v) { value.pluginsNoMcp = copy(v); return this; }
+        public Builder additionalDirectories(List<Path> v) { value.additionalDirectories = CollectionUtils.immutableList(v); return this; }
+        public Builder plugins(List<Path> v) { value.plugins = CollectionUtils.immutableList(v); return this; }
+        public Builder pluginsNoMcp(List<Path> v) { value.pluginsNoMcp = CollectionUtils.immutableList(v); return this; }
         public Builder settings(Settings v) { value.settings = v; return this; }
         public Builder sandbox(JsonNode v) { value.sandbox = v == null ? null : v.deepCopy(); return this; }
-        public Builder settingSources(List<String> v) { value.settingSources = copy(v); return this; }
+        public Builder settingSources(List<String> v) { value.settingSources = CollectionUtils.immutableList(v); return this; }
         public Builder managedSettings(String v) { value.managedSettings = v; return this; }
         public Builder env(Map<String, String> v) { value.env = map(v); return this; }
-        public Builder extraArguments(List<String> v) { value.extraArguments = copy(v); return this; }
+        public Builder extraArguments(List<String> v) { value.extraArguments = CollectionUtils.immutableList(v); return this; }
         public Builder executable(Path v) { value.executable = v; return this; }
-        public Builder executableArguments(List<String> v) { value.executableArguments = copy(v); return this; }
+        public Builder executableArguments(List<String> v) { value.executableArguments = CollectionUtils.immutableList(v); return this; }
         public Builder processSpawner(ProcessSpawner v) { value.processSpawner = v; return this; }
         public Builder abortController(AbortController v) { value.abortController = v; return this; }
         public Builder canUseTool(QueryCallbacks.CanUseTool v) { value.canUseTool = v; return this; }
@@ -134,7 +135,7 @@ public final class QueryOptions {
         public Builder onUserDialog(QueryCallbacks.JsonCallback v) { value.onUserDialog = v; return this; }
         public Builder getOAuthToken(QueryCallbacks.JsonCallback v) { value.getOAuthToken = v; return this; }
         public Builder getHostAuthToken(QueryCallbacks.JsonCallback v) { value.getHostAuthToken = v; return this; }
-        public Builder supportedDialogKinds(List<String> v) { value.supportedDialogKinds = copy(v); return this; }
+        public Builder supportedDialogKinds(List<String> v) { value.supportedDialogKinds = CollectionUtils.immutableList(v); return this; }
         public Builder sdkMcpServers(Map<String, McpSdkServerConfigWithInstance> v) { value.sdkMcpServers = map(v); return this; }
         public Builder sessionStore(SessionStore v) { value.sessionStore = v; return this; }
         public Builder sessionStoreEager(boolean v) { value.sessionStoreEager = v; return this; }
@@ -143,10 +144,9 @@ public final class QueryOptions {
         public Builder appendSystemPrompt(String v) { value.appendSystemPrompt = v; return this; }
         public Builder title(String v) { value.title = v; return this; }
         public Builder agents(JsonNode v) { value.agents = v == null ? null : v.deepCopy(); return this; }
-        public Builder skills(List<String> v) { value.skills = copy(v); return this; }
+        public Builder skills(List<String> v) { value.skills = CollectionUtils.immutableList(v); return this; }
         public Builder promptConfig(JsonNode v) { value.promptConfig = v == null ? null : v.deepCopy(); return this; }
         public QueryOptions build() { return value; }
-        private static <T> List<T> copy(List<T> value) { return value == null ? List.of() : List.copyOf(value); }
         private static <K, V> Map<K, V> map(Map<K, V> value) { return value == null ? Map.of() : Map.copyOf(value); }
     }
 }

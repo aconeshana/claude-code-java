@@ -1089,7 +1089,7 @@ class FileToolsTest {
         input.put("cell_id", "c1");
         input.put("new_source", "print(2)");
 
-        String result = tool.call(input, ctx).toString();
+        String result = tool.call(input, ctx);
 
         assertFalse(Strings.CS.startsWith(result, "Error: File has not been read yet"),
             "FileReadTool.call must register the notebook read in fileStateCache, "
@@ -1123,7 +1123,7 @@ class FileToolsTest {
         input.put("cell_id", "c1");
         input.put("new_source", "print(2)");
 
-        String result = tool.call(input, ctx).toString();
+        String result = tool.call(input, ctx);
 
         assertTrue(Strings.CS.startsWith(result, "Error: File has been modified since read"),
             "external modification after Read must still be rejected as stale, but got: " + result);
@@ -1216,7 +1216,7 @@ class FileToolsTest {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"nbformat\":4,\"cells\":[");
         for (int i = 0; i < 200; i++) {
-            sb.append("{\"cell_type\":\"code\",\"source\":\"").append("x".repeat(80)).append("\"}");
+            sb.append("{\"cell_type\":\"code\",\"source\":\"").repeat('x', 80).append("\"}");
             if (i < 199) sb.append(',');
         }
         sb.append("],\"metadata\":{}}");

@@ -1,14 +1,11 @@
 package com.claudecode.ui.lanterna.dialog;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 
 class PermissionDialogMcpTitleTest {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
     void title_mcpTool_rendersServerAndToolWithMcpSuffix() {

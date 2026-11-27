@@ -272,5 +272,5 @@ public final class AnsiToSegments {
         return next;
     }
 
-    private static int clamp(int v) { return Math.max(0, Math.min(255, v)); }
+    private static int clamp(int v) { return Math.clamp(v, 0, 255); }
 }

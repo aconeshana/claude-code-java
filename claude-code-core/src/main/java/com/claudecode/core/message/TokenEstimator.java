@@ -1,5 +1,7 @@
 package com.claudecode.core.message;
 
+import static com.claudecode.core.util.MathUtils.saturatedAdd;
+
 import com.claudecode.core.annotation.Explanation;
 
 import java.util.List;
@@ -277,10 +279,10 @@ public final class TokenEstimator {
         }
         long chars = 0;
         for (ContentBlock inner : tr.content()) {
-            if (inner instanceof TextBlock tb && tb.text() != null) {
-                chars += tb.text().length();
-            } else if (inner instanceof ToolReferenceBlock ref && ref.toolName() != null) {
-                chars += ref.toolName().length();
+            if (inner instanceof TextBlock(var text) && text != null) {
+                chars += text.length();
+            } else if (inner instanceof ToolReferenceBlock(var toolName) && toolName != null) {
+                chars += toolName.length();
             }
         }
         return chars;
@@ -394,11 +396,6 @@ public final class TokenEstimator {
     private long roughTokenCountEstimation(String text, int charsPerToken) {
         if (StringUtils.isEmpty(text)) return 0;
         return Math.round((double) text.length() / charsPerToken);
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
-        return left + right;
     }
 
     private static UsageSnapshot usageSnapshot(Message message) {

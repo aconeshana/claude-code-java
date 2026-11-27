@@ -363,7 +363,7 @@ class PluginInstalledTabTest {
 
     @Test
     void escWithPendingToggles_closesWithReloadMessage() {
-        PluginInstalledTab tab = openedTab(installedServices(), "manage");
+        openedTab(installedServices(), "manage");
         send(SPACE);
         send(ESC);
         assertTrue(closed.get());

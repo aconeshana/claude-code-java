@@ -842,9 +842,8 @@ public final class TurnEngine {
      * Whether a message counts as "meaningful content" for interrupt auto-restore.
      */
     public static boolean isMeaningful(SDKMessage msg) {
-        if (msg instanceof SDKMessage.StreamEvent ev) {
-            String t = ev.eventType();
-            return Strings.CS.equals("content_block_delta", t) || Strings.CS.equals("tool_streaming_start", t);
+        if (msg instanceof SDKMessage.StreamEvent(var eventType, _)) {
+            return Strings.CS.equals("content_block_delta", eventType) || Strings.CS.equals("tool_streaming_start", eventType);
         }
         return false;
     }

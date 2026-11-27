@@ -2,6 +2,7 @@ package com.claudecode.services.plugins;
 
 import java.util.Locale;
 
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.lsp.LspPluginRecommendation;
 import com.claudecode.services.config.GlobalConfigStore;
 import com.claudecode.services.plugins.marketplace.InstalledPluginsStore;
@@ -89,7 +90,7 @@ public final class LspRecommendationService {
         if (isDisabled()) {
             return List.of();
         }
-        String ext = extensionOf(filePath);
+        String ext = PathUtils.extensionOrNull(filePath);
         if (ext == null) {
             return List.of();
         }
@@ -158,15 +159,6 @@ public final class LspRecommendationService {
             }
         }
         return list;
-    }
-
-    private static String extensionOf(Path filePath) {
-        String fileName = filePath.getFileName() == null ? "" : filePath.getFileName().toString();
-        int dot = fileName.lastIndexOf('.');
-        if (dot <= 0 || dot == fileName.length() - 1) {
-            return null;
-        }
-        return fileName.substring(dot).toLowerCase(Locale.ROOT);
     }
 
     /** Extracted LSP metadata: covered extensions plus the launch command. */

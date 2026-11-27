@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
@@ -69,7 +69,7 @@ final class GatewaySudoRespondHandler {
 
     /** Handles one respond exchange. */
     void handle(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String requestId = text(request, "request_id");
         String sessionId = text(request, "session_id");

@@ -1,5 +1,7 @@
 package com.claudecode.core.pokemon;
 
+import static com.claudecode.core.util.MathUtils.saturatedAdd;
+
 import com.claudecode.core.annotation.Explanation;
 import java.util.List;
 import java.util.Objects;
@@ -115,11 +117,6 @@ public final class PokemonEvolution {
             return new Progress(MAX_LEVEL, LEVEL_TOKENS, LEVEL_TOKENS, true);
         }
         return new Progress(level, safeExperience % LEVEL_TOKENS, LEVEL_TOKENS, true);
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
-        return left + right;
     }
 
     public record Progress(int level, long current, long required, boolean fullyEvolved) {

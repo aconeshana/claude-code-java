@@ -104,14 +104,14 @@ public final class RuntimeSettings {
     public static Boolean readPolicyBoolean(String key) {
         if (StringUtils.isBlank(key)) return null;
         return SettingsTreeReader.booleanValue(SettingsSources.settingsForSource(
-            RuleSource.POLICY_SETTINGS, currentCwd()), key);
+            RuleSource.POLICY_SETTINGS, SettingsPaths.currentSessionProjectRoot()), key);
     }
 
     /** Reads one untrimmed string from the user source only. */
     public static String loadUserSettingString(String key) {
         if (StringUtils.isBlank(key)) return null;
         return SettingsTreeReader.stringValue(
-            SettingsSources.settingsForSource(RuleSource.USER_SETTINGS, currentCwd()), key, false);
+            SettingsSources.settingsForSource(RuleSource.USER_SETTINGS, SettingsPaths.currentSessionProjectRoot()), key, false);
     }
 
     /** Reads the WebFetch preflight bypass switch, defaulting to disabled. */
@@ -223,7 +223,7 @@ public final class RuntimeSettings {
     @Explanation("Makes the Java depth cap configurable while retaining a default of five")
     public static int loadSubagentMaxDepth() {
         JsonNode user = SettingsSources.settingsForSource(
-            RuleSource.USER_SETTINGS, currentCwd()).get("subagentMaxDepth");
+            RuleSource.USER_SETTINGS, SettingsPaths.currentSessionProjectRoot()).get("subagentMaxDepth");
         Integer value = user != null && user.isIntegralNumber() ? user.asInt() : null;
         return value != null && value >= 1 && value <= 5 ? value : 2;
     }
@@ -299,12 +299,12 @@ public final class RuntimeSettings {
 
     /** Persists the spinner-tips switch in the local settings tier. */
     public static void saveSpinnerTipsEnabled(boolean enabled) {
-        SettingsEditor.writeLocalBoolean(currentCwd(), "spinnerTipsEnabled", enabled);
+        SettingsEditor.writeLocalBoolean(SettingsPaths.currentSessionProjectRoot(), "spinnerTipsEnabled", enabled);
     }
 
     /** Persists the reduced-motion switch in the local settings tier. */
     public static void savePrefersReducedMotion(boolean enabled) {
-        SettingsEditor.writeLocalBoolean(currentCwd(), "prefersReducedMotion", enabled);
+        SettingsEditor.writeLocalBoolean(SettingsPaths.currentSessionProjectRoot(), "prefersReducedMotion", enabled);
     }
 
     /** Test seam for scalar precedence across injected file tiers; later tiers win. */
@@ -377,7 +377,7 @@ public final class RuntimeSettings {
 
     private static JsonNode effectiveValue(String key) {
         if (StringUtils.isBlank(key)) return null;
-        return SettingsSnapshots.effective(currentCwd()).get(key);
+        return SettingsSnapshots.effective(SettingsPaths.currentSessionProjectRoot()).get(key);
     }
 
     private static boolean isAllowedPersistedEffort(String value) {
@@ -386,9 +386,5 @@ public final class RuntimeSettings {
                 || Strings.CS.equals("high", value) || Strings.CS.equals("xhigh", value)) return true;
         return Strings.CS.equals("max", value)
             && Strings.CS.equals("ant", System.getenv("USER_TYPE"));
-    }
-
-    private static String currentCwd() {
-        return SettingsPaths.sessionProjectRoot(System.getProperty("user.dir")).toString();
     }
 }

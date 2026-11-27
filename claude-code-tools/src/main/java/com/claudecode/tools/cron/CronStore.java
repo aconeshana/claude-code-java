@@ -4,6 +4,7 @@ package com.claudecode.tools.cron;
 import com.claudecode.core.state.CwdState;
 
 import com.claudecode.core.git.GitUtils;
+import com.claudecode.core.io.FileUtils;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -13,8 +14,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -420,7 +419,6 @@ public final class CronStore {
         }
         Path path = durablePath();
         try {
-            Files.createDirectories(path.getParent());
             ObjectNode root = JsonUtils.getMapper().createObjectNode();
             var arr = root.putArray("tasks");
             for (CronJob j : JOBS) {
@@ -454,15 +452,8 @@ public final class CronStore {
                 if (!opts.enabled()) n.put("enabled", false);
                 arr.add(n);
             }
-            Path temp = Files.createTempFile(path.getParent(), ".scheduled_tasks-", ".tmp");
-            Files.writeString(temp, JsonUtils.toPrettyJson(root) + "\n",
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            try {
-                Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException _) {
-                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
-            }
+            String content = JsonUtils.toPrettyJson(root) + "\n";
+            FileUtils.atomicReplace(path, temp -> Files.writeString(temp, content));
         } catch (IOException _) {}
     }
 

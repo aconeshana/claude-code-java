@@ -21,6 +21,7 @@ import com.claudecode.core.engine.ToolExecutionContext;
 import com.claudecode.core.engine.ToolExecutor;
 import com.claudecode.core.engine.ToolResult;
 import com.claudecode.core.engine.ToolResultContentForm;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.MessageFactory;
@@ -738,7 +739,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
             Object winner = CompletableFuture.anyOf(
                 completion, handle.backgroundSignal()).get();
             if (winner == null) {
-                closeAbortLink(parentAbortLink);
+                IoUtils.closeQuietly(parentAbortLink);
                 cancelBackgroundTimers(hint, hintFuture, autoBackgroundFuture);
                 context.reportProgress(ToolExecutionContext.ProgressUpdate.builder()
                     .complete(true)
@@ -780,15 +781,7 @@ public class AgentTool extends AnnotatedTool<JsonNode, ToolResult> {
                 "failed", null, startedAt);
             return failedResult(e, request, taskId);
         } finally {
-            closeAbortLink(parentAbortLink);
-        }
-    }
-
-    private static void closeAbortLink(AutoCloseable link) {
-        try {
-            link.close();
-        } catch (Exception _) {
-            // Abort listener cleanup is best-effort and must not mask the tool result.
+            IoUtils.closeQuietly(parentAbortLink);
         }
     }
 

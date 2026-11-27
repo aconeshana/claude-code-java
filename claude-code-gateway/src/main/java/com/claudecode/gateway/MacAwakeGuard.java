@@ -1,10 +1,10 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.platform.Platform;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +31,7 @@ final class MacAwakeGuard implements AutoCloseable {
         }
         if (child != null && child.isAlive()) return;
         child = null;
-        if (!isMacOs() || !Files.isExecutable(CAFFEINATE_BIN)) return;
+        if (!Platform.IS_DARWIN || !Files.isExecutable(CAFFEINATE_BIN)) return;
         long pid = ProcessHandle.current().pid();
         try {
             child = new ProcessBuilder(List.of(
@@ -60,9 +60,5 @@ final class MacAwakeGuard implements AutoCloseable {
         if (running != null && running.isAlive()) {
             running.destroy();
         }
-    }
-
-    private static boolean isMacOs() {
-        return Strings.CI.contains(System.getProperty("os.name", ""), "mac");
     }
 }

@@ -399,13 +399,14 @@ public final class PromptCacheBreakDetection {
 
     private static int computeHash(Object data) {
         try {
-            return djb2(JsonUtils.getMapper().writeValueAsString(data));
+            return bernsteinDjb2(JsonUtils.getMapper().writeValueAsString(data));
         } catch (Exception _) {
-            return djb2(String.valueOf(data));
+            return bernsteinDjb2(String.valueOf(data));
         }
     }
 
-    private static int djb2(String s) {
+    // Bernstein djb2 (seed 5381, multiplier 33), distinct from HashUtils.djb2 (seed 0, multiplier 31).
+    private static int bernsteinDjb2(String s) {
         int h = 5381;
         for (int i = 0; i < s.length(); i++) {
             h = (h * 33 + s.charAt(i));

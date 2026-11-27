@@ -1,7 +1,7 @@
 package com.claudecode.ui.lanterna.stats;
 
-import org.apache.commons.lang3.Strings;
 import com.claudecode.core.model.ModelNames;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.ui.lanterna.repl.InteractiveSessionPort;
 import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.StringUtils;
@@ -271,14 +271,13 @@ public final class StatsScreenshot {
         Path pngPath = tempDir.resolve("screenshot-" + System.currentTimeMillis() + ".png");
         ImageIO.write(image, "png", pngPath.toFile());
         try {
-            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-            if (Strings.CS.contains(os, "mac")) {
+            if (Platform.IS_DARWIN) {
                 String escaped = pngPath.toString().replace("\\", "\\\\").replace("\"", "\\\"");
                 return run(new String[]{"osascript", "-e",
                         "set the clipboard to (read (POSIX file \"" + escaped + "\") as «class PNGf»)"},
                     "Failed to copy to clipboard");
             }
-            if (Strings.CS.contains(os, "win")) {
+            if (Platform.IS_WINDOWS) {
                 String ps = "Add-Type -AssemblyName System.Windows.Forms; "
                     + "[System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('"
                     + pngPath.toString().replace("'", "''") + "'))";

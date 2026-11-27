@@ -3,6 +3,7 @@ package com.claudecode.ui.lanterna.dialog;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.core.text.FormatUtils;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.runtime.doctor.DoctorPort;
 import com.claudecode.runtime.doctor.DoctorReport;
@@ -23,7 +24,6 @@ import com.googlecode.lanterna.input.KeyType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import com.claudecode.ui.lanterna.overlay.InlineOverlay;
@@ -222,33 +222,41 @@ public final class DoctorDialog extends Panel implements InlineOverlay {
                 List<DoctorReport.FileSize> files = ctx.claudeMd().largeFiles();
                 long threshold = ctx.claudeMd().thresholdChars();
                 String header = files.size() == 1
-                    ? "Large CLAUDE.md file detected (" + fmt(files.getFirst().chars())
-                        + " chars > " + fmt(threshold) + ")"
-                    : files.size() + " large CLAUDE.md files detected (each > " + fmt(threshold) + " chars)";
+                    ? "Large CLAUDE.md file detected ("
+                        + FormatUtils.formatGroupedNumber(files.getFirst().chars())
+                        + " chars > " + FormatUtils.formatGroupedNumber(threshold) + ")"
+                    : files.size() + " large CLAUDE.md files detected (each > "
+                        + FormatUtils.formatGroupedNumber(threshold) + " chars)";
                 out.add(ReportLine.warn("└ " + WARN + header));
                 out.add(ReportLine.of("  └ Files:"));
                 for (DoctorReport.FileSize f : files) {
-                    out.add(ReportLine.of("    └ " + f.path() + ": " + fmt(f.chars()) + " chars"));
+                    out.add(ReportLine.of("    └ " + f.path() + ": "
+                        + FormatUtils.formatGroupedNumber(f.chars()) + " chars"));
                 }
             }
             if (ctx.agents() != null) {
-                out.add(ReportLine.warn("└ " + WARN + "Large agent descriptions (~" + fmt(ctx.agents().totalTokens())
-                    + " tokens > " + fmt(ctx.agents().thresholdTokens()) + ")"));
+                out.add(ReportLine.warn("└ " + WARN + "Large agent descriptions (~"
+                    + FormatUtils.formatGroupedNumber(ctx.agents().totalTokens())
+                    + " tokens > "
+                    + FormatUtils.formatGroupedNumber(ctx.agents().thresholdTokens()) + ")"));
                 out.add(ReportLine.of("  └ Top contributors:"));
                 for (DoctorReport.AgentTokens a : ctx.agents().topAgents()) {
-                    out.add(ReportLine.of("    └ " + a.name() + ": ~" + fmt(a.tokens()) + " tokens"));
+                    out.add(ReportLine.of("    └ " + a.name() + ": ~"
+                        + FormatUtils.formatGroupedNumber(a.tokens()) + " tokens"));
                 }
                 if (ctx.agents().moreCount() > 0) {
                     out.add(ReportLine.of("    └ (" + ctx.agents().moreCount() + " more custom agents)"));
                 }
             }
             if (ctx.mcpTools() != null) {
-                out.add(ReportLine.warn("└ " + WARN + "Large MCP tools context (~" + fmt(ctx.mcpTools().totalTokens())
-                    + " tokens estimated > " + fmt(ctx.mcpTools().thresholdTokens()) + ")"));
+                out.add(ReportLine.warn("└ " + WARN + "Large MCP tools context (~"
+                    + FormatUtils.formatGroupedNumber(ctx.mcpTools().totalTokens())
+                    + " tokens estimated > "
+                    + FormatUtils.formatGroupedNumber(ctx.mcpTools().thresholdTokens()) + ")"));
                 out.add(ReportLine.of("  └ MCP servers:"));
                 for (DoctorReport.ServerTokens s : ctx.mcpTools().byServer()) {
                     out.add(ReportLine.of("    └ " + s.serverName() + ": " + s.toolCount()
-                        + " tools (~" + fmt(s.tokens()) + " tokens)"));
+                        + " tools (~" + FormatUtils.formatGroupedNumber(s.tokens()) + " tokens)"));
                 }
                 if (ctx.mcpTools().moreCount() > 0) {
                     out.add(ReportLine.of("    └ (" + ctx.mcpTools().moreCount() + " more servers)"));
@@ -267,11 +275,6 @@ public final class DoctorDialog extends Panel implements InlineOverlay {
             case SYSTEM -> "OK ("
                 + (status.systemPath() != null ? status.systemPath() : "system") + ")";
         };
-    }
-
-
-    private static String fmt(long n) {
-        return String.format(Locale.US, "%,d", n);
     }
 
     private static ReportLine toReportLine(DoctorReport.DiagnosticRow row) {

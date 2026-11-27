@@ -210,7 +210,7 @@ public final class AgenticSessionSearch {
             if (mc.blocks() != null) {
                 StringBuilder sb = new StringBuilder();
                 for (var b : mc.blocks()) {
-                    if (b instanceof TextBlock tb) sb.append(tb.text());
+                    if (b instanceof TextBlock(var text)) sb.append(text);
                 }
                 return sb.isEmpty() ? null : sb.toString();
             }
@@ -218,7 +218,7 @@ public final class AgenticSessionSearch {
             if (am.message() != null && am.message().content() != null) {
                 StringBuilder sb = new StringBuilder();
                 for (var b : am.message().content()) {
-                    if (b instanceof TextBlock tb) sb.append(tb.text());
+                    if (b instanceof TextBlock(var text)) sb.append(text);
                 }
                 return sb.isEmpty() ? null : sb.toString();
             }

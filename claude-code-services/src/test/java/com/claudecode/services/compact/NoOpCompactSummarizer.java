@@ -34,8 +34,8 @@ public class NoOpCompactSummarizer implements CompactSummarizer {
             if (um.message().blocks() != null) {
                 StringBuilder sb = new StringBuilder();
                 for (ContentBlock block : um.message().blocks()) {
-                    if (block instanceof TextBlock tb && tb.text() != null) {
-                        sb.append(tb.text());
+                    if (block instanceof TextBlock(var text) && text != null) {
+                        sb.append(text);
                     }
                 }
                 return sb.toString();
@@ -44,8 +44,8 @@ public class NoOpCompactSummarizer implements CompactSummarizer {
                 && am.message() != null && am.message().content() != null) {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : am.message().content()) {
-                if (block instanceof TextBlock tb && tb.text() != null) {
-                    sb.append(tb.text());
+                if (block instanceof TextBlock(var text) && text != null) {
+                    sb.append(text);
                 }
             }
             return sb.toString();

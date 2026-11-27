@@ -92,9 +92,9 @@ public class ExportCommand implements AnnotatedCommand {
                         sb.append("> ").append(um.message().text()).append("\n\n");
                     } else if (um.message().blocks() != null) {
                         for (var block : um.message().blocks()) {
-                            if (block instanceof TextBlock tb && tb.text() != null
-                                    && !StringUtils.isBlank(tb.text())) {
-                                sb.append("> ").append(tb.text()).append("\n\n");
+                            if (block instanceof TextBlock(var text) && text != null
+                                    && !StringUtils.isBlank(text)) {
+                                sb.append("> ").append(text).append("\n\n");
                             } else if (block instanceof ToolResultBlock trb) {
                                 appendToolResult(sb, trb);
                             }
@@ -104,9 +104,9 @@ public class ExportCommand implements AnnotatedCommand {
                 case AssistantMessage am when !am.isApiErrorMessage() -> {
                     if (am.message() == null || am.message().content() == null) break;
                     for (var block : am.message().content()) {
-                        if (block instanceof TextBlock tb && tb.text() != null
-                                && !StringUtils.isBlank(tb.text())) {
-                            sb.append("● ").append(tb.text()).append("\n\n");
+                        if (block instanceof TextBlock(var text) && text != null
+                                && !StringUtils.isBlank(text)) {
+                            sb.append("● ").append(text).append("\n\n");
                         } else if (block instanceof ToolUseBlock tub) {
                             sb.append("● ").append(tub.name())
                                 .append(summarizeToolInput(tub)).append("\n");
@@ -137,8 +137,8 @@ public class ExportCommand implements AnnotatedCommand {
 
     /** Dim header args — first string field of the tool input, truncated. */
     private static String summarizeToolInput(ToolUseBlock tub) {
-        if (tub.input() == null || !tub.input().fields().hasNext()) return "";
-        var field = tub.input().fields().next();
+        if (tub.input() == null || !tub.input().properties().iterator().hasNext()) return "";
+        var field = tub.input().properties().iterator().next();
         if (!field.getValue().isTextual()) return "";
         String value = field.getValue().asText();
         if (value.length() > 80) value = FormatUtils.truncate(value, 80);

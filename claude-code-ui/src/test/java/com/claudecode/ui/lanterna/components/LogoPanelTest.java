@@ -114,7 +114,7 @@ class LogoPanelTest {
         assertTrue(panel.lines.stream().noneMatch(line -> line.matches(".*[╭╮╰╯│▕].*")));
         assertTrue(panel.segmentLines.subList(0, panel.segmentLines.size() - 1).stream()
             .allMatch(line -> !line.isEmpty()
-                && TextColor.ANSI.DEFAULT.equals(line.getFirst().bgColor())),
+                && TextColor.ANSI.DEFAULT == line.getFirst().bgColor()),
             "default-background sentinel prevents local sprite color from filling the row");
         assertTrue(panel.segmentLines.stream().flatMap(List::stream)
             .anyMatch(segment -> segment.bgColor() != null), "sprite retains RGB backgrounds");
@@ -165,8 +165,6 @@ class LogoPanelTest {
         String url = "http://127.0.0.1:8087/?token=secret";
 
         LogoPanel.WelcomeBlock before = logo.show(panel, 120, "claude-opus-4-6");
-        int beforeModelTextLine = modelTextLine(panel);
-        int beforeModelText = before.modelLine();
         assertTrue(panel.lines.stream().noneMatch(line -> Strings.CS.contains(line, "Web UI")),
             "no web row before the gateway starts");
         int beforeCount = panel.snapshotLineCount();
@@ -205,14 +203,6 @@ class LogoPanelTest {
         assertTrue(webSegments.stream().noneMatch(segment ->
                 segment.hyperlinkUrl() != null && !url.equals(segment.hyperlinkUrl())),
             "no other hyperlink leaks into the web row");
-    }
-
-    /** The line currently showing the model billing text, for drift checks. */
-    private static int modelTextLine(CapturingPanel panel) {
-        for (int i = 0; i < panel.lines.size(); i++) {
-            if (Strings.CS.contains(panel.lines.get(i), "API Usage Billing")) return i;
-        }
-        return -1;
     }
 
     @Test

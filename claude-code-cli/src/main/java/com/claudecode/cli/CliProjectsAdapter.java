@@ -2,6 +2,7 @@ package com.claudecode.cli;
 
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.gateway.GatewayProjectsPort;
 import com.claudecode.mcp.McpConfig;
@@ -19,10 +20,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -327,15 +326,9 @@ final class CliProjectsAdapter implements GatewayProjectsPort {
             node.put("updatedAtMs", project.updatedAtMs());
         }
         try {
-            Path parent = storeFile.getParent();
-            if (parent != null) Files.createDirectories(parent);
-            Path tmp = Files.createTempFile(parent != null ? parent : Path.of("."), "web-projects-", ".tmp");
-            Files.writeString(tmp, JsonUtils.toPrettyJson(root) + "\n", StandardCharsets.UTF_8);
-            try {
-                Files.move(tmp, storeFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(tmp, storeFile, StandardCopyOption.REPLACE_EXISTING);
-            }
+            String json = JsonUtils.toPrettyJson(root) + "\n";
+            FileUtils.atomicReplace(storeFile,
+                tmp -> Files.writeString(tmp, json, StandardCharsets.UTF_8));
         } catch (IOException failure) {
             throw new IllegalStateException("failed to persist " + storeFile + ": " + failure.getMessage(), failure);
         }

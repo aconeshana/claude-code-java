@@ -116,7 +116,7 @@ final class SessionCatalog {
             Optional<LiteSessionReader.LiteSessionFile> lite = read(newest);
             if (lite.isEmpty()) continue;
             String relocated = lastTypedString(lite.get().tail(), "relocated", "relocatedCwd");
-            String recorded = firstNonBlank(relocated, firstString(lite.get().head(), "cwd"));
+            String recorded = StringUtils.firstNonBlank(relocated, firstString(lite.get().head(), "cwd"));
             if (recorded == null) continue;
             String canonical = SessionManager.canonicalizePath(recorded);
             targets.stream().filter(target -> canonical.equals(target)
@@ -360,7 +360,7 @@ final class SessionCatalog {
                                           Predicate<String> builtInCommand, Visibility visibility) {
         String head = lite.head();
         String tail = lite.tail();
-        if (containsBoolean(firstLine(head), "isSidechain", true)) return Optional.empty();
+        if (containsBoolean(com.claudecode.core.text.StringUtils.firstLineOf(head), "isSidechain", true)) return Optional.empty();
         String sessionKind = firstParentField(head, "sessionKind");
         String entrypoint = firstString(head, "entrypoint");
         if (entrypoint == null) entrypoint = lastString(tail, "entrypoint");
@@ -376,14 +376,14 @@ final class SessionCatalog {
         String summaryField = lastTypedString(tail, "summary", "summary");
         String lastPrompt = lastString(tail, "lastPrompt");
         String firstPrompt = firstPrompt(head, builtInCommand);
-        if (visibility != Visibility.PICKER && firstNonBlank(customTitle, aiTitle, summaryField,
+        if (visibility != Visibility.PICKER && StringUtils.firstNonBlank(customTitle, aiTitle, summaryField,
                 lastPrompt, firstPrompt) == null) return Optional.empty();
-        String summary = firstNonBlank(customTitle, aiTitle, lastPrompt, summaryField, firstPrompt, "(session)");
+        String summary = StringUtils.firstNonBlank(customTitle, aiTitle, lastPrompt, summaryField, firstPrompt, "(session)");
         String relocatedCwd = lastTypedString(tail, "relocated", "relocatedCwd");
-        String cwd = firstNonBlank(relocatedCwd, firstString(head, "cwd"), candidate.projectPath());
+        String cwd = StringUtils.firstNonBlank(relocatedCwd, firstString(head, "cwd"), candidate.projectPath());
         if (visibility == Visibility.PICKER && candidate.projectPath() == null
                 && StringUtils.isBlank(cwd)) return Optional.empty();
-        String gitBranch = firstNonBlank(lastString(tail, "gitBranch"), firstString(head, "gitBranch"));
+        String gitBranch = StringUtils.firstNonBlank(lastString(tail, "gitBranch"), firstString(head, "gitBranch"));
         String tag = lastTypedString(tail, "tag", "tag");
         boolean archived = resolveArchived(candidate, lite);
         long mtime = candidate.mtime() > 0 ? candidate.mtime() : lite.mtime();
@@ -392,7 +392,7 @@ final class SessionCatalog {
         SessionInfo info = new SessionInfo(candidate.sessionId(), mtime, createdAt, -1,
             summary, gitBranch, cwd, tag, lite.size(), customTitle, firstPrompt, archived);
         return Optional.of(new Entry(info, candidate.transcript(),
-            firstNonBlank(candidate.projectPath(), cwd), aiTitle, candidate.alias()));
+            StringUtils.firstNonBlank(candidate.projectPath(), cwd), aiTitle, candidate.alias()));
     }
 
     /**
@@ -500,7 +500,6 @@ final class SessionCatalog {
         }
         return result;
     }
-    private static String firstLine(String text) { int n = text.indexOf('\n'); return n < 0 ? text : text.substring(0, n); }
     private static Boolean lastTypedBoolean(String text, String type, String field) {
         Boolean result = null;
         for (String line : text.split("\n")) if (Strings.CS.contains(line, "\"type\":\"" + type + "\"")
@@ -517,7 +516,6 @@ final class SessionCatalog {
     private static String firstString(String text, String field) { return SessionManager.jsonStringField(text, field); }
     private static String lastString(String text, String field) { return SessionManager.lastJsonStringField(text, field); }
     private static String firstNonNull(String... values) { for (String value : values) if (value != null) return value; return null; }
-    private static String firstNonBlank(String... values) { for (String value : values) if (StringUtils.isNotBlank(value)) return value; return null; }
     private static Instant parseInstant(String value, long fallback) {
         if (value != null) try { return Instant.parse(value); } catch (RuntimeException _) { }
         return Instant.ofEpochMilli(Math.max(0, fallback));

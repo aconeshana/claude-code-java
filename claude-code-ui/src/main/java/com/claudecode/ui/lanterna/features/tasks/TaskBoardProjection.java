@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.features.tasks;
 
+import com.claudecode.core.text.StringUtils;
 import com.claudecode.runtime.tasks.TaskBoardPort;
 
 import java.text.Collator;
@@ -249,7 +250,7 @@ public final class TaskBoardProjection {
     private static Double parseId(String id) {
         if (id == null) return null;
         int index = 0;
-        while (index < id.length() && isJavaScriptWhitespace(id.charAt(index))) {
+        while (index < id.length() && StringUtils.isJavaScriptWhitespace(id.charAt(index))) {
             index++;
         }
         int numberStart = index;
@@ -268,14 +269,5 @@ public final class TaskBoardProjection {
         } catch (NumberFormatException _) {
             return null;
         }
-    }
-
-    private static boolean isJavaScriptWhitespace(char value) {
-        return switch (value) {
-            case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020,
-                 0x00A0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F,
-                 0x3000, 0xFEFF -> true;
-            default -> value >= 0x2000 && value <= 0x200A;
-        };
     }
 }

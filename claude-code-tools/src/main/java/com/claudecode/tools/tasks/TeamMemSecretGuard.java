@@ -171,7 +171,7 @@ public final class TeamMemSecretGuard {
             if (SPECIAL_CASE.containsKey(part)) {
                 sb.append(SPECIAL_CASE.get(part));
             } else {
-                sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+                sb.append(com.claudecode.core.text.StringUtils.capitalize(part));
             }
             sb.append(' ');
         }

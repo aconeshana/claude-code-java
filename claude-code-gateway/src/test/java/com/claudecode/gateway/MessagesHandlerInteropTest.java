@@ -65,7 +65,6 @@ class MessagesHandlerInteropTest {
     private final String sessionId = UUID.randomUUID().toString();
     private final RecordingPrimarySink primary = new RecordingPrimarySink();
     private final SessionEventHub hub = new SessionEventHub(primary, _ -> {});
-    private final List<String> submittedPrompts = new CopyOnWriteArrayList<>();
     private final AtomicInteger submitCount = new AtomicInteger();
 
     private final SessionHostRegistry registry = new SessionHostRegistry(

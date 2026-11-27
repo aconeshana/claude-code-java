@@ -558,25 +558,25 @@ public final class OpenAiResponsesClient implements LlmClient {
                         sink.accept(new StreamEvent.ContentBlockStop(rIdx, event));
                         return;
                     }
-                    if (unsealed instanceof ThinkingBlock tb) {
+                    if (unsealed instanceof ThinkingBlock(var thinking, var signature)) {
                         String itemId = item.path("id").asText(event.path("item_id").asText("reasoning"));
                         Integer existingIdx = activeReasoningByItem.remove(itemId);
                         if (existingIdx != null) {
-                            if (StringUtils.isNotEmpty(tb.signature())) {
+                            if (StringUtils.isNotEmpty(signature)) {
                                 sink.accept(new StreamEvent.ContentBlockDelta(
-                                    existingIdx, new Delta.SignatureDelta(tb.signature()), event));
+                                    existingIdx, new Delta.SignatureDelta(signature), event));
                             }
                             stopReasoning(existingIdx, event, sink);
                         } else {
                             int rIdx = nextReasoningIndex--;
                             sink.accept(new StreamEvent.ContentBlockStart(rIdx, new ThinkingBlock("", null), event));
-                            if (StringUtils.isNotEmpty(tb.thinking())) {
+                            if (StringUtils.isNotEmpty(thinking)) {
                                 sink.accept(new StreamEvent.ContentBlockDelta(
-                                    rIdx, new Delta.ThinkingDelta(tb.thinking()), event));
+                                    rIdx, new Delta.ThinkingDelta(thinking), event));
                             }
-                            if (StringUtils.isNotEmpty(tb.signature())) {
+                            if (StringUtils.isNotEmpty(signature)) {
                                 sink.accept(new StreamEvent.ContentBlockDelta(
-                                    rIdx, new Delta.SignatureDelta(tb.signature()), event));
+                                    rIdx, new Delta.SignatureDelta(signature), event));
                             }
                             sink.accept(new StreamEvent.ContentBlockStop(rIdx, event));
                         }

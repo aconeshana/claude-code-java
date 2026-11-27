@@ -101,7 +101,7 @@ class AgentContinuationServiceTest {
         String agentId = "a1234567890abcdef";
         Path transcript = temp.resolve("agent-" + agentId + ".jsonl");
         UserMessage prior = new UserMessage("prior", MessageContent.ofText("original audit"));
-        ObjectNode persisted = (ObjectNode) JsonUtils.getMapper().valueToTree(prior);
+        ObjectNode persisted = JsonUtils.getMapper().valueToTree(prior);
         persisted.put("isSidechain", true);
         persisted.put("agentId", agentId);
         persisted.put("sessionId", "resume-session");

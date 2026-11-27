@@ -32,6 +32,7 @@ import static com.claudecode.ui.lanterna.components.StyledText.seg;
 import static com.claudecode.core.text.FormatUtils.truncate;
 import com.claudecode.ui.lanterna.components.ListPagination;
 import com.claudecode.ui.lanterna.input.SearchInput;
+import com.claudecode.ui.lanterna.input.VimKeyStrokes;
 import com.claudecode.ui.lanterna.components.StyledText;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 import com.claudecode.ui.lanterna.components.LanternaDraw;
@@ -408,11 +409,11 @@ final class PluginDiscoverTab {
             host.closePanel();
             return;
         }
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             marketplaceIndex = Math.max(0, marketplaceIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             marketplaceIndex = Math.min(Math.max(0, marketplaces.size() - 1), marketplaceIndex + 1);
             return;
         }
@@ -440,7 +441,7 @@ final class PluginDiscoverTab {
             }
             return;
         }
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
 
             if (pagination.selectedIndex() == 0) {
                 isSearchMode = true;
@@ -449,7 +450,7 @@ final class PluginDiscoverTab {
             }
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             pagination.moveBy(1);
             return;
         }
@@ -529,11 +530,11 @@ final class PluginDiscoverTab {
             return;
         }
         List<MenuOption> options = detailsMenuOptions();
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             detailsMenuIndex = Math.max(0, detailsMenuIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             detailsMenuIndex = Math.min(options.size() - 1, detailsMenuIndex + 1);
             return;
         }
@@ -814,7 +815,7 @@ final class PluginDiscoverTab {
             String icon = plugin.isInstalled() ? "✔"
                 : installingPlugins.contains(plugin.pluginId()) ? "…"
                 : selectedForInstall.contains(plugin.pluginId()) ? "◉" : "◯";
-            StringBuilder label = new StringBuilder(icon + " " + plugin.entry().name());
+            StringBuilder label = new StringBuilder(icon).append(' ').append(plugin.entry().name());
             if (plugin.entry().category() != null) {
                 label.append(" [").append(plugin.entry().category()).append("]");
             }
@@ -958,18 +959,6 @@ final class PluginDiscoverTab {
         lines.add(blank());
         lines.add(line("Enter to select · Esc to back", LanternaTheme.welcomeDim()));
         return lines;
-    }
-
-    private static boolean isUp(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_UP
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'k' && !key.isCtrlDown() && !key.isAltDown());
-    }
-
-    private static boolean isDown(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_DOWN
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'j' && !key.isCtrlDown() && !key.isAltDown());
     }
 
     // ── test accessors ────────────────────────────────────────────────────────

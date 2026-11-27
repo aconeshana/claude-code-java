@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
@@ -16,7 +16,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -71,7 +70,7 @@ final class GatewayModelsHandler {
 
     /** Handles one {@code POST} (save) exchange. */
     void handlePost(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String modelName = text(request, "model_name");
         String protocol = text(request, "protocol");
@@ -116,7 +115,7 @@ final class GatewayModelsHandler {
      * restrictions, while keeping flat {@code model.json} persistence unchanged.
      */
     void handleDiscover(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String baseUrl = StringUtils.trimToNull(text(request, "base_url"));
         String protocol = StringUtils.defaultIfBlank(text(request, "protocol"), "chat").trim();
@@ -212,7 +211,7 @@ final class GatewayModelsHandler {
      * and {@code headers} as standard individual entries in {@code model.json}.
      */
     void handleBatchSave(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String protocol = text(request, "protocol");
         String baseUrl = text(request, "base_url");
@@ -380,9 +379,7 @@ final class GatewayModelsHandler {
         JsonNode value = request.path(fieldName);
         if (!value.isObject()) return Map.of();
         Map<String, String> result = new LinkedHashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : value.properties()) {
             if (field.getValue().isTextual()) result.put(field.getKey(), field.getValue().asText());
         }
         return result;

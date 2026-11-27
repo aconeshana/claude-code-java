@@ -1,6 +1,7 @@
 package com.claudecode.gateway;
 
 import com.claudecode.runtime.plugins.PluginMarketplacePort;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,7 +36,7 @@ public interface GatewayPluginsPort {
     default Map<String, Map<String, Object>> allPluginOptions() {
         PluginMarketplacePort port = marketplace();
         if (port == null) return Map.of();
-        java.util.LinkedHashMap<String, Map<String, Object>> out = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, Map<String, Object>> out = new LinkedHashMap<>();
         for (PluginMarketplacePort.InstalledPlugin plugin : port.installedPlugins()) {
             out.put(plugin.pluginId(), port.loadOptions(plugin.pluginId()));
         }
@@ -46,8 +47,8 @@ public interface GatewayPluginsPort {
     default Map<String, List<PluginMarketplacePort.PluginEntry>> catalogByMarketplace() {
         PluginMarketplacePort port = marketplace();
         if (port == null) return Map.of();
-        java.util.LinkedHashMap<String, List<PluginMarketplacePort.PluginEntry>> out =
-            new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, List<PluginMarketplacePort.PluginEntry>> out =
+            new LinkedHashMap<>();
         for (String name : port.marketplaces().keySet()) {
             try {
                 out.put(name, port.marketplace(name).plugins());

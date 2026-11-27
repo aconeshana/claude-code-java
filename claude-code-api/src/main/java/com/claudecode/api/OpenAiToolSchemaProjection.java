@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.commons.lang3.Strings;
 
-import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -21,7 +20,7 @@ final class OpenAiToolSchemaProjection {
     static ObjectNode project(JsonNode schema) {
         ObjectNode flattened = JsonUtils.getMapper().createObjectNode();
         if (schema != null && schema.isObject()) {
-            schema.fields().forEachRemaining(field -> {
+            schema.properties().forEach(field -> {
                 if (!Strings.CS.equals("anyOf", field.getKey())) {
                     flattened.set(field.getKey(), field.getValue().deepCopy());
                 }
@@ -35,7 +34,7 @@ final class OpenAiToolSchemaProjection {
             for (JsonNode variant : variants) {
                 JsonNode variantProperties = variant.get("properties");
                 if (variantProperties == null || !variantProperties.isObject()) continue;
-                variantProperties.fields().forEachRemaining(field -> {
+                variantProperties.properties().forEach(field -> {
                     if (!properties.has(field.getKey())) {
                         properties.set(field.getKey(), field.getValue().deepCopy());
                     }
@@ -60,9 +59,7 @@ final class OpenAiToolSchemaProjection {
         if (!value.isObject()) return value.deepCopy();
 
         ObjectNode fields = JsonUtils.getMapper().createObjectNode();
-        Iterator<Map.Entry<String, JsonNode>> iterator = value.fields();
-        while (iterator.hasNext()) {
-            Map.Entry<String, JsonNode> field = iterator.next();
+        for (Map.Entry<String, JsonNode> field : value.properties()) {
             if (!Strings.CS.equals("anyOf", field.getKey())) {
                 fields.set(field.getKey(), removeNullSchemas(field.getValue()));
             }
@@ -78,7 +75,7 @@ final class OpenAiToolSchemaProjection {
             variants.add(removeNullSchemas(variant));
         }
         if (variants.size() == 1 && variants.get(0).isObject()) {
-            variants.get(0).fields().forEachRemaining(field -> fields.set(field.getKey(), field.getValue()));
+            variants.get(0).properties().forEach(field -> fields.set(field.getKey(), field.getValue()));
             return fields;
         }
         fields.set("anyOf", variants);

@@ -214,7 +214,7 @@ public final class GlobalConfigStore {
         JsonNode env = readKey(ClaudePaths.GLOBAL_JSON, "env");
         if (env == null || !env.isObject()) return Map.of();
         Map<String, String> values = new LinkedHashMap<>();
-        env.fields().forEachRemaining(entry -> {
+        env.properties().forEach(entry -> {
             values.put(entry.getKey(), javascriptString(entry.getValue(), false));
         });
         return Collections.unmodifiableMap(values);
@@ -243,12 +243,12 @@ public final class GlobalConfigStore {
         JsonNode usage = readKey(path, "skillUsage");
         if (usage == null || !usage.isObject()) return Map.of();
         Map<String, Double> scores = new LinkedHashMap<>();
-        usage.fields().forEachRemaining(entry -> {
+        usage.properties().forEach(entry -> {
             JsonNode value = entry.getValue();
             JsonNode countNode = value == null ? null : value.get("usageCount");
             JsonNode lastUsedNode = value == null ? null : value.get("lastUsedAt");
             if (countNode == null || !countNode.isNumber()
-                    || lastUsedNode == null || !lastUsedNode.isNumber()) return;
+                || lastUsedNode == null || !lastUsedNode.isNumber()) return;
             double usageCount = countNode.asDouble();
             long lastUsedAt = lastUsedNode.asLong();
             if (!Double.isFinite(usageCount) || usageCount < 0 || lastUsedAt <= 0) return;
@@ -277,7 +277,7 @@ public final class GlobalConfigStore {
                 if (Files.isReadable(path)) {
                     JsonNode existing = JsonUtils.readJson(path);
                     if (existing != null && existing.isObject()) {
-                        existing.fields().forEachRemaining(e -> root.put(e.getKey(), e.getValue()));
+                        existing.properties().forEach(e -> root.put(e.getKey(), e.getValue()));
                     }
                 }
                 if (value == null) {
@@ -294,7 +294,7 @@ public final class GlobalConfigStore {
                     }
                     root.put(key, value);
                 }
-                ObjectNode node = (ObjectNode) JsonUtils.getMapper().valueToTree(root);
+                ObjectNode node = JsonUtils.getMapper().valueToTree(root);
                 writeAtomicLocked(path, node);
             } catch (IOException e) {
                 throw new UncheckedIOException("Failed to write " + path, e);

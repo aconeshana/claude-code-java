@@ -31,7 +31,7 @@ class PokemonCardRendererTest {
         assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "█")));
         assertTrue(panel.segmentLines.stream().flatMap(List::stream)
             .anyMatch(segment -> segment.bgColor() != null
-                && !TextColor.ANSI.DEFAULT.equals(segment.bgColor())),
+                && TextColor.ANSI.DEFAULT != segment.bgColor()),
             "wide cards include the full-color Pokémon sprite");
     }
 
@@ -46,7 +46,7 @@ class PokemonCardRendererTest {
         assertTrue(panel.lines.stream().anyMatch(line -> Strings.CS.contains(line, "WISDOM")));
         assertTrue(panel.segmentLines.stream().flatMap(List::stream)
             .noneMatch(segment -> segment.bgColor() != null
-                && !TextColor.ANSI.DEFAULT.equals(segment.bgColor())),
+                && TextColor.ANSI.DEFAULT != segment.bgColor()),
             "narrow cards omit the full sprite instead of overflowing");
     }
 

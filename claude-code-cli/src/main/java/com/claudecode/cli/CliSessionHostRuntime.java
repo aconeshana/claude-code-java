@@ -3,6 +3,7 @@ package com.claudecode.cli;
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.VersionInfo;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.runtime.query.QuerySession;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.interaction.InteractionCoordinator;
@@ -215,8 +216,7 @@ final class CliSessionHostRuntime implements AutoCloseable, CollaborationSetupPo
             }
             return candidate;
         }
-        String resource = nativeResource(
-            System.getProperty("os.name", ""), System.getProperty("os.arch", ""));
+        String resource = nativeResource(Platform.OS_NAME, Platform.OS_ARCH);
         try (InputStream input = CliSessionHostRuntime.class.getResourceAsStream(resource)) {
             if (input == null) throw new IOException("bundled cc-connect is unavailable for " + resource);
             Path executable = dir.resolve(

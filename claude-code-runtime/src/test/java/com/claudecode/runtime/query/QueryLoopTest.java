@@ -2394,7 +2394,7 @@ class QueryLoopTest {
             .deps(deps)
             .build();
 
-        List<SDKMessage> messages = drain(new QueryLoop(engine, params));
+        drain(new QueryLoop(engine, params));
 
         assertNotNull(captured.get(), "callModel should have been invoked");
         assertNull(captured.get().jsonSchema(),
@@ -3531,8 +3531,8 @@ class QueryLoopTest {
 
     private static int indexOfFinalizedUsageSignal(List<SDKMessage> messages) {
         for (int i = 0; i < messages.size(); i++) {
-            if (messages.get(i) instanceof SDKMessage.StreamEvent event
-                    && SDKMessage.ASSISTANT_USAGE_FINALIZED_EVENT.equals(event.eventType())) {
+            if (messages.get(i) instanceof SDKMessage.StreamEvent(var eventType, _)
+                    && SDKMessage.ASSISTANT_USAGE_FINALIZED_EVENT.equals(eventType)) {
                 return i;
             }
         }
@@ -3541,8 +3541,8 @@ class QueryLoopTest {
 
     private static int indexOfRawType(List<SDKMessage> messages, String type) {
         for (int i = 0; i < messages.size(); i++) {
-            if (messages.get(i) instanceof SDKMessage.RawStreamEvent raw
-                    && type.equals(raw.event().path("type").asText())) {
+            if (messages.get(i) instanceof SDKMessage.RawStreamEvent(var event, _)
+                    && type.equals(event.path("type").asText())) {
                 return i;
             }
         }

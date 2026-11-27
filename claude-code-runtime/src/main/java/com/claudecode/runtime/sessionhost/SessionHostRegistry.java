@@ -2,6 +2,7 @@ package com.claudecode.runtime.sessionhost;
 
 import org.apache.commons.lang3.StringUtils;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.message.SDKMessage;
 import com.claudecode.runtime.turn.SessionSink;
 import com.claudecode.runtime.turn.TurnOutcome;
@@ -182,7 +183,7 @@ public final class SessionHostRegistry {
         }
         activeTurnSession.set(null);
         synchronized (eventSubscriptionLock) {
-            closeQuietly(eventSubscription);
+            IoUtils.closeQuietly(eventSubscription);
             eventSubscription = null;
         }
         if (snapshot == null) return;
@@ -273,7 +274,7 @@ public final class SessionHostRegistry {
 
     private void observeTurnLifecycle(SessionHostSession session) {
         synchronized (eventSubscriptionLock) {
-            closeQuietly(eventSubscription);
+            IoUtils.closeQuietly(eventSubscription);
             String sessionId = session.info().id();
             eventSubscription = session.events().subscribe(new SessionSink() {
                 @Override public void onTurnStart(UserInput input) {
@@ -290,16 +291,6 @@ public final class SessionHostRegistry {
                     activeTurnSession.compareAndSet(sessionId, null);
                 }
             });
-        }
-    }
-
-    private static void closeQuietly(AutoCloseable value) {
-        if (value == null) return;
-        try {
-            value.close();
-        } catch (Exception _) {
-            // Lifecycle fencing remains authoritative if an optional observer
-            // cannot detach cleanly.
         }
     }
 

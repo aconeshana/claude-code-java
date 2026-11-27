@@ -37,9 +37,6 @@ class ClaudeCodeCliFlagMatrixTest {
 
     private static final String SMOKE_PLAN_PATH = "gradle/cli-flag-smoke.json";
 
-    /** Options Picocli synthesises from {@code mixinStandardHelpOptions}. */
-    private static final Set<String> MIXIN_OPTIONS = Set.of("--help", "--version");
-
     @TestFactory
     Stream<DynamicTest> everyMatrixCaseParsesAsRecorded() {
         Map<String, Object> baseline = flatten(parse().snapshot());
@@ -217,7 +214,7 @@ class ClaudeCodeCliFlagMatrixTest {
     /** A reason that says nothing is worse than no entry at all: it reads as a decision. */
     @Test
     void everyNotSmokedEntryStatesWhyNot() {
-        smokePlan().path("notSmoked").fields().forEachRemaining(excused ->
+        smokePlan().path("notSmoked").properties().forEach(excused ->
             assertTrue(excused.getValue().asText().length() > 20,
                 () -> "notSmoked[\"" + excused.getKey() + "\"] in " + SMOKE_PLAN_PATH
                     + " must say why the flag is not smoked as a process"));

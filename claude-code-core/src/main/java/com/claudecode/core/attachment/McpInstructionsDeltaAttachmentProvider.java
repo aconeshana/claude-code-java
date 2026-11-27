@@ -37,9 +37,9 @@ public final class McpInstructionsDeltaAttachmentProvider implements AttachmentP
         Set<String> announced = new HashSet<>();
         for (Message m : ctx.messages()) {
             if (!(m instanceof AttachmentMessage am)) continue;
-            if (am.payload() instanceof McpInstructionsDeltaAttachment prev) {
-                announced.addAll(prev.addedNames());
-                prev.removedNames().forEach(announced::remove);
+            if (am.payload() instanceof McpInstructionsDeltaAttachment(var addedNames, _, var removedNames)) {
+                announced.addAll(addedNames);
+                removedNames.forEach(announced::remove);
             }
         }
 

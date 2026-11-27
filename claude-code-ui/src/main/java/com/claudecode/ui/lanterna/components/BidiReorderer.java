@@ -1,7 +1,6 @@
 package com.claudecode.ui.lanterna.components;
 
-import java.util.Locale;
-
+import com.claudecode.core.platform.Platform;
 import org.apache.commons.lang3.Strings;
 
 import com.ibm.icu.text.Bidi;
@@ -29,10 +28,10 @@ public final class BidiReorderer {
         if (Strings.CS.equals("false", force)) {
             return false;
         }
-        if (isMacOs()) {
+        if (Platform.IS_DARWIN) {
             return false;
         }
-        return isWindows() || isWsl() || isVscodeTerminal();
+        return Platform.IS_WINDOWS || isWsl() || isVscodeTerminal();
     }
 
     /** Whether the text contains any strongly-RTL (or bidi-control) character. */
@@ -164,14 +163,6 @@ public final class BidiReorderer {
 
 
 
-    private static boolean isMacOs() {
-        return Strings.CS.contains(osName(), "mac") || Strings.CS.contains(osName(), "darwin");
-    }
-
-    private static boolean isWindows() {
-        return Strings.CS.contains(osName(), "windows");
-    }
-
     private static boolean isWsl() {
         if (System.getenv("WSL_DISTRO_NAME") != null) {
             return true;
@@ -190,9 +181,5 @@ public final class BidiReorderer {
             return true;
         }
         return System.getenv("VSCODE_PID") != null;
-    }
-
-    private static String osName() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     }
 }

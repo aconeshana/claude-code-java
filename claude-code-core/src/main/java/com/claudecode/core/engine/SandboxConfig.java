@@ -110,7 +110,7 @@ public record SandboxConfig(
     private static Map<String, List<String>> readIgnore(JsonNode n) {
         if (n == null || !n.isObject()) return Map.of();
         Map<String, List<String>> m = new LinkedHashMap<>();
-        n.fields().forEachRemaining(e -> m.put(e.getKey(), strArray(e.getValue())));
+        n.properties().forEach(e -> m.put(e.getKey(), strArray(e.getValue())));
         return Map.copyOf(m);
     }
 

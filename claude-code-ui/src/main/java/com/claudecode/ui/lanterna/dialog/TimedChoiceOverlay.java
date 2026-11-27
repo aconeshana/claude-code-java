@@ -73,12 +73,11 @@ abstract class TimedChoiceOverlay<R> extends Panel implements InlineOverlay {
             timeoutTimer.cancel();
         }
         timeoutTimer = new Timer(timerName, true);
-        final MultiWindowTextGUI g = gui;
         timeoutTimer.schedule(new TimerTask() {
             @Override
             public void run() {
-                if (g != null) {
-                    g.getGUIThread().invokeLater(() -> resolve(notNowResponse(), true));
+                if (gui != null) {
+                    gui.getGUIThread().invokeLater(() -> resolve(notNowResponse(), true));
                 } else {
                     resolve(notNowResponse(), true);
                 }
@@ -102,8 +101,8 @@ abstract class TimedChoiceOverlay<R> extends Panel implements InlineOverlay {
             deliver.set(false);
             return;
         }
-        if (resolved instanceof ContextKeybindingDispatcher.Result.Action action) {
-            boolean handled = switch (action.value()) {
+        if (resolved instanceof ContextKeybindingDispatcher.Result.Action(var value)) {
+            boolean handled = switch (value) {
                 case "select:previous" -> {
                     focus = InlineOverlay.cycleIndex(focus, -1, optionCount());
                     yield true;

@@ -1,5 +1,6 @@
 package com.claudecode.core.config;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import org.apache.commons.lang3.Strings;
 
@@ -31,7 +32,7 @@ public final class SettingsPathResolver {
     /** Resolves the administrator-managed settings file for the current process. */
     public static Path policySettingsPath() {
         return policySettingsPath(
-            System.getProperty("os.name", ""),
+            Platform.currentOsName(),
             SubprocessEnvironment.get("USER_TYPE"),
             SubprocessEnvironment.get("CLAUDE_CODE_MANAGED_SETTINGS_PATH"));
     }

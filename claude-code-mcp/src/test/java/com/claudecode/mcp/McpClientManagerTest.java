@@ -669,7 +669,7 @@ class McpClientManagerTest {
         public JsonNode sendRequest(String method, JsonNode params) {
             methods.add(method);
             if (Strings.CS.equals("initialize", method)) {
-                initializeParams = (ObjectNode) params.deepCopy();
+                initializeParams = params.deepCopy();
                 ObjectNode result = MAPPER.createObjectNode();
                 result.put("protocolVersion", "2025-11-25");
                 result.putObject("capabilities").putObject("tools");

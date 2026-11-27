@@ -7,6 +7,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.net.URI;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +25,7 @@ final class ExternalUrlOpener {
     private ExternalUrlOpener() {}
 
     static boolean open(String url) {
-        return open(url, System.getProperty("os.name", ""),
+        return open(url, Platform.OS_NAME,
             SubprocessEnvironment.get("BROWSER"),
             command -> new ProcessBuilder(command).start().waitFor());
     }

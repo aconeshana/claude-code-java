@@ -224,7 +224,7 @@ final class ToolVisualContractRegistry {
         String server = parts.length > 1 ? parts[1] : "mcp";
         String tool = parts.length > 2 ? parts[2] : toolName;
         List<String> args = new ArrayList<>();
-        input.fields().forEachRemaining(entry -> {
+        input.properties().forEach(entry -> {
             String rendered = entry.getValue().toString();
             if (!verbose && rendered.length() > 80) {
                 rendered = rendered.substring(0, 80).stripTrailing() + "…";

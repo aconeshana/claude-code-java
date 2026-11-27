@@ -278,8 +278,10 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
     }
 
     private static WorkflowProjection workflowProjection(WorkflowRun run, Instant now) {
-        String name = firstNonBlank(run.workflowName(), run.title(), run.summary(), run.runId());
-        String description = firstNonBlank(run.summary(), run.title(), "");
+        String name = StringUtils.defaultString(
+            StringUtils.firstNonBlank(run.workflowName(), run.title(), run.summary(), run.runId()));
+        String description = StringUtils.defaultString(
+            StringUtils.firstNonBlank(run.summary(), run.title()));
         int colon = description.indexOf(':');
         if (colon >= 0) description = description.substring(0, colon).trim();
         if (description.equals(name)) description = "";
@@ -341,13 +343,6 @@ public final class CoordinatorTaskPanel extends AbstractComponent<CoordinatorTas
             case FAILED, KILLED -> "error";
             default -> null;
         };
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.isNotBlank(value)) return value;
-        }
-        return "";
     }
 
 

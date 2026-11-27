@@ -20,11 +20,13 @@ import com.claudecode.runtime.sessionhost.SessionOpenRequest;
 import com.claudecode.runtime.webworker.WebWorkerDirectory;
 import com.claudecode.runtime.webworker.WebWorkerRegistration;
 import com.claudecode.services.plugins.marketplace.PluginMarketplaceAdapter;
+import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -58,8 +60,7 @@ import picocli.CommandLine.Option;
 )
 public class WebCliCommand implements Callable<Integer> {
 
-    private static final long READY_TIMEOUT_MILLIS = 10_000;
-    private static final long POLL_MILLIS = 100;
+    private static final Duration READY_TIMEOUT = Duration.ofSeconds(10);
 
     /**
      * The terminal this command was started from. This class is the composition
@@ -126,15 +127,12 @@ public class WebCliCommand implements Callable<Integer> {
         }
     }
 
-    private Integer reuseWhenPublished() throws InterruptedException {
-        long deadline = System.currentTimeMillis() + READY_TIMEOUT_MILLIS;
-        while (System.currentTimeMillis() < deadline) {
-            Optional<WebGatewayRecord> published = WebGatewayRecord.readLive(ClaudePaths.WEB_GATEWAY_JSON);
-            if (published.isPresent()) {
-                WebCliLifecycle.describeReuse(published.get(), out);
-                return 0;
-            }
-            Thread.sleep(POLL_MILLIS);
+    private Integer reuseWhenPublished() throws IOException, InterruptedException {
+        Optional<WebGatewayRecord> published =
+            WebGatewayRecord.awaitLive(ClaudePaths.WEB_GATEWAY_JSON, READY_TIMEOUT);
+        if (published.isPresent()) {
+            WebCliLifecycle.describeReuse(published.get(), out);
+            return 0;
         }
         err.println("Another claude web is starting but did not publish its gateway in time.");
         return 1;

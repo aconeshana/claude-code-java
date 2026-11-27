@@ -1,5 +1,7 @@
 package com.claudecode.core.message;
 
+import static com.claudecode.core.util.MathUtils.saturatedAdd;
+
 import com.claudecode.core.annotation.Explanation;
 import com.claudecode.core.io.ByteArrays;
 import com.claudecode.core.serialization.JsonUtils;
@@ -313,11 +315,6 @@ public final class OpenAiResponsesTokenEstimator {
         if (left <= 0 || right <= 0) return 0;
         if (left > Long.MAX_VALUE / right) return Long.MAX_VALUE;
         return left * right;
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
-        return left + right;
     }
 
     private record DataUrl(String mimeType, String payload) {}

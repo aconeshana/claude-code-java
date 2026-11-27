@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.sessionIdOf;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
@@ -52,7 +52,7 @@ final class GatewayPermissionModeHandler {
      * owning process applies the mode and every subscriber mirrors it.
      */
     void handlePost(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String sessionId = StringUtils.trimToNull(text(request, "session_id"));
         String mode = text(request, "mode");

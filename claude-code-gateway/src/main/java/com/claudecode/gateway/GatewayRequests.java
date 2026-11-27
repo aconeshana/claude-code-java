@@ -32,7 +32,7 @@ final class GatewayRequests {
      * a request has no fields rather than malformed ones, so the handler's own
      * required-field check reports it (with a more specific message) instead.
      */
-    static JsonNode readJson(HttpExchange exchange) throws IOException {
+    static JsonNode readRequestJson(HttpExchange exchange) throws IOException {
         String body;
         try (var input = exchange.getRequestBody()) {
             body = new String(input.readAllBytes(), StandardCharsets.UTF_8);
@@ -46,9 +46,9 @@ final class GatewayRequests {
         }
     }
 
-    /** Like {@link #readJson}, rejecting non-object JSON payloads with HTTP 400. */
+    /** Like {@link #readRequestJson}, rejecting non-object JSON payloads with HTTP 400. */
     static ObjectNode readJsonObject(HttpExchange exchange) throws IOException {
-        JsonNode node = readJson(exchange);
+        JsonNode node = readRequestJson(exchange);
         if (node == null) return null;
         if (node instanceof ObjectNode object) return object;
         respondJson(exchange, 400, errorBody("invalid_request", "body must be a JSON object"));

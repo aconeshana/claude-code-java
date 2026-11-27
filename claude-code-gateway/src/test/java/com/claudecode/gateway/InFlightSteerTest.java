@@ -30,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -56,7 +57,7 @@ final class InFlightSteerTest {
             submission -> {
                 String prompt = submission.prompt();
                 lastPrompt.set(prompt);
-                if ("slow first turn".equals(prompt)) {
+                if (Strings.CS.equals("slow first turn", prompt)) {
                     hub.onTurnStart(UserInput.of(prompt, prompt, null, "default"));
                     firstTurnStarted.countDown();
                     // First turn stays in flight until cancelLocal unwinds it.

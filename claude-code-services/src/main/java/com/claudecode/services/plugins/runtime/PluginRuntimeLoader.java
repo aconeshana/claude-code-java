@@ -40,7 +40,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -359,9 +358,7 @@ public final class PluginRuntimeLoader {
         JsonNode config = settings.pluginConfig(pluginId);
         JsonNode options = config != null ? config.get("options") : null;
         if (options != null && options.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> fields = options.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : options.properties()) {
                 values.put(field.getKey(), stringifyOption(field.getValue()));
             }
         }
@@ -484,9 +481,7 @@ public final class PluginRuntimeLoader {
                                           Set<Path> loadedPaths,
                                           List<PluginCommandDefinition> commands,
                                           List<PluginError> errors) {
-        Iterator<Map.Entry<String, JsonNode>> fields = mapping.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : mapping.properties()) {
             JsonNode meta = field.getValue();
             if (!meta.isObject()) {
                 continue;
@@ -610,7 +605,7 @@ public final class PluginRuntimeLoader {
         boolean disableModelInvocation = FrontmatterParser.parseBooleanFrontmatter(
             fm.get("disable-model-invocation"));
         String userFacingName = fmString(fm, "name");
-        String whenToUse = firstNonBlank(fmString(fm, "when_to_use"), fmString(fm, "when-to-use"));
+        String whenToUse = StringUtils.firstNonBlank(fmString(fm, "when_to_use"), fmString(fm, "when-to-use"));
         String version = fmString(fm, "version");
         String progressMessage = isSkill ? "loading" : "running";
         return PluginCommandDefinition.builder(commandName, prompt, ctx.pluginName())
@@ -736,7 +731,7 @@ public final class PluginRuntimeLoader {
             nameParts.add(baseName);
             String agentType = String.join(":", nameParts);
 
-            String whenToUse = firstNonBlank(
+            String whenToUse = StringUtils.firstNonBlank(
                 fmString(fm, "description"),
                 fmString(fm, "when-to-use"));
             if (whenToUse == null) {
@@ -1062,11 +1057,11 @@ public final class PluginRuntimeLoader {
                     if (item.isTextual()) {
                         collectMcpServersFromSpec(ctx, item.asText(), raw, errors);
                     } else if (item.isObject()) {
-                        item.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                        item.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
                     }
                 }
             } else if (spec.isObject()) {
-                spec.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                spec.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
             }
         }
 
@@ -1109,11 +1104,11 @@ public final class PluginRuntimeLoader {
                     if (item.isTextual()) {
                         collectLspServersFromSpec(ctx, item.asText(), raw, errors);
                     } else if (item.isObject()) {
-                        item.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                        item.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
                     }
                 }
             } else if (spec.isObject()) {
-                spec.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                spec.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
             }
         }
 
@@ -1152,7 +1147,7 @@ public final class PluginRuntimeLoader {
             JsonNode servers = root.has("lspServers") && root.get("lspServers").isObject()
                 ? root.get("lspServers") : root;
             if (servers.isObject()) {
-                servers.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                servers.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
             }
         } catch (Exception e) {
             errors.add(new PluginError.LspConfigInvalid(ctx.pluginId(), ctx.pluginName(),
@@ -1255,7 +1250,7 @@ public final class PluginRuntimeLoader {
         JsonNode config = settings.pluginConfig(pluginId);
         JsonNode stored = config == null ? null : config.path("mcpServers").get(serverName);
         if (stored != null && stored.isObject()) {
-            stored.fields().forEachRemaining(field -> values.put(field.getKey(),
+            stored.properties().forEach(field -> values.put(field.getKey(),
                 optionValue(field.getValue())));
         }
         if (secureStorage != null) {
@@ -1290,7 +1285,7 @@ public final class PluginRuntimeLoader {
             JsonNode servers = root.has("mcpServers") && root.get("mcpServers").isObject()
                 ? root.get("mcpServers") : root;
             if (servers.isObject()) {
-                servers.fields().forEachRemaining(f -> raw.put(f.getKey(), f.getValue()));
+                servers.properties().forEach(f -> raw.put(f.getKey(), f.getValue()));
             }
         } catch (Exception e) {
             errors.add(new PluginError.McpConfigInvalid("plugin:" + ctx.pluginName(),
@@ -1327,9 +1322,7 @@ public final class PluginRuntimeLoader {
             env.put("CLAUDE_PLUGIN_ROOT", ctx.root().toString());
             env.put("CLAUDE_PLUGIN_DATA", ctx.dataDir().toString());
             if (node.get("env") != null && node.get("env").isObject()) {
-                Iterator<Map.Entry<String, JsonNode>> fields = node.get("env").fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> field = fields.next();
+                for (Map.Entry<String, JsonNode> field : node.get("env").properties()) {
                     if (Strings.CS.equals("CLAUDE_PLUGIN_ROOT", field.getKey())
                         || Strings.CS.equals("CLAUDE_PLUGIN_DATA", field.getKey())) {
                         continue;
@@ -1345,9 +1338,7 @@ public final class PluginRuntimeLoader {
                 node.path("url").asText(null), missingVars);
             Map<String, String> headers = new LinkedHashMap<>();
             if (node.get("headers") != null && node.get("headers").isObject()) {
-                Iterator<Map.Entry<String, JsonNode>> fields = node.get("headers").fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> field = fields.next();
+                for (Map.Entry<String, JsonNode> field : node.get("headers").properties()) {
                     headers.put(field.getKey(),
                     resolveMcpValue(ctx, userConfig, field.getValue().asText(), missingVars));
                 }
@@ -1394,15 +1385,6 @@ public final class PluginRuntimeLoader {
             return raw.substring(1, raw.length() - 1);
         }
         return raw;
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (StringUtils.isNotBlank(v)) {
-                return v;
-            }
-        }
-        return null;
     }
 
     private static List<JsonNode> streamToList(JsonNode array) {

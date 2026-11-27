@@ -160,6 +160,8 @@ subprojects {
             "org.openrewrite.staticanalysis.RemoveRedundantNullCheckBeforeInstanceof",
             "org.openrewrite.staticanalysis.RemoveRedundantNullCheckBeforeLiteralEquals",
             "org.openrewrite.staticanalysis.NoValueOfOnStringType",
+            "org.openrewrite.staticanalysis.NoToStringOnStringType",
+            "com.claudecode.recipes.RemoveUnnecessaryToStringSafely",
             "com.claudecode.recipes.UnnecessaryStringValueOfInLogging",
             "com.claudecode.recipes.RemoveRedundantTypeCastSafely",
             "com.claudecode.recipes.ReplaceAnonymousClassWithLambdaSafely",
@@ -198,6 +200,55 @@ subprojects {
             "com.claudecode.recipes.UseLanternaOfFactoriesRecipes\$TerminalPositionTopLeftCornerRecipe",
             "com.claudecode.recipes.UseLanternaOfFactoriesRecipes\$TerminalSizeZeroRecipe",
             "com.claudecode.recipes.UseLanternaOfFactoriesRecipes\$TextColorToColorRecipe",
+            "com.claudecode.recipes.UseJsonNodeProperties",
+            "com.claudecode.recipes.UseMathClampSafely",
+            "com.claudecode.recipes.UseStringBuilderRepeatSafely",
+            "com.claudecode.recipes.ReplaceWhileWithDoWhileSafely",
+            "com.claudecode.recipes.ReplaceWhileWithEnhancedForSafely",
+            "com.claudecode.recipes.RemoveRedundantInitializerSafely",
+            "com.claudecode.recipes.InlineRedundantLocalVariableSafely",
+            // Official L1 static-analysis & Java 17/21/25 guardrails (zero/minimal semantic risk)
+            "org.openrewrite.staticanalysis.BooleanChecksNotInverted",
+            "org.openrewrite.staticanalysis.CatchClauseOnlyRethrows",
+            "org.openrewrite.staticanalysis.CompareEnumsWithEqualityOperator",
+            "org.openrewrite.staticanalysis.CombineSemanticallyEqualCatchBlocks",
+            "org.openrewrite.staticanalysis.DefaultComesLast",
+            "org.openrewrite.staticanalysis.ModifierOrder",
+            "org.openrewrite.staticanalysis.NoRedundantJumpStatements",
+            "org.openrewrite.staticanalysis.PrimitiveWrapperClassConstructorToValueOf",
+            "org.openrewrite.staticanalysis.RemoveExtraSemicolons",
+            "org.openrewrite.staticanalysis.ReplaceClassIsInstanceWithInstanceof",
+            "org.openrewrite.staticanalysis.ReplaceStringBuilderWithString",
+            "org.openrewrite.staticanalysis.StaticMethodNotFinal",
+            "org.openrewrite.staticanalysis.UnnecessaryExplicitTypeArguments",
+            "org.openrewrite.staticanalysis.UseStringReplace",
+            "org.openrewrite.staticanalysis.RemoveCallsToSystemGc",
+            "org.openrewrite.staticanalysis.UseObjectNotifyAll",
+            "org.openrewrite.staticanalysis.ReplaceWeekYearWithYear",
+            "org.openrewrite.java.migrate.util.OptionalNotPresentToIsEmpty",
+            "org.openrewrite.java.migrate.util.OptionalNotEmptyToIsPresent",
+            "org.openrewrite.java.migrate.util.ListFirstAndLast",
+            "org.openrewrite.java.migrate.util.MigrateCollectionsEmptyList",
+            "org.openrewrite.java.migrate.util.MigrateCollectionsEmptyMap",
+            "org.openrewrite.java.migrate.util.MigrateCollectionsEmptySet",
+            "org.openrewrite.java.migrate.util.UsePredicateNot",
+            "org.openrewrite.java.migrate.util.UseLocaleOf",
+            "org.openrewrite.java.migrate.net.URLConstructorToURICreate",
+            // Intentionally NOT enabled (evaluated via dry-run; kept commented to prevent accidental re-enabling):
+            // 1. MigrateProcessWaitForDuration: mechanically rewrites `process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)`
+            //    into verbose `process.waitFor(Duration.of(timeout.toMillis(), TimeUnit.MILLISECONDS.toChronoUnit()))`
+            //    even when `timeout` is already a Duration. Prefer manual cleanup to `process.waitFor(timeout)`.
+            // "org.openrewrite.java.migrate.lang.MigrateProcessWaitForDuration",
+            // 2. SimplifyBooleanExpression: flips guard-first ternaries like `!visible ? 0 : wide || emoji ? 2 : 1`
+            //    into harder-to-read nested ternaries `visible ? wide || emoji ? 2 : 1 : 0`.
+            // "org.openrewrite.staticanalysis.SimplifyBooleanExpression",
+            // 3. ReplaceStreamCollectWithToList: changes mutable `ArrayList` (Collectors.toList()) to an unmodifiable
+            //    List (Stream.toList()), which compiles cleanly but throws UnsupportedOperationException at runtime
+            //    if any caller mutates (add/sort/removeIf) the returned list.
+            // "org.openrewrite.java.migrate.util.ReplaceStreamCollectWithToList",
+            // 4. ExplicitInitialization: strips explicit default field initializers (`= 0`, `= false`, `= null`);
+            //    purely stylistic and often hurts clarity on stateful fields.
+            // "org.openrewrite.staticanalysis.ExplicitInitialization",
         )
         failOnDryRunResults = true
         failOnInvalidActiveRecipes = true

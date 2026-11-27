@@ -33,7 +33,7 @@ public final class ArgumentSubstitutor {
      */
     public static List<String> parseArguments(String rawArgs) {
         if (StringUtils.isBlank(rawArgs)) {
-            return Collections.emptyList();
+            return List.of();
         }
 
         // Shell-quote tokenisation. On failure (signalled by tryParseShellTokens
@@ -75,7 +75,7 @@ public final class ArgumentSubstitutor {
     public static List<String> parseArgumentNames(Object frontmatterValue) {
       switch (frontmatterValue) {
         case null -> {
-          return Collections.emptyList();
+          return List.of();
         }
         case List<?> list -> {
           List<String> result = new ArrayList<>();
@@ -98,7 +98,7 @@ public final class ArgumentSubstitutor {
         default -> {
         }
       }
-      return Collections.emptyList();
+      return List.of();
     }
 
     /**
@@ -119,7 +119,7 @@ public final class ArgumentSubstitutor {
             List<String> argNames, List<String> typedArgs) {
         int filled = typedArgs == null ? 0 : typedArgs.size();
         List<String> remaining = argNames == null
-                ? Collections.emptyList()
+                ? List.of()
                 : argNames.subList(Math.min(filled, argNames.size()), argNames.size());
         if (remaining.isEmpty()) {
             return Optional.empty();
@@ -148,7 +148,7 @@ public final class ArgumentSubstitutor {
         }
 
         List<String> parsedArgs = parseArguments(rawArgs);
-        List<String> names = argumentNames == null ? Collections.emptyList() : argumentNames;
+        List<String> names = argumentNames == null ? List.of() : argumentNames;
         String result = content;
 
         // 1. Named argument substitution: $foo -> parsedArgs[index_of_name]

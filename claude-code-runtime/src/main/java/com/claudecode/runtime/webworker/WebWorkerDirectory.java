@@ -1,17 +1,17 @@
 package com.claudecode.runtime.webworker;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.FileUtils;
+import com.claudecode.core.process.ProcessUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.runtime.sessionlink.OwnerOnlyPermissions;
 import com.claudecode.runtime.sessionlink.SessionLinkEndpoint;
 import java.io.IOException;
 
 import org.apache.commons.lang3.StringUtils;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -87,7 +87,7 @@ public record WebWorkerDirectory(Path directory) {
                 continue;
             }
             WebWorkerRegistration registration = parsed.get();
-            if (!ProcessHandle.of(registration.pid()).map(ProcessHandle::isAlive).orElse(false)) {
+            if (!ProcessUtils.isProcessRunning(registration.pid())) {
                 deleteQuietly(file);
                 continue;
             }
@@ -121,18 +121,11 @@ public record WebWorkerDirectory(Path directory) {
 
     private static void writeAtomically(Path target, WebWorkerRegistration registration)
         throws IOException {
-        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
-        JsonUtils.writeJson(temporary, registration, true);
-        restrictFile(temporary);
-        try {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException _) {
-            // A filesystem without atomic rename still needs to be usable; the
-            // move stays in the same directory so the partial-write window is
-            // as small as the platform allows.
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        FileUtils.atomicReplace(target, temporary -> {
+            JsonUtils.writeJson(temporary, registration, true);
+            restrictFile(temporary);
+        });
+        restrictFile(target);
     }
 
     private static void restrictDirectory(Path path) {

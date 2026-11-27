@@ -539,7 +539,7 @@ class ResumeReplayRenderingTest {
             "released Write header bolds the path");
         assertTrue(panel.segmentLines.stream().skip(1).flatMap(List::stream)
                 .anyMatch(segment -> Strings.CS.contains(segment.text(), "enabled")
-                    && !TextColor.ANSI.DEFAULT.equals(segment.color())),
+                    && TextColor.ANSI.DEFAULT != segment.color()),
             "released HighlightedCode path applies syntax coloring to the source preview");
     }
 

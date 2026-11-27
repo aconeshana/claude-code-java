@@ -305,7 +305,7 @@ class MagpieGeminiMockServerTest {
                         ModelApiProtocol.OPENAI_CHAT,
                         ModelApiProtocol.OPENAI_RESPONSES,
                         ModelApiProtocol.GEMINI)) {
-                    String wire = ProtocolWireCodec.encodeRequest(target, parsed, "m", false).toString();
+                    String wire = ProtocolWireCodec.encodeRequest(target, parsed, "m", false);
                     assertThat(wire).as("role=%s snake=%s target=%s", role, snake, target)
                         .contains(jpegData);
                 }

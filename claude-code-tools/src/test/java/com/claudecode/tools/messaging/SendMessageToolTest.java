@@ -219,7 +219,7 @@ class SendMessageToolTest {
     void modelSuppliedAgentNameResolvesToATerminalAgentResume(@TempDir Path temp) throws Exception {
         String agentId = "a1234567890abcdef";
         Path transcript = temp.resolve("agent-" + agentId + ".jsonl");
-        ObjectNode persisted = (ObjectNode) JsonUtils.getMapper().valueToTree(
+        ObjectNode persisted = JsonUtils.getMapper().valueToTree(
             new UserMessage("prior", MessageContent.ofText("original audit")));
         persisted.put("isSidechain", true);
         persisted.put("agentId", agentId);

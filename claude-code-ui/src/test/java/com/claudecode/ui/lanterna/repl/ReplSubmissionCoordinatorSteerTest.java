@@ -22,7 +22,6 @@ import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -39,15 +38,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * this class fixes the coordinator's branch order against the engine ports.
  */
 class ReplSubmissionCoordinatorSteerTest {
-
-    private static final StreamingClient NOOP_CLIENT = new StreamingClient() {
-        @Override
-        public Iterator<StreamingClient.StreamingEvent> createStream(StreamingClient.StreamRequest request) {
-            return Collections.emptyIterator();
-        }
-        @Override
-        public String getModel() { return "test-model"; }
-    };
 
     /** Streams exactly one assistant tool_use for "Gated" so the turn executes it. */
     private static final StreamingClient TOOL_USE_CLIENT = new StreamingClient() {

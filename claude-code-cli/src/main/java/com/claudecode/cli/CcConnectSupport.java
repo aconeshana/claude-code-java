@@ -1,5 +1,6 @@
 package com.claudecode.cli;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.runtime.sessionhost.CollaborationSetupPort;
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,7 +55,7 @@ final class CcConnectSupport {
 
     static boolean isPlatformSupported() {
         try {
-            nativeResource(System.getProperty("os.name", ""), System.getProperty("os.arch", ""));
+            nativeResource(Platform.OS_NAME, Platform.OS_ARCH);
             return true;
         } catch (IllegalArgumentException _) {
             return false;
@@ -93,8 +94,7 @@ final class CcConnectSupport {
             }
             return candidate;
         }
-        String resource = nativeResource(
-            System.getProperty("os.name", ""), System.getProperty("os.arch", ""));
+        String resource = nativeResource(Platform.OS_NAME, Platform.OS_ARCH);
         try (InputStream input = CcConnectSupport.class.getResourceAsStream(resource)) {
             if (input == null) throw new IOException("bundled cc-connect is unavailable for " + resource);
             Path executable = dir.resolve(

@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,5 +93,45 @@ class WebGatewayRecordTest {
 
         WebGatewayRecord.removeIfOwnedBy(file, ProcessHandle.current().pid());
         assertThat(file).doesNotExist();
+    }
+
+    @Test
+    void awaitLiveReturnsImmediatelyWhenRecordAlreadyExists() throws Exception {
+        Path file = home.resolve("web-gateway.json");
+        WebGatewayRecord record = new WebGatewayRecord(
+            ProcessHandle.current().pid(), URL, "0.3.10", 1_700_000_000_000L);
+        WebGatewayRecord.write(file, record);
+
+        assertThat(WebGatewayRecord.awaitLive(file, Duration.ofSeconds(1))).contains(record);
+    }
+
+    @Test
+    void awaitLiveWakesUpWhenRecordIsWrittenAsynchronously() throws Exception {
+        Path file = home.resolve("web-gateway.json");
+        WebGatewayRecord record = new WebGatewayRecord(
+            ProcessHandle.current().pid(), URL, "0.3.10", 1_700_000_000_000L);
+        CountDownLatch writerStarted = new CountDownLatch(1);
+        Thread writer = Thread.ofVirtual().start(() -> {
+            writerStarted.countDown();
+            try {
+                TimeUnit.MILLISECONDS.sleep(60);
+                WebGatewayRecord.write(file, record);
+            } catch (Exception _) {
+                // asserted by awaitLive result below
+            }
+        });
+        assertThat(writerStarted.await(1, TimeUnit.SECONDS)).isTrue();
+
+        Optional<WebGatewayRecord> found = WebGatewayRecord.awaitLive(file, Duration.ofSeconds(2));
+        writer.join(1_000);
+
+        assertThat(found).contains(record);
+    }
+
+    @Test
+    void awaitLiveReturnsEmptyWhenTimeoutExpires() throws Exception {
+        Path file = home.resolve("web-gateway.json");
+
+        assertThat(WebGatewayRecord.awaitLive(file, Duration.ofMillis(120))).isEmpty();
     }
 }

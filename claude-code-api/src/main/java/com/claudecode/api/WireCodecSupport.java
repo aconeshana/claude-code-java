@@ -166,9 +166,9 @@ final class WireCodecSupport {
 
         BlockAccum(ContentBlock initial) {
             this.initial = initial;
-            if (initial instanceof ThinkingBlock t) {
-                if (t.thinking() != null) text.append(t.thinking());
-                signature = t.signature();
+            if (initial instanceof ThinkingBlock(var thinking, var signature)) {
+                if (thinking != null) text.append(thinking);
+                this.signature = signature;
             } else if (initial instanceof TextBlock(String s) && s != null) {
                 text.append(s);
             }

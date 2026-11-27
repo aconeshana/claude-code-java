@@ -1,5 +1,6 @@
 package com.claudecode.core.metrics;
 
+import com.claudecode.core.util.MathUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
@@ -38,7 +39,7 @@ public final class SessionMetricsFormat {
     public static String cacheHitPercent(SessionMetricsSnapshot value) {
         long denominator = value.billedInputTokens();
         if (denominator == 0) return null;
-        long missed = saturatedAdd(value.uncachedInputTokens(), value.cacheWriteTokens());
+        long missed = MathUtils.saturatedAdd(value.uncachedInputTokens(), value.cacheWriteTokens());
         if (missed == 0) return "100";
 
         BigDecimal ratio = BigDecimal.valueOf(value.cacheReadTokens())
@@ -59,13 +60,5 @@ public final class SessionMetricsFormat {
     private static String decimalText(double value) {
         if (value == Math.rint(value)) return Long.toString((long) value);
         return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        try {
-            return Math.addExact(left, right);
-        } catch (ArithmeticException _) {
-            return Long.MAX_VALUE;
-        }
     }
 }

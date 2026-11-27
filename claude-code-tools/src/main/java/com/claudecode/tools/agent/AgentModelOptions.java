@@ -1,5 +1,6 @@
 package com.claudecode.tools.agent;
 
+import com.claudecode.core.text.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
@@ -29,6 +30,6 @@ public final class AgentModelOptions {
     public static String displayName(String model) {
         if (model == null) return "Inherit from parent (default)";
         if (Strings.CS.equals(model, "inherit")) return "Inherit from parent";
-        return Character.toUpperCase(model.charAt(0)) + model.substring(1);
+        return StringUtils.capitalize(model);
     }
 }

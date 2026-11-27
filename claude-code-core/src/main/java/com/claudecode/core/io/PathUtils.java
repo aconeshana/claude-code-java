@@ -1,5 +1,6 @@
 package com.claudecode.core.io;
 
+import com.claudecode.core.platform.Platform;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -23,6 +24,25 @@ public final class PathUtils {
                 ? path.getFileName().toString()
                 : "";
         return posixExtname(name).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Like {@link #extensionOf(Path)}, returning {@code null} when the file has no extension or
+     * ends with a bare trailing dot (e.g. {@code "foo."}).
+     */
+    public static String extensionOrNull(Path path) {
+        String ext = extensionOf(path);
+        return ext.isEmpty() || Strings.CS.equals(".", ext) ? null : ext;
+    }
+
+    /**
+     * Extracts the last segment after {@code '/'} or {@code '\\'}, returning {@code path} itself
+     * when neither separator is present.
+     */
+    public static String basename(String path) {
+        if (path == null) return null;
+        int sep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return sep >= 0 ? path.substring(sep + 1) : path;
     }
 
     /**
@@ -166,6 +186,6 @@ public final class PathUtils {
     }
 
     private static boolean isWindows() {
-        return Strings.CI.contains(System.getProperty("os.name", ""), "windows");
+        return Platform.IS_WINDOWS;
     }
 }

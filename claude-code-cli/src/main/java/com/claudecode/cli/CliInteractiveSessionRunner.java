@@ -383,8 +383,6 @@ final class CliInteractiveSessionRunner {
             final ModelValidator modelValidator =
                 llmClient != null ? new ModelValidator(llmClient) : null;
 
-            final LlmClient insightsClient = llmClient;
-            final QuerySessionSpec insightsConfig = config;
             String interactiveCwd = System.getProperty("user.dir");
             CliInteractiveRuntimeAssembler interactiveRuntime =
                 new CliInteractiveRuntimeAssembler(cmdRegistry::isBuiltInCommandName);
@@ -453,16 +451,16 @@ final class CliInteractiveSessionRunner {
                 Path.of(interactiveCwd), mcpRuntime::clientRuntime,
                 toolRegistry, cmdRegistry, pluginMarketplace);
             Supplier<InsightsPort>
-                insightsPipelineSupplier = () -> insightsClient == null ? null
+                insightsPipelineSupplier = () -> llmClient == null ? null
                 : CliHeadlessSessionRunner.insightsAdapter(
-                    new InsightsPipeline(insightsClient, () -> {
+                    new InsightsPipeline(llmClient, () -> {
                         String override = RuntimeSettings.loadInsightsModel();
                         if (override != null) {
                             return override;
                         }
                         String env = SubprocessEnvironment.get("ANTHROPIC_DEFAULT_OPUS_MODEL");
                         return StringUtils.isNotBlank(env) ? env
-                            : ModelNames.parseUserSpecifiedModel(insightsConfig.model());
+                            : ModelNames.parseUserSpecifiedModel(config.model());
                     }, cmdRegistry::isBuiltInCommandName));
 
             CommandContext cmdContext =

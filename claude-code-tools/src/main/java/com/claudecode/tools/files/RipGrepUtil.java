@@ -7,6 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.engine.FileReadIgnorePattern;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.ExecutableFinder;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.process.SubprocessEnvironment;
@@ -107,11 +108,10 @@ public final class RipGrepUtil {
 
 
     private static String findBundledRipgrep() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
-        String platform = Strings.CS.contains(os, "win") ? "win32"
-            : (Strings.CS.contains(os, "mac") || Strings.CS.contains(os, "darwin")) ? "darwin"
-            : Strings.CS.contains(os, "linux") ? "linux"
+        String arch = Platform.OS_ARCH.toLowerCase(Locale.ROOT);
+        String platform = Platform.IS_WINDOWS ? "win32"
+            : Platform.IS_DARWIN ? "darwin"
+            : Platform.IS_LINUX ? "linux"
             : null;
         if (platform == null) return null;
         if (Strings.CS.equals(arch, "x86_64") || Strings.CS.equals(arch, "amd64")) arch = "x64";
@@ -504,7 +504,7 @@ public final class RipGrepUtil {
 
     private static boolean isWsl() {
         if (System.getenv("WSL_DISTRO_NAME") != null) return true;
-        if (!Strings.CI.contains(System.getProperty("os.name", ""), "linux")) return false;
+        if (!Platform.IS_LINUX) return false;
         try {
             String v = Files.readString(Path.of("/proc/version"));
             return Strings.CI.contains(v, "microsoft");

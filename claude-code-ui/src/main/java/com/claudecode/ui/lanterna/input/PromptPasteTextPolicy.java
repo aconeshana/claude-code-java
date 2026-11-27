@@ -27,7 +27,7 @@ final class PromptPasteTextPolicy {
      * two-line paste editable on a tall terminal but folds it on a short one.
      */
     static boolean shouldFoldIntoChip(String normalized, int numLines, int terminalRows) {
-        int lineLimit = Math.max(0, Math.min(terminalRows - 10, 2));
+        int lineLimit = Math.clamp(terminalRows - 10, 0, 2);
         return normalized.length() > PASTE_THRESHOLD || numLines > lineLimit;
     }
 }

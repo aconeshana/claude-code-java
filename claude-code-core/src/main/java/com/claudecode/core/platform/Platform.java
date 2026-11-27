@@ -19,6 +19,10 @@ import java.util.stream.Collectors;
 public enum Platform {
     DARWIN, WIN32, LINUX, OTHER;
 
+    /** Raw {@code os.name} and {@code os.arch} system properties, read once at class-load time. */
+    public static final String OS_NAME = System.getProperty("os.name", "");
+    public static final String OS_ARCH = System.getProperty("os.arch", "");
+
     /** Current OS platform, detected once at class-load time. */
     public static final Platform CURRENT = detect();
     public static final boolean IS_DARWIN  = CURRENT == DARWIN;
@@ -44,7 +48,21 @@ public enum Platform {
         new VcsMarker(".jj", "jujutsu"), new VcsMarker(".sl", "sapling"));
 
     private static Platform detect() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        return detect(OS_NAME);
+    }
+
+    /** Resolves the live {@code os.name} property (honoring runtime test overrides). */
+    public static String currentOsName() {
+        return System.getProperty("os.name", "");
+    }
+
+    /** Resolves the {@link Platform} from the live {@code os.name} property. */
+    public static Platform detectCurrent() {
+        return detect(currentOsName());
+    }
+
+    private static Platform detect(String rawOsName) {
+        String os = (rawOsName == null ? "" : rawOsName).toLowerCase(Locale.ROOT);
         if (Strings.CS.contains(os, "mac") || Strings.CS.contains(os, "darwin")) return DARWIN;
         if (Strings.CS.contains(os, "win"))                          return WIN32;
         if (Strings.CS.contains(os, "nux") || Strings.CS.contains(os, "nix") || Strings.CS.contains(os, "aix")) return LINUX;
@@ -110,7 +128,7 @@ public enum Platform {
     /** Runtime musl fallback used by unbundled Linux builds in the original. */
     public static boolean isMuslEnvironment() {
         if (CURRENT != LINUX) return false;
-        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        String arch = OS_ARCH.toLowerCase(Locale.ROOT);
         String muslArch = Strings.CS.contains(arch, "aarch64") || Strings.CS.contains(arch, "arm64") ? "aarch64" : "x86_64";
         return Files.exists(Path.of("/lib/libc.musl-" + muslArch + ".so.1"));
     }

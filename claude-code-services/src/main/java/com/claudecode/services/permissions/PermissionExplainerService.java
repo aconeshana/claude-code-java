@@ -137,16 +137,16 @@ public class PermissionExplainerService implements PermissionExplainerCallback {
 
     private static PermissionExplanation parseExplanation(JsonNode input) {
         if (input == null) return null;
-        String riskLevel  = textOrNull(input, "riskLevel");
-        String explanation = textOrNull(input, "explanation");
-        String reasoning  = textOrNull(input, "reasoning");
-        String risk       = textOrNull(input, "risk");
+        String riskLevel  = textualFieldOrNull(input, "riskLevel");
+        String explanation = textualFieldOrNull(input, "explanation");
+        String reasoning  = textualFieldOrNull(input, "reasoning");
+        String risk       = textualFieldOrNull(input, "risk");
         if (riskLevel == null || explanation == null) return null;
         return new PermissionExplanation(riskLevel, explanation,
             reasoning != null ? reasoning : "", risk != null ? risk : "");
     }
 
-    private static String textOrNull(JsonNode node, String field) {
+    private static String textualFieldOrNull(JsonNode node, String field) {
         JsonNode f = node.get(field);
         return (f != null && f.isTextual()) ? f.asText() : null;
     }

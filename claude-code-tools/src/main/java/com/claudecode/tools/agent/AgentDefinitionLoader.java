@@ -11,6 +11,7 @@ import com.claudecode.core.agent.BuiltInAgentDefinitions.AgentDefinition;
 import com.claudecode.core.util.FrontmatterParser;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.config.ClaudeConfigDirectories;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
@@ -104,25 +105,25 @@ public final class AgentDefinitionLoader {
             JsonNode root = JsonUtils.getMapper().readTree(rawJson);
             if (root == null || !root.isObject()) return List.of();
             List<AgentDefinition> result = new ArrayList<>();
-            root.fields().forEachRemaining(entry -> {
+            root.properties().forEach(entry -> {
                 String name = entry.getKey();
                 JsonNode node = entry.getValue();
                 if (!node.isObject()) return;
                 String description = text(node, "description");
                 String prompt = text(node, "prompt");
                 if (StringUtils.isBlank(name) || StringUtils.isBlank(description) || StringUtils.isBlank(prompt)) return;
-                String model = textOrNull(node, "model");
+                String model = trimmedTextOrNull(node, "model");
                 if (model != null && Strings.CI.equals("inherit", model)) model = "inherit";
-                String memory = textOrNull(node, "memory");
+                String memory = trimmedTextOrNull(node, "memory");
                 if (memory != null && !List.of("user", "project", "local").contains(memory)) memory = null;
                 Integer maxTurns = node.has("maxTurns") && node.get("maxTurns").canConvertToInt()
                     ? node.get("maxTurns").intValue() : null;
                 if (maxTurns != null && maxTurns <= 0) maxTurns = null;
                 String effort = node.has("effort") ? node.get("effort").asText() : null;
-                String permissionMode = textOrNull(node, "permissionMode");
+                String permissionMode = trimmedTextOrNull(node, "permissionMode");
                 JsonNode hooks = node.has("hooks") ? node.get("hooks").deepCopy() : null;
-                String initialPrompt = textOrNull(node, "initialPrompt");
-                String isolation = textOrNull(node, "isolation");
+                String initialPrompt = trimmedTextOrNull(node, "initialPrompt");
+                String isolation = trimmedTextOrNull(node, "isolation");
                 result.add(AgentDefinition.builder(name, description)
                     .tools(stringList(node.get("tools")))
                     .disallowedTools(stringList(node.get("disallowedTools")))
@@ -152,7 +153,7 @@ public final class AgentDefinitionLoader {
         return node.has(field) && node.get(field).isTextual() ? node.get(field).asText() : "";
     }
 
-    private static String textOrNull(JsonNode node, String field) {
+    private static String trimmedTextOrNull(JsonNode node, String field) {
         String value = text(node, field);
         return StringUtils.isBlank(value) ? null : value.trim();
     }
@@ -219,7 +220,7 @@ public final class AgentDefinitionLoader {
             custom = loadCustomAgents(cwd, parseErrors);
         } catch (RuntimeException e) {
 
-            String message = e.getMessage() != null ? e.getMessage() : e.toString();
+            String message = ErrorUtils.message(e);
             log.warn("Error loading agent definitions: {}", message);
             parseErrors.add(new ParseError("unknown", message));
             custom = List.of();

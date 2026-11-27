@@ -1,7 +1,7 @@
 package com.claudecode.gateway;
 
 import static com.claudecode.gateway.GatewayRequests.queryParam;
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.sessionIdOf;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
 import static com.claudecode.gateway.GatewayResponses.respondJson;
@@ -74,7 +74,7 @@ final class GatewayWorkspaceFileHandler {
     }
 
     void handleOpen(HttpExchange exchange) throws IOException {
-        JsonNode req = readJson(exchange);
+        JsonNode req = readRequestJson(exchange);
         if (req == null) return;
         String path = StringUtils.trimToEmpty(req.path("path").asText(""));
         if (path.isEmpty()) {

@@ -2,6 +2,8 @@ package com.claudecode.runtime.sessionhost;
 
 import com.claudecode.core.annotation.Explanation;
 import java.util.List;
+
+import org.apache.commons.lang3.StringUtils;
 import java.util.Locale;
 
 /**
@@ -27,7 +29,7 @@ public interface SessionHostRewindController {
         }
 
         public static RewindMode parse(String value) {
-            if (value == null || value.isBlank()) {
+            if (StringUtils.isBlank(value)) {
                 throw new IllegalArgumentException("rewind mode is required");
             }
             String normalized = value.trim().toLowerCase(Locale.ROOT);

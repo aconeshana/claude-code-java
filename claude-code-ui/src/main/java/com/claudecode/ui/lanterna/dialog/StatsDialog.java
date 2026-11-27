@@ -172,8 +172,8 @@ public final class StatsDialog extends Panel implements InlineOverlay {
         deliver.set(false);
         ContextKeybindingDispatcher.Result resolved = keybindings.resolve("Confirmation", key);
         if (resolved instanceof ContextKeybindingDispatcher.Result.Consumed) return;
-        if (resolved instanceof ContextKeybindingDispatcher.Result.Action action
-                && Strings.CS.equals("confirm:no", action.value())) {
+        if (resolved instanceof ContextKeybindingDispatcher.Result.Action(var value)
+                && Strings.CS.equals("confirm:no", value)) {
             close();
             return;
         }
@@ -534,7 +534,7 @@ public final class StatsDialog extends Panel implements InlineOverlay {
         if (dailyTokens.size() < 2 || models.isEmpty()) return null;
 
         int yAxisWidth = 7;
-        int chartWidth = Math.min(52, Math.max(20, termWidth - yAxisWidth));
+        int chartWidth = Math.clamp(termWidth - yAxisWidth, 20, 52);
 
         List<InteractiveSessionPort.DailyModelTokens> recentData;
         if (dailyTokens.size() >= chartWidth) {
@@ -581,7 +581,7 @@ public final class StatsDialog extends Panel implements InlineOverlay {
 
     static String xAxisLabels(List<InteractiveSessionPort.DailyModelTokens> data, int yAxisOffset) {
         if (data.isEmpty()) return "";
-        int numLabels = Math.min(4, Math.max(2, data.size() / 8));
+        int numLabels = Math.clamp(data.size() / 8, 2, 4);
         int usable = data.size() - 6;
         // numLabels ∈ [2,4] (see Math.max(2, …) above), so numLabels-1 ≥ 1 — no guard.
         int step = Math.max(1, usable / (numLabels - 1));
@@ -591,7 +591,7 @@ public final class StatsDialog extends Panel implements InlineOverlay {
             int idx = Math.min(i * step, data.size() - 1);
             String label = FormatUtils.formatMonthDay(LocalDate.parse(data.get(idx).date()));
             int spaces = Math.max(1, idx - currentPos);
-            result.append(" ".repeat(spaces)).append(label);
+            result.repeat(' ', spaces).append(label);
             currentPos = idx + label.length();
         }
         return result.toString();

@@ -123,7 +123,7 @@ public final class ManagedEnvironmentApplier {
         JsonNode env = settings.get("env");
         if (env == null || !env.isObject()) return Map.of();
         Map<String, String> values = new LinkedHashMap<>();
-        env.fields().forEachRemaining(entry -> values.put(entry.getKey(), entry.getValue().asText()));
+        env.properties().forEach(entry -> values.put(entry.getKey(), entry.getValue().asText()));
         return values;
     }
 

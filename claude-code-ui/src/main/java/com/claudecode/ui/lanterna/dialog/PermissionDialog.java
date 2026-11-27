@@ -297,8 +297,6 @@ public class PermissionDialog extends Panel {
                     addComponent(descriptionLabel);
                 }
             }
-            default -> {
-            }
         }
 
         // Explainer section — inserted here, initially invisible (zero-height) Main text
@@ -1601,8 +1599,7 @@ public class PermissionDialog extends Panel {
             }
             if (ks.getKeyType() == KeyType.TAB) {
                 if (canAmend && guiRef != null) {
-                    final boolean forYes = isAllowOption;
-                    guiRef.getGUIThread().invokeLater(() -> toggleAmend(forYes));
+                    guiRef.getGUIThread().invokeLater(() -> toggleAmend(isAllowOption));
                     return Result.HANDLED;
                 }
                 // canAmend=false: cycle to next option (do NOT let Lanterna escape the dialog)
@@ -1906,9 +1903,7 @@ public class PermissionDialog extends Panel {
     private static String renderMcpInputSummary(JsonNode input) {
         if (input == null || !input.isObject() || input.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
-        var it = input.fields();
-        while (it.hasNext()) {
-            var e = it.next();
+        for (var e : input.properties()) {
             String key = e.getKey();
             JsonNode v = e.getValue();
             String rendered;
@@ -1944,9 +1939,7 @@ public class PermissionDialog extends Panel {
     }
 
     private static String firstStringValue(JsonNode node) {
-        var it = node.fields();
-        while (it.hasNext()) {
-            var e = it.next();
+        for (var e : node.properties()) {
             if (e.getValue().isTextual() && !StringUtils.isBlank(e.getValue().asText()))
                 return e.getValue().asText().strip();
         }

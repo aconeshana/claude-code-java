@@ -95,13 +95,13 @@ public final class PermissionSettings {
     /** Returns whether managed policy suppresses every non-policy permission-rule source. */
     public static boolean shouldAllowManagedPermissionRulesOnly() {
         return allowsManagedPermissionRulesOnly(SettingsSources.settingsForSource(
-            RuleSource.POLICY_SETTINGS, currentCwd()));
+            RuleSource.POLICY_SETTINGS, SettingsPaths.currentSessionProjectRoot()));
     }
 
     /** Returns the effective persisted permission mode, or {@code null} when it is unset. */
     public static String loadDefaultPermissionMode() {
         return SettingsTreeReader.nestedStringValue(
-            SettingsSnapshots.effective(currentCwd()), "permissions", "defaultMode");
+            SettingsSnapshots.effective(SettingsPaths.currentSessionProjectRoot()), "permissions", "defaultMode");
     }
 
     /**
@@ -109,7 +109,7 @@ public final class PermissionSettings {
      */
     public static boolean isBypassPermissionsModeDisabled() {
         return Strings.CS.equals( "disable", SettingsTreeReader.nestedStringValue(
-            SettingsSnapshots.effective(currentCwd()), "permissions",
+            SettingsSnapshots.effective(SettingsPaths.currentSessionProjectRoot()), "permissions",
             "disableBypassPermissionsMode"));
     }
 
@@ -141,7 +141,7 @@ public final class PermissionSettings {
 
 
     public static boolean useAutoModeDuringPlan() {
-        String cwd = currentCwd();
+        String cwd = SettingsPaths.currentSessionProjectRoot();
         for (RuleSource source : List.of(
                 RuleSource.POLICY_SETTINGS,
                 RuleSource.FLAG_SETTINGS,
@@ -158,7 +158,7 @@ public final class PermissionSettings {
 
 
     public static boolean isAutoModeGateEnabledBySettings() {
-        String cwd = currentCwd();
+        String cwd = SettingsPaths.currentSessionProjectRoot();
         for (RuleSource source : SettingsSources.enabledOrder()) {
             JsonNode settings = SettingsSources.settingsForSource(source, cwd);
             if (Strings.CS.equals("disable", settings.path("disableAutoMode").asText(null))) {
@@ -180,7 +180,7 @@ public final class PermissionSettings {
 
     /** Persists the default permission mode in the user settings tier. */
     public static void saveDefaultPermissionMode(String mode) {
-        SettingsEditor.writeDefaultPermissionMode(currentCwd(), mode, RuleSource.USER_SETTINGS);
+        SettingsEditor.writeDefaultPermissionMode(SettingsPaths.currentSessionProjectRoot(), mode, RuleSource.USER_SETTINGS);
     }
 
     /**
@@ -350,7 +350,7 @@ public final class PermissionSettings {
     }
 
     private static boolean trustedBooleanSetting(String key, List<RuleSource> sources) {
-        String cwd = currentCwd();
+        String cwd = SettingsPaths.currentSessionProjectRoot();
         for (RuleSource source : sources) {
             if (Boolean.TRUE.equals(SettingsTreeReader.booleanValue(
                     SettingsSources.settingsForSource(source, cwd), key))) {
@@ -368,9 +368,5 @@ public final class PermissionSettings {
             case PASSTHROUGH -> throw new IllegalArgumentException(
                 "PASSTHROUGH is not a persisted permission behavior");
         };
-    }
-
-    private static String currentCwd() {
-        return SettingsPaths.sessionProjectRoot(System.getProperty("user.dir")).toString();
     }
 }

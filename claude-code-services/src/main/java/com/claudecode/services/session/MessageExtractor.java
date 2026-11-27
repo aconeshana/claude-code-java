@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -167,10 +166,8 @@ public final class MessageExtractor {
                         long mtime = FileUtils.modificationTimeMillis(path);
                         cache.set(editFilePath, new FileStateCache.FileState(
                             diskContent, mtime, null, null, false));
-                    } catch (NoSuchFileException _) {
-
                     } catch (IOException _) {
-                        // Inaccessible (permissions, etc.) — skip.
+                        // Missing or inaccessible (permissions, etc.) — skip.
                     }
                 }
             }

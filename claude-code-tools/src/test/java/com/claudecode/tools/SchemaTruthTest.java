@@ -272,9 +272,7 @@ class SchemaTruthTest {
             for (JsonNode r : required) out.required.add(r.asText());
         }
         if (props != null && props.isObject()) {
-            var it = props.fields();
-            while (it.hasNext()) {
-                var e = it.next();
+            for (var e : props.properties()) {
                 String name = e.getKey();
                 JsonNode node = e.getValue();
                 Set<String> formats = new HashSet<>();

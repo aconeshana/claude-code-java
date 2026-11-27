@@ -142,6 +142,39 @@ class UseBulkCollectionOperationsTest implements RewriteTest {
     }
 
     @Test
+    void replacesCollectionForEachAddWithAddAll() {
+        rewriteRun(java(
+            """
+                import java.util.ArrayList;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Set;
+
+                class Example {
+                    void copy(Set<Map.Entry<String, String>> entries, Map<String, String> map) {
+                        List<Map.Entry<String, String>> out = new ArrayList<>();
+                        entries.forEach(out::add);
+                        map.entrySet().forEach(out::add);
+                    }
+                }
+                """,
+            """
+                import java.util.ArrayList;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Set;
+
+                class Example {
+                    void copy(Set<Map.Entry<String, String>> entries, Map<String, String> map) {
+                        List<Map.Entry<String, String>> out = new ArrayList<>();
+                        out.addAll(entries);
+                        out.addAll(map.entrySet());
+                    }
+                }
+                """));
+    }
+
+    @Test
     void preservesNonExactMapConsumersAndSelfCopies() {
         rewriteRun(java(
             """

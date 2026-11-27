@@ -360,7 +360,7 @@ public final class WorktreeService {
         validateWorktreeSlug(slug);
         String worktreePath = worktreePathFor(repoRoot, slug);
         String worktreeBranch = worktreeBranchName(slug);
-        String originalBranch = currentBranch(repoRoot);
+        String originalBranch = resolveCurrentBranch(repoRoot);
 
         // Fast resume path: a worktree already registered at this path.
         if (Files.isDirectory(Path.of(worktreePath))) {
@@ -453,7 +453,7 @@ public final class WorktreeService {
         return "main";
     }
 
-    private static String currentBranch(String repoRoot) {
+    private static String resolveCurrentBranch(String repoRoot) {
         List<String> out = runGit(repoRoot, "branch", "--show-current");
         if (!out.isEmpty() && !StringUtils.isBlank(out.getFirst())) return out.getFirst().trim();
         List<String> fallback = runGit(repoRoot, "rev-parse", "--abbrev-ref", "HEAD");
@@ -960,23 +960,19 @@ public final class WorktreeService {
     /** Inverse of {@link #toJson} — reconstructs a {@link WorktreeSession} from a JSONL-read node. */
     private static WorktreeSession fromJson(JsonNode node) {
         return new WorktreeSession(
-            textOrNull(node, "originalCwd"),
-            textOrNull(node, "worktreePath"),
-            textOrNull(node, "worktreeName"),
-            textOrNull(node, "worktreeBranch"),
-            textOrNull(node, "originalBranch"),
-            textOrNull(node, "originalHeadCommit"),
-            textOrNull(node, "sessionId"),
-            textOrNull(node, "tmuxSessionName"),
+            JsonUtils.textOrNull(node, "originalCwd"),
+            JsonUtils.textOrNull(node, "worktreePath"),
+            JsonUtils.textOrNull(node, "worktreeName"),
+            JsonUtils.textOrNull(node, "worktreeBranch"),
+            JsonUtils.textOrNull(node, "originalBranch"),
+            JsonUtils.textOrNull(node, "originalHeadCommit"),
+            JsonUtils.textOrNull(node, "sessionId"),
+            JsonUtils.textOrNull(node, "tmuxSessionName"),
             node.path("hookBased").asBoolean(false),
             0L,
             false,
             node.path("projectRootMoved").asBoolean(false),
             node.path("enteredExisting").asBoolean(false));
-    }
-
-    private static String textOrNull(JsonNode node, String field) {
-        return node.hasNonNull(field) ? node.get(field).asText() : null;
     }
 
 

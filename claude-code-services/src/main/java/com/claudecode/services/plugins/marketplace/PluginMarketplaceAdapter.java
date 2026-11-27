@@ -361,7 +361,7 @@ public final class PluginMarketplaceAdapter implements PluginMarketplacePort {
         JsonNode config = settings.pluginConfig(pluginId);
         JsonNode options = config != null && config.isObject() ? config.get("options") : null;
         if (options != null && options.isObject()) {
-            options.fields().forEachRemaining(field -> {
+            options.properties().forEach(field -> {
                 JsonNode value = field.getValue();
                 if (value.isBoolean()) values.put(field.getKey(), value.asBoolean());
                 else if (value.isNumber()) values.put(field.getKey(), value.asDouble());
@@ -521,7 +521,7 @@ public final class PluginMarketplaceAdapter implements PluginMarketplacePort {
         JsonNode config = settings.pluginConfig(pluginId);
         JsonNode stored = config == null ? null : config.path("mcpServers").get(serverName);
         if (stored != null && stored.isObject()) {
-            stored.fields().forEachRemaining(field -> values.put(field.getKey(),
+            stored.properties().forEach(field -> values.put(field.getKey(),
                 plainValue(field.getValue())));
         }
         if (secureStorage != null) {

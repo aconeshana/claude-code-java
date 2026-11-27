@@ -4,7 +4,6 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -26,9 +25,7 @@ final class SecureStorageCodec {
         Map<String, SecureStorageData.McpOAuthEntry> tokens = new LinkedHashMap<>();
         JsonNode tokensNode = root.get("mcpOAuth");
         if (tokensNode != null && tokensNode.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> it = tokensNode.fields();
-            while (it.hasNext()) {
-                var e = it.next();
+            for (var e : tokensNode.properties()) {
                 tokens.put(e.getKey(), decodeTokenEntry(e.getValue()));
             }
         }
@@ -36,9 +33,7 @@ final class SecureStorageCodec {
         Map<String, SecureStorageData.McpOAuthClientConfigEntry> clientCfg = new LinkedHashMap<>();
         JsonNode cfgNode = root.get("mcpOAuthClientConfig");
         if (cfgNode != null && cfgNode.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> it = cfgNode.fields();
-            while (it.hasNext()) {
-                var e = it.next();
+            for (var e : cfgNode.properties()) {
                 clientCfg.put(e.getKey(), decodeClientCfgEntry(e.getValue()));
             }
         }
@@ -46,10 +41,10 @@ final class SecureStorageCodec {
         Map<String, Map<String, String>> pluginSecrets = new LinkedHashMap<>();
         JsonNode secretsNode = root.get("pluginSecrets");
         if (secretsNode != null && secretsNode.isObject()) {
-            secretsNode.fields().forEachRemaining(plugin -> {
+            secretsNode.properties().forEach(plugin -> {
                 if (!plugin.getValue().isObject()) return;
                 Map<String, String> secrets = new LinkedHashMap<>();
-                plugin.getValue().fields().forEachRemaining(entry -> {
+                plugin.getValue().properties().forEach(entry -> {
                     if (entry.getValue().isTextual()) {
                         secrets.put(entry.getKey(), entry.getValue().asText());
                     }
@@ -59,9 +54,7 @@ final class SecureStorageCodec {
         }
 
         Map<String, Object> extras = new LinkedHashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> it = root.fields();
-        while (it.hasNext()) {
-            var e = it.next();
+        for (var e : root.properties()) {
             if (!KNOWN_TOP_LEVEL.contains(e.getKey())) {
                 extras.put(e.getKey(), JsonUtils.getMapper().convertValue(e.getValue(), Object.class));
             }

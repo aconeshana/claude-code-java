@@ -85,7 +85,7 @@ public final class StatusLineInputBuilder {
             // OpenAI semantics where cached_tokens is a subset of input_tokens.
             long totalInputTokens = TokenEstimator.contextInputTokens(current, usageModel);
             int used = (int) Math.round(totalInputTokens * 100.0 / contextWindow);
-            used = Math.min(100, Math.max(0, used));
+            used = Math.clamp(used, 0, 100);
             usedPct = used;
             remainingPct = 100 - used;
         }

@@ -1,6 +1,7 @@
 package com.claudecode.tools.powershell;
 
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 
 import java.io.File;
@@ -9,10 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Isolated PowerShell syntax checker.
@@ -100,8 +99,7 @@ final class PowerShellParser {
                         && Files.isExecutable(candidate)) {
                     return candidate.toString();
                 }
-                if (Strings.CS.contains(
-                        System.getProperty("os.name", "").toLowerCase(Locale.ROOT), "win")) {
+                if (Platform.IS_WINDOWS) {
                     Path exe = Path.of(directory, command + ".exe");
                     if (Files.isRegularFile(exe)) return exe.toString();
                 }

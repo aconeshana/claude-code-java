@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -246,9 +245,7 @@ public class McpConfigLoader {
             JsonNode servers = projects.path(key).path("mcpServers");
             if (!servers.isObject()) return;
 
-            Iterator<Map.Entry<String, JsonNode>> fields = servers.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
+            for (Map.Entry<String, JsonNode> entry : servers.properties()) {
                 String name = entry.getKey();
                 JsonNode serverNode = entry.getValue();
                 if (!serverNode.isObject()) {
@@ -387,9 +384,7 @@ public class McpConfigLoader {
                 "Skipped: top-level object is not a \"mcpServers\" map (got " + type + ")");
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> fields = mcpServers.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : mcpServers.properties()) {
             String name = entry.getKey();
             JsonNode serverNode = entry.getValue();
             if (!serverNode.isObject()) {
@@ -512,9 +507,7 @@ public class McpConfigLoader {
     private static Map<String, String> parseStringMap(JsonNode node) {
         if (node == null || !node.isObject()) return Map.of();
         Map<String, String> map = new LinkedHashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : node.properties()) {
             map.put(entry.getKey(), entry.getValue().asText());
         }
         return Map.copyOf(map);

@@ -851,9 +851,7 @@ public class PromptHistory implements PromptHistoryView, AutoCloseable {
         }
         Map<Integer, PastedContent> out = new LinkedHashMap<>();
         Set<Integer> missingTextIds = new LinkedHashSet<>();
-        var fields = pc.fields();
-        while (fields.hasNext()) {
-            var f = fields.next();
+        for (var f : pc.properties()) {
             try {
                 int id = Integer.parseInt(f.getKey());
                 JsonNode v = f.getValue();

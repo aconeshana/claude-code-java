@@ -82,7 +82,7 @@ final class GatewayRewindHandler {
                     "turn is currently running; stop it before rewinding"));
                 return;
             }
-            JsonNode body = readJson(exchange);
+            JsonNode body = readBoundedRequestJson(exchange);
             if (body == null) return;
             String messageId = text(body, "message_id");
             String modeRaw = text(body, "mode");
@@ -204,7 +204,7 @@ final class GatewayRewindHandler {
         return out;
     }
 
-    private static JsonNode readJson(HttpExchange exchange) throws IOException {
+    private static JsonNode readBoundedRequestJson(HttpExchange exchange) throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
             byte[] raw = in.readNBytes(MAX_BODY_BYTES + 1);
             if (raw.length > MAX_BODY_BYTES) {

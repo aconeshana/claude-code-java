@@ -342,11 +342,11 @@ final class AnthropicWireCodec implements ProtocolCodec {
         out.put("model", StringUtils.defaultIfBlank(msg.model(), ""));
         ArrayNode content = out.putArray("content");
         for (ContentBlock block : msg.content()) {
-            if (block instanceof ThinkingBlock thinking) {
+            if (block instanceof ThinkingBlock(var thinking, var signature)) {
                 ObjectNode t = content.addObject();
                 t.put("type", "thinking");
-                t.put("thinking", thinking.thinking() == null ? "" : thinking.thinking());
-                t.put("signature", StringUtils.defaultIfBlank(thinking.signature(), ""));
+                t.put("thinking", thinking == null ? "" : thinking);
+                t.put("signature", StringUtils.defaultIfBlank(signature, ""));
             } else if (block instanceof ToolUseBlock tu) {
                 // Keep base64url __ts<thoughtSignature> intact for downstream Anthropic clients
                 // so multi-turn tool loops against a Gemini upstream preserve thoughtSignature.

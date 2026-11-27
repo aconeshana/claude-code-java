@@ -238,7 +238,7 @@ public final class AddDirDialog extends Panel implements InlineOverlay {
     }
 
     private void applySuggestion(DirSuggestion suggestion) {
-        input = new StringBuilder(suggestion.absolutePath() + "/");
+        input = new StringBuilder(suggestion.absolutePath()).append('/');
         inputError = null;
         refreshSuggestions();
     }

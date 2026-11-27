@@ -194,7 +194,7 @@ public final class EffortHelpers {
      */
     public static boolean modelSupportsEffort(String model) {
         if (StringUtils.isBlank(model)) return false;
-        if (isEnvTruthy(SubprocessEnvironment.get("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"))) return true;
+        if (isNotExplicitlyFalsy(SubprocessEnvironment.get("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"))) return true;
         EffortCapabilities capabilities = capabilitiesForModel(model);
         return !capabilities.known() || !capabilities.levels().isEmpty();
     }
@@ -455,7 +455,12 @@ public final class EffortHelpers {
         return null;
     }
 
-    private static boolean isEnvTruthy(String value) {
+    /**
+     * Negative-exclusion truthiness check specific to {@code CLAUDE_CODE_ALWAYS_ENABLE_EFFORT}:
+     * any non-blank value other than {@code false}/{@code 0}/{@code no} enables effort, matching
+     * upstream {@code effort.ts} (distinct from {@code EnvUtils.isEnvTruthy}'s strict whitelist).
+     */
+    private static boolean isNotExplicitlyFalsy(String value) {
         if (value == null) return false;
         String v = value.trim().toLowerCase(Locale.ROOT);
         return !v.isEmpty() && !Strings.CS.equals("false", v) && !Strings.CS.equals("0", v) && !Strings.CS.equals("no", v);

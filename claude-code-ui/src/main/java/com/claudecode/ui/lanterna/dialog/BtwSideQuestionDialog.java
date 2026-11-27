@@ -81,7 +81,6 @@ public final class BtwSideQuestionDialog extends Panel implements InlineOverlay 
     private int terminalRows = 24;
     private Integer selectedHistoryIndex;
     private List<HistoryEntry> historySnapshot = List.of();
-    private Function<String, String> runner;
     private BiConsumer<String, String> forkAction;
     private Runnable onClose;
     private Thread worker;
@@ -117,7 +116,6 @@ public final class BtwSideQuestionDialog extends Panel implements InlineOverlay 
         hide(false);
         this.question = normalizeQuestion(question);
         this.terminalRows = Math.max(CHROME_ROWS + OUTER_CHROME_ROWS, terminalRows);
-        this.runner = runner;
         this.forkAction = forkAction;
         this.onClose = onClose;
         this.historySnapshot = history();
@@ -208,7 +206,6 @@ public final class BtwSideQuestionDialog extends Panel implements InlineOverlay 
         retry = null;
         historySnapshot = List.of();
         selectedHistoryIndex = null;
-        runner = null;
         forkAction = null;
         onClose = null;
         body.clear();

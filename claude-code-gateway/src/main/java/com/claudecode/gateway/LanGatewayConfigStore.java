@@ -1,16 +1,15 @@
 package com.claudecode.gateway;
 
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -341,27 +340,15 @@ public final class LanGatewayConfigStore {
             kn.put("outputTokens", k.outputTokens());
         }
 
-        if (file == null) return;
-        Path parent = file.getParent();
-        if (parent == null) return;
-        Path temp = null;
+        if (file == null || file.getParent() == null) return;
         try {
-            Files.createDirectories(parent);
-            temp = Files.createTempFile(parent, ".gateway-", ".json.tmp");
-            JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), root);
-            applyOwnerOnlyPermissions(temp);
-            try {
-                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            FileUtils.atomicReplace(file, temp -> {
+                JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), root);
+                applyOwnerOnlyPermissions(temp);
+            });
             applyOwnerOnlyPermissions(file);
         } catch (Exception _) {
             // Keep in-memory state if disk write fails on read-only test fs.
-        } finally {
-            if (temp != null) {
-                try { Files.deleteIfExists(temp); } catch (IOException _) { }
-            }
         }
     }
 

@@ -4,6 +4,7 @@ import com.claudecode.mcp.McpConfigLoader;
 import com.claudecode.mcp.McpConfigWarning;
 import com.claudecode.mcp.McpServerScope;
 import com.claudecode.permissions.RuleSource;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,7 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -66,7 +70,7 @@ public final class SettingsDiagnostics {
             cached = sessionSettings;
             if (cached == null) {
                 cached = loadUncached(
-                    currentSettingsCwd());
+                    SettingsPaths.currentSessionProjectRoot());
                 sessionSettings = cached;
             }
             return cached;
@@ -88,7 +92,7 @@ public final class SettingsDiagnostics {
     public static SettingsWithErrors getSettingsWithAllErrors() {
         SettingsWithErrors settings = getSettingsWithErrors();
         List<SettingsValidationError> errors = new ArrayList<>(settings.errors());
-        Path cwd = Path.of(currentSettingsCwd()).toAbsolutePath().normalize();
+        Path cwd = Path.of(SettingsPaths.currentSessionProjectRoot()).toAbsolutePath().normalize();
         try {
             for (McpConfigWarning warning : McpConfigLoader.loadConfig(cwd).diagnostics()) {
                 if (warning.scope() != McpServerScope.USER
@@ -121,7 +125,7 @@ public final class SettingsDiagnostics {
     /** Returns true when raw enabled non-policy settings contain {@code key}. */
     public static boolean rawSettingsContainsKey(String key) {
         if (StringUtils.isBlank(key)) return false;
-        String cwd = currentSettingsCwd();
+        String cwd = SettingsPaths.currentSessionProjectRoot();
         for (RuleSource source : SettingsSources.enabledOrder()) {
             if (source == RuleSource.POLICY_SETTINGS) continue;
             Path path = source == RuleSource.FLAG_SETTINGS
@@ -160,11 +164,9 @@ public final class SettingsDiagnostics {
     public static String getPolicySettingsOrigin() {
         ObjectNode admin = MdmSettingsStore.readAdminSettings();
         if (admin != null && !admin.isEmpty()) {
-            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-
             // reader normally returns an empty source, but preserving this label
             // keeps the origin contract correct for injected/tested admin results.
-            return Strings.CS.contains( os, "mac") ? "plist" : "hklm";
+            return Platform.detectCurrent() == Platform.DARWIN ? "plist" : "hklm";
         }
         ObjectNode file = SettingsSnapshots.managedFileSettings();
         if (file != null && !file.isEmpty()) return "file";
@@ -268,7 +270,7 @@ public final class SettingsDiagnostics {
     }
 
     private static boolean hasMcpConfigurationErrors() {
-        Path cwd = Path.of(currentSettingsCwd()).toAbsolutePath().normalize();
+        Path cwd = Path.of(SettingsPaths.currentSessionProjectRoot()).toAbsolutePath().normalize();
         try {
             for (McpConfigWarning diagnostic : McpConfigLoader.loadConfig(cwd).diagnostics()) {
                 if (diagnostic.message() != null
@@ -303,10 +305,6 @@ public final class SettingsDiagnostics {
         } catch (IOException | RuntimeException _) {
             return false;
         }
-    }
-
-    private static String currentSettingsCwd() {
-        return SettingsPaths.sessionProjectRoot(System.getProperty("user.dir")).toString();
     }
 
     private static void addUniqueErrors(List<SettingsValidationError> target, Set<String> seen,

@@ -1,5 +1,6 @@
 package com.claudecode.sdk;
 
+import com.claudecode.core.util.CollectionUtils;
 import java.util.List;
 import java.util.Objects;
 
@@ -13,20 +14,16 @@ public record SDKControlGetContextUsageResponse(
         SlashCommandUsage slashCommands, SkillUsage skills, Integer autoCompactThreshold,
         boolean isAutoCompactEnabled, MessageBreakdown messageBreakdown, ApiUsage apiUsage) {
     public SDKControlGetContextUsageResponse {
-        categories = copy(categories);
+        categories = CollectionUtils.immutableList(categories);
         gridRows = gridRows == null ? List.of()
             : gridRows.stream().map(List::copyOf).toList();
         Objects.requireNonNull(model, "model");
-        memoryFiles = copy(memoryFiles);
-        mcpTools = copy(mcpTools);
-        deferredBuiltinTools = copy(deferredBuiltinTools);
-        systemTools = copy(systemTools);
-        systemPromptSections = copy(systemPromptSections);
-        agents = copy(agents);
-    }
-
-    private static <T> List<T> copy(List<T> values) {
-        return values == null ? List.of() : List.copyOf(values);
+        memoryFiles = CollectionUtils.immutableList(memoryFiles);
+        mcpTools = CollectionUtils.immutableList(mcpTools);
+        deferredBuiltinTools = CollectionUtils.immutableList(deferredBuiltinTools);
+        systemTools = CollectionUtils.immutableList(systemTools);
+        systemPromptSections = CollectionUtils.immutableList(systemPromptSections);
+        agents = CollectionUtils.immutableList(agents);
     }
 
     public record Category(String name, int tokens, String color, Boolean isDeferred) {}
@@ -40,7 +37,7 @@ public record SDKControlGetContextUsageResponse(
     public record SkillUsage(int totalSkills, int includedSkills, int tokens,
                              List<SkillFrontmatter> skillFrontmatter) {
         public SkillUsage {
-            skillFrontmatter = skillFrontmatter == null ? List.of() : List.copyOf(skillFrontmatter);
+            skillFrontmatter = CollectionUtils.immutableList(skillFrontmatter);
         }
     }
     public record SkillFrontmatter(String name, String source, int tokens) {}
@@ -49,8 +46,8 @@ public record SDKControlGetContextUsageResponse(
                                    List<ToolCallUsage> toolCallsByType,
                                    List<AttachmentUsage> attachmentsByType) {
         public MessageBreakdown {
-            toolCallsByType = toolCallsByType == null ? List.of() : List.copyOf(toolCallsByType);
-            attachmentsByType = attachmentsByType == null ? List.of() : List.copyOf(attachmentsByType);
+            toolCallsByType = CollectionUtils.immutableList(toolCallsByType);
+            attachmentsByType = CollectionUtils.immutableList(attachmentsByType);
         }
     }
     public record ToolCallUsage(String name, int callTokens, int resultTokens) {}

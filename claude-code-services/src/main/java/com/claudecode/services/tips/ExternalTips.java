@@ -82,7 +82,7 @@ public final class ExternalTips {
         Map<String, Integer> history = new LinkedHashMap<>();
         JsonNode node = GlobalConfigStore.getNode(ClaudePaths.GLOBAL_JSON, "tipsHistory");
         if (node != null && node.isObject()) {
-            node.fields().forEachRemaining(e -> {
+            node.properties().forEach(e -> {
                 if (e.getValue().isInt()) history.put(e.getKey(), e.getValue().asInt());
             });
         }

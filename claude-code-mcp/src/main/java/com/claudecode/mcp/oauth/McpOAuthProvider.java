@@ -7,6 +7,7 @@ import org.apache.commons.lang3.Strings;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.mcp.McpException;
 import com.claudecode.mcp.McpServerConfig;
@@ -376,7 +377,7 @@ public final class McpOAuthProvider {
         // integration is fussy in headless / SSH contexts.
         try {
             new ProcessBuilder(fallbackOpenCommand(
-                    System.getProperty("os.name", ""),
+                    Platform.OS_NAME,
                     SubprocessEnvironment.get("BROWSER"), url))
                 .redirectErrorStream(true).start();
         } catch (Exception _) {

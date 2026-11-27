@@ -65,8 +65,8 @@ public final class CommandSemantics {
         List<String> words = new ArrayList<>();
         if (command != null) {
             for (ShellQuoteParse.Token token : ShellQuoteParse.parse(command)) {
-                if (token instanceof ShellQuoteParse.Op op) {
-                    if (isSegmentBoundary(op.op())) {
+                if (token instanceof ShellQuoteParse.Op(var op)) {
+                    if (isSegmentBoundary(op)) {
                         words.clear();
                     }
                     continue;

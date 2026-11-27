@@ -13,6 +13,7 @@ import static com.claudecode.ui.lanterna.components.StyledText.bold;
 import static com.claudecode.ui.lanterna.components.StyledText.line;
 import static com.claudecode.ui.lanterna.components.StyledText.seg;
 import com.claudecode.ui.lanterna.components.StyledText;
+import com.claudecode.ui.lanterna.input.VimKeyStrokes;
 import com.claudecode.ui.lanterna.theme.LanternaTheme;
 
 /**
@@ -54,11 +55,11 @@ final class PluginErrorsTab {
             host.closePanel();
             return;
         }
-        if (isUp(key)) {
+        if (VimKeyStrokes.isUp(key)) {
             selectedIndex = Math.max(0, selectedIndex - 1);
             return;
         }
-        if (isDown(key)) {
+        if (VimKeyStrokes.isDown(key)) {
             selectedIndex = Math.min(Math.max(0, errors.size() - 1), selectedIndex + 1);
             return;
         }
@@ -138,18 +139,6 @@ final class PluginErrorsTab {
 
     static String guidanceFor(ErrorView error) {
         return error.guidance();
-    }
-
-    private static boolean isUp(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_UP
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'k' && !key.isCtrlDown() && !key.isAltDown());
-    }
-
-    private static boolean isDown(KeyStroke key) {
-        return key.getKeyType() == KeyType.ARROW_DOWN
-            || (key.getKeyType() == KeyType.CHARACTER && key.getCharacter() != null
-                && key.getCharacter() == 'j' && !key.isCtrlDown() && !key.isAltDown());
     }
 
     // ── test accessors ────────────────────────────────────────────────────────

@@ -34,7 +34,6 @@ final class GatewayRouter {
     private final GatewaySessionsHandler sessionsApi;
     private final GatewaySessionActionsHandler sessionActionsApi;
     private final GatewayRewindHandler rewindApi;
-    private final GatewaySessionCatalogPort catalog;
     private final GatewayPermissionsHandler permissionsApi;
     private final GatewaySudoRespondHandler sudoApi;
     private final GatewayMessagesSnapshotHandler messagesSnapshotApi;
@@ -74,7 +73,6 @@ final class GatewayRouter {
             GatewaySessionsHandler sessionsApi,
             GatewaySessionActionsHandler sessionActionsApi,
             GatewayRewindHandler rewindApi,
-            GatewaySessionCatalogPort catalog,
             GatewayPermissionsHandler permissionsApi,
             GatewaySudoRespondHandler sudoApi,
             GatewayMessagesSnapshotHandler messagesSnapshotApi,
@@ -112,7 +110,6 @@ final class GatewayRouter {
         this.sessionsApi = sessionsApi;
         this.sessionActionsApi = sessionActionsApi;
         this.rewindApi = rewindApi;
-        this.catalog = catalog;
         this.permissionsApi = permissionsApi;
         this.sudoApi = sudoApi;
         this.messagesSnapshotApi = messagesSnapshotApi;
@@ -644,7 +641,7 @@ final class GatewayRouter {
         }
         if (Strings.CS.equals("/api/projects", targetPath)) {
             if (rejectIfUnauthenticated(auth, exchange)) return;
-            serve(exchange, () -> projectsApi.handleProjects(exchange));
+            serveAsync(exchange, () -> projectsApi.handleProjects(exchange));
             return;
         }
         if (Strings.CS.equals("/api/projects/customizations", targetPath)) {

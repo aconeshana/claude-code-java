@@ -186,10 +186,6 @@ final class OpenAiResponsesWireCodec implements ProtocolCodec {
         return b.build();
     }
 
-    private static final Set<String> GEMINI_USER_OWNED_FIELDS = Set.of(
-        "args", "response", "parameters", "parametersJsonSchema",
-        "responseSchema", "responseJsonSchema", "labels");
-
 
     private static ObjectNode encodeResponsesResponse(ApiMessage msg) {
         ObjectNode out = JsonUtils.getMapper().createObjectNode();

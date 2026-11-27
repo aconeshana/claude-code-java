@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.input;
 
+import com.claudecode.core.io.PathUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,7 @@ public record ExternalEditorCommand(List<String> executableAndArguments) {
 
     public static ExternalEditorCommand resolve(String configured) {
         List<String> argv = parseArgv(configured);
-        String executable = basename(argv.getFirst()).toLowerCase(Locale.ROOT);
+        String executable = PathUtils.basename(argv.getFirst()).toLowerCase(Locale.ROOT);
         if (Strings.CS.equals(executable, "code") && !hasWaitArgument(argv)) {
             argv = withAppendedArgument(argv, "-w");
         } else if (Strings.CS.equals(executable, "subl") && !hasWaitArgument(argv)) {
@@ -114,10 +115,5 @@ public record ExternalEditorCommand(List<String> executableAndArguments) {
             argument, "-w")
                 ||Strings.CS.equals( argument, "--wait")
                 ||Strings.CS.equals( argument, "--wait-for-close"));
-    }
-
-    private static String basename(String executable) {
-        int slash = Math.max(executable.lastIndexOf('/'), executable.lastIndexOf('\\'));
-        return slash >= 0 ? executable.substring(slash + 1) : executable;
     }
 }

@@ -5,7 +5,6 @@ import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -80,7 +79,7 @@ final class VendorSchemaSanitizer {
      */
     static JsonNode normalizeDeepSeekPatterns(JsonNode schema) {
         if (schema == null || !schema.isObject()) return schema;
-        ObjectNode out = (ObjectNode) schema.deepCopy();
+        ObjectNode out = schema.deepCopy();
         walkDeepSeekPatterns(out);
         return out;
     }
@@ -126,7 +125,7 @@ final class VendorSchemaSanitizer {
         for (String mapKey : SCHEMA_MAP_CONTAINERS) {
             JsonNode mapNode = obj.get(mapKey);
             if (mapNode != null && mapNode.isObject()) {
-                mapNode.fields().forEachRemaining(entry -> walkDeepSeekPatterns(entry.getValue()));
+                mapNode.properties().forEach(entry -> walkDeepSeekPatterns(entry.getValue()));
             }
         }
         for (String childKey : SCHEMA_CHILD_KEYWORDS) {
@@ -142,7 +141,7 @@ final class VendorSchemaSanitizer {
      */
     static JsonNode normalizeKimiEnumTypes(JsonNode schema) {
         if (schema == null || !schema.isObject()) return schema;
-        ObjectNode out = (ObjectNode) schema.deepCopy();
+        ObjectNode out = schema.deepCopy();
         walkKimiEnums(out);
         return out;
     }
@@ -169,7 +168,7 @@ final class VendorSchemaSanitizer {
         for (String mapKey : SCHEMA_MAP_CONTAINERS) {
             JsonNode mapNode = obj.get(mapKey);
             if (mapNode != null && mapNode.isObject()) {
-                mapNode.fields().forEachRemaining(entry -> walkKimiEnums(entry.getValue()));
+                mapNode.properties().forEach(entry -> walkKimiEnums(entry.getValue()));
             }
         }
         for (String childKey : SCHEMA_CHILD_KEYWORDS) {
@@ -243,9 +242,7 @@ final class VendorSchemaSanitizer {
         }
         if (!schema.isObject()) return schema.deepCopy();
         ObjectNode out = JsonUtils.getMapper().createObjectNode();
-        Iterator<Map.Entry<String, JsonNode>> fields = schema.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : schema.properties()) {
             String key = entry.getKey();
             JsonNode val = entry.getValue();
             switch (key) {
@@ -292,9 +289,7 @@ final class VendorSchemaSanitizer {
 
         ObjectNode out = JsonUtils.getMapper().createObjectNode();
         Set<String> droppedFalseProps = new LinkedHashSet<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : node.properties()) {
             String key = entry.getKey();
             JsonNode val = entry.getValue();
             if (Strings.CS.startsWith(key, "x-") || Strings.CS.equals("$schema", key)) {
@@ -303,7 +298,7 @@ final class VendorSchemaSanitizer {
             }
             if (SCHEMA_MAP_CONTAINERS.contains(key) && val.isObject()) {
                 ObjectNode mapOut = JsonUtils.getMapper().createObjectNode();
-                val.fields().forEachRemaining(prop -> {
+                val.properties().forEach(prop -> {
                     JsonNode propSchema = prop.getValue();
                     if (propSchema.isBoolean()) {
                         if (propSchema.asBoolean()) {
@@ -370,7 +365,7 @@ final class VendorSchemaSanitizer {
         for (String mapKey : SCHEMA_MAP_CONTAINERS) {
             JsonNode mapNode = obj.get(mapKey);
             if (mapNode != null && mapNode.isObject()) {
-                mapNode.fields().forEachRemaining(entry -> fillGeminiMissingTypes(root, entry.getValue(), false));
+                mapNode.properties().forEach(entry -> fillGeminiMissingTypes(root, entry.getValue(), false));
             }
         }
         for (String childKey : SCHEMA_CHILD_KEYWORDS) {
@@ -522,6 +517,6 @@ final class VendorSchemaSanitizer {
         ObjectNode copy = target.deepCopy();
         target.removeAll();
         target.set("type", typeNode);
-        copy.fields().forEachRemaining(entry -> target.set(entry.getKey(), entry.getValue()));
+        copy.properties().forEach(entry -> target.set(entry.getKey(), entry.getValue()));
     }
 }

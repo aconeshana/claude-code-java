@@ -128,7 +128,7 @@ public class TaskCreateTool extends AnnotatedTool<JsonNode, String> {
     static Map<String, Object> readMetadata(JsonNode input) {
         if (!input.hasNonNull("metadata")) return null;
         Map<String, Object> metadata = new LinkedHashMap<>();
-        input.get("metadata").fields().forEachRemaining(entry ->
+        input.get("metadata").properties().forEach(entry ->
             metadata.put(entry.getKey(), JsonUtils.getMapper().convertValue(entry.getValue(), Object.class)));
         return metadata;
     }

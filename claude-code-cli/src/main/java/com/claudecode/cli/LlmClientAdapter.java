@@ -654,8 +654,8 @@ public class LlmClientAdapter implements StreamingClient {
                 }
 
                 if (request != null
-                        && apiEvent instanceof StreamEvent.Error err
-                        && err.exception() instanceof ApiException apiEx) {
+                        && apiEvent instanceof StreamEvent.Error(var exception, _)
+                        && exception instanceof ApiException apiEx) {
                     if (request.fastMode() && (apiEx.statusCode() == 429 || apiEx.statusCode() == 529)
                             && request.onFastModeFailure() != null) {
                         request.onFastModeFailure().accept(

@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.message.SDKMessage;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewaySchedulePort;
 import com.claudecode.runtime.sessionhost.SessionHostSession;
@@ -44,7 +45,7 @@ final class CliWebCronDaemon implements AutoCloseable {
     }
 
     private static final Logger log = Logger.getLogger(CliWebCronDaemon.class.getName());
-    private static final boolean IS_MAC = Strings.CI.contains(System.getProperty("os.name", ""), "mac");
+    private static final boolean IS_MAC = Platform.IS_DARWIN;
 
     private final CliHeadlessGatewaySessions headless;
     private final String workingDirectory;
@@ -162,7 +163,7 @@ final class CliWebCronDaemon implements AutoCloseable {
                 task.model(), null, null, true, "off", false));
         String targetCwd = StringUtils.defaultIfBlank(opts.workingDirectory(), workingDirectory);
         String reuseId = opts.newSessionPerRun() ? null : reusedSessionByTaskId.get(task.id());
-        String openedSessionId = null;
+        String openedSessionId;
         boolean succeeded = false;
         try {
             var opened = headless.open(new GatewayHeadlessSessions.OpenRequest(reuseId, targetCwd));
@@ -215,7 +216,7 @@ final class CliWebCronDaemon implements AutoCloseable {
             try {
                 session.submit(submission).toCompletableFuture().join();
             } finally {
-                closeQuietly(subscription);
+                closeSubscriptionWithLog(subscription);
             }
             Throwable failure = turnFailure.get();
             if (failure != null) {
@@ -234,7 +235,7 @@ final class CliWebCronDaemon implements AutoCloseable {
         }
     }
 
-    private static void closeQuietly(AutoCloseable resource) {
+    private static void closeSubscriptionWithLog(AutoCloseable resource) {
         if (resource == null) return;
         try {
             resource.close();

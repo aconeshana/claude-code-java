@@ -195,7 +195,6 @@ final class CliToolchainAssembler {
         CliLaunchRequest.ModelOptions modelOptions = request.model();
         CliLaunchRequest.OutputOptions output = request.output();
         CliLaunchRequest.WorkspaceOptions workspaceOptions = request.workspace();
-        CliLaunchRequest.PermissionOptions permissionOptions = request.permissions();
         HookEngine hookEngine = workspace.hookEngine();
         @Explanation("Wires the model.json custom-model catalogue")
         CustomModelJsonStore customModelCatalog = new CustomModelJsonStore();

@@ -276,7 +276,7 @@ class PluginDiscoverTabTest {
     @Test
     void installUserScope_installsAndClosesWithResultMessage() {
         PluginPanelServices services = singleMarketplaceServices();
-        PluginDiscoverTab tab = openedTab(services, null);
+        openedTab(services, null);
         send(ENTER); // details for alpha
         send(ENTER); // Install for you (user scope)
         assertTrue(closed.get());

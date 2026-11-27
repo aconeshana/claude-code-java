@@ -1,5 +1,7 @@
 package com.claudecode.core.metrics;
 
+import com.claudecode.core.util.MathUtils;
+
 /** Canonical whole-session metrics and centrally derived HUD values. */
 public record SessionMetricsSnapshot(
     boolean complete,
@@ -20,8 +22,8 @@ public record SessionMetricsSnapshot(
         false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     public long billedInputTokens() {
-        return saturatedAdd(uncachedInputTokens,
-            saturatedAdd(cacheWriteTokens, cacheReadTokens));
+        return MathUtils.saturatedAdd(uncachedInputTokens,
+            MathUtils.saturatedAdd(cacheWriteTokens, cacheReadTokens));
     }
 
     public Double ttftAverageMs() {
@@ -30,13 +32,5 @@ public record SessionMetricsSnapshot(
 
     public Double tokensPerSecond() {
         return decodeMs > 0 ? decodeTokens / (decodeMs / 1_000.0) : null;
-    }
-
-    private static long saturatedAdd(long left, long right) {
-        try {
-            return Math.addExact(left, right);
-        } catch (ArithmeticException _) {
-            return Long.MAX_VALUE;
-        }
     }
 }

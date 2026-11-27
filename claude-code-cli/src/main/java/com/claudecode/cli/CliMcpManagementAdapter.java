@@ -5,6 +5,7 @@ import org.apache.commons.lang3.Strings;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.commands.impl.integration.McpPromptCommand;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.text.StringUtils;
 import com.claudecode.mcp.McpClientRuntime;
 import com.claudecode.mcp.McpConfig;
 import com.claudecode.mcp.McpConfigLoader;
@@ -135,8 +136,8 @@ final class CliMcpManagementAdapter implements McpManagementPort {
                     int toolCount = syncTools(serverName, live);
                     int promptCount = syncPrompts(serverName, live);
                     if (toolCount > 0 || promptCount > 0) {
-                        connectDetail = " (" + toolCount + " tool" + plural(toolCount)
-                            + (promptCount > 0 ? ", " + promptCount + " prompt" + plural(promptCount) : "")
+                        connectDetail = " (" + toolCount + " " + StringUtils.plural(toolCount, "tool")
+                            + (promptCount > 0 ? ", " + promptCount + " " + StringUtils.plural(promptCount, "prompt") : "")
                             + " ready)";
                     }
                 } catch (Exception connectErr) {
@@ -163,9 +164,9 @@ final class CliMcpManagementAdapter implements McpManagementPort {
         int toolCount = syncTools(serverName, live);
         int promptCount = syncPrompts(serverName, live);
         return "Successfully reconnected to " + serverName
-            + (toolCount > 0 ? " (" + toolCount + " tool" + plural(toolCount)
+            + (toolCount > 0 ? " (" + toolCount + " " + StringUtils.plural(toolCount, "tool")
                 + " available to model)" : "")
-            + (promptCount > 0 ? " · " + promptCount + " prompt" + plural(promptCount)
+            + (promptCount > 0 ? " · " + promptCount + " " + StringUtils.plural(promptCount, "prompt")
                 + " available as slash commands" : "");
     }
 
@@ -332,9 +333,5 @@ final class CliMcpManagementAdapter implements McpManagementPort {
             case "enterprise", "managed" -> McpServerScope.ENTERPRISE;
             default -> McpServerScope.DYNAMIC;
         };
-    }
-
-    private static String plural(int count) {
-        return count == 1 ? "" : "s";
     }
 }

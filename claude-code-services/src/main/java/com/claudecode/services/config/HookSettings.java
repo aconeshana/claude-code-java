@@ -22,7 +22,7 @@ public final class HookSettings {
 
 
     public static boolean areGoalHooksRestricted() {
-        return areGoalHooksRestricted(effectiveSettings(currentCwd()));
+        return areGoalHooksRestricted(effectiveSettings(SettingsPaths.currentSessionProjectRoot()));
     }
 
     /** Package-private pure effective-settings core for settings-source tests. */
@@ -37,7 +37,7 @@ public final class HookSettings {
      * CLI/SDK flag source and managed policy.
      */
     public static HooksSettings loadHooksSettings() {
-        String cwd = currentCwd();
+        String cwd = SettingsPaths.currentSessionProjectRoot();
         ObjectNode effective = effectiveSettings(cwd);
         ObjectNode policy = SettingsSources.settingsForSource(RuleSource.POLICY_SETTINGS, cwd);
         return loadHooksSettings(effective, policy);
@@ -45,7 +45,7 @@ public final class HookSettings {
 
     /** Loads the effective HTTP-hook policy from the same settings snapshot as hooks. */
     public static HttpHookPolicy loadHttpHookPolicy() {
-        return loadHttpHookPolicy(effectiveSettings(currentCwd()));
+        return loadHttpHookPolicy(effectiveSettings(SettingsPaths.currentSessionProjectRoot()));
     }
 
     /** Package-private pure seam for policy precedence/absence tests. */
@@ -88,10 +88,6 @@ public final class HookSettings {
 
     private static ObjectNode effectiveSettings(String cwd) {
         return SettingsSnapshots.effective(cwd);
-    }
-
-    private static String currentCwd() {
-        return SettingsPaths.sessionProjectRoot(System.getProperty("user.dir")).toString();
     }
 
     private static HooksSettings hooksFrom(ObjectNode settings) {

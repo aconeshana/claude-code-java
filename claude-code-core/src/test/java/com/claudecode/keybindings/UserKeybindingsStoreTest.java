@@ -157,8 +157,8 @@ class UserKeybindingsStoreTest {
         store.subscribe(_ -> {
             var up = store.currentResolver().resolve(
                 List.of("Chat"), KeystrokeParser.parseKeystroke("up"));
-            if (up instanceof KeybindingResolver.ResolveResult.Match m
-                    && Strings.CS.equals("foo:bar", m.action())) {
+            if (up instanceof KeybindingResolver.ResolveResult.Match(var action)
+                    && Strings.CS.equals("foo:bar", action)) {
                 reloaded.countDown();
             }
         });

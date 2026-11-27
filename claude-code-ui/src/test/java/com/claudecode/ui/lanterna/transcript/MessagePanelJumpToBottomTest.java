@@ -14,6 +14,7 @@ import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import java.util.List;
+import org.apache.commons.lang3.Strings;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -43,7 +44,7 @@ final class MessagePanelJumpToBottomTest {
 
             // At bottom initially: pill is not shown, click is not consumed.
             assertFalse(panel.isScrolledUp());
-            assertFalse(rowText(screen, 9).contains("Jump to bottom"));
+            assertFalse(Strings.CS.contains(rowText(screen, 9), "Jump to bottom"));
             assertFalse(panel.handleJumpToBottomMouse(
                 new MouseAction(MouseActionType.CLICK_DOWN, 1, new TerminalPosition(30, 9))));
 
@@ -51,13 +52,13 @@ final class MessagePanelJumpToBottomTest {
             panel.pageUp();
             assertTrue(panel.isScrolledUp());
             gui.updateScreen();
-            assertTrue(rowText(screen, 9).contains("Jump to bottom"));
+            assertTrue(Strings.CS.contains(rowText(screen, 9), "Jump to bottom"));
 
             assertTrue(panel.handleJumpToBottomMouse(
                 new MouseAction(MouseActionType.CLICK_DOWN, 1, new TerminalPosition(30, 9))));
             assertFalse(panel.isScrolledUp());
             gui.updateScreen();
-            assertFalse(rowText(screen, 9).contains("Jump to bottom"));
+            assertFalse(Strings.CS.contains(rowText(screen, 9), "Jump to bottom"));
         } finally {
             screen.stopScreen();
         }

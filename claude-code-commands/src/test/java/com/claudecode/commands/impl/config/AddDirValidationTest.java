@@ -94,7 +94,7 @@ class AddDirValidationTest {
 
     @Test
     void relativePath_resolvedAgainstWorkingDirectory() throws IOException {
-        Path sibling = Files.createDirectory(tempDir.resolve("relative-sibling"));
+        Files.createDirectory(tempDir.resolve("relative-sibling"));
         AddDirValidation.AddDirectoryResult result =
             AddDirValidation.validateDirectoryForWorkspace("relative-sibling",
                 tempDir.toString(), List.of(tempDir));

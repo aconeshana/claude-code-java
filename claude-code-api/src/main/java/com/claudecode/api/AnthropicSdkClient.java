@@ -21,6 +21,7 @@ import com.claudecode.http.HttpCalls;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.config.VersionInfo;
+import com.claudecode.core.util.HashUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -33,12 +34,9 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -137,9 +135,9 @@ public class AnthropicSdkClient implements LlmClient {
                     public void translate(String type, String data,
                                           Consumer<StreamEvent> sink) {
                         StreamEvent event = parseEvent(type, data);
-                        if (event instanceof StreamEvent.MessageStart start) {
+                        if (event instanceof StreamEvent.MessageStart(var message, var rawEvent, _)) {
                             event = new StreamEvent.MessageStart(
-                                start.message(), start.rawEvent(), requestId);
+                                message, rawEvent, requestId);
                         }
                         if (event != null) sink.accept(event);
                     }
@@ -337,7 +335,7 @@ public class AnthropicSdkClient implements LlmClient {
      * formula.
      */
     static ApiException apiExceptionFor(int statusCode, String body, Headers headers) {
-        Long retryAfterSeconds = parseRetryAfterSeconds(headers.get("Retry-After"));
+        Long retryAfterSeconds = RetryInterceptor.parseRetryAfterSeconds(headers.get("Retry-After"));
         String promptTooLongMessage = PromptTooLongException.extractFromResponseBody(body);
         if (promptTooLongMessage != null) {
             return new PromptTooLongException(
@@ -346,17 +344,6 @@ public class AnthropicSdkClient implements LlmClient {
         String friendlyMessage = ApiErrorFriendlyText.classify(statusCode, body);
         return new ApiException(
             "API request failed: " + body, statusCode, null, retryAfterSeconds, friendlyMessage);
-    }
-
-    private static Long parseRetryAfterSeconds(String headerValue) {
-        if (StringUtils.isBlank(headerValue)) {
-            return null;
-        }
-        try {
-            return Long.parseLong(headerValue.trim());
-        } catch (NumberFormatException _) {
-            return null;
-        }
     }
 
     @Override
@@ -902,13 +889,7 @@ public class AnthropicSdkClient implements LlmClient {
         for (int index : indices) {
             chars.append(index < messageText.length() ? messageText.charAt(index) : '0');
         }
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
-                ("59cf53e54c78" + chars + version).getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest).substring(0, 3);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        return HashUtils.hashContent("59cf53e54c78" + chars + version).substring(0, 3);
     }
 
 

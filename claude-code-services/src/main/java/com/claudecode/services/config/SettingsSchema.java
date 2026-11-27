@@ -6,7 +6,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -113,7 +112,7 @@ public final class SettingsSchema {
 
     private static void sanitizeHooks(JsonNode node) {
         if (node == null || !node.isObject()) return;
-        node.fields().forEachRemaining(event -> {
+        node.properties().forEach(event -> {
             JsonNode matchers = event.getValue();
             if (matchers == null || !matchers.isArray()) return;
             for (JsonNode matcher : matchers) {
@@ -165,7 +164,7 @@ public final class SettingsSchema {
 
     private static void sanitizePluginConfigs(JsonNode node) {
         if (node == null || !node.isObject()) return;
-        node.fields().forEachRemaining(plugin -> {
+        node.properties().forEach(plugin -> {
             JsonNode config = plugin.getValue();
             if (config.isObject()) stripObject((ObjectNode) config, Set.of("mcpServers", "options"));
         });
@@ -173,7 +172,7 @@ public final class SettingsSchema {
 
     private static void sanitizeExtraKnownMarketplaces(JsonNode node) {
         if (node == null || !node.isObject()) return;
-        node.fields().forEachRemaining(entry -> {
+        node.properties().forEach(entry -> {
             JsonNode marketplace = entry.getValue();
             if (!marketplace.isObject()) return;
             ObjectNode object = (ObjectNode) marketplace;
@@ -387,8 +386,8 @@ public final class SettingsSchema {
                 PermissionRuleValidation.Result result =
                     PermissionRuleValidation.validatePermissionRule(rule.asText());
                 if (!result.valid()) {
-                    StringBuilder message = new StringBuilder(
-                        "Invalid permission rule \"" + rule.asText() + "\" was skipped");
+                    StringBuilder message = new StringBuilder("Invalid permission rule \"")
+                        .append(rule.asText()).append("\" was skipped");
                     if (result.error() != null) message.append(": ").append(result.error());
                     if (result.suggestion() != null) message.append(". ").append(result.suggestion());
                     err(errors, "permissions." + key, message.toString());
@@ -582,9 +581,7 @@ public final class SettingsSchema {
             if (!violations.isObject()) {
                 err(errors, "sandbox.ignoreViolations", expectedMsg("record", violations));
             } else {
-                Iterator<Map.Entry<String, JsonNode>> fields = violations.fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> field = fields.next();
+                for (Map.Entry<String, JsonNode> field : violations.properties()) {
                     checkStringArray(violations, field.getKey(),
                         "sandbox.ignoreViolations." + field.getKey(), errors);
                 }
@@ -638,9 +635,7 @@ public final class SettingsSchema {
             err(errors, "enabledPlugins", expectedMsg("record", node));
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             JsonNode value = field.getValue();
             boolean ok = value.isBoolean() || isStringArray(value);
             if (!ok) {
@@ -657,9 +652,7 @@ public final class SettingsSchema {
             err(errors, "pluginConfigs", expectedMsg("record", node));
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> plugins = node.fields();
-        while (plugins.hasNext()) {
-            Map.Entry<String, JsonNode> plugin = plugins.next();
+        for (Map.Entry<String, JsonNode> plugin : node.properties()) {
             String base = "pluginConfigs." + plugin.getKey();
             JsonNode config = plugin.getValue();
             if (!config.isObject()) {
@@ -671,9 +664,7 @@ public final class SettingsSchema {
                 if (!mcpServers.isObject()) {
                     err(errors, base + ".mcpServers", expectedMsg("record", mcpServers));
                 } else {
-                    Iterator<Map.Entry<String, JsonNode>> servers = mcpServers.fields();
-                    while (servers.hasNext()) {
-                        Map.Entry<String, JsonNode> server = servers.next();
+                    for (Map.Entry<String, JsonNode> server : mcpServers.properties()) {
                         String serverPath = base + ".mcpServers." + server.getKey();
                         if (!server.getValue().isObject()) {
                             err(errors, serverPath, expectedMsg("record", server.getValue()));
@@ -696,9 +687,7 @@ public final class SettingsSchema {
 
     /** Each value must satisfy {@code union[string, number, boolean, string[]]}. */
     private static void checkConfigValueRecord(JsonNode record, String path, List<FieldError> errors) {
-        Iterator<Map.Entry<String, JsonNode>> fields = record.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : record.properties()) {
             JsonNode v = field.getValue();
             boolean ok = v.isTextual() || v.isNumber() || v.isBoolean() || isStringArray(v);
             if (!ok) {
@@ -815,9 +804,7 @@ public final class SettingsSchema {
             err(errors, path, expectedMsg("record", node));
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             if (!field.getValue().isTextual()) {
                 err(errors, path + "." + field.getKey(), expectedMsg("string", field.getValue()));
             }

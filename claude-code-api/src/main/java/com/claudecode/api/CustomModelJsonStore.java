@@ -2,6 +2,7 @@ package com.claudecode.api;
 
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.annotation.Explanation;
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.serialization.JsonUtils;
@@ -10,10 +11,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -94,24 +93,14 @@ public final class CustomModelJsonStore implements CustomModelCatalog {
             throw new CustomModelConfigException(
                 "Custom model configuration path must have a parent directory", null);
         }
-        Path temp = null;
         try {
-            Files.createDirectories(parent);
-            temp = Files.createTempFile(parent, ".model-", ".json.tmp");
-            JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), document);
-            applyOwnerOnlyPermissions(temp);
-            try {
-                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            FileUtils.atomicReplace(file, temp -> {
+                JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), document);
+                applyOwnerOnlyPermissions(temp);
+            });
             applyOwnerOnlyPermissions(file);
         } catch (Exception e) {
             throw new CustomModelConfigException("Unable to save custom model configuration", e);
-        } finally {
-            if (temp != null) {
-                try { Files.deleteIfExists(temp); } catch (IOException _) { }
-            }
         }
     }
 

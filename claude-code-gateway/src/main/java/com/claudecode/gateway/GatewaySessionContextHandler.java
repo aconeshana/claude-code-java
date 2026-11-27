@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.sessionIdOf;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
@@ -67,7 +67,7 @@ final class GatewaySessionContextHandler {
      * now reports.
      */
     void handlePost(HttpExchange exchange) throws IOException {
-        JsonNode request = readJson(exchange);
+        JsonNode request = readRequestJson(exchange);
         if (request == null) return;
         String sessionId = StringUtils.trimToNull(text(request, "session_id"));
         String model = StringUtils.trimToNull(text(request, "model"));
@@ -298,7 +298,7 @@ final class GatewaySessionContextHandler {
         long usedTokens = TokenEstimator.contextInputTokens(
             snapshot.usage(), usageModel);
         int used = (int) Math.round(usedTokens * 100.0 / contextWindow);
-        used = Math.min(100, Math.max(0, used));
+        used = Math.clamp(used, 0, 100);
         return Optional.of(new GatewaySessionContextPort.ContextUsage(
             model, contextWindow, usedTokens, used, breakdown));
     }

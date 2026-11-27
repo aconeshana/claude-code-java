@@ -1,5 +1,6 @@
 package com.claudecode.tools.plan;
 
+import com.claudecode.core.io.FileUtils;
 import com.claudecode.core.plan.PlanCatalogContext;
 import com.claudecode.core.plan.PlanHistoryEntry;
 import com.claudecode.core.serialization.JsonUtils;
@@ -7,7 +8,6 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -319,20 +319,8 @@ final class PlanCatalogStore {
     }
 
     private void writeManifest(Catalog catalog) throws IOException {
-        Files.createDirectories(directory);
-        Path temporary = Files.createTempFile(directory, "." + baseName + "-", ".plans.tmp");
-        try {
-            Files.writeString(temporary, JsonUtils.toPrettyJson(catalog), StandardCharsets.UTF_8,
-                StandardOpenOption.TRUNCATE_EXISTING);
-            try {
-                Files.move(temporary, manifest,
-                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException _) {
-                Files.move(temporary, manifest, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        FileUtils.atomicReplace(manifest,
+            temporary -> Files.writeString(temporary, JsonUtils.toPrettyJson(catalog), StandardCharsets.UTF_8));
     }
 
     private void quarantineCorruptManifest() throws IOException {

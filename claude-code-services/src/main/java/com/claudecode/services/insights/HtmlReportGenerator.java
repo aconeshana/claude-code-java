@@ -3,6 +3,7 @@ package com.claudecode.services.insights;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import com.claudecode.core.text.FormatUtils;
 import com.claudecode.core.text.XmlEscaper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
@@ -264,7 +265,7 @@ public final class HtmlReportGenerator {
         String scannedSuffix = "";
         Long scanned = data.totalSessionsScanned();
         if (scanned != null && scanned != 0 && scanned > data.totalSessions()) {
-            scannedSuffix = " (" + localeNum(scanned) + " total)";
+            scannedSuffix = " (" + FormatUtils.formatGroupedNumber(scanned) + " total)";
         }
         AggregatedData.DateRange range = data.dateRange();
 
@@ -279,14 +280,14 @@ public final class HtmlReportGenerator {
 
         return render(HtmlReportTemplate.PAGE,
             "css", HtmlReportTemplate.CSS,
-            "total_messages", localeNum(data.totalMessages()),
+            "total_messages", FormatUtils.formatGroupedNumber(data.totalMessages()),
             "total_sessions", Long.toString(data.totalSessions()),
             "scanned_suffix", scannedSuffix,
             "date_start", range == null ? "" : range.start(),
             "date_end", range == null ? "" : range.end(),
             "at_a_glance", buildAtAGlance(node(ins, "at_a_glance")),
-            "lines_added", localeNum(data.totalLinesAdded()),
-            "lines_removed", localeNum(data.totalLinesRemoved()),
+            "lines_added", FormatUtils.formatGroupedNumber(data.totalLinesAdded()),
+            "lines_removed", FormatUtils.formatGroupedNumber(data.totalLinesRemoved()),
             "total_files_modified", Long.toString(data.totalFilesModified()),
             "days_active", Long.toString(data.daysActive()),
             "messages_per_day", jsNumber(data.messagesPerDay()),
@@ -638,10 +639,5 @@ public final class HtmlReportGenerator {
         if (Double.isNaN(value)) return "NaN";
         if (Double.isInfinite(value)) return value > 0 ? "Infinity" : "-Infinity";
         return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).toPlainString();
-    }
-
-
-    private static String localeNum(long value) {
-        return String.format(Locale.US, "%,d", value);
     }
 }

@@ -41,9 +41,9 @@ public final class DeferredToolsDeltaAttachmentProvider implements AttachmentPro
             TreeSet<String> reconstructed = new TreeSet<>();
             for (Message message : ctx.messages()) {
                 if (message instanceof AttachmentMessage am
-                        && am.payload() instanceof DeferredToolsDeltaAttachment prev) {
-                    if (prev.addedNames() != null) reconstructed.addAll(prev.addedNames());
-                    if (prev.removedNames() != null) prev.removedNames().forEach(reconstructed::remove);
+                        && am.payload() instanceof DeferredToolsDeltaAttachment(var addedNames, _, var removedNames)) {
+                    if (addedNames != null) reconstructed.addAll(addedNames);
+                    if (removedNames != null) removedNames.forEach(reconstructed::remove);
                 }
             }
             previousSet = reconstructed;

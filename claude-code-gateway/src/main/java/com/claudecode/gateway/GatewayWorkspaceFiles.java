@@ -1,5 +1,6 @@
 package com.claudecode.gateway;
 
+import com.claudecode.core.platform.Platform;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -15,7 +16,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Reads one file out of one workspace root, in the shape the file-preview tab
@@ -138,13 +138,12 @@ public final class GatewayWorkspaceFiles {
             if (!target.startsWith(realRoot) || !Files.exists(target)) {
                 return false;
             }
-            String os = System.getProperty("os.name", "");
             ProcessBuilder pb;
-            if (Strings.CI.contains(os, "mac")) {
+            if (Platform.IS_DARWIN) {
                 pb = reveal
                     ? new ProcessBuilder("/usr/bin/open", "-R", target.toString())
                     : new ProcessBuilder("/usr/bin/open", target.toString());
-            } else if (Strings.CI.contains(os, "win")) {
+            } else if (Platform.IS_WINDOWS) {
                 pb = reveal
                     ? new ProcessBuilder("explorer.exe", "/select," + target)
                     : new ProcessBuilder("cmd.exe", "/c", "start", "", target.toString());

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +39,7 @@ class DetachedWebGatewayTest {
             launches.add(command);
             logs.add(log);
             WebGatewayRecord.write(record, new WebGatewayRecord(ProcessHandle.current().pid(), URL, "0.2.14", 1_700_000_000_000L));
+            return null;
         };
 
         var started = new DetachedWebGateway(record, home.resolve("web-gateway.log"),
@@ -53,11 +55,44 @@ class DetachedWebGatewayTest {
     void failsWithTheLogPathWhenTheGatewayNeverPublishes() {
         Path record = home.resolve("web-gateway.json");
         Path log = home.resolve("web-gateway.log");
-        DetachedWebGateway.ProcessLauncher silent = (_, _) -> { };
+        DetachedWebGateway.ProcessLauncher silent = (_, _) -> null;
 
         assertThatThrownBy(() -> new DetachedWebGateway(record, log, silent, 200).start())
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining(log.toString());
+    }
+
+    @Test
+    void failsFastWhenTheChildProcessExitsBeforePublishing() {
+        Path record = home.resolve("web-gateway.json");
+        Path log = home.resolve("web-gateway.log");
+        DetachedWebGateway.ProcessLauncher crashing = (_, _) ->
+            new ProcessBuilder("/bin/sh", "-c", "exit 42").start();
+
+        long startedNanos = System.nanoTime();
+        assertThatThrownBy(() -> new DetachedWebGateway(record, log, crashing, 10_000).start())
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("exited early")
+            .hasMessageContaining("42")
+            .hasMessageContaining(log.toString());
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+        assertThat(elapsedMs).isLessThan(3_000L);
+    }
+
+    @Test
+    void succeedsWhenChildExitsZeroAfterRecordWasPublished() {
+        Path record = home.resolve("web-gateway.json");
+        Path log = home.resolve("web-gateway.log");
+        DetachedWebGateway.ProcessLauncher raced = (_, _) -> {
+            Process child = new ProcessBuilder("/bin/sh", "-c", "exit 0").start();
+            WebGatewayRecord.write(record, new WebGatewayRecord(
+                ProcessHandle.current().pid(), URL, "0.2.14", 1_700_000_000_000L));
+            return child;
+        };
+
+        var started = new DetachedWebGateway(record, log, raced, 2_000).start();
+
+        assertThat(started.url()).isEqualTo(URL);
     }
 
     @Test
@@ -77,6 +112,9 @@ class DetachedWebGatewayTest {
     private static DetachedWebGateway gateway(Path record, List<List<String>> launches,
             long timeoutMillis) {
         return new DetachedWebGateway(record, record.resolveSibling("web-gateway.log"),
-            (command, _) -> launches.add(command), timeoutMillis);
+            (command, _) -> {
+                launches.add(command);
+                return null;
+            }, timeoutMillis);
     }
 }

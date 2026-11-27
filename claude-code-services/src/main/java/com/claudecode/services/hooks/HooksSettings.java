@@ -41,9 +41,7 @@ public record HooksSettings(
 
         Map<HookEvent, List<HookMatcher>> eventHooks = new EnumMap<>(HookEvent.class);
 
-        Iterator<Map.Entry<String, JsonNode>> fields = hooksNode.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : hooksNode.properties()) {
             try {
                 HookEvent event = HookEvent.fromConfigKey(entry.getKey());
                 List<HookMatcher> matchers = parseMatchers(entry.getValue());
@@ -134,8 +132,7 @@ public record HooksSettings(
                     if (!StringUtils.isBlank(url)) {
                         Map<String, String> headers = new HashMap<>();
                         if (hookNode.has("headers") && hookNode.get("headers").isObject()) {
-                            hookNode.get("headers").fields().forEachRemaining(
-                                e -> headers.put(e.getKey(), e.getValue().asText("")));
+                            hookNode.get("headers").properties().forEach(e -> headers.put(e.getKey(), e.getValue().asText("")));
                         }
                         List<String> allowedEnvVars = new ArrayList<>();
                         if (hookNode.has("allowedEnvVars") && hookNode.get("allowedEnvVars").isArray()) {

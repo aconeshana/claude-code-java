@@ -233,15 +233,15 @@ final class TextCallRescue {
         int i = 1;
         while (i < s.length() && isSpace(s.charAt(i))) i++;
         if (allowClose && i < s.length() && s.charAt(i) == '/') {
-            i++;
-            while (i < s.length() && isSpace(s.charAt(i))) i++;
+            do {
+                i++;
+            } while (i < s.length() && isSpace(s.charAt(i)));
         }
         if (i == s.length()) return new DsmlMark(0, true);
         if (!isPipeChar(s.charAt(i))) return new DsmlMark(0, false);
-        i++;
-        while (i < s.length() && (isSpace(s.charAt(i)) || isPipeChar(s.charAt(i)))) {
+        do {
             i++;
-        }
+        } while (i < s.length() && (isSpace(s.charAt(i)) || isPipeChar(s.charAt(i))));
         if (i == s.length()) return new DsmlMark(0, true);
         String rest = s.substring(i);
         if (!Strings.CS.startsWith(rest, "DSML")) {
@@ -637,7 +637,7 @@ final class TextCallRescue {
             return JsonUtils.getMapper().createObjectNode();
         }
         if (raw.isObject()) {
-            return (ObjectNode) raw.deepCopy();
+            return raw.deepCopy();
         }
         if (raw.isTextual()) {
             String text = raw.asText().trim();
@@ -783,7 +783,7 @@ final class TextCallRescue {
             }
             String combined = pending + delta;
             pending = "";
-            String fullContext = safePrefix.toString() + combined;
+            String fullContext = safePrefix + combined;
             TailScan scan = scanStreamingText(fullContext);
             if (scan.startAt() >= 0 && scan.startAt() >= safePrefix.length()) {
                 int localAt = scan.startAt() - safePrefix.length();

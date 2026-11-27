@@ -23,7 +23,14 @@ public record PokemonProfile(
         long experienceTokens,
         String evolutionChoice) {
 
-    public enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY }
+    public enum Rarity {
+        COMMON, UNCOMMON, RARE, EPIC, LEGENDARY;
+
+        /** Title-cased display label (e.g. {@code "Common"}, {@code "Legendary"}). */
+        public String title() {
+            return com.claudecode.core.text.StringUtils.capitalize(name().toLowerCase(Locale.ROOT));
+        }
+    }
 
     public enum Stat { DEBUGGING, PATIENCE, CHAOS, WISDOM, SNARK }
 
@@ -49,7 +56,7 @@ public record PokemonProfile(
         for (String part : parts) {
             if (part.isEmpty()) continue;
             if (!display.isEmpty()) display.append(' ');
-            display.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            display.append(com.claudecode.core.text.StringUtils.capitalize(part));
         }
         return display.toString();
     }

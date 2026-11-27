@@ -3,6 +3,7 @@ package com.claudecode.tools.tasks;
 import org.apache.commons.lang3.StringUtils;
 
 import com.claudecode.core.engine.SessionIdentity;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.runtime.tasks.TaskBoardPort;
 import com.claudecode.tools.tasks.teammate.TeammateContext;
@@ -181,7 +182,7 @@ public final class TaskBoardService implements TaskBoardPort, AutoCloseable {
     public void close() {
         closed = true;
         cancelMonitoring();
-        closeQuietly(sessionChangeSubscription);
+        IoUtils.closeQuietly(sessionChangeSubscription);
         scheduler.shutdownNow();
         snapshotListeners.clear();
         intentListeners.clear();
@@ -428,14 +429,6 @@ public final class TaskBoardService implements TaskBoardPort, AutoCloseable {
         return new TaskItem(
             task.id(), task.subject(), task.description(), task.activeForm().orElse(null),
             task.owner().orElse(null), status, task.blocks(), task.blockedBy());
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        try {
-            closeable.close();
-        } catch (Exception _) {
-            // Best-effort lifecycle teardown.
-        }
     }
 
     private static <T> void notifyListeners(

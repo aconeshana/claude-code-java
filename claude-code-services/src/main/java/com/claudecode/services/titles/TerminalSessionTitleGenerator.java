@@ -147,8 +147,8 @@ public final class TerminalSessionTitleGenerator {
                     } else if (event instanceof StreamEvent.ContentBlockDelta delta
                             && delta.delta() instanceof Delta.TextDelta(String text1)) {
                         text.append(text1);
-                    } else if (event instanceof StreamEvent.Error error) {
-                        throw error.exception();
+                    } else if (event instanceof StreamEvent.Error(var exception, _)) {
+                        throw exception;
                     }
                 }
                 long completedAt = System.currentTimeMillis();

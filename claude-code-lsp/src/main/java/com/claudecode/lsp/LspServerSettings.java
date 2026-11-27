@@ -3,7 +3,6 @@ package com.claudecode.lsp;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +44,7 @@ public record LspServerSettings(
         }
 
         Map<String, LspServerSettings> result = new LinkedHashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = lspServersNode.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : lspServersNode.properties()) {
             result.put(entry.getKey(), parseEntry(entry.getValue()));
         }
         return Map.copyOf(result);
@@ -73,14 +70,12 @@ public record LspServerSettings(
 
         Map<String, String> extensionToLanguage = new LinkedHashMap<>();
         if (node.has("extensionToLanguage") && node.get("extensionToLanguage").isObject()) {
-            node.get("extensionToLanguage").fields().forEachRemaining(
-                e -> extensionToLanguage.put(e.getKey(), e.getValue().asText("")));
+            node.get("extensionToLanguage").properties().forEach(e -> extensionToLanguage.put(e.getKey(), e.getValue().asText("")));
         }
 
         Map<String, String> env = new LinkedHashMap<>();
         if (node.has("env") && node.get("env").isObject()) {
-            node.get("env").fields().forEachRemaining(
-                e -> env.put(e.getKey(), e.getValue().asText("")));
+            node.get("env").properties().forEach(e -> env.put(e.getKey(), e.getValue().asText("")));
         }
 
         boolean enabled = !node.has("enabled") || node.get("enabled").asBoolean(true);

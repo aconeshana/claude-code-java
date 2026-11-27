@@ -1,6 +1,7 @@
 package com.claudecode.cli;
 
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.platform.Platform;
 import com.claudecode.core.serialization.JsonUtils;
 import com.claudecode.gateway.GatewayRuntimeControlPort;
 import com.claudecode.core.model.CustomModelCatalog;
@@ -14,7 +15,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Host runtime control for {@code claude web}:
@@ -30,7 +30,7 @@ final class CliWebRuntimeControl implements GatewayRuntimeControlPort, AutoClose
 
     private static final Logger log = Logger.getLogger(CliWebRuntimeControl.class.getName());
     private static final Path CAFFEINATE_BIN = Path.of("/usr/bin/caffeinate");
-    private static final boolean SUPPORTED = Strings.CI.contains(System.getProperty("os.name", ""), "mac")
+    private static final boolean SUPPORTED = Platform.IS_DARWIN
         && Files.isExecutable(CAFFEINATE_BIN);
 
     private final Path stateFile;

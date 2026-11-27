@@ -1,6 +1,6 @@
 package com.claudecode.gateway;
 
-import static com.claudecode.gateway.GatewayRequests.readJson;
+import static com.claudecode.gateway.GatewayRequests.readRequestJson;
 import static com.claudecode.gateway.GatewayRequests.sessionIdOf;
 import static com.claudecode.gateway.GatewayRequests.text;
 import static com.claudecode.gateway.GatewayResponses.errorBody;
@@ -65,7 +65,7 @@ final class GatewayCapabilitiesHandler {
                 "session capabilities controller is not configured"));
             return;
         }
-        JsonNode body = readJson(exchange);
+        JsonNode body = readRequestJson(exchange);
         if (body == null) return;
         String sessionId = StringUtils.trimToNull(text(body, "session_id"));
         String kindRaw = StringUtils.trimToNull(text(body, "kind"));

@@ -284,8 +284,6 @@ class CompleteQueryEngineTest {
 
     @Test
     void multiTurnToolUseLoop_executesToolAndContinues() {
-        ObjectNode toolInput = MAPPER.createObjectNode().put("command", "ls");
-
         // Turn 1: assistant requests tool_use via content_block_start/delta/stop
         var turn1Events = List.<StreamingClient.StreamingEvent>of(
             new StreamingClient.StreamingEvent.MessageStartEvent(
@@ -463,8 +461,6 @@ class CompleteQueryEngineTest {
 
     @Test
     void maxTurns_exceeded_yieldsErrorMaxTurns() {
-        ObjectNode toolInput = MAPPER.createObjectNode().put("cmd", "x");
-
         // Client always returns tool_use via content_block_start/delta/stop
         StreamingClient alwaysToolUse = new StreamingClient() {
             @Override
@@ -1001,7 +997,7 @@ class CompleteQueryEngineTest {
         var engine = new DefaultQuerySession(QuerySessionSpec.builder()
             .llmClient(countingClient).build());
 
-        List<SDKMessage> messages = drain(engine.submitMessage("/help", SubmitOptions.DEFAULT));
+        drain(engine.submitMessage("/help", SubmitOptions.DEFAULT));
 
         assertEquals(0, apiCalls.get(), "API should not be called for slash commands");
     }

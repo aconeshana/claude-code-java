@@ -1,14 +1,12 @@
 package com.claudecode.ui.lanterna.features.memory;
 
-import java.util.Locale;
-
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import com.claudecode.runtime.memory.MemoryCatalog;
 import com.claudecode.keybindings.UserKeybindingsStore;
 import com.claudecode.tools.agent.AgentDefinitionLoader;
 import com.claudecode.ui.lanterna.dialog.MemorySelectorDialog;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.platform.Platform;
 import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.screen.Screen;
@@ -161,9 +159,8 @@ public final class MemoryFeature implements ReplCommandUiBridge.Memory, ReplFeat
 
 
     private static String[] folderOpenCommand(String path) {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac"))  return new String[] {"open", path};
-        if (Strings.CS.contains(os, "win"))  return new String[] {"cmd", "/c", "start", "", path};
+        if (Platform.IS_DARWIN) return new String[] {"open", path};
+        if (Platform.IS_WINDOWS) return new String[] {"cmd", "/c", "start", "", path};
         return new String[] {"xdg-open", path};
     }
 

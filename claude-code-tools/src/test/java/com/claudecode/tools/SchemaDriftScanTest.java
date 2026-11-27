@@ -114,9 +114,7 @@ class SchemaDriftScanTest {
         ObjectNode node = mapper.createObjectNode();
         JsonNode props = schema.get("properties");
         if (props != null && props.isObject()) {
-            var it = props.fields();
-            while (it.hasNext()) {
-                var e = it.next();
+            for (var e : props.properties()) {
                 node.set(e.getKey(), synthValue(e.getValue()));
             }
         }

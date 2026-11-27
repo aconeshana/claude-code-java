@@ -2,6 +2,7 @@ package com.claudecode.cli;
 
 import com.claudecode.runtime.query.AutoDreamEngine;
 import com.claudecode.core.engine.StreamingClient;
+import com.claudecode.core.util.CollectionUtils;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -65,7 +66,7 @@ record CliLaunchRequest(
              */
             boolean unrestricted) {
         ModelOptions {
-            betas = immutableCopy(betas);
+            betas = CollectionUtils.immutableList(betas);
         }
 
         static final ModelOptions EMPTY = new ModelOptions(
@@ -134,10 +135,10 @@ record CliLaunchRequest(
             String worktreeName,
             boolean disableSlashCommands) {
         WorkspaceOptions {
-            mcpConfig = immutableCopy(mcpConfig);
-            additionalDirectories = immutableCopy(additionalDirectories);
-            pluginDirectories = immutableCopy(pluginDirectories);
-            pluginDirectoriesNoMcp = immutableCopy(pluginDirectoriesNoMcp);
+            mcpConfig = CollectionUtils.immutableList(mcpConfig);
+            additionalDirectories = CollectionUtils.immutableList(additionalDirectories);
+            pluginDirectories = CollectionUtils.immutableList(pluginDirectories);
+            pluginDirectoriesNoMcp = CollectionUtils.immutableList(pluginDirectoriesNoMcp);
         }
 
         static final WorkspaceOptions EMPTY = new WorkspaceOptions(
@@ -154,12 +155,12 @@ record CliLaunchRequest(
             List<String> disallowedTools,
             List<String> baseTools) {
         PermissionOptions {
-            allowedTools = immutableCopy(allowedTools);
-            disallowedTools = immutableCopy(disallowedTools);
+            allowedTools = CollectionUtils.immutableList(allowedTools);
+            disallowedTools = CollectionUtils.immutableList(disallowedTools);
             // Null means the --tools option was omitted. An explicit empty
             // collection has different filtering semantics, so retain that
             // Picocli distinction while still defensively copying present data.
-            baseTools = baseTools == null ? null : immutableCopy(baseTools);
+            baseTools = baseTools == null ? null : CollectionUtils.immutableList(baseTools);
         }
 
         static final PermissionOptions EMPTY = new PermissionOptions(
@@ -192,9 +193,5 @@ record CliLaunchRequest(
                 Strings.CI.equals(output.outputFormat(), "json")
                     || Strings.CI.equals(output.outputFormat(), "stream-json"));
         }
-    }
-
-    private static List<String> immutableCopy(List<String> values) {
-        return values == null ? List.of() : List.copyOf(values);
     }
 }

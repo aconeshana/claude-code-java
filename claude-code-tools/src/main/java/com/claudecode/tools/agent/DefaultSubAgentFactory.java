@@ -601,11 +601,10 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         // The sub-engine's own ToolExecution will stamp toolUseId onto each
 
         // sets the parent's toolUseID on re-emitted bash_progress ticks).
-        final String parentTuid = agentId;
         ToolExecutionContext.ProgressSink baseSink = flatteningProgressSink(progressCallback);
         ToolExecutionContext.ProgressSink nestedSink = (baseSink == ToolExecutionContext.ProgressSink.NOOP)
             ? baseSink
-            : update -> baseSink.accept(update.withIdentity(update.toolUseId(), parentTuid));
+            : update -> baseSink.accept(update.withIdentity(update.toolUseId(), agentId));
 
         QuerySessionSpec config = buildSubEngineConfig(effectiveRequest, cwdOverride, agentId, nestedSink);
 
@@ -752,12 +751,11 @@ public class DefaultSubAgentFactory implements SubAgentFactory {
         // (returns a no-op stopper) when disabled or null. Snapshot progress
         // (effectively final) for the lambda — the live value is racy to read.
         Runnable stopSummarization = null;
-        final double summaryProgress = progressPercent;
         if (agentSummarizer != null) {
             stopSummarization = agentSummarizer.startSummarization(
                 taskId,
                 () -> subEngine.conversation().getMessages(),
-                (_, text) -> emitProgress(progressCallback, "subagent: " + text, summaryProgress));
+                (_, text) -> emitProgress(progressCallback, "subagent: " + text, progressPercent));
         }
 
         emitProgress(progressCallback, "Starting sub-agent...", 0);

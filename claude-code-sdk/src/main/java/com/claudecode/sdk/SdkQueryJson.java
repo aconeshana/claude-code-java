@@ -34,7 +34,7 @@ final class SdkQueryJson {
         ObjectNode value = object(node, "mcp_set_servers response");
         Map<String, String> errors = new LinkedHashMap<>();
         ObjectNode errorNode = object(required(value, "errors"), "errors");
-        errorNode.fields().forEachRemaining(entry -> errors.put(entry.getKey(), entry.getValue().asText()));
+        errorNode.properties().forEach(entry -> errors.put(entry.getKey(), entry.getValue().asText()));
         return new McpSetServersResult(strings(value, "added"), strings(value, "removed"), errors);
     }
 

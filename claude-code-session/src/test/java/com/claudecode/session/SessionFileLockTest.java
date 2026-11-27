@@ -81,7 +81,7 @@ class SessionFileLockTest {
         CountDownLatch tryAcquire = new CountDownLatch(1);
 
         // Hold the lock in a background thread
-        Thread holder = Thread.ofVirtual().start(() -> {
+        Thread.ofVirtual().start(() -> {
             SessionFileLock.withLock(file, () -> {
                 holdingLock.countDown();
                 try {

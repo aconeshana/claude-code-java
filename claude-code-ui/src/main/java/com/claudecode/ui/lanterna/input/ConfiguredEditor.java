@@ -1,5 +1,6 @@
 package com.claudecode.ui.lanterna.input;
 
+import com.claudecode.core.io.PathUtils;
 import com.claudecode.core.process.ExternalEditorDefaults;
 import com.claudecode.core.process.SubprocessEnvironment;
 import java.util.Locale;
@@ -61,24 +62,17 @@ public final class ConfiguredEditor {
      */
     public static String displayName(String command) {
         if (StringUtils.isBlank(command)) return UNKNOWN_EDITOR;
-        String known = DISPLAY_NAMES.get(command.toLowerCase(Locale.ROOT).trim());
+        String lowerCommand = command.trim().toLowerCase(Locale.ROOT);
+        String known = DISPLAY_NAMES.get(lowerCommand);
         if (known != null) return known;
 
         String firstToken = StringUtils.substringBefore(command, " ");
-        String basename = basename(firstToken).toLowerCase(Locale.ROOT);
-        if (basename.isEmpty()) return capitalize(command);
-        return DISPLAY_NAMES.getOrDefault(basename, capitalize(basename));
-    }
-
-    private static String basename(String path) {
-        int separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        return separator >= 0 ? path.substring(separator + 1) : path;
-    }
-
-    /** Lodash {@code capitalize}: lower-case the whole string, then upper-case the first letter. */
-    private static String capitalize(String value) {
-        String lower = value.toLowerCase(Locale.ROOT);
-        return lower.isEmpty() ? lower
-            : Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+        String lower = PathUtils.basename(firstToken).toLowerCase(Locale.ROOT);
+        if (lower.isEmpty()) {
+            return com.claudecode.core.text.StringUtils.capitalize(
+                command.toLowerCase(Locale.ROOT));
+        }
+        return DISPLAY_NAMES.getOrDefault(
+            lower, com.claudecode.core.text.StringUtils.capitalize(lower));
     }
 }

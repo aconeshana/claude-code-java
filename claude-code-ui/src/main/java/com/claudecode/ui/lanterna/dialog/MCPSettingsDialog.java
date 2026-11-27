@@ -1146,7 +1146,7 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
             if (reqNode != null && reqNode.isArray()) {
                 for (JsonNode n : reqNode) required.add(n.asText());
             }
-            Iterator<Entry<String, JsonNode>> it = props.fields();
+            Iterator<Entry<String, JsonNode>> it = props.properties().iterator();
             while (it.hasNext()) {
                 if (row >= FOOTER_ROW - 1) {
                     g.setForegroundColor(LanternaTheme.welcomeDim());
@@ -1181,9 +1181,7 @@ public final class MCPSettingsDialog extends Panel implements InlineOverlay {
 
     /** Extracts the first non-empty line from a possibly multi-line description. */
     private static String firstLine(String s) {
-        if (s == null) return "";
-        int nl = s.indexOf('\n');
-        return nl < 0 ? s : s.substring(0, nl);
+        return s == null ? "" : com.claudecode.core.text.StringUtils.firstLineOf(s);
     }
 
     /** Simple word-boundary wrapping for description paragraphs. */

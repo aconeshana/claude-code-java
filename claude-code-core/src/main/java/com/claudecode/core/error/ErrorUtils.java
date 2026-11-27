@@ -4,6 +4,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.claudecode.core.engine.AbortException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileSystemLoopException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
@@ -79,11 +80,32 @@ public final class ErrorUtils {
         }
     }
 
+    /**
+     * Unwraps the innermost cause of {@code error} and returns its message, falling back to its
+     * simple class name when the message is {@code null}.
+     */
+    public static String rootCauseMessage(Throwable error) {
+        if (error == null) return "null";
+        Throwable cur = error;
+        while (cur.getCause() != null && cur.getCause() != cur) {
+            cur = cur.getCause();
+        }
+        return cur.getMessage() != null ? cur.getMessage() : cur.getClass().getSimpleName();
+    }
+
     public static boolean isFsInaccessible(Throwable error) {
-        return error instanceof NoSuchFileException
-            || error instanceof AccessDeniedException
-            || error instanceof NotDirectoryException
-            || error instanceof FileSystemLoopException
-            || error instanceof SecurityException;
+        if (error instanceof NoSuchFileException
+                || error instanceof AccessDeniedException
+                || error instanceof NotDirectoryException
+                || error instanceof FileSystemLoopException
+                || error instanceof SecurityException) {
+            return true;
+        }
+        if (error instanceof FileSystemException fileSystemError) {
+            String reason = fileSystemError.getReason();
+            return reason != null && (Strings.CI.contains(reason, "permission denied")
+                || Strings.CI.contains(reason, "operation not permitted"));
+        }
+        return false;
     }
 }

@@ -241,7 +241,7 @@ public class AskUserQuestionTool extends AnnotatedTool<JsonNode, String> {
     /** Input-supplied variant ({@code answers} + optional {@code annotations} nodes). */
     private static String formatResult(JsonNode answers, JsonNode annotations) {
         List<String> entries = new ArrayList<>();
-        answers.fields().forEachRemaining(e -> {
+        answers.properties().forEach(e -> {
             String q = e.getKey();
             JsonNode ann = annotations != null ? annotations.get(q) : null;
             entries.add(formatEntry(q, e.getValue().asText(""),

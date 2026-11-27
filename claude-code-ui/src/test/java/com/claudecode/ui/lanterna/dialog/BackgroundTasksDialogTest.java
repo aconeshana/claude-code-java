@@ -331,7 +331,7 @@ class BackgroundTasksDialogTest {
     @Test
     void enterOnSelectedRow_entersDetailMode() {
         TaskRegistry registry = newRegistry();
-        TaskState a = runningShell(registry, "cmd-a");
+        runningShell(registry, "cmd-a");
         runningShell(registry, "cmd-b");
         BackgroundTasksDialog d = new BackgroundTasksDialog(registry);
         d.show(() -> {});

@@ -1,6 +1,7 @@
 package com.claudecode.ui.lanterna.features.pokemon;
 
 import com.claudecode.commands.CommandContext;
+import com.claudecode.core.error.ErrorUtils;
 import com.claudecode.core.pokemon.PokemonEvolution;
 import com.claudecode.core.pokemon.PokemonProfile;
 import com.claudecode.ui.lanterna.components.LogoPanel;
@@ -138,7 +139,8 @@ public final class PokemonFeature implements ReplCommandUiBridge.Pokemon, ReplFe
         UiSettings.writeGlobalAsync("welcomePokemon", update.after().toJson())
             .whenComplete((_, failure) -> {
                 if (failure != null) {
-                    log.warn("Failed to persist welcomePokemon: {}", rootMessage(failure));
+                    log.warn("Failed to persist welcomePokemon: {}",
+                        ErrorUtils.rootCauseMessage(failure));
                 }
             });
         Runnable applyExperience = () -> {
@@ -161,11 +163,5 @@ public final class PokemonFeature implements ReplCommandUiBridge.Pokemon, ReplFe
 
     private int terminalWidth() {
         return screen != null ? screen.getTerminalSize().getColumns() : 100;
-    }
-
-    private static String rootMessage(Throwable failure) {
-        Throwable cause = failure;
-        while (cause.getCause() != null) cause = cause.getCause();
-        return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
     }
 }

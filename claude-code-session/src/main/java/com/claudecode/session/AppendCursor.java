@@ -1,6 +1,7 @@
 package com.claudecode.session;
 
 import com.claudecode.core.io.ByteArrays;
+import com.claudecode.core.io.FileUtils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
@@ -88,7 +89,7 @@ record AppendCursor(Object fileKey, long size, FileTime modified,
         if (fileKey == null || !fileKey.equals(attributes.fileKey())) return false;
         if (attributes.size() < parsedBytes) return false;
         ByteBuffer current = ByteBuffer.allocate(prefixTail.length);
-        readFully(channel, current, parsedBytes - prefixTail.length);
+        FileUtils.readFully(channel, current, parsedBytes - prefixTail.length);
         return Arrays.equals(current.array(), prefixTail);
     }
 
@@ -97,7 +98,7 @@ record AppendCursor(Object fileKey, long size, FileTime modified,
         long fileSize = attributes.size();
         int appended = Math.toIntExact(fileSize - parsedBytes);
         ByteBuffer bytes = ByteBuffer.allocate(appended);
-        readFully(channel, bytes, parsedBytes);
+        FileUtils.readFully(channel, bytes, parsedBytes);
         byte[] raw = bytes.array();
         int complete = ByteArrays.lastIndexOf(raw, (byte) '\n') + 1;
 
@@ -135,16 +136,6 @@ record AppendCursor(Object fileKey, long size, FileTime modified,
             .toString();
         try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
             return reader.lines().toList();
-        }
-    }
-
-    private static void readFully(FileChannel channel, ByteBuffer target, long position)
-            throws IOException {
-        long at = position;
-        while (target.hasRemaining()) {
-            int read = channel.read(target, at);
-            if (read < 0) throw new IOException("Transcript shrank while being read");
-            at += read;
         }
     }
 }

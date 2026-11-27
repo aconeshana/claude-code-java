@@ -465,9 +465,10 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
     }
 
     private void drawDetailHeader(TextGUIGraphics graphics, WorkflowRun run, int columns) {
-        String name = firstNonBlank(run.workflowName(), run.title(), run.summary(),
+        String name = StringUtils.firstNonBlank(run.workflowName(), run.title(), run.summary(),
             "Dynamic workflow");
-        String subtext = firstNonBlank(run.summary(), run.title(), "");
+        String subtext = StringUtils.defaultString(
+            StringUtils.firstNonBlank(run.summary(), run.title()));
         List<PhaseRow> phases = phaseRows(run);
         int done = phases.stream().mapToInt(this::doneAgentCount).sum();
         int phaseTotal = phases.stream().mapToInt(phase -> phase.agents().size()).sum();
@@ -514,8 +515,7 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
         int available = Math.max(12, columns - 9);
         int longestPhase = Math.max(14,
             phases.stream().mapToInt(this::phasePreferredWidth).max().orElse(14));
-        int leftWidth = Math.max(12, Math.min(34,
-            Math.min(longestPhase, available - 24)));
+        int leftWidth = Math.clamp(Math.min(longestPhase, available - 24), 12, 34);
         int rightWidth = available - leftWidth;
         boolean wide = columns >= 64 && rightWidth >= 20;
         int top = rows < 18 ? 3 : 4;
@@ -699,7 +699,7 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
         boolean selectedRow = (mode == Mode.AGENTS || mode == Mode.TRANSCRIPT)
             && agentIndex == selectedAgent;
         String prefix = (selectedRow ? "❯" : " ") + agentGlyph(status) + " ";
-        int labelWidth = Math.min(24, Math.max(6, (int) Math.floor(width * 0.42)));
+        int labelWidth = Math.clamp((int) Math.floor(width * 0.42), 6, 24);
         String label = InlineOverlay.clip(agent.path("label").asText("agent"), labelWidth);
         String model = ModelNames.displayName(agent.path("model").asText(run.defaultModel()));
         if (Strings.CS.equals("unknown", model)) model = "";
@@ -730,7 +730,7 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
         String status = agentStatus(agent, run.status() == TaskStatus.RUNNING);
         boolean selectedRow = mode == Mode.AGENTS && agentIndex == selectedAgent;
         String prefix = (selectedRow ? "❯ " : "  ") + agentGlyph(status) + " ";
-        int labelWidth = Math.min(22, Math.max(4, width - 5));
+        int labelWidth = Math.clamp(width - 5, 4, 22);
         String label = InlineOverlay.clip(agent.path("label").asText("agent"), labelWidth);
         String model = ModelNames.displayName(agent.path("model").asText(run.defaultModel()));
         if (Strings.CS.equals("unknown", model)) model = "";
@@ -961,13 +961,6 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
             + decorated;
     }
 
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (!StringUtils.isBlank(value)) return value;
-        }
-        return "";
-    }
-
     private void drawTranscript(TextGUIGraphics graphics, WorkflowRun run, int columns) {
         JsonNode agent = selectedAgentNode(run);
         if (agent == null) {
@@ -986,8 +979,7 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
             .mapToInt(item -> 4
                 + FormatUtils.displayWidth(item.path("label").asText("agent")))
             .max().orElse(14));
-        int leftWidth = Math.max(12, Math.min(30,
-            Math.min(longestAgent, available - 30)));
+        int leftWidth = Math.clamp(Math.min(longestAgent, available - 30), 12, 30);
         int rightWidth = available - leftWidth;
         boolean wide = columns >= 64 && rightWidth >= 30;
         agentDetailContentWidth = wide ? rightWidth : Math.max(12, columns - 6);
@@ -1656,9 +1648,8 @@ public final class WorkflowsDialog extends Panel implements InlineOverlay {
                 return InlineOverlay.clip(value.asText().replace('\n', ' '), 72);
             }
         }
-        var fields = input.fields();
-        while (fields.hasNext()) {
-            JsonNode value = fields.next().getValue();
+        for (var field : input.properties()) {
+            JsonNode value = field.getValue();
             if (value.isTextual() && StringUtils.isNotBlank(value.asText())) {
                 return InlineOverlay.clip(value.asText().replace('\n', ' '), 72);
             }

@@ -123,8 +123,7 @@ public final class KeybindingValidator {
             if (isKeybindingBlock(block)) {
                 JsonNode ctx = block.get("context");
                 Map<String, String> binds = new HashMap<>();
-                block.get("bindings").fields().forEachRemaining(
-                    e -> binds.put(e.getKey(), e.getValue().isNull() ? null : e.getValue().asText()));
+                block.get("bindings").properties().forEach(e -> binds.put(e.getKey(), e.getValue().isNull() ? null : e.getValue().asText()));
                 validBlocks.add(new ValidBlock(ctx.asText(), binds));
             } else {
                 allStructural = false;
@@ -185,7 +184,7 @@ public final class KeybindingValidator {
             return warnings;
         }
 
-        bindings.fields().forEachRemaining(e -> {
+        bindings.properties().forEach(e -> {
             String key = e.getKey();
             JsonNode action = e.getValue();
 
@@ -427,20 +426,16 @@ public final class KeybindingValidator {
         List<String> lines = new ArrayList<>();
         if (!errors.isEmpty()) {
             lines.add("Found " + errors.size() + " keybinding "
-                + plural(errors.size(), "error") + ":");
+                + com.claudecode.core.text.StringUtils.plural(errors.size(), "error") + ":");
             for (KeybindingWarning e : errors) lines.add(formatWarning(e));
         }
         if (!warns.isEmpty()) {
             if (!lines.isEmpty()) lines.add("");
             lines.add("Found " + warns.size() + " keybinding "
-                + plural(warns.size(), "warning") + ":");
+                + com.claudecode.core.text.StringUtils.plural(warns.size(), "warning") + ":");
             for (KeybindingWarning w : warns) lines.add(formatWarning(w));
         }
         return String.join("\n", lines);
-    }
-
-    private static String plural(int n, String word) {
-        return n == 1 ? word : word + "s";
     }
 
     private static boolean isKeybindingBlock(JsonNode block) {

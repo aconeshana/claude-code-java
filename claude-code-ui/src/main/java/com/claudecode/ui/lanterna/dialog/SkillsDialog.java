@@ -247,13 +247,13 @@ public final class SkillsDialog extends Panel implements InlineOverlay {
             deliver.set(false);
             return;
         }
-        if (resolved instanceof ContextKeybindingDispatcher.Result.Action action) {
-            if (Strings.CS.equals("confirm:no", action.value())) {
+        if (resolved instanceof ContextKeybindingDispatcher.Result.Action(var value)) {
+            if (Strings.CS.equals("confirm:no", value)) {
                 dismiss();
                 deliver.set(false);
                 return;
             }
-            if (Strings.CS.equals("confirm:yes", action.value())) {
+            if (Strings.CS.equals("confirm:yes", value)) {
                 // SkillsMenu's Dialog subscribes only to confirm:no. Consume
                 // the resolved action so Enter cannot leak into chat below.
                 deliver.set(false);

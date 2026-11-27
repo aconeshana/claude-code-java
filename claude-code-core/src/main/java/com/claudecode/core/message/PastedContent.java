@@ -6,7 +6,6 @@ import com.claudecode.core.paste.PastedRefParser;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,11 +48,10 @@ public record PastedContent(
         List<Integer> pasteIds = msg.imagePasteIds();
         int imgIdx = 0;
         for (ContentBlock block : msg.message().blocks()) {
-            if (block instanceof ImageBlock ib) {
-                JsonNode src = ib.source();
-                if (src != null && Strings.CS.equals("base64", src.path("type").asText(null))) {
-                    String base64 = src.path("data").asText(null);
-                    String mediaType = src.path("media_type").asText(null);
+            if (block instanceof ImageBlock(var source)) {
+                if (source != null && Strings.CS.equals("base64", source.path("type").asText(null))) {
+                    String base64 = source.path("data").asText(null);
+                    String mediaType = source.path("media_type").asText(null);
                     if (base64 != null) {
                         int id = (pasteIds != null && imgIdx < pasteIds.size())
                             ? pasteIds.get(imgIdx) : imgIdx + 1;

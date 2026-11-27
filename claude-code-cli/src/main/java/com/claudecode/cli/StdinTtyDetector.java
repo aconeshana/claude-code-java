@@ -24,12 +24,10 @@ final class StdinTtyDetector {
             // the underlying device, so pipes, regular files, and /dev/null do
             // not pass merely because they are character/FIFO devices.
             return Files.isSameFile(DEV_STDIN, DEV_TTY);
-        } catch (IOException | SecurityException | UnsupportedOperationException _) {
+        } catch (IOException | SecurityException | UnsupportedOperationException | LinkageError _) {
             // Fall back only when the POSIX device view is unavailable. This
             // keeps non-POSIX filesystems usable without reintroducing the
             // character-device false positive on normal Unix systems.
-            return System.console() != null;
-        } catch (LinkageError _) {
             return System.console() != null;
         }
     }

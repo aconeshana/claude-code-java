@@ -561,10 +561,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
             HookEventMetadata evMeta = metadata.get(selectedEvent);
             if (evMeta != null && !StringUtils.isBlank(evMeta.description())) {
                 g.setForegroundColor(LanternaTheme.welcomeDim());
-                String sub = evMeta.description();
-                // Use only first line to stay within one row
-                int nl = sub.indexOf('\n');
-                if (nl > 0) sub = sub.substring(0, nl);
+                String sub = com.claudecode.core.text.StringUtils.firstLineOf(evMeta.description());
                 int maxSub = cols - LEFT_PAD;
                 g.putString(LEFT_PAD, 2, sub.length() > maxSub ? FormatUtils.truncate(sub, maxSub) : sub);
                 g.setForegroundColor(TextColor.ANSI.DEFAULT);
@@ -636,9 +633,7 @@ public final class HooksConfigMenuDialog extends Panel implements InlineOverlay 
         // Row 2: event description subtitle.
         if (evMeta != null && !StringUtils.isBlank(evMeta.description())) {
             g.setForegroundColor(LanternaTheme.welcomeDim());
-            String sub = evMeta.description();
-            int nl = sub.indexOf('\n');
-            if (nl > 0) sub = sub.substring(0, nl);
+            String sub = com.claudecode.core.text.StringUtils.firstLineOf(evMeta.description());
             int maxSub = cols - LEFT_PAD;
             g.putString(LEFT_PAD, 2, sub.length() > maxSub ? FormatUtils.truncate(sub, maxSub) : sub);
             g.setForegroundColor(TextColor.ANSI.DEFAULT);

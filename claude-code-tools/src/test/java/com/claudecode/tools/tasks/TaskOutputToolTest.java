@@ -123,7 +123,6 @@ class TaskOutputToolTest {
         ObjectNode input = M.createObjectNode().put("task_id", task.id()).put("block", false);
         ToolExecutionContext context = ctx();
         var invocation = tool.callWithResult(input, context);
-        String text = invocation.rawResult();
         var mapped = invocation.mappedResult();
 
         var payload = (JsonNode) mapped.toolUseResult();

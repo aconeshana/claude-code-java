@@ -1,6 +1,7 @@
 package com.claudecode.tools.cron;
 
 import org.apache.commons.lang3.StringUtils;
+import com.claudecode.core.process.ProcessUtils;
 import com.claudecode.core.serialization.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -115,7 +116,7 @@ final class CronSchedulerLock {
 
 
     static boolean sameProcess(long pid, String expectedStartToken) {
-        if (pid <= 0 || !ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+        if (!ProcessUtils.isProcessRunning(pid)) {
             return false;
         }
         if (expectedStartToken == null) return true;

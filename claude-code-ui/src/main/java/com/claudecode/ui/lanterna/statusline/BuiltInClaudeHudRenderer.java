@@ -112,8 +112,8 @@ final class BuiltInClaudeHudRenderer {
         if (percent >= CRITICAL_PERCENT && input.currentUsage() != null) {
             Usage usage = input.currentUsage();
             long cache = usage.cacheCreationInputTokens() + usage.cacheReadInputTokens();
-            line.append(color(" (in: " + formatTokens(usage.inputTokens())
-                + ", cache: " + formatTokens(cache) + ")", DIM));
+            line.append(color(" (in: " + formatHudTokens(usage.inputTokens())
+                + ", cache: " + formatHudTokens(cache) + ")", DIM));
         }
         return line.toString();
     }
@@ -194,7 +194,7 @@ final class BuiltInClaudeHudRenderer {
     }
 
     private static int clamp(int value) {
-        return Math.max(0, Math.min(100, value));
+        return Math.clamp(value, 0, 100);
     }
 
     private static String contextColor(int percent) {
@@ -232,7 +232,7 @@ final class BuiltInClaudeHudRenderer {
         return out.toString();
     }
 
-    private static String formatTokens(long tokens) {
+    private static String formatHudTokens(long tokens) {
         if (tokens >= 1_000_000) return String.format(Locale.ROOT, "%.1fM", tokens / 1_000_000.0);
         if (tokens >= 1_000) return Math.round(tokens / 1_000.0) + "k";
         return Long.toString(tokens);

@@ -19,7 +19,7 @@ public final class ScopeColorMap {
 
 
     /** Monokai Extended foreground colors — used for all *-dark themes (incl. dark-daltonized). */
-    private static final Map<String, RgbColor> MONOKAI_SCOPES = Map.<String, RgbColor>ofEntries(
+    private static final Map<String, RgbColor> MONOKAI_SCOPES = Map.ofEntries(
         Map.entry("keyword",                new RgbColor(249, 38, 114)),
         Map.entry("_storage",               new RgbColor(102, 217, 239)),
         Map.entry("built_in",               new RgbColor(166, 226, 46)),
@@ -47,7 +47,7 @@ public final class ScopeColorMap {
     );
 
     /** GitHub-light foreground colors — used for all *-light themes (incl. light-daltonized). */
-    private static final Map<String, RgbColor> GITHUB_SCOPES = Map.<String, RgbColor>ofEntries(
+    private static final Map<String, RgbColor> GITHUB_SCOPES = Map.ofEntries(
         Map.entry("keyword",                new RgbColor(167, 29, 93)),
         Map.entry("_storage",               new RgbColor(167, 29, 93)),
         Map.entry("built_in",               new RgbColor(0, 134, 179)),
@@ -77,7 +77,7 @@ public final class ScopeColorMap {
     /**
      * Standard 16-color ANSI subset for *-ansi themes.
      */
-    private static final Map<String, RgbColor> ANSI_SCOPES = Map.<String, RgbColor>ofEntries(
+    private static final Map<String, RgbColor> ANSI_SCOPES = Map.ofEntries(
         Map.entry("keyword",         new RgbColor(255, 85, 255)),  // ANSI 13 magenta_bright
         Map.entry("_storage",        new RgbColor(85, 255, 255)),  // ANSI 14 cyan_bright
         Map.entry("built_in",        new RgbColor(85, 255, 255)),  // ANSI 14

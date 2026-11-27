@@ -1,5 +1,7 @@
 package com.claudecode.core.validation;
 
+import com.claudecode.core.util.UuidUtils;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -17,8 +19,6 @@ public class JsonSchemaValidator {
 
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     /** Shared stateless validator for production call paths. */
     public static JsonSchemaValidator shared() {
@@ -178,9 +178,7 @@ public class JsonSchemaValidator {
             }
         }
         if (props != null && props.isObject()) {
-            var it = props.fields();
-            while (it.hasNext()) {
-                var e = it.next();
+            for (var e : props.properties()) {
                 JsonNode field = value.get(e.getKey());
                 if (field != null && !field.isNull()) {
                     validateJson(field, e.getValue(), path + "." + e.getKey(), errors);
@@ -311,7 +309,7 @@ public class JsonSchemaValidator {
     }
 
     private boolean validateUuid(String value) {
-        return UUID_PATTERN.matcher(value).matches();
+        return UuidUtils.isValid(value);
     }
 
     private boolean validateDateTime(String value) {

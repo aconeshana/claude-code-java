@@ -124,7 +124,7 @@ public final class SettingsSources {
         }
         synchronized (SettingsProcessState.LOCK) {
             ObjectNode merged = SettingsProcessState.flagSettingsInline.deepCopy();
-            settings.fields().forEachRemaining(entry -> {
+            settings.properties().forEach(entry -> {
                 if (entry.getValue().isNull()) merged.remove(entry.getKey());
                 else merged.set(entry.getKey(), entry.getValue().deepCopy());
             });

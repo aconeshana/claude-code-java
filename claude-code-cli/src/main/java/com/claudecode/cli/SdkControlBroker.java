@@ -5,6 +5,7 @@ import com.claudecode.core.engine.PermissionAskCallback;
 import com.claudecode.core.engine.PermissionAskContext;
 import com.claudecode.core.engine.PermissionUpdateJsonCodec;
 import com.claudecode.core.engine.RefusalFallbackPrompt;
+import com.claudecode.core.io.IoUtils;
 import com.claudecode.core.message.AssistantMessage;
 import com.claudecode.core.message.Message;
 import com.claudecode.core.message.RefusalFallbackDecision;
@@ -153,7 +154,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         } catch (ExecutionException | RuntimeException _) {
             return RefusalFallbackDecision.Choice.CANCELLED;
         } finally {
-            closeQuietly(abortRegistration);
+            IoUtils.closeQuietly(abortRegistration);
         }
     }
 
@@ -196,14 +197,6 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
         cancel.put("request_id", pending.requestId());
         StdoutMessageWriter.writeControlMessage(cancel, out);
         pending.future().complete(fallback);
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        try {
-            closeable.close();
-        } catch (Exception _) {
-            // Abort-listener cleanup is best effort.
-        }
     }
 
     /**
@@ -446,7 +439,7 @@ public final class SdkControlBroker implements RefusalFallbackPrompt {
             }
             return false;
         } finally {
-            closeQuietly(abortRegistration);
+            IoUtils.closeQuietly(abortRegistration);
         }
     }
 

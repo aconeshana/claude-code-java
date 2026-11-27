@@ -29,8 +29,8 @@ final class PlanMetadataExtractor {
         if (StringUtils.isBlank(summary)) summary = firstBodyParagraph(source);
         if (Strings.CS.equals(title, summary)) summary = "";
         return new Metadata(
-            truncate(title, MAX_TITLE_CODE_POINTS),
-            truncate(summary, MAX_SUMMARY_CODE_POINTS));
+            truncateCodePoints(title, MAX_TITLE_CODE_POINTS),
+            truncateCodePoints(summary, MAX_SUMMARY_CODE_POINTS));
     }
 
     private static String contextParagraph(String content) {
@@ -79,7 +79,7 @@ final class PlanMetadataExtractor {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ");
     }
 
-    private static String truncate(String value, int maxCodePoints) {
+    private static String truncateCodePoints(String value, int maxCodePoints) {
         int count = value.codePointCount(0, value.length());
         if (count <= maxCodePoints) return value;
         int end = value.offsetByCodePoints(0, Math.max(0, maxCodePoints - 1));

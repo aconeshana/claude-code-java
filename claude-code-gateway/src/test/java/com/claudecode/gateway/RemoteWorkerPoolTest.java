@@ -233,7 +233,7 @@ class RemoteWorkerPoolTest {
         BlockingQueue<String> announcements = new LinkedBlockingQueue<>();
         CompletableFuture<String> subscribed = new CompletableFuture<>();
         Thread host;
-        try (var sink = hub.subscribe(frame -> {
+        try (var _ = hub.subscribe(frame -> {
                 if (Strings.CS.equals("sessions.changed", frame.event())) {
                     announcements.add(frame.data());
                 }
@@ -266,7 +266,7 @@ class RemoteWorkerPoolTest {
                     // The pool closed the link.
                 }
             });
-            try (var registration = directory.register(new WebWorkerRegistration(
+            try (var _ = directory.register(new WebWorkerRegistration(
                     ProcessHandle.current().pid(), socketPath.toString(), "tok", "/work", "test"))) {
                 assertThat(subscribed.get(5, TimeUnit.SECONDS)).isEqualTo("s-1");
                 assertThat(announcements.poll(5, TimeUnit.SECONDS))

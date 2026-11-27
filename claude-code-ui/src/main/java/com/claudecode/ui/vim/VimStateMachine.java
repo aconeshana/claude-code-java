@@ -453,7 +453,7 @@ public class VimStateMachine {
                 String before = text.substring(0, from);
                 buffer = to == text.length()
                     ? new StringBuilder(before)
-                    : new StringBuilder(before + "\n" + text.substring(to));
+                    : new StringBuilder(before).append('\n').append(text, to, text.length());
                 // Insert mode permits the caret one position past the final
                 // character; cc on the last line must land at that EOF offset.
                 cursor = Math.min(from, buffer.length());

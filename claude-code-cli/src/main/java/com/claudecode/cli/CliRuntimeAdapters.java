@@ -248,7 +248,7 @@ final class CliRuntimeAdapters {
             case BEDROCK -> {
                 rows.add(new StatusProperty("API provider", "AWS Bedrock"));
                 addIfPresent(rows, "Bedrock base URL", env.get("BEDROCK_BASE_URL"));
-                rows.add(new StatusProperty("AWS region", firstNonBlank(
+                rows.add(new StatusProperty("AWS region", StringUtils.firstNonBlank(
                     env.get("AWS_REGION"), env.get("AWS_DEFAULT_REGION"), "us-east-1")));
                 if (EnvUtils.isEnvTruthy(
                         env.get("CLAUDE_CODE_SKIP_BEDROCK_AUTH"))) {
@@ -260,7 +260,7 @@ final class CliRuntimeAdapters {
                 addIfPresent(rows, "Vertex base URL", env.get("VERTEX_BASE_URL"));
                 addIfPresent(rows, "GCP project", env.get("ANTHROPIC_VERTEX_PROJECT_ID"));
                 rows.add(new StatusProperty("Default region",
-                    firstNonBlank(env.get("CLOUD_ML_REGION"), "us-east5")));
+                    StringUtils.firstNonBlank(env.get("CLOUD_ML_REGION"), "us-east5")));
                 if (EnvUtils.isEnvTruthy(
                         env.get("CLAUDE_CODE_SKIP_VERTEX_AUTH"))) {
                     rows.add(new StatusProperty(null, "GCP auth skipped"));
@@ -270,7 +270,7 @@ final class CliRuntimeAdapters {
                 new StatusProperty("API provider", "OpenAI-compatible"));
         }
 
-        addIfPresent(rows, "Proxy", firstNonBlank(
+        addIfPresent(rows, "Proxy", StringUtils.firstNonBlank(
             env.get("https_proxy"), env.get("HTTPS_PROXY"),
             env.get("http_proxy"), env.get("HTTP_PROXY")));
         addIfPresent(rows, "Additional CA cert(s)", env.get("NODE_EXTRA_CA_CERTS"));
@@ -285,13 +285,6 @@ final class CliRuntimeAdapters {
 
     private static boolean nonBlank(String value) {
         return StringUtils.isNotBlank(value);
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (nonBlank(value)) return value;
-        }
-        return null;
     }
 
     static CompactWarningProvider newCompactWarningProvider(CompactService compactService) {

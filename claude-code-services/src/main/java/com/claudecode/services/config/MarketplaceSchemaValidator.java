@@ -6,7 +6,6 @@ import com.claudecode.services.config.SettingsSchema.FieldError;
 import com.claudecode.services.plugins.marketplace.MarketplaceNames;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -106,9 +105,7 @@ final class MarketplaceSchemaValidator {
             return;
         }
         int before = errors.size();
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             String path = "extraKnownMarketplaces." + field.getKey();
             JsonNode entry = field.getValue();
             if (!entry.isObject()) {
@@ -121,9 +118,7 @@ final class MarketplaceSchemaValidator {
         }
 
         if (errors.size() != before) return;
-        fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             JsonNode source = field.getValue().get("source");
             if (source != null && source.isObject()
                 && Strings.CS.equals("settings", source.path("source").asText())
@@ -173,9 +168,7 @@ final class MarketplaceSchemaValidator {
                     if (!headers.isObject()) {
                         err(errors, path + ".headers", expectedMsg("record", headers));
                     } else {
-                        Iterator<Map.Entry<String, JsonNode>> fields = headers.fields();
-                        while (fields.hasNext()) {
-                            Map.Entry<String, JsonNode> field = fields.next();
+                        for (Map.Entry<String, JsonNode> field : headers.properties()) {
                             if (!field.getValue().isTextual()) {
                                 err(errors, path + ".headers." + field.getKey(),
                                     expectedMsg("string", field.getValue()));

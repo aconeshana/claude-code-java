@@ -9,6 +9,7 @@ import com.claudecode.core.config.EnvUtils;
 import com.claudecode.core.process.SubprocessEnvironment;
 import com.claudecode.core.plan.PlanHistoryEntry;
 import com.claudecode.core.serialization.JsonUtils;
+import com.claudecode.core.text.FormatUtils;
 
 import java.time.Instant;
 import java.util.*;
@@ -650,13 +651,9 @@ public final class AttachmentRenderer {
 
     private static String renderOutputTokenUsage(OutputTokenUsageAttachment a) {
         String turnText = a.budget() != null
-            ? (formatNumber(a.turn()) + " / " + formatNumber(a.budget()))
-            : formatNumber(a.turn());
-        return "Output tokens — turn: " + turnText + " · session: " + formatNumber(a.session());
-    }
-
-    private static String formatNumber(long n) {
-        return String.format("%,d", n);
+            ? (FormatUtils.formatGroupedNumber(a.turn()) + " / " + FormatUtils.formatGroupedNumber(a.budget()))
+            : FormatUtils.formatGroupedNumber(a.turn());
+        return "Output tokens — turn: " + turnText + " · session: " + FormatUtils.formatGroupedNumber(a.session());
     }
 
 

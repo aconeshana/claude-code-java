@@ -96,9 +96,9 @@ final class CliPromptInventoryAssembler {
         ObjectNode ordered = JsonUtils.getMapper().createObjectNode();
         JsonNode includeCoAuthor = effective.get("includeCoAuthoredBy");
         if (includeCoAuthor != null) ordered.set("includeCoAuthoredBy", includeCoAuthor.deepCopy());
-        effective.fields().forEachRemaining(field -> {
+        effective.properties().forEach(field -> {
             if (!Strings.CS.equals("includeCoAuthoredBy", field.getKey())
-                    && !Strings.CS.equals("enabledMcpjsonServers", field.getKey())) {
+                && !Strings.CS.equals("enabledMcpjsonServers", field.getKey())) {
                 ordered.set(field.getKey(), field.getValue().deepCopy());
             }
         });

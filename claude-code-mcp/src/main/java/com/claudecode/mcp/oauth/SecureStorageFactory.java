@@ -1,8 +1,7 @@
 package com.claudecode.mcp.oauth;
 
-import java.util.Locale;
+import com.claudecode.core.platform.Platform;
 
-import org.apache.commons.lang3.Strings;
 /**
  * Platform-appropriate {@link SecureStorage} factory.
  */
@@ -34,8 +33,7 @@ public final class SecureStorageFactory {
      * {@link #getInstance}.
      */
     static SecureStorage build() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (Strings.CS.contains(os, "mac") || Strings.CS.contains(os, "darwin")) {
+        if (Platform.IS_DARWIN) {
             return new FallbackSecureStorage(
                 new KeychainSecureStorage(),
                 new PlaintextSecureStorage());
