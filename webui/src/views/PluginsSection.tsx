@@ -147,20 +147,25 @@ export function PluginsSection() {
             const isConfirmingUninstall = confirmUninstallId === plugin.plugin_id
             return (
               <li key={plugin.plugin_id} className={cardCss.card}>
-                <SettingsRow
-                  title={plugin.name}
-                  description={
-                    <>
-                      <span>{plugin.description || plugin.plugin_id}</span>
-                      <div className={localCss.inline} style={{ marginTop: 6 }}>
-                        <Pill>{plugin.plugin_id}</Pill>
-                        {plugin.version !== '' && <Pill>{`v${plugin.version}`}</Pill>}
-                        <Pill>{`scope: ${scope}`}</Pill>
-                      </div>
-                    </>
-                  }
+                <div
+                  className={cardCss.cardHeader}
+                  style={{ flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: isConfiguring ? 12 : 0 }}
                 >
-                  <div className={localCss.inline}>
+                  <div className={cardCss.entryInfo} style={{ minWidth: 200 }}>
+                    <div className={cardCss.entryName} style={{ flexWrap: 'wrap' }}>
+                      <span>{plugin.name}</span>
+                      <Pill>{plugin.plugin_id}</Pill>
+                      {plugin.version !== '' && <Pill>{`v${plugin.version}`}</Pill>}
+                      <Pill>{`scope: ${scope}`}</Pill>
+                    </div>
+                    <div
+                      className={cardCss.entryMeta}
+                      style={{ whiteSpace: 'normal', marginTop: 6, lineHeight: 1.45 }}
+                    >
+                      {plugin.description || plugin.plugin_id}
+                    </div>
+                  </div>
+                  <div className={localCss.inline} style={{ flexShrink: 0, flexWrap: 'wrap' }}>
                     <Switch
                       checked={plugin.enabled}
                       disabled={anyBusy}
@@ -230,7 +235,7 @@ export function PluginsSection() {
                       </>
                     )}
                   </div>
-                </SettingsRow>
+                </div>
                 {isConfiguring && (
                   <PluginOptionsEditor
                     plugin={plugin}

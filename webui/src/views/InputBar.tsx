@@ -760,7 +760,10 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
     : placeholder
 
   return (
-    <div className={hero ? `${css.root} ${css.hero}` : css.root}>
+    <div
+      className={hero ? `${css.root} ${css.hero}` : css.root}
+      style={hero && (menu.open || fileMenu.open) ? { zIndex: 20 } : undefined}
+    >
       {queuedItems.length > 0 && (
         <div className={queueCss.dock} data-testid="composer-queue-dock" role="region" aria-label="排队消息">
           {queuedItems.map((item) => (
