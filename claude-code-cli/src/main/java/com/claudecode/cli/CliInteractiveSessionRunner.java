@@ -983,9 +983,12 @@ final class CliInteractiveSessionRunner {
     static GatewayModelsPort gatewayModels(CustomModelCatalog catalog) {
         return new GatewayModelsPort() {
             @Override public List<ModelEntry> list() {
+                Map<String, String> pluginSources = catalog instanceof CliCompositeModelCatalog composite
+                    ? composite.pluginSourcesByModel() : Map.of();
                 return catalog.list().stream()
                     .map(m -> new ModelEntry(m.modelName(), m.protocol().configValue(), m.baseUrl(),
-                        m.apiKey() != null, m.headers(), m.contextWindow(), m.multimodal()))
+                        m.apiKey() != null, m.headers(), m.contextWindow(), m.multimodal(),
+                        pluginSources.get(m.modelName())))
                     .toList();
             }
             @Override public void save(String modelName, String protocol, String baseUrl,

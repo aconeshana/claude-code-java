@@ -10,12 +10,11 @@ import com.claudecode.runtime.plugins.PluginMarketplacePort;
 import com.claudecode.tools.files.WorkspaceFileSearch;
 import com.claudecode.tools.skills.Skill;
 import com.claudecode.tools.skills.SkillLoader;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Read-only gateway surfaces that describe the <em>host's</em> installed
@@ -121,6 +120,42 @@ final class CliGatewayPorts {
                     runtime.refresh();
                 }
                 return summary();
+            }
+
+            @Override
+            public List<UiPanel> uiPanels() {
+                if (runtime == null || runtime.modelProviders() == null) {
+                    return List.of();
+                }
+                return runtime.modelProviders().uiPanels().stream()
+                    .map(t -> new UiPanel(
+                        t.pluginId(),
+                        t.providerId(),
+                        t.title(),
+                        t.description(),
+                        "/api/plugins/" + URLEncoder.encode(
+                            t.pluginId(), StandardCharsets.UTF_8) + "/ui/",
+                        t.status(),
+                        t.error(),
+                        t.settingsTab()))
+                    .toList();
+            }
+
+            @Override
+            public Optional<UiProxyTarget> uiProxyTarget(String pluginId) {
+                if (runtime == null || runtime.modelProviders() == null) {
+                    return Optional.empty();
+                }
+                return runtime.modelProviders().uiTarget(pluginId)
+                    .map(t -> new UiProxyTarget(
+                        t.pluginId(), t.baseUrl(), t.uiPath(), t.token(), t.status(), t.error()));
+            }
+
+            @Override
+            public void invalidateProviderModels() {
+                if (runtime != null && runtime.modelProviders() != null) {
+                    runtime.modelProviders().invalidateModelsCache();
+                }
             }
         };
     }

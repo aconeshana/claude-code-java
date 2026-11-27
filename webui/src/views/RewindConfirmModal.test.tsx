@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const previewRewindMock = vi.fn()
 const executeRewindMock = vi.fn()
 const submitTurnMock = vi.fn()
+const fetchSnapshotMock = vi.fn()
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
@@ -13,6 +14,7 @@ vi.mock('../api/client', async () => {
     previewRewind: (...args: unknown[]) => previewRewindMock(...args),
     executeRewind: (...args: unknown[]) => executeRewindMock(...args),
     submitTurn: (...args: unknown[]) => submitTurnMock(...args),
+    fetchSnapshot: (...args: unknown[]) => fetchSnapshotMock(...args),
   }
 })
 
@@ -31,6 +33,7 @@ beforeEach(() => {
   previewRewindMock.mockReset()
   executeRewindMock.mockReset()
   submitTurnMock.mockReset()
+  fetchSnapshotMock.mockReset()
 })
 
 afterEach(() => {
@@ -159,6 +162,74 @@ describe('RewindConfirmModal', () => {
 
     expect(executeRewindMock).toHaveBeenCalledWith('sess-2', 'msg-u1', 'conversation_only')
     expect(submitTurnMock).toHaveBeenCalledWith('sess-2', 'retry prompt')
+
+    loadSpy.mockRestore()
+    refreshSpy.mockRestore()
+  })
+
+  it('resolves synthetic live-user-N message IDs to persisted snapshot UUIDs before preview and rewind', async () => {
+    useConversations.setState({
+      conversations: {
+        'sess-live': {
+          messages: [
+            { kind: 'user', id: 'live-user-1', text: '你好' },
+          ],
+          lastFrameId: 1,
+          turnRunning: false,
+          lastError: null,
+        },
+      },
+    })
+    fetchSnapshotMock.mockResolvedValue({
+      session_id: 'sess-live',
+      messages: [
+        { role: 'user', id: 'uuid-persisted-1', content: '你好' },
+      ],
+    })
+    previewRewindMock.mockResolvedValue({
+      can_rewind_conversation: true,
+      can_rewind_code: false,
+      code_unavailable_reason: null,
+      turns_to_drop: 1,
+      messages_to_drop: 2,
+      insertions: 0,
+      deletions: 0,
+      files: [],
+    })
+    executeRewindMock.mockResolvedValue({
+      rewound_conversation: true,
+      rewound_code: false,
+      retained_message_count: 0,
+      restored_files: [],
+    })
+    submitTurnMock.mockResolvedValue(undefined)
+    const loadSpy = vi.spyOn(useConversations.getState(), 'loadSnapshot').mockResolvedValue()
+    const refreshSpy = vi.spyOn(useSessions.getState(), 'refresh').mockResolvedValue()
+
+    act(() => {
+      root.render(
+        <RewindConfirmModal
+          open
+          sessionId="sess-live"
+          messageId="live-user-1"
+          originalText="你好"
+          editedText="你好（换模型重发）"
+          onClose={() => {}}
+          onCompleted={() => {}}
+        />,
+      )
+    })
+    await flushPromises()
+
+    expect(fetchSnapshotMock).toHaveBeenCalledWith('sess-live')
+    expect(previewRewindMock).toHaveBeenCalledWith('sess-live', 'uuid-persisted-1')
+
+    const confirmBtn = document.querySelector('[data-testid="rewind-confirm-submit"]') as HTMLButtonElement | null
+    act(() => { confirmBtn?.click() })
+    await flushPromises()
+
+    expect(executeRewindMock).toHaveBeenCalledWith('sess-live', 'uuid-persisted-1', 'conversation_only')
+    expect(submitTurnMock).toHaveBeenCalledWith('sess-live', '你好（换模型重发）')
 
     loadSpy.mockRestore()
     refreshSpy.mockRestore()

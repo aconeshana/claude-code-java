@@ -21,6 +21,8 @@ import { useSidebarCollapse } from './store/sidebarCollapse'
 import { useScheduleView } from './store/scheduleView'
 import { useTaskBoard } from './store/taskBoard'
 import { useCcConnect } from './store/ccConnect'
+import { useModels } from './store/models'
+import { usePlugins } from './store/plugins'
 import { AppFrame } from './views/AppFrame'
 import { ApprovalCard } from './views/ApprovalCard'
 import { SudoCard } from './views/SudoCard'
@@ -88,6 +90,8 @@ export function App() {
     void sessions.refresh()
     void useShells.getState().refresh()
     void useCcConnect.getState().refresh()
+    void useModels.getState().refresh()
+    void usePlugins.getState().refresh()
 
     const connection: MirrorConnection = subscribeMirror((frame) => {
       useConversations.getState().applyFrame(frame)

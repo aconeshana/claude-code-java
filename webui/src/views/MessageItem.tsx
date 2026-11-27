@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Button,
   IconBranchOutline16,
-  IconDislikeFill16,
-  IconDislikeOutline16,
   IconEditOutline16,
-  IconLikeFill16,
-  IconLikeOutline16,
   IconRefreshOutline16,
   Tooltip,
 } from '@primitives'
@@ -86,35 +82,6 @@ export function MessageItem({ message, hideReasoning = false, showTail = false,
   )
 }
 
-const FEEDBACK_STORAGE_KEY = 'poco.message-feedback.v1'
-type FeedbackVote = 'like' | 'dislike' | null
-
-function readFeedback(messageId: string): FeedbackVote {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
-    if (raw === null) return null
-    const map = JSON.parse(raw) as Record<string, unknown>
-    const val = map[messageId]
-    return val === 'like' || val === 'dislike' ? val : null
-  } catch {
-    return null
-  }
-}
-
-function writeFeedback(messageId: string, vote: FeedbackVote): void {
-  if (typeof window === 'undefined') return
-  try {
-    const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
-    const map = raw !== null ? (JSON.parse(raw) as Record<string, string>) : {}
-    if (vote === null) delete map[messageId]
-    else map[messageId] = vote
-    window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(map))
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
 function UserItem({
   message,
   t,
@@ -149,18 +116,21 @@ function UserItem({
             style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
-              minWidth: 300,
-              maxWidth: 520,
-              padding: 10,
-              borderRadius: 14,
-              background: 'var(--dsw-alias-bg-layer-1)',
-              border: '0.5px solid var(--dsw-alias-border-l2)',
+              gap: 10,
+              width: '100%',
+              maxWidth: 540,
+              minWidth: 'min(320px, 100%)',
+              padding: '12px 14px 10px',
+              borderRadius: 16,
+              background: 'var(--dsw-alias-bg-layer-1, #ffffff)',
+              border: '1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))',
+              boxShadow: '0 4px 18px rgba(0, 0, 0, 0.06)',
+              boxSizing: 'border-box',
             }}
           >
             <textarea
               value={draft}
-              rows={3}
+              rows={Math.min(8, Math.max(2, draft.split('\n').length))}
               autoFocus
               onChange={(e) => { setDraft(e.target.value) }}
               onKeyDown={(e) => {
@@ -173,37 +143,46 @@ function UserItem({
                 }
               }}
               style={{
+                boxSizing: 'border-box',
                 width: '100%',
-                resize: 'vertical',
+                minHeight: 44,
+                maxHeight: 220,
+                padding: 0,
+                resize: 'none',
                 border: 'none',
                 outline: 'none',
                 background: 'transparent',
                 color: 'var(--dsw-alias-label-primary)',
                 font: 'inherit',
-                fontSize: 13,
-                lineHeight: 1.5,
+                fontSize: 13.5,
+                lineHeight: 1.55,
               }}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditing(false)
-                  setDraft(message.text)
-                }}
-              >
-                取消
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={draft.trim() === ''}
-                onClick={openRewindConfirm}
-                data-testid="user-edit-continue"
-              >
-                继续
-              </Button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary)', userSelect: 'none' }}>
+                Enter 继续 · Esc 取消
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(false)
+                    setDraft(message.text)
+                  }}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={draft.trim() === ''}
+                  onClick={openRewindConfirm}
+                  data-testid="user-edit-continue"
+                >
+                  继续
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -214,6 +193,7 @@ function UserItem({
             open={rewindModalOpen}
             sessionId={addressedSessionId}
             messageId={message.id}
+            originalText={message.text}
             editedText={draft.trim()}
             onClose={() => { setRewindModalOpen(false) }}
             onCompleted={() => {
@@ -267,7 +247,6 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
   const showTools = part === 'all' || part === 'process' || part === 'tools'
   const showResponse = part === 'all' || part === 'response'
   const defaultOpen = useTranscriptView((state) => state.mode === 'normal')
-  const [feedback, setFeedback] = useState<FeedbackVote>(() => readFeedback(message.id))
   const [forking, setForking] = useState(false)
   const [retrying, setRetrying] = useState(false)
   // One stable labels identity: MarkdownText's streaming cache resets when
@@ -389,42 +368,6 @@ function AssistantItem({ message, t, hideReasoning, showTail, changesTurn, sessi
                     <IconBranchOutline16 />
                   </button>
                 </Tooltip>
-              )}
-              {!inSubagentTranscript && (
-                <>
-                  <Tooltip label={feedback === 'like' ? '取消点赞' : '有帮助'} side="bottom">
-                    <button
-                      type="button"
-                      className={actionCss.action}
-                      aria-label={feedback === 'like' ? '取消点赞' : '有帮助'}
-                      aria-pressed={feedback === 'like'}
-                      data-message-action="like"
-                      onClick={() => {
-                        const next: FeedbackVote = feedback === 'like' ? null : 'like'
-                        setFeedback(next)
-                        writeFeedback(message.id, next)
-                      }}
-                    >
-                      {feedback === 'like' ? <IconLikeFill16 /> : <IconLikeOutline16 />}
-                    </button>
-                  </Tooltip>
-                  <Tooltip label={feedback === 'dislike' ? '取消点踩' : '需改进'} side="bottom">
-                    <button
-                      type="button"
-                      className={actionCss.action}
-                      aria-label={feedback === 'dislike' ? '取消点踩' : '需改进'}
-                      aria-pressed={feedback === 'dislike'}
-                      data-message-action="dislike"
-                      onClick={() => {
-                        const next: FeedbackVote = feedback === 'dislike' ? null : 'dislike'
-                        setFeedback(next)
-                        writeFeedback(message.id, next)
-                      }}
-                    >
-                      {feedback === 'dislike' ? <IconDislikeFill16 /> : <IconDislikeOutline16 />}
-                    </button>
-                  </Tooltip>
-                </>
               )}
               <ContextJumpButton sessionId={addressedSessionId} time={message.time} turn={message.turn} />
               {message.turnUsage !== undefined && (

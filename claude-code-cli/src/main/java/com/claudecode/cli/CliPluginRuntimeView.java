@@ -22,4 +22,9 @@ interface CliPluginRuntimeView extends PluginRuntimePort {
     int reloadSkills();
 
     void syncWorkflowCommands(Path cwd);
+
+    /** Live plugin model-provider sidecar view, or {@code null} when unavailable. */
+    default CliPluginProviderView modelProviders() {
+        return null;
+    }
 }

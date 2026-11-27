@@ -26,7 +26,7 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
-  IconDataOutline16,
+  IconDataOutline16, IconSettingsOutline16,
 } from '@primitives'
 import css from './ModelSelect.module.css'
 import { EffortSlider, effortDisplayLabel, isDefaultEffort, isMaxEffort } from '../../src/views/EffortSlider'
@@ -40,6 +40,7 @@ export interface ModelRow {
   readonly label: string
   readonly description?: string
   readonly default: boolean
+  readonly sourcePlugin?: string | undefined
 }
 
 /** The session's current selection, from the same endpoint. */
@@ -75,17 +76,20 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * gateway endpoint answer), the select verb, and the label strings.
  */
 export function ModelSelect(
-  { selection, available, busy, select, selectEffort, s }: {
+  { selection, available, busy, select, selectEffort, onManagePlugin, s }: {
     selection: ModelSeatSelection | null
     available: boolean
     busy: boolean
     select: (model: string) => Promise<string | null>
     selectEffort: (effort: string) => Promise<string | null>
+    onManagePlugin?: ((pluginId: string) => void) | undefined
     s: ModelSelectStrings
   },
 ) {
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
+  const [activeGroup, setActiveGroup] = useState<string | null>(null)
+  const [modelQuery, setModelQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -218,7 +222,7 @@ export function ModelSelect(
 
   const modelLabel = selection == null
     ? s.triggerFallback
-    : currentRow?.label ?? selection.current
+    : (currentRow?.label || selection.current || s.triggerFallback)
   // Upstream's readout: the resolved level name when one applies, the
   // provider-default label only when no level resolves (the provider's own
   // default governs — e.g. an unknown custom endpoint).
@@ -340,41 +344,271 @@ export function ModelSelect(
             )
           })()}
 
-          {pane === 'model' && (
-            <>
-              {error !== null && (
-                <div className={css.error}>{s.selectError(error)}</div>
-              )}
-              <div className={clsx(css.groups, 'scrollable')}>
-                {choices.map((row) => {
-                  const selected = selection?.current === row.name
-                  return (
-                    <button
-                      ref={itemRef()}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={selected}
-                      className={clsx(css.option, selected && css.selected)}
-                      key={row.name}
-                      title={row.label}
-                      disabled={busy}
-                      onClick={() => { choose(row.name) }}
-                    >
-                      <span className={css.optionCopy}>
-                        <span className={css.modelName}>{row.label}</span>
-                      </span>
-                      <span className={css.check}>
-                        {selected ? <IconCheckOutline16 /> : null}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-              {choices.length === 0 && (
-                <div className={css.empty}>{s.emptyModels}</div>
-              )}
-            </>
-          )}
+          {pane === 'model' && (() => {
+            const brandDotColor = (name: string): string => {
+              const lower = name.toLowerCase()
+              if (lower.includes('claude') || lower.includes('anthropic')) return '#d97757'
+              if (lower.includes('deepseek')) return '#4d6bfe'
+              if (lower.includes('glm') || lower.includes('zhipu')) return '#10b981'
+              if (lower.includes('qwen')) return '#7c3aed'
+              if (lower.includes('kimi') || lower.includes('moonshot')) return '#f59e0b'
+              if (lower.includes('doubao') || lower.includes('seed')) return '#0ea5e9'
+              if (lower.includes('minimax')) return '#ec4899'
+              if (lower.includes('gemini')) return '#3b82f6'
+              if (lower.includes('gpt') || lower.includes('o3') || lower.includes('o4')) return '#16a34a'
+              return '#8b95a5'
+            }
+
+            const q = modelQuery.trim().toLowerCase()
+            const filteredChoices = q === ''
+              ? choices
+              : choices.filter((r) => r.name.toLowerCase().includes(q) || r.label.toLowerCase().includes(q))
+
+            const flat: ModelRow[] = []
+            const groupMap = new Map<string, ModelRow[]>()
+            for (const row of filteredChoices) {
+              const slash = row.name.indexOf('/')
+              if (slash > 0) {
+                const g = row.name.slice(0, slash)
+                const list = groupMap.get(g) ?? []
+                list.push(row)
+                groupMap.set(g, list)
+              } else {
+                flat.push(row)
+              }
+            }
+            const groups = [...groupMap.entries()]
+            const drilledRows = q === '' && activeGroup != null ? (groupMap.get(activeGroup) ?? []) : null
+
+            const renderModelButton = (row: ModelRow, displayName: string) => {
+              const selected = selection?.current === row.name
+              const dotColor = brandDotColor(displayName)
+              return (
+                <button
+                  ref={itemRef()}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  className={clsx(css.option, selected && css.selected)}
+                  key={row.name}
+                  title={row.label}
+                  disabled={busy}
+                  style={{ padding: '7px 10px', borderRadius: 8 }}
+                  onClick={() => {
+                    setModelQuery('')
+                    setActiveGroup(null)
+                    choose(row.name)
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: dotColor,
+                      flexShrink: 0,
+                      marginRight: 8,
+                    }}
+                  />
+                  <span className={css.optionCopy}>
+                    <span className={css.modelName} style={{ fontSize: 12.5 }}>{displayName}</span>
+                  </span>
+                  <span className={css.check}>
+                    {selected ? <IconCheckOutline16 /> : null}
+                  </span>
+                </button>
+              )
+            }
+
+            return (
+              <>
+                {error !== null && (
+                  <div className={css.error}>{s.selectError(error)}</div>
+                )}
+                {choices.length > 5 && (
+                  <div className={css.searchWrap}>
+                    <input
+                      type="text"
+                      value={modelQuery}
+                      placeholder="搜索模型…"
+                      aria-label="搜索模型"
+                      className={css.searchInput}
+                      onChange={(e) => { setModelQuery(e.target.value) }}
+                      onKeyDown={(e) => { e.stopPropagation() }}
+                    />
+                  </div>
+                )}
+                {drilledRows != null ? (
+                  <div className={clsx(css.groups, 'scrollable')} style={{ padding: '4px 6px 6px' }}>
+                    {(() => {
+                      const groupPluginId = drilledRows.find((r) => r.sourcePlugin)?.sourcePlugin
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, minWidth: 0 }}>
+                          <button
+                            ref={itemRef()}
+                            type="button"
+                            role="menuitem"
+                            className={css.option}
+                            onClick={() => { setActiveGroup(null) }}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              width: 'auto',
+                              padding: '6px 10px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              opacity: 0.72,
+                            }}
+                          >
+                            <span className={css.optionCopy}>
+                              <span className={css.modelName}>{`‹ ${activeGroup}`}</span>
+                            </span>
+                          </button>
+                          {groupPluginId && onManagePlugin && (
+                            <button
+                              type="button"
+                              title="打开桥接管理"
+                              aria-label="打开桥接管理"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                close()
+                                onManagePlugin(groupPluginId)
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                padding: '5px 8px',
+                                borderRadius: 7,
+                                border: '1px solid var(--dsw-alias-border-def, rgba(128,128,128,0.18))',
+                                background: 'var(--dsw-alias-bg-subtle, rgba(128,128,128,0.06))',
+                                color: 'inherit',
+                                fontSize: 11,
+                                fontWeight: 500,
+                                opacity: 0.8,
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <IconSettingsOutline16 size={12} />
+                              <span>管理</span>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()}
+                    {drilledRows.map((row) => renderModelButton(row, row.name.slice(activeGroup!.length + 1)))}
+                  </div>
+                ) : (
+                  <div className={clsx(css.groups, 'scrollable')} style={{ padding: '4px 6px 6px' }}>
+                    {flat.length > 0 && groups.length > 0 && (
+                      <div style={{ fontSize: 10.5, fontWeight: 600, opacity: 0.5, padding: '4px 10px 3px', letterSpacing: '0.04em' }}>
+                        MODELS
+                      </div>
+                    )}
+                    {flat.map((row) => renderModelButton(row, row.label))}
+                    {groups.length > 0 && (
+                      <>
+                        {flat.length > 0 && (
+                          <div style={{ height: 1, background: 'var(--dsw-alias-border-def, rgba(128,128,128,0.14))', margin: '6px 8px' }} />
+                        )}
+                        <div style={{ fontSize: 10.5, fontWeight: 600, opacity: 0.5, padding: '3px 10px 3px', letterSpacing: '0.04em' }}>
+                          PROVIDERS
+                        </div>
+                        {q !== ''
+                          ? groups.flatMap(([, rows]) => rows.map((row) => renderModelButton(row, row.label)))
+                          : groups.map(([groupName, rows]) => {
+                            const hasSelected = rows.some((r) => selection?.current === r.name)
+                            const groupPluginId = rows.find((r) => r.sourcePlugin)?.sourcePlugin
+                            return (
+                              <div key={`group:${groupName}`} style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+                                <button
+                                  ref={itemRef()}
+                                  type="button"
+                                  role="menuitem"
+                                  className={clsx(css.option, hasSelected && css.selected)}
+                                  style={{ flex: 1, minWidth: 0, width: 'auto', padding: '7px 10px', borderRadius: 8 }}
+                                  onClick={() => { setActiveGroup(groupName) }}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    style={{
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: 5,
+                                      background: 'var(--dsw-alias-bg-subtle, rgba(128,128,128,0.12))',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      flexShrink: 0,
+                                      marginRight: 8,
+                                    }}
+                                  >
+                                    {groupName.charAt(0).toUpperCase()}
+                                  </span>
+                                  <span className={css.optionCopy}>
+                                    <span className={css.modelName} style={{ fontSize: 12.5, fontWeight: 500 }}>{groupName}</span>
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 10.5,
+                                      padding: '1px 6px',
+                                      borderRadius: 999,
+                                      background: 'var(--dsw-alias-bg-subtle, rgba(128,128,128,0.12))',
+                                      opacity: 0.75,
+                                      marginRight: 4,
+                                    }}
+                                  >
+                                    {rows.length}
+                                  </span>
+                                  <IconChevronRightOutline14 className={css.cellChevron} />
+                                </button>
+                                {groupPluginId && onManagePlugin && (
+                                  <button
+                                    type="button"
+                                    title="管理此供应商（过滤模型 / 授权）"
+                                    aria-label={`管理 ${groupName}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      close()
+                                      onManagePlugin(groupPluginId)
+                                    }}
+                                    style={{
+                                      width: 26,
+                                      height: 26,
+                                      padding: 0,
+                                      borderRadius: 7,
+                                      border: '1px solid var(--dsw-alias-border-def, rgba(128,128,128,0.16))',
+                                      background: 'var(--dsw-alias-bg-subtle, rgba(128,128,128,0.06))',
+                                      color: 'inherit',
+                                      opacity: 0.72,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <IconSettingsOutline16 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
+                      </>
+                    )}
+                  </div>
+                )}
+                {filteredChoices.length === 0 && (
+                  <div className={css.empty}>{s.emptyModels}</div>
+                )}
+              </>
+            )
+          })()}
 
           {pane === 'effort' && (
             <>

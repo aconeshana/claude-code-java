@@ -104,15 +104,6 @@ public final class SessionLinkServer implements AutoCloseable {
                 true);
         }
 
-        /** Binds directly to an ephemeral {@code 127.0.0.1:0} loopback TCP port. */
-        public static Config tcpLoopback(String authToken) {
-            return new Config(
-                SessionLinkEndpoint.TcpLoopback.ephemeral(),
-                authToken,
-                SessionLinkCodec.DEFAULT_MAX_FRAME_BYTES,
-                false);
-        }
-
         public Config {
             Objects.requireNonNull(endpoint, "endpoint");
             Objects.requireNonNull(authToken, "authToken");
@@ -123,10 +114,6 @@ public final class SessionLinkServer implements AutoCloseable {
             if (maxFrameBytes <= 0) {
                 throw new IllegalArgumentException("maxFrameBytes must be positive");
             }
-        }
-
-        public Path socketPath() {
-            return endpoint instanceof SessionLinkEndpoint.UnixDomain(Path path) ? path : null;
         }
     }
 
@@ -425,7 +412,7 @@ public final class SessionLinkServer implements AutoCloseable {
         private volatile String clientName = "";
         private volatile boolean authenticated;
 
-        private Connection(SocketChannel socket) throws IOException {
+        private Connection(SocketChannel socket) {
             this.socket = socket;
             this.input = new BufferedInputStream(Channels.newInputStream(socket));
             this.outbound = new SessionLinkOutboundWriter(
@@ -705,7 +692,7 @@ public final class SessionLinkServer implements AutoCloseable {
          * showing. Sudo is included on the same terms as permissions now that
          * the endpoint presents it.
          */
-        private void announcePending(String sessionId) throws IOException {
+        private void announcePending(String sessionId) {
             for (InteractionRequest<?, ?> pending : interactions.pendingRequests(sessionId)) {
                 if (pending.descriptor().kind() == InteractionKind.SUDO_PASSWORD) {
                     @SuppressWarnings("unchecked")

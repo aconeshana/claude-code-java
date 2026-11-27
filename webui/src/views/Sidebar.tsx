@@ -32,6 +32,7 @@ import { displayTitle, PinGlyph, ProjectRowItem, SessionNodeItem, sessionStatus 
 import { stripScheduledSessions } from './scheduledSessions'
 import { ScheduledTasksNavButton } from './ScheduledTasksWorkspace'
 import { useScheduleView } from '../store/scheduleView'
+import { usePlugins } from '../store/plugins'
 import type { CatalogProject, CatalogSession } from '../api/types'
 import { SettingsPanel } from './SettingsPanel'
 import { ContextDashboardButton } from './context/ContextDashboard'
@@ -128,6 +129,12 @@ export function Sidebar() {
   const loading = useSessions((state) => state.loading)
   const error = useSessions((state) => state.error)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const requestedPluginPanelId = usePlugins((state) => state.requestedPluginPanelId)
+  useEffect(() => {
+    if (requestedPluginPanelId != null) {
+      setSettingsOpen(true)
+    }
+  }, [requestedPluginPanelId])
   // The rename dialog and the delete confirmation are dialogs over ONE row
   // at a time; each row's menu opens the dialog by setting its target here
   // rather than calling the store action directly (fork/archive have no

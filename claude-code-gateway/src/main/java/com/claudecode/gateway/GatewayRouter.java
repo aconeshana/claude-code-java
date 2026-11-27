@@ -893,6 +893,17 @@ final class GatewayRouter {
             serveAsync(exchange, () -> pluginsApi.handleSaveOptions(exchange));
             return;
         }
+        if (Strings.CS.startsWith(targetPath, "/api/plugins/")) {
+            String rest = targetPath.substring("/api/plugins/".length());
+            int uiIdx = rest.indexOf("/ui");
+            if (uiIdx > 0 && (uiIdx + 3 == rest.length() || rest.charAt(uiIdx + 3) == '/')) {
+                if (rejectIfUnauthenticated(auth, exchange)) return;
+                String pluginId = URLDecoder.decode(rest.substring(0, uiIdx), StandardCharsets.UTF_8);
+                String subPath = uiIdx + 3 == rest.length() ? "/" : rest.substring(uiIdx + 3);
+                serveAsync(exchange, () -> pluginsApi.handleUiProxy(exchange, pluginId, subPath));
+                return;
+            }
+        }
         try (exchange) {
             if (!auth.authenticated(exchange)) {
                 respondJson(exchange, UNAUTHORIZED, errorBody("authentication_required",

@@ -607,6 +607,8 @@ export interface CustomModelEntry {
   readonly context_window?: number
   /** Null = unconfigured (assume multimodal); false marks a text-only endpoint. */
   readonly multimodal?: boolean | null
+  readonly source_plugin?: string
+  readonly read_only?: boolean
 }
 
 export interface ModelsListing {
@@ -1108,6 +1110,17 @@ export interface PluginInstallationEntry {
   readonly version: string
 }
 
+export interface PluginUiPanel {
+  readonly plugin_id: string
+  readonly provider_id: string
+  readonly title: string
+  readonly description: string
+  readonly url: string
+  readonly status: string
+  readonly error?: string
+  readonly settings_tab?: boolean
+}
+
 export interface InstalledPluginItem {
   readonly plugin_id: string
   readonly name: string
@@ -1121,6 +1134,7 @@ export interface InstalledPluginItem {
   readonly installations: readonly PluginInstallationEntry[]
   readonly user_config: Readonly<Record<string, PluginConfigSchemaField>>
   readonly options: Readonly<Record<string, unknown>>
+  readonly ui_panel?: PluginUiPanel
 }
 
 export interface MarketplaceCatalogPlugin {
@@ -1159,6 +1173,7 @@ export interface PluginsSnapshot {
   readonly installed: readonly InstalledPluginItem[]
   readonly marketplaces: readonly PluginMarketplaceItem[]
   readonly errors: readonly PluginErrorItem[]
+  readonly ui_panels?: readonly PluginUiPanel[]
 }
 
 

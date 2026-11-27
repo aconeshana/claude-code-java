@@ -131,6 +131,7 @@ public final class PluginRuntimeLoader {
         Map<HookEvent, List<HookMatcher>> hooks = new EnumMap<>(HookEvent.class);
         List<McpServerConfig> mcpServers = new ArrayList<>();
         Map<String, JsonNode> lspServers = new LinkedHashMap<>();
+        List<PluginModelProviderSpec> modelProviders = new ArrayList<>();
         List<WorkflowDefinition> workflows = new ArrayList<>();
         List<PluginError> errors = new ArrayList<>();
         int enabled = 0;
@@ -161,7 +162,7 @@ public final class PluginRuntimeLoader {
             loadPlugin(pluginId, name, root, manifest, true,
                 !inlinePluginDirsWithoutMcp.contains(root.toAbsolutePath().normalize()),
                 commands, agents, skillDirs, outputStyles,
-                hooks, mcpServers, lspServers, workflows, errors);
+                hooks, mcpServers, lspServers, modelProviders, workflows, errors);
         }
 
         Map<String, Boolean> enabledMap = settings.enabledPlugins();
@@ -192,7 +193,7 @@ public final class PluginRuntimeLoader {
                 mergePluginSettings(pluginSettings, root, manifest);
                 loadPlugin(pluginId, pluginName, root, manifest, false, true,
                     commands, agents, skillDirs, outputStyles,
-                    hooks, mcpServers, lspServers, workflows, errors);
+                    hooks, mcpServers, lspServers, modelProviders, workflows, errors);
             } catch (Exception e) {
                 LOG.warn("Failed to load plugin {}: {}", pluginId, e.getMessage());
                 errors.add(new PluginError.GenericError(pluginId, pluginName,
@@ -206,7 +207,7 @@ public final class PluginRuntimeLoader {
 
         return new PluginRuntimeSnapshot(
             commands, agents, skillDirs, outputStyles,
-            hooks, mcpServers, lspServers, workflows, errors, enabled, disabled);
+            hooks, mcpServers, lspServers, modelProviders, workflows, errors, enabled, disabled);
     }
 
 
@@ -242,6 +243,7 @@ public final class PluginRuntimeLoader {
                             Map<HookEvent, List<HookMatcher>> hooks,
                             List<McpServerConfig> mcpServers,
                             Map<String, JsonNode> lspServers,
+                            List<PluginModelProviderSpec> modelProviders,
                             List<WorkflowDefinition> workflows,
                             List<PluginError> errors) {
         String name = StringUtils.isNotBlank(manifest.name())
@@ -261,7 +263,101 @@ public final class PluginRuntimeLoader {
         loadHooks(ctx, hooks, errors);
         if (includeMcp) loadMcpServers(ctx, mcpServers, errors);
         loadLspServers(ctx, lspServers, errors);
+        loadModelProviders(ctx, modelProviders, errors);
         loadWorkflows(ctx, workflows);
+    }
+
+    private void loadModelProviders(PluginContext ctx,
+                                    List<PluginModelProviderSpec> out,
+                                    List<PluginError> errors) {
+        JsonNode spec = ctx.manifest().modelProviders();
+        if (spec == null || spec.isNull()) {
+            return;
+        }
+        JsonNode providersObj = spec;
+        if (spec.isTextual()) {
+            Path file = ctx.root().resolve(spec.asText());
+            if (!Files.isRegularFile(file)) {
+                errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                    "modelProviders file not found: " + file));
+                return;
+            }
+            try {
+                JsonNode parsed = JsonUtils.readJson(file);
+                providersObj = parsed.has("modelProviders") && parsed.get("modelProviders").isObject()
+                    ? parsed.get("modelProviders") : parsed;
+            } catch (Exception e) {
+                errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                    "Failed to parse modelProviders file " + file + ": " + e.getMessage()));
+                return;
+            }
+        }
+        if (providersObj == null || !providersObj.isObject()) {
+            errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                "modelProviders must be a JSON object mapping providerId -> config"));
+            return;
+        }
+        providersObj.properties().forEach(entry -> {
+            String providerId = entry.getKey();
+            JsonNode cfg = entry.getValue();
+            if (cfg == null || !cfg.isObject()) {
+                errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                    "modelProviders." + providerId + " must be an object"));
+                return;
+            }
+            try {
+                List<String> missingVars = new ArrayList<>();
+                String command = resolveLspValue(ctx, cfg.path("command").asText(""), missingVars);
+                if (StringUtils.isBlank(command)) {
+                    errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                        "modelProviders." + providerId + " requires a non-empty command"));
+                    return;
+                }
+                List<String> args = new ArrayList<>();
+                JsonNode argsNode = cfg.get("args");
+                if (argsNode != null && argsNode.isArray()) {
+                    for (JsonNode arg : argsNode) {
+                        if (arg.isTextual()) {
+                            args.add(resolveLspValue(ctx, arg.asText(), missingVars));
+                        }
+                    }
+                }
+                Map<String, String> env = new LinkedHashMap<>();
+                JsonNode envNode = cfg.get("env");
+                if (envNode != null && envNode.isObject()) {
+                    envNode.properties().forEach(e -> {
+                        if (e.getValue() != null && !e.getValue().isNull()) {
+                            env.put(e.getKey(), resolveLspValue(ctx, e.getValue().asText(), missingVars));
+                        }
+                    });
+                }
+                String cwdRaw = cfg.path("cwd").asText("");
+                Path workDir = StringUtils.isNotBlank(cwdRaw)
+                    ? Path.of(resolveLspValue(ctx, cwdRaw, missingVars))
+                    : ctx.root();
+                String protocol = cfg.path("protocol").asText("chat");
+                String modelPrefix = cfg.has("modelPrefix") && cfg.get("modelPrefix").isTextual()
+                    ? cfg.get("modelPrefix").asText() : null;
+                String healthPath = cfg.path("healthPath").asText("/health");
+                String modelsPath = cfg.path("modelsPath").asText("/v1/models");
+                PluginModelProviderSpec.UiSpec ui = null;
+                JsonNode uiNode = cfg.get("ui");
+                if (uiNode != null && uiNode.isObject()) {
+                    String title = uiNode.path("title").asText(ctx.pluginName());
+                    String path = uiNode.path("path").asText("/ui/");
+                    String desc = uiNode.path("description").asText("");
+                    boolean settingsTab = uiNode.path("settingsTab").asBoolean(false);
+                    ui = new PluginModelProviderSpec.UiSpec(title, path, desc, settingsTab);
+                }
+                out.add(new PluginModelProviderSpec(
+                    ctx.pluginId(), ctx.pluginName(), providerId,
+                    command, args, env, workDir, ctx.dataDir(),
+                    protocol, modelPrefix, healthPath, modelsPath, ui));
+            } catch (Exception e) {
+                errors.add(new PluginError.GenericError(ctx.pluginId(), ctx.pluginName(),
+                    "Failed to load modelProviders." + providerId + ": " + e.getMessage()));
+            }
+        });
     }
 
     /** Immutable per-plugin context threaded through the component loaders. */

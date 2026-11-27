@@ -249,6 +249,10 @@ subprojects {
             // 4. ExplicitInitialization: strips explicit default field initializers (`= 0`, `= false`, `= null`);
             //    purely stylistic and often hurts clarity on stateful fields.
             // "org.openrewrite.staticanalysis.ExplicitInitialization",
+            // 5. UnnecessaryThrows (rewrite-static-analysis 2.41.0): upstream bug erroneously deletes valid
+            //    `catch (Exception failure)` blocks (e.g. SessionLinkServer.sendSessionEndedAndWait wrapping
+            //    IOException/InterruptedException/ExecutionException/TimeoutException), breaking compilation.
+            // "org.openrewrite.staticanalysis.UnnecessaryThrows",
         )
         failOnDryRunResults = true
         failOnInvalidActiveRecipes = true

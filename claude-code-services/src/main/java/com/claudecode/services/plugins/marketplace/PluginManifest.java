@@ -30,6 +30,7 @@ public record PluginManifest(
     List<PluginChannel> channels,
     JsonNode mcpServers,
     JsonNode lspServers,
+    JsonNode modelProviders,
     JsonNode settings,
     Map<String, UserConfigOption> userConfig) {
 
@@ -65,6 +66,7 @@ public record PluginManifest(
         private List<PluginChannel> channels = List.of();
         private JsonNode mcpServers;
         private JsonNode lspServers;
+        private JsonNode modelProviders;
         private JsonNode settings;
         private Map<String, UserConfigOption> userConfig = Map.of();
 
@@ -89,6 +91,7 @@ public record PluginManifest(
             channels = source.channels;
             mcpServers = source.mcpServers;
             lspServers = source.lspServers;
+            modelProviders = source.modelProviders;
             settings = source.settings;
             userConfig = source.userConfig;
         }
@@ -111,6 +114,7 @@ public record PluginManifest(
         public Builder channels(List<PluginChannel> value) { channels = value; return this; }
         public Builder mcpServers(JsonNode value) { mcpServers = value; return this; }
         public Builder lspServers(JsonNode value) { lspServers = value; return this; }
+        public Builder modelProviders(JsonNode value) { modelProviders = value; return this; }
         public Builder settings(JsonNode value) { settings = value; return this; }
         public Builder userConfig(Map<String, UserConfigOption> value) { userConfig = value; return this; }
 
@@ -118,7 +122,7 @@ public record PluginManifest(
             return new PluginManifest(name, version, description, author, homepage,
                 repository, license, keywords, dependencies, commands, agents,
                 skills, workflows, outputStyles, hooks, channels, mcpServers,
-                lspServers, settings, userConfig);
+                lspServers, modelProviders, settings, userConfig);
         }
     }
 

@@ -93,10 +93,11 @@ public class SystemPromptService {
 
         // ── Dynamic content (registry-managed via section cache) ────────────
         List<SystemPromptSection> dynamicSections = new ArrayList<>();
-        dynamicSections.add(SystemPromptSection.cached("env_info_simple",
+        dynamicSections.add(SystemPromptSection.uncached("env_info_simple",
             () -> EnvInfoSection.computeSimpleEnvInfo(
                 config.modelId(), cwd, config.isGitRepo(), config.isWorktree(),
-                config.additionalWorkingDirectories())));
+                config.additionalWorkingDirectories()),
+            "model ID and working directory vary across model switches and multi-session web hosts"));
         dynamicSections.add(SystemPromptSection.cached("language",
             () -> SystemPromptSections.getLanguageSection(config.languagePreference())));
         dynamicSections.add(SystemPromptSection.cached("output_style",

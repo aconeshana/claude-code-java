@@ -778,9 +778,22 @@ async function persistedModel(): Promise<string> {
 export async function submitTurn(
   sessionId: string | null,
   content: string | readonly UserContentBlock[],
-  options?: { readonly steer?: boolean },
+  options?: { readonly steer?: boolean; readonly model?: string },
 ): Promise<void> {
-  const model = await persistedModel()
+  let model = options?.model?.trim() || ''
+  if (model === '') {
+    try {
+      model = await persistedModel()
+    } catch (err) {
+      // Fall back to the live session's active model selection when settings.json has no persisted default.
+      if (sessionId != null) {
+        const ctx = await fetchSessionContext(sessionId).catch(() => null)
+        const active = ctx?.selection?.current?.trim() || ''
+        if (active !== '') model = active
+      }
+      if (model === '') throw err
+    }
+  }
   const metadata: Record<string, unknown> = {}
   if (sessionId != null) metadata.session_id = sessionId
   if (options?.steer === true) metadata.steer = true

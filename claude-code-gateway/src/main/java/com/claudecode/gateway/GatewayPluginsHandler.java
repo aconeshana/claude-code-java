@@ -11,19 +11,39 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 /**
  * HTTP handlers for {@code /api/plugins/**}: marketplace management, plugin
- * install/uninstall/enable/disable/update, option persistence, and live runtime reload.
+ * install/uninstall/enable/disable/update, option persistence, live runtime reload,
+ * and generic loopback reverse-proxying for plugin-declared management UIs.
  */
 final class GatewayPluginsHandler {
+
+    private static final HttpClient UI_PROXY_HTTP = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(3))
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .build();
+
+    private static final Set<String> HOP_BY_HOP_HEADERS = Set.of(
+        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+        "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length",
+        "authorization");
 
     private final GatewayPluginsPort port;
 
@@ -259,6 +279,102 @@ final class GatewayPluginsHandler {
         }
     }
 
+    /**
+     * Reverse-proxies {@code /api/plugins/{pluginId}/ui/**} to the plugin's loopback sidecar,
+     * injecting its internal {@code POCO_PROVIDER_TOKEN} so browser clients never see it.
+     */
+    void handleUiProxy(HttpExchange exchange, String pluginId, String subPath) throws IOException {
+        if (StringUtils.isBlank(pluginId)) {
+            respondJson(exchange, 400, errorBody("invalid_request", "pluginId is required"));
+            return;
+        }
+        String normalizedSub = subPath == null ? "/" : subPath;
+        if (Strings.CS.contains(normalizedSub, "..")) {
+            respondJson(exchange, 400, errorBody("invalid_request", "path traversal is not allowed"));
+            return;
+        }
+        Optional<GatewayPluginsPort.UiProxyTarget> targetOpt = port.uiProxyTarget(pluginId);
+        if (targetOpt.isEmpty()) {
+            respondJson(exchange, 404, errorBody("not_found",
+                "Plugin UI panel is not available for: " + pluginId));
+            return;
+        }
+        GatewayPluginsPort.UiProxyTarget target = targetOpt.get();
+        if (!Strings.CS.equals("running", target.status())) {
+            String detail = StringUtils.isNotBlank(target.error())
+                ? target.error() : "Plugin sidecar status: " + target.status();
+            respondJson(exchange, 503, errorBody("provider_unavailable", detail));
+            return;
+        }
+
+        String uiBase = target.uiPath();
+        if (Strings.CS.endsWith(uiBase, "/") && Strings.CS.startsWith(normalizedSub, "/")) {
+            uiBase = uiBase.substring(0, uiBase.length() - 1);
+        }
+        String upstreamPath = uiBase
+            + (Strings.CS.startsWith(normalizedSub, "/") ? normalizedSub : "/" + normalizedSub);
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        String upstreamUrl = target.baseUrl() + upstreamPath
+            + (StringUtils.isNotBlank(rawQuery) ? "?" + rawQuery : "");
+
+        String method = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
+        byte[] reqBody = (Strings.CS.equals("GET", method) || Strings.CS.equals("HEAD", method))
+            ? new byte[0] : exchange.getRequestBody().readAllBytes();
+
+        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder(URI.create(upstreamUrl))
+            .timeout(Duration.ofSeconds(60))
+            .method(method, reqBody.length > 0
+                ? HttpRequest.BodyPublishers.ofByteArray(reqBody)
+                : HttpRequest.BodyPublishers.noBody());
+
+        exchange.getRequestHeaders().forEach((name, values) -> {
+            if (name == null || HOP_BY_HOP_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+                return;
+            }
+            for (String value : values) {
+                reqBuilder.header(name, value);
+            }
+        });
+        if (StringUtils.isNotBlank(target.token())) {
+            reqBuilder.header("Authorization", "Bearer " + target.token());
+        }
+
+        HttpResponse<InputStream> upstream;
+        try {
+            upstream = UI_PROXY_HTTP.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            respondJson(exchange, 502, errorBody("upstream_error", "Plugin UI proxy interrupted"));
+            return;
+        } catch (IOException e) {
+            respondJson(exchange, 502, errorBody("upstream_error",
+                "Failed to reach plugin UI sidecar: " + e.getMessage()));
+            return;
+        }
+
+        try (InputStream bodyStream = upstream.body()) {
+            upstream.headers().map().forEach((name, values) -> {
+                if (name == null || Strings.CS.startsWith(name, ":")) return;
+                String lower = name.toLowerCase(Locale.ROOT);
+                if (HOP_BY_HOP_HEADERS.contains(lower) || Strings.CS.equals("x-frame-options", lower)) {
+                    return;
+                }
+                for (String value : values) {
+                    exchange.getResponseHeaders().add(name, value);
+                }
+            });
+            exchange.sendResponseHeaders(upstream.statusCode(), 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                bodyStream.transferTo(out);
+            }
+        }
+        if ((Strings.CS.equals("POST", method) || Strings.CS.equals("PUT", method)
+                || Strings.CS.equals("DELETE", method))
+                && upstream.statusCode() >= 200 && upstream.statusCode() < 300) {
+            port.invalidateProviderModels();
+        }
+    }
+
     private PluginMarketplacePort requireMarketplace(HttpExchange exchange) throws IOException {
         PluginMarketplacePort mp = port.marketplace();
         if (mp == null) {
@@ -301,6 +417,23 @@ final class GatewayPluginsHandler {
         ArrayNode installedArr = root.putArray("installed");
         ArrayNode marketplacesArr = root.putArray("marketplaces");
         ArrayNode errorsArr = root.putArray("errors");
+        ArrayNode uiPanelsArr = root.putArray("ui_panels");
+        List<GatewayPluginsPort.UiPanel> panels = port.uiPanels();
+        Map<String, GatewayPluginsPort.UiPanel> panelByPluginId = new LinkedHashMap<>();
+        for (GatewayPluginsPort.UiPanel panel : panels) {
+            panelByPluginId.putIfAbsent(panel.pluginId(), panel);
+            ObjectNode uNode = uiPanelsArr.addObject();
+            uNode.put("plugin_id", panel.pluginId());
+            uNode.put("provider_id", panel.providerId());
+            uNode.put("title", panel.title());
+            uNode.put("description", panel.description());
+            uNode.put("url", panel.url());
+            uNode.put("status", panel.status());
+            uNode.put("settings_tab", panel.settingsTab());
+            if (StringUtils.isNotBlank(panel.error())) {
+                uNode.put("error", panel.error());
+            }
+        }
         if (mp == null) {
             return root;
         }
@@ -318,6 +451,20 @@ final class GatewayPluginsHandler {
             pNode.put("author", StringUtils.defaultString(item.author()));
             pNode.put("homepage", StringUtils.defaultString(item.homepage()));
             pNode.put("repository", StringUtils.defaultString(item.repository()));
+            GatewayPluginsPort.UiPanel uiPanel = panelByPluginId.get(item.pluginId());
+            if (uiPanel != null) {
+                ObjectNode uNode = pNode.putObject("ui_panel");
+                uNode.put("plugin_id", uiPanel.pluginId());
+                uNode.put("provider_id", uiPanel.providerId());
+                uNode.put("title", uiPanel.title());
+                uNode.put("description", uiPanel.description());
+                uNode.put("url", uiPanel.url());
+                uNode.put("status", uiPanel.status());
+                uNode.put("settings_tab", uiPanel.settingsTab());
+                if (StringUtils.isNotBlank(uiPanel.error())) {
+                    uNode.put("error", uiPanel.error());
+                }
+            }
             ArrayNode installsNode = pNode.putArray("installations");
             for (PluginMarketplacePort.Installation inst : item.installations()) {
                 ObjectNode iNode = installsNode.addObject();

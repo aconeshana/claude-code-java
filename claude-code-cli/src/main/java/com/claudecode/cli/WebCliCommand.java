@@ -1,9 +1,9 @@
 package com.claudecode.cli;
 
-import com.claudecode.api.CustomModelJsonStore;
 import com.claudecode.commands.CommandRegistry;
 import com.claudecode.commands.bootstrap.CommandFactory;
 import com.claudecode.core.config.ClaudePaths;
+import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.gateway.GatewayFileDiffPort;
 import com.claudecode.gateway.GatewayPermissionModePort;
 import com.claudecode.gateway.GatewaySessionActionsPort;
@@ -146,7 +146,7 @@ public class WebCliCommand implements Callable<Integer> {
             CliHeadlessGatewaySessions headless =
                 WebHeadlessSessions.create(mcpRuntime, resources, interactions, err);
             String cwd = System.getProperty("user.dir");
-            CustomModelJsonStore modelCatalog = new CustomModelJsonStore();
+            CustomModelCatalog modelCatalog = headless.modelCatalog();
             CliPluginRuntimeView pluginRuntime = headless.pluginRuntime();
             try (CliWebCronDaemon cronDaemon = new CliWebCronDaemon(headless, cwd);
                  CliCcConnectManager ccConnectManager = new CliCcConnectManager(cwd);

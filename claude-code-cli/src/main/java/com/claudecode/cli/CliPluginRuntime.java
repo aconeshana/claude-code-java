@@ -57,6 +57,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
     private final HookEngine hookEngine;
     private final McpClientRuntime mcpClientManager;
     private final ToolRegistry toolRegistry;
+    private final CliPluginProviderManager providerManager;
     private final PluginCommandSync commandSync = new PluginCommandSync();
     private final WorkflowCommandSync workflowCommandSync = new WorkflowCommandSync();
     private CliSkillCommandSync skillCommandSync = new CliSkillCommandSync();
@@ -82,12 +83,25 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
     CliPluginRuntime(PluginRuntimeLoader loader, String cwd,
                          SkillLoader skillLoader, HookEngine hookEngine,
                          McpClientRuntime mcpClientManager, ToolRegistry toolRegistry) {
+        this(loader, cwd, skillLoader, hookEngine, mcpClientManager, toolRegistry, false);
+    }
+
+    CliPluginRuntime(PluginRuntimeLoader loader, String cwd,
+                         SkillLoader skillLoader, HookEngine hookEngine,
+                         McpClientRuntime mcpClientManager, ToolRegistry toolRegistry,
+                         boolean publishModelProviders) {
         this.loader = loader;
         this.cwd = cwd;
         this.skillLoader = skillLoader;
         this.hookEngine = hookEngine;
         this.mcpClientManager = mcpClientManager;
         this.toolRegistry = toolRegistry;
+        this.providerManager = new CliPluginProviderManager(publishModelProviders);
+    }
+
+    @Override
+    public CliPluginProviderView modelProviders() {
+        return providerManager;
     }
 
     /** The snapshot currently injected into the channels. */
@@ -234,6 +248,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
             hookEngine.registry().setPluginHooks(snapshot.hooks());
         }
         reconcileMcpServers(snapshot.mcpServers());
+        providerManager.sync(snapshot.modelProviders());
     }
 
     /**
@@ -356,6 +371,7 @@ final class CliPluginRuntime implements CliPluginRuntimeView, AutoCloseable {
                 : new ArrayList<>(activePluginServers.entrySet())) {
             disconnectPluginServer(active.getKey(), active.getValue());
         }
+        providerManager.close();
         postRefreshCallback = null;
     }
 

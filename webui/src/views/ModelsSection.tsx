@@ -96,19 +96,26 @@ export function ModelsSection() {
                 {entry.model_name}
                 <Pill>{PROTOCOL_LABELS[entry.protocol]}</Pill>
                 <Pill>{entry.has_api_key ? '已配置密钥' : '未配置密钥'}</Pill>
+                {entry.source_plugin && <Pill>{`插件: ${entry.source_plugin}`}</Pill>}
               </div>
               <div className={cardCss.entryMeta} title={entry.base_url}>{entry.base_url}</div>
             </div>
-            <button type="button" className={localCss.button} onClick={() => { setDiscovering(false); setEditing(entry) }}>
-              编辑
-            </button>
-            <button
-              type="button"
-              className={`${localCss.button} ${cardCss.dangerButton}`}
-              onClick={() => { void remove(entry.model_name) }}
-            >
-              删除
-            </button>
+            {entry.read_only ? (
+              <Pill>由插件托管</Pill>
+            ) : (
+              <>
+                <button type="button" className={localCss.button} onClick={() => { setDiscovering(false); setEditing(entry) }}>
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  className={`${localCss.button} ${cardCss.dangerButton}`}
+                  onClick={() => { void remove(entry.model_name) }}
+                >
+                  删除
+                </button>
+              </>
+            )}
           </li>
         ))}
       </ul>

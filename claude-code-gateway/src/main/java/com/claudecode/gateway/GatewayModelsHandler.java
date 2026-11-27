@@ -371,6 +371,10 @@ final class GatewayModelsHandler {
             entry.headers().forEach(headers::put);
             if (entry.contextWindow() != null) node.put("context_window", entry.contextWindow());
             if (entry.multimodal() != null) node.put("multimodal", entry.multimodal());
+            if (StringUtils.isNotBlank(entry.sourcePlugin())) {
+                node.put("source_plugin", entry.sourcePlugin());
+                node.put("read_only", true);
+            }
         }
         return response;
     }

@@ -26,13 +26,22 @@ public interface GatewayModelsPort {
         Map<String, String> headers,
         Long contextWindow,
         /** {@code null} = unconfigured (assume multimodal); {@code false} = text-only. */
-        Boolean multimodal) {
+        Boolean multimodal,
+        /** Non-null when dynamically provided by an enabled plugin {@code modelProviders} sidecar. */
+        String sourcePlugin) {
 
         /** Pre-multimodal projection — defaults the flag to unconfigured. */
         public ModelEntry(
                 String modelName, String protocol, String baseUrl, boolean hasApiKey,
                 Map<String, String> headers, Long contextWindow) {
-            this(modelName, protocol, baseUrl, hasApiKey, headers, contextWindow, null);
+            this(modelName, protocol, baseUrl, hasApiKey, headers, contextWindow, null, null);
+        }
+
+        /** Pre-plugin-provider projection — defaults sourcePlugin to null. */
+        public ModelEntry(
+                String modelName, String protocol, String baseUrl, boolean hasApiKey,
+                Map<String, String> headers, Long contextWindow, Boolean multimodal) {
+            this(modelName, protocol, baseUrl, hasApiKey, headers, contextWindow, multimodal, null);
         }
     }
 

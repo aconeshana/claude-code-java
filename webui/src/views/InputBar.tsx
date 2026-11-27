@@ -69,12 +69,14 @@ import { useComposerCommands } from '../store/commands'
 import { useFileSuggestions } from '../store/fileSuggestions'
 import { ComposerMenu } from '../../vendor/dsh-composer-menu/ComposerMenu'
 import { menuReduce, MENU_CLOSED, type MenuCandidate, type MenuState } from '../../vendor/dsh-composer-menu/menuCore'
-import { ModelSelect } from '../../vendor/dsh-model-select/ModelSelect'
+import { ModelSelect, type ModelSeatSelection } from '../../vendor/dsh-model-select/ModelSelect'
 import { ContextMeter } from '../../vendor/dsh-context-meter/ContextMeter'
 import { StatsPills } from '../../vendor/dsh-stats-pills/StatsPills'
 import { PermissionModeSelect } from '../../vendor/dsh-permission-select/PermissionModeSelect'
 import { useSessionContext } from '../store/sessionContext'
 import { usePermissionMode } from '../store/permissionMode'
+import { useModels } from '../store/models'
+import { usePlugins } from '../store/plugins'
 import { isInteractive as sessionIsInteractive, useSessions } from '../store/sessions'
 import { useTranslate } from '../i18n/useTranslate'
 import { STATS_NS, statsDicts } from '../i18n/dictionaries/stats'
@@ -132,7 +134,10 @@ export function resolvesToStop(input: {
   return input.busy && input.stopAvailable && !input.hasContent
 }
 
-export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessionId, onClientCommand, hero }: {
+export function InputBar({
+  disabled, busy, placeholder, onSubmit, onStop, sessionId, onClientCommand, hero,
+  draftModelSelection, onDraftSelectModel, onDraftSelectEffort, draftPermissionState, onDraftSelectPermissionMode,
+}: {
   disabled: boolean
   busy: boolean
   placeholder: string
@@ -152,6 +157,13 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
   onClientCommand?: ((command: string) => boolean) | undefined
   /** Centered hero landing surface: applies vendored `InputBar.module.css` `.hero` padding. */
   hero?: boolean | undefined
+  /** Pre-session model catalogue for the hero composer before a session is opened. */
+  draftModelSelection?: ModelSeatSelection | null | undefined
+  onDraftSelectModel?: ((model: string) => Promise<string | null>) | undefined
+  onDraftSelectEffort?: ((effort: string) => Promise<string | null>) | undefined
+  /** Pre-session permission mode state for the hero composer before a session is opened. */
+  draftPermissionState?: Parameters<typeof PermissionModeSelect>[0]['state'] | undefined
+  onDraftSelectPermissionMode?: ((mode: string) => Promise<string | null>) | undefined
 }) {
   const [attachments, setAttachments] = useState<readonly DraftAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -927,9 +939,9 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
           <div className={css.modes}>
             {interactive && (
               <PermissionModeSelect
-                state={permissionMode}
+                state={permissionMode ?? draftPermissionState ?? null}
                 busy={busy}
-                select={selectPermissionMode}
+                select={permissionMode != null ? selectPermissionMode : (onDraftSelectPermissionMode ?? selectPermissionMode)}
               />
             )}
             <span style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }}>
@@ -941,16 +953,37 @@ export function InputBar({ disabled, busy, placeholder, onSubmit, onStop, sessio
             </span>
           </div>
           <div className={css.trailing}>
-            {interactive && (
-              <ModelSelect
-                selection={sessionContextSelection}
-                available={sessionContextSelection != null}
-                busy={busy}
-                select={selectModel}
-                selectEffort={selectEffort}
-                s={MODEL_SELECT_STRINGS}
-              />
-            )}
+            {interactive && (() => {
+              const rawSelection = sessionContextSelection ?? draftModelSelection ?? null
+              const catalogModels = useModels.getState().models
+              const sourceByModel = new Map<string, string>()
+              for (const m of catalogModels) {
+                if (m.source_plugin) sourceByModel.set(m.model_name, m.source_plugin)
+              }
+              const enrichedSelection = rawSelection == null ? null : {
+                ...rawSelection,
+                models: rawSelection.models.map((row) => {
+                  const existing = 'sourcePlugin' in row && typeof row.sourcePlugin === 'string'
+                    ? row.sourcePlugin
+                    : undefined
+                  const sp = existing ?? sourceByModel.get(row.name)
+                  return sp ? { ...row, sourcePlugin: sp } : row
+                }),
+              }
+              return (
+                <ModelSelect
+                  selection={enrichedSelection}
+                  available={enrichedSelection != null}
+                  busy={busy}
+                  select={sessionContextSelection != null ? selectModel : (onDraftSelectModel ?? selectModel)}
+                  selectEffort={sessionContextSelection != null ? selectEffort : (onDraftSelectEffort ?? selectEffort)}
+                  onManagePlugin={(pluginId) => {
+                    usePlugins.getState().openPluginSettingsTab(pluginId)
+                  }}
+                  s={MODEL_SELECT_STRINGS}
+                />
+              )
+            })()}
             <ContextMeter
               pressure={sessionContextUsage == null
                 ? null

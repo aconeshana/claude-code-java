@@ -21,6 +21,9 @@ interface PluginsState {
   loading: boolean
   busyKey: string | null
   error: string | null
+  requestedPluginPanelId: string | null
+  openPluginSettingsTab: (pluginId: string) => void
+  clearRequestedPluginPanel: () => void
   refresh: () => Promise<void>
   reloadRuntime: () => Promise<void>
   addMarketplace: (source: string) => Promise<boolean>
@@ -61,6 +64,15 @@ export const usePlugins = create<PluginsState>((set) => {
     loading: false,
     busyKey: null,
     error: null,
+    requestedPluginPanelId: null,
+
+    openPluginSettingsTab(pluginId) {
+      set({ requestedPluginPanelId: pluginId })
+    },
+
+    clearRequestedPluginPanel() {
+      set({ requestedPluginPanelId: null })
+    },
 
     async refresh() {
       set({ loading: true, error: null })

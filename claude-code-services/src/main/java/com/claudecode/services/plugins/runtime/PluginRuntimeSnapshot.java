@@ -28,6 +28,7 @@ public record PluginRuntimeSnapshot(
     Map<HookEvent, List<HookMatcher>> hooks,
     List<McpServerConfig> mcpServers,
     Map<String, JsonNode> lspServers,
+    List<PluginModelProviderSpec> modelProviders,
     List<WorkflowDefinition> workflows,
     List<PluginError> errors,
     int enabledCount,
@@ -43,8 +44,26 @@ public record PluginRuntimeSnapshot(
         hooks = Collections.unmodifiableMap(hooksCopy);
         mcpServers = List.copyOf(mcpServers);
         lspServers = Map.copyOf(lspServers);
+        modelProviders = modelProviders == null ? List.of() : List.copyOf(modelProviders);
         workflows = List.copyOf(workflows);
         errors = List.copyOf(errors);
+    }
+
+    /** Backwards-compatible constructor without modelProviders. */
+    public PluginRuntimeSnapshot(
+            List<PluginCommandDefinition> commands,
+            List<BuiltInAgentDefinitions.AgentDefinition> agents,
+            List<PluginSkillDir> skillDirs,
+            List<OutputStyleConfig> outputStyles,
+            Map<HookEvent, List<HookMatcher>> hooks,
+            List<McpServerConfig> mcpServers,
+            Map<String, JsonNode> lspServers,
+            List<WorkflowDefinition> workflows,
+            List<PluginError> errors,
+            int enabledCount,
+            int disabledCount) {
+        this(commands, agents, skillDirs, outputStyles, hooks, mcpServers, lspServers,
+            List.of(), workflows, errors, enabledCount, disabledCount);
     }
 
     /**

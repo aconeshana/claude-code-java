@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { Button, Modal } from '@primitives'
-import { executeRewind, previewRewind, submitTurn } from '../api/client'
+import { executeRewind, fetchSnapshot, previewRewind, submitTurn } from '../api/client'
 import type { RewindMode, RewindPreviewResponse } from '../api/types'
-import { useConversations } from '../store/conversations'
+import { toMessageState, useConversations } from '../store/conversations'
 import { useSessions } from '../store/sessions'
 import { toast } from '../store/toast'
 import css from './RewindConfirmModal.module.css'
@@ -12,6 +12,7 @@ export interface RewindConfirmModalProps {
   readonly open: boolean
   readonly sessionId: string
   readonly messageId: string
+  readonly originalText?: string | undefined
   readonly editedText: string
   readonly onClose: () => void
   readonly onCompleted: () => void
@@ -29,6 +30,7 @@ export function RewindConfirmModal({
   open,
   sessionId,
   messageId,
+  originalText,
   editedText,
   onClose,
   onCompleted,
@@ -39,6 +41,7 @@ export function RewindConfirmModal({
   const [preview, setPreview] = useState<RewindPreviewResponse | null>(null)
   const [mode, setMode] = useState<RewindMode>('conversation_only')
   const [expandedFiles, setExpandedFiles] = useState<ReadonlySet<string>>(new Set())
+  const [resolvedMessageId, setResolvedMessageId] = useState<string>(messageId)
 
   useEffect(() => {
     if (!open) return
@@ -47,12 +50,41 @@ export function RewindConfirmModal({
     setError(null)
     setPreview(null)
     setExpandedFiles(new Set())
-    void previewRewind(sessionId, messageId)
-      .then((res) => {
+    setResolvedMessageId(messageId)
+
+    const resolveAndPreview = async (): Promise<void> => {
+      let targetId = messageId
+      // Live SSE `turn.started` frames assign synthetic `live-user-<frameId>` IDs
+      // before a snapshot reload reconciles the durable JSONL message UUID.
+      // Resolve the durable UUID from `/api/sessions/{id}/messages` without
+      // mutating the conversation store (which would unmount the modal's row).
+      if (messageId.startsWith('live-user-')) {
+        const prevMessages = useConversations.getState().conversations[sessionId]?.messages ?? []
+        const prevUserMessages = prevMessages.filter((m) => m.kind === 'user')
+        const ordinal = prevUserMessages.findIndex((m) => m.id === messageId)
+        const snapshot = await fetchSnapshot(sessionId)
         if (cancelled) return
-        setPreview(res)
-        setMode(res.can_rewind_code && res.files.length > 0 ? 'both' : 'conversation_only')
-      })
+        const snapshotUsers = snapshot.messages
+          .map(toMessageState)
+          .filter((m): m is Extract<typeof m, { kind: 'user' }> => m.kind === 'user')
+        const byOrdinal = ordinal >= 0 ? snapshotUsers[ordinal] : undefined
+        const byText = originalText != null
+          ? [...snapshotUsers].reverse().find((m) => m.text === originalText)
+          : undefined
+        const resolved = byOrdinal?.id ?? byText?.id
+        if (resolved != null && resolved !== '' && !resolved.startsWith('live-user-')) {
+          targetId = resolved
+        }
+      }
+      if (cancelled) return
+      setResolvedMessageId(targetId)
+      const res = await previewRewind(sessionId, targetId)
+      if (cancelled) return
+      setPreview(res)
+      setMode(res.can_rewind_code && res.files.length > 0 ? 'both' : 'conversation_only')
+    }
+
+    void resolveAndPreview()
       .catch((failure: unknown) => {
         if (cancelled) return
         setError(failure instanceof Error ? failure.message : '获取回撤预览失败')
@@ -62,7 +94,7 @@ export function RewindConfirmModal({
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [open, sessionId, messageId])
+  }, [open, sessionId, messageId, originalText])
 
   const canRollbackCode = preview != null && preview.can_rewind_code && preview.files.length > 0
 
@@ -81,7 +113,7 @@ export function RewindConfirmModal({
     setError(null)
     try {
       const effectiveMode: RewindMode = mode === 'both' && !canRollbackCode ? 'conversation_only' : mode
-      const result = await executeRewind(sessionId, messageId, effectiveMode)
+      const result = await executeRewind(sessionId, resolvedMessageId, effectiveMode)
       await useConversations.getState().loadSnapshot(sessionId)
       await useSessions.getState().refresh()
       await submitTurn(sessionId, editedText)

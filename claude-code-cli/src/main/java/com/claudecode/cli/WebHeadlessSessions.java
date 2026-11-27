@@ -57,7 +57,8 @@ final class WebHeadlessSessions {
             toolchain.llmClient(),
             workspace.launch().model(),
             toolchain.modelAvailability().showBuiltInModelFamilies());
-        return new CliHeadlessGatewaySessions(factory, workspace.cwd(), lanProxy, pluginRuntime);
+        return new CliHeadlessGatewaySessions(
+            factory, workspace.cwd(), lanProxy, pluginRuntime, toolchain.customModelCatalog());
     }
 
     private static CliPluginRuntime createAndLoadPluginRuntime(
@@ -80,7 +81,8 @@ final class WebHeadlessSessions {
                 toolchain.skillToolProvider().getSkillLoader(),
                 workspace.hookEngine(),
                 mcpRuntime.clientRuntime(),
-                toolchain.toolRegistry()));
+                toolchain.toolRegistry(),
+                true));
             runtime.loadAndInject();
             return runtime;
         } catch (RuntimeException failure) {

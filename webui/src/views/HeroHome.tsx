@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   IconChevronDownOutline14,
   IconFolderOpenOutline16,
@@ -12,15 +12,22 @@ import {
   DIRECTORY_BROWSER_NS,
   directoryBrowserDicts,
 } from '@vendor/ui-directory-picker-browse/locales'
+import { buildStaticPermissionModeState } from '../../vendor/dsh-permission-select/PermissionModeSelect'
+import type { ModelSeatSelection } from '../../vendor/dsh-model-select/ModelSelect'
 import {
   createDirectory,
   listDirectory,
   openHeadlessSession,
+  selectPermissionMode,
+  selectSessionContext,
   submitTurn,
 } from '../api/client'
 import type { UserContentBlock } from '../api/types'
 import { UI_NS, uiDicts } from '../i18n/dictionaries/ui'
 import { useTranslate } from '../i18n/useTranslate'
+import { useAuth } from '../store/auth'
+import { useModels } from '../store/models'
+import { usePlugins } from '../store/plugins'
 import { useSessions } from '../store/sessions'
 import { useWorkspacePrefs } from '../store/workspacePrefs'
 import { toast } from '../store/toast'
@@ -30,6 +37,23 @@ import { stripScheduledSessions } from './scheduledSessions'
 
 const ADD_WORKSPACE_ID = '__add_workspace__'
 const DEFAULT_WORKSPACE_ID = '__default_workspace__'
+const HERO_MODEL_STORAGE_KEY = 'poco.hero.draftModel'
+
+function readSavedHeroModel(): string {
+  try {
+    return window.localStorage.getItem(HERO_MODEL_STORAGE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeSavedHeroModel(model: string): void {
+  try {
+    if (model !== '') window.localStorage.setItem(HERO_MODEL_STORAGE_KEY, model)
+  } catch {
+    // ignore storage errors in private/restricted modes
+  }
+}
 
 function basenameOf(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, '')
@@ -67,6 +91,72 @@ export function HeroHome({ onClientCommand }: HeroHomeProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const token = useAuth((state) => state.token)
+  const catalogModels = useModels((state) => state.models)
+  const refreshModels = useModels((state) => state.refresh)
+  const pluginPanels = usePlugins((state) => state.snapshot?.ui_panels ?? [])
+  const runningPanelKey = useMemo(
+    () => pluginPanels.map((p) => `${p.plugin_id}:${p.status}`).join(','),
+    [pluginPanels],
+  )
+  const [draftModel, setDraftModel] = useState<string>(() => readSavedHeroModel())
+  const [draftEffort, setDraftEffort] = useState<string>('auto')
+  const [draftPermissionMode, setDraftPermissionMode] = useState<string>('default')
+
+  useEffect(() => {
+    if (token == null) return
+    void refreshModels()
+  }, [token, runningPanelKey, refreshModels])
+
+  const effectiveDraftModel = useMemo(() => {
+    if (catalogModels.length === 0) return draftModel
+    if (draftModel !== '' && catalogModels.some((m) => m.model_name === draftModel)) {
+      return draftModel
+    }
+    return catalogModels[0]?.model_name ?? ''
+  }, [draftModel, catalogModels])
+
+  useEffect(() => {
+    if (catalogModels.length > 0 && effectiveDraftModel !== '') {
+      writeSavedHeroModel(effectiveDraftModel)
+    }
+  }, [catalogModels.length, effectiveDraftModel])
+
+  const draftModelSelection = useMemo<ModelSeatSelection>(() => ({
+    current: effectiveDraftModel,
+    models: catalogModels.map((m, idx) => ({
+      name: m.model_name,
+      label: m.model_name,
+      description: m.source_plugin ? `${m.protocol} · ${m.source_plugin}` : m.protocol,
+      default: idx === 0,
+    })),
+    effort: {
+      current: draftEffort,
+      effective: draftEffort,
+      choices: ['auto', 'low', 'medium', 'high', 'max'],
+    },
+  }), [catalogModels, draftEffort, effectiveDraftModel])
+
+  const draftPermissionState = useMemo(
+    () => buildStaticPermissionModeState(draftPermissionMode),
+    [draftPermissionMode],
+  )
+
+  const handleDraftSelectModel = useCallback(async (model: string) => {
+    setDraftModel(model)
+    writeSavedHeroModel(model)
+    return null
+  }, [])
+
+  const handleDraftSelectEffort = useCallback(async (effort: string) => {
+    setDraftEffort(effort)
+    return null
+  }, [])
+
+  const handleDraftSelectPermission = useCallback(async (mode: string) => {
+    setDraftPermissionMode(mode)
+    return null
+  }, [])
 
   const effectiveWorkspace = activeHeroWorkspace
     ?? addedWorkspaces[0]
@@ -146,10 +236,23 @@ export function HeroHome({ onClientCommand }: HeroHomeProps) {
     setSubmitting(true)
     const run = async () => {
       const opened = await openHeadlessSession(null, effectiveWorkspace)
+      if (effectiveDraftModel !== '') {
+        await selectSessionContext({ session_id: opened.session_id, model: effectiveDraftModel })
+      }
+      if (draftEffort !== '' && draftEffort !== 'auto') {
+        await selectSessionContext({ session_id: opened.session_id, effort: draftEffort })
+      }
+      if (draftPermissionMode !== '' && draftPermissionMode !== 'default') {
+        await selectPermissionMode({ session_id: opened.session_id, mode: draftPermissionMode })
+      }
       const sessions = useSessions.getState()
       await sessions.refresh()
       await sessions.selectByUser(opened.session_id)
-      await submitTurn(opened.session_id, content)
+      if (effectiveDraftModel !== '') {
+        await submitTurn(opened.session_id, content, { model: effectiveDraftModel })
+      } else {
+        await submitTurn(opened.session_id, content)
+      }
     }
     void run()
       .catch((failure: unknown) => {
@@ -159,7 +262,7 @@ export function HeroHome({ onClientCommand }: HeroHomeProps) {
       .finally(() => {
         setSubmitting(false)
       })
-  }, [effectiveWorkspace, submitting])
+  }, [draftEffort, draftPermissionMode, effectiveDraftModel, effectiveWorkspace, submitting])
 
   return (
     <div className={css.root} data-testid="hero-home">
@@ -206,6 +309,11 @@ export function HeroHome({ onClientCommand }: HeroHomeProps) {
             onSubmit={handleSubmit}
             sessionId={null}
             onClientCommand={onClientCommand}
+            draftModelSelection={draftModelSelection}
+            onDraftSelectModel={handleDraftSelectModel}
+            onDraftSelectEffort={handleDraftSelectEffort}
+            draftPermissionState={draftPermissionState}
+            onDraftSelectPermissionMode={handleDraftSelectPermission}
           />
         </div>
       </div>

@@ -50,6 +50,7 @@ import { LanGatewaySection } from './LanGatewaySection'
 import { CcConnectSection } from './CcConnectSection'
 import { ModelsSection } from './ModelsSection'
 import { PluginsSection } from './PluginsSection'
+import { PluginUiFrame } from './PluginUiFrame'
 import { ScheduleSection } from './SchedulePanel'
 import { usePlugins } from '../store/plugins'
 import { ProjectSettingsSection } from './ProjectSettingsSection'
@@ -154,7 +155,27 @@ export function SettingsPanel({ open, onClose }: {
 
   const [activeSection, setActiveSection] = useState<SectionId>('general')
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null)
+  const [activePluginPanelId, setActivePluginPanelId] = useState<string | null>(null)
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  const pluginUiPanels = usePlugins((state) => state.snapshot?.ui_panels ?? [])
+  const refreshPlugins = usePlugins((state) => state.refresh)
+  const requestedPluginPanelId = usePlugins((state) => state.requestedPluginPanelId)
+  const clearRequestedPluginPanel = usePlugins((state) => state.clearRequestedPluginPanel)
+  const pluginSettingsTabs = useMemo(
+    () => pluginUiPanels.filter((p) => p.settings_tab === true),
+    [pluginUiPanels],
+  )
+  const activePluginPanel = useMemo(
+    () => pluginSettingsTabs.find((p) => p.plugin_id === activePluginPanelId) ?? null,
+    [pluginSettingsTabs, activePluginPanelId],
+  )
+
+  useEffect(() => {
+    if (!open || requestedPluginPanelId == null) return
+    setActiveProjectPath(null)
+    setActivePluginPanelId(requestedPluginPanelId)
+    clearRequestedPluginPanel()
+  }, [open, requestedPluginPanelId, clearRequestedPluginPanel])
 
   const [modeTier, setModeTier] = useState<SettingsTier>('project')
   const [rulesTier, setRulesTier] = useState<SettingsTier>('project')
@@ -166,7 +187,31 @@ export function SettingsPanel({ open, onClose }: {
     if (!open) return
     void refresh()
     void refreshProjects()
-  }, [open, refresh, refreshProjects])
+    void refreshPlugins()
+  }, [open, refresh, refreshProjects, refreshPlugins])
+
+  useEffect(() => {
+    if (!open || createProjectOpen) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      const payload = event.data as { type?: string } | null
+      if (payload?.type === 'poco:close-settings') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('message', onMessage)
+    }
+  }, [open, createProjectOpen, onClose])
 
   const knownProjects = useMemo(() => {
     const seen = new Set<string>()
@@ -229,15 +274,33 @@ export function SettingsPanel({ open, onClose }: {
               <button
                 key={section.id}
                 type="button"
-                className={clsx(css.navCell, activeProjectPath == null && section.id === activeSection && css.active)}
-                aria-current={activeProjectPath == null && section.id === activeSection ? 'true' : undefined}
+                className={clsx(css.navCell, activeProjectPath == null && activePluginPanel == null && section.id === activeSection && css.active)}
+                aria-current={activeProjectPath == null && activePluginPanel == null && section.id === activeSection ? 'true' : undefined}
                 onClick={() => {
                   setActiveProjectPath(null)
+                  setActivePluginPanelId(null)
                   setActiveSection(section.id)
                 }}
               >
                 {section.icon}
                 <span className={css.navLabel}>{navLabelOf(section.id)}</span>
+              </button>
+            ))}
+
+            {pluginSettingsTabs.map((panel) => (
+              <button
+                key={panel.plugin_id}
+                type="button"
+                title={panel.description || panel.plugin_id}
+                className={clsx(css.navCell, activeProjectPath == null && activePluginPanelId === panel.plugin_id && css.active)}
+                aria-current={activeProjectPath == null && activePluginPanelId === panel.plugin_id ? 'true' : undefined}
+                onClick={() => {
+                  setActiveProjectPath(null)
+                  setActivePluginPanelId(panel.plugin_id)
+                }}
+              >
+                <IconCordisPluginOutline14 className={css.navIcon} size={14} />
+                <span className={css.navLabel}>{panel.title || panel.plugin_id}</span>
               </button>
             ))}
 
@@ -263,7 +326,10 @@ export function SettingsPanel({ open, onClose }: {
                   title={project.path}
                   className={clsx(css.navCell, activeProjectPath === project.path && css.active)}
                   aria-current={activeProjectPath === project.path ? 'true' : undefined}
-                  onClick={() => { setActiveProjectPath(project.path) }}
+                  onClick={() => {
+                    setActivePluginPanelId(null)
+                    setActiveProjectPath(project.path)
+                  }}
                 >
                   <IconFolderOpenOutline16 className={css.navIcon} size={16} />
                   <span className={css.navLabel}>{project.name}</span>
@@ -280,7 +346,11 @@ export function SettingsPanel({ open, onClose }: {
                 type="button"
                 className={localCss.iconButton}
                 aria-label={t('panel.reload')}
-                onClick={() => { void refresh() }}
+                onClick={() => {
+                  void refresh()
+                  void refreshProjects()
+                  void refreshPlugins()
+                }}
               >
                 <IconRefreshOutline16 size={14} />
               </button>
@@ -297,7 +367,13 @@ export function SettingsPanel({ open, onClose }: {
               <ProjectSettingsSection projectPath={activeProjectPath} />
             )}
 
-            {activeProjectPath == null && activeSection === 'general' && (
+            {activeProjectPath == null && activePluginPanel != null && (
+              <div className={sectionCss.section}>
+                <PluginUiFrame panel={activePluginPanel} />
+              </div>
+            )}
+
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'general' && (
               <div className={sectionCss.section}>
                 <LanguageRow />
                 <AppearanceRow />
@@ -353,7 +429,7 @@ export function SettingsPanel({ open, onClose }: {
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'permissions' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'permissions' && (
               <div className={sectionCss.section}>
                 <SettingsRow title="默认模式写入层级">
                   <TierMenu value={modeTier} onChange={setModeTier} ariaLabel="permission mode tier" />
@@ -405,33 +481,33 @@ export function SettingsPanel({ open, onClose }: {
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'models' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'models' && (
               <div className={sectionCss.section}>
                 <ModelsSection />
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'plugins' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'plugins' && (
               <div className={sectionCss.section}>
                 <PluginsSection />
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'lan-gateway' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'lan-gateway' && (
               <div className={sectionCss.section}>
                 <LanGatewaySection />
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'cc-connect' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'cc-connect' && (
               <div className={sectionCss.section}>
                 <CcConnectSection />
               </div>
             )}
 
-            {activeProjectPath == null && activeSection === 'context' && <ContextSettingsSection />}
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'context' && <ContextSettingsSection />}
 
-            {activeProjectPath == null && activeSection === 'schedule' && (
+            {activeProjectPath == null && activePluginPanel == null && activeSection === 'schedule' && (
               <div className={sectionCss.section}>
                 <ScheduleSection />
               </div>

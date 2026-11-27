@@ -18,6 +18,7 @@ import com.claudecode.core.engine.StreamingClient;
 import com.claudecode.core.engine.SubAgentLifecycleListener;
 import com.claudecode.core.engine.ToolSearchGate;
 import com.claudecode.core.message.SkillListingEntry;
+import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.core.model.CustomModelConfig;
 import com.claudecode.core.model.ModelApiProtocol;
 import com.claudecode.core.model.ModelCatalog;
@@ -168,7 +169,7 @@ final class CliToolchainAssembler {
             CliLspIntegration lspIntegration,
             JsonNode structuredOutputSchema,
             AgentSummaryService agentSummaryService,
-            CustomModelJsonStore customModelCatalog,
+            CustomModelCatalog customModelCatalog,
             Set<String> dynamicSkillDirTriggers,
             List<Path> inlinePluginPaths,
             List<Path> inlinePluginPathsWithoutMcp,
@@ -196,8 +197,14 @@ final class CliToolchainAssembler {
         CliLaunchRequest.OutputOptions output = request.output();
         CliLaunchRequest.WorkspaceOptions workspaceOptions = request.workspace();
         HookEngine hookEngine = workspace.hookEngine();
-        @Explanation("Wires the model.json custom-model catalogue")
-        CustomModelJsonStore customModelCatalog = new CustomModelJsonStore();
+        @Explanation("Wires the model.json custom-model catalogue merged with plugin modelProviders")
+        CustomModelCatalog customModelCatalog = new CliCompositeModelCatalog(
+            new CustomModelJsonStore(),
+            () -> {
+                CliPluginRuntimeView pr = pluginRuntimeRef.get();
+                return pr != null && pr.modelProviders() != null
+                    ? pr.modelProviders().listModels() : List.of();
+            });
 
         StreamingClient client;
         LlmClient llmClient = null;

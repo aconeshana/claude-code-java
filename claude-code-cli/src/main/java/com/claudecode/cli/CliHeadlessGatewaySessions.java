@@ -3,6 +3,7 @@ package com.claudecode.cli;
 import com.claudecode.api.CustomModelJsonStore;
 import com.claudecode.core.config.ClaudePaths;
 import com.claudecode.core.message.Message;
+import com.claudecode.core.model.CustomModelCatalog;
 import com.claudecode.gateway.GatewayHeadlessSessions;
 import com.claudecode.gateway.GatewayLanProxyPort;
 import com.claudecode.gateway.GatewaySessionMessagesPort;
@@ -44,6 +45,7 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
     private final String mainCwd;
     private final GatewayLanProxyPort lanProxyPort;
     private final CliPluginRuntimeView pluginRuntime;
+    private final CustomModelCatalog modelCatalog;
     private final ConcurrentMap<String, Entry> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -79,11 +81,25 @@ final class CliHeadlessGatewaySessions implements GatewayHeadlessSessions {
             String mainCwd,
             GatewayLanProxyPort lanProxyPort,
             CliPluginRuntimeView pluginRuntime) {
+        this(factory, mainCwd, lanProxyPort, pluginRuntime, new CustomModelJsonStore());
+    }
+
+    CliHeadlessGatewaySessions(
+            CliHeadlessSessionFactory factory,
+            String mainCwd,
+            GatewayLanProxyPort lanProxyPort,
+            CliPluginRuntimeView pluginRuntime,
+            CustomModelCatalog modelCatalog) {
         this.factory = factory;
         this.mainCwd = mainCwd;
         this.lanProxyPort = lanProxyPort != null
             ? lanProxyPort : CliLanProxyAdapter.catalogOnly(new CustomModelJsonStore());
         this.pluginRuntime = pluginRuntime;
+        this.modelCatalog = modelCatalog != null ? modelCatalog : new CustomModelJsonStore();
+    }
+
+    CustomModelCatalog modelCatalog() {
+        return modelCatalog;
     }
 
     CliPluginRuntimeView pluginRuntime() {
